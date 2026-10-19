@@ -186,6 +186,9 @@ export function useChatSession(options: UseChatSessionOptions) {
     const lastTurnContextRef = useRef<{ modelId: string; prompt: string; metadata: RequestMetadata } | null>(null);
     const requestTimestampsRef = useRef<number[]>([]);
 
+    // ✅ Track active scheduled timeouts mapped by messageId so they can be canceled if deleted
+    const scheduledTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>[]>>(new Map());
+
     const getRequestsLastHour = useCallback(() => {
         const now = Date.now();
         const cutoff = now - 60 * 60 * 1000;
@@ -213,7 +216,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const { captureFrontCameraImage } = useFrontCamera(addToast);
 
-    // ✅ CENTRALIZED HELPER: Filters global prompt blocks down to the active profile's inputStrategy
+    // ✅ Filters global prompt blocks down to the active profile's inputStrategy
     const getActivePromptBlocks = useCallback((data: InteractionData | null | undefined): PromptBlock[] => {
         const profile = data?.profile;
         return profile?.inputStrategy 
@@ -226,7 +229,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         allContexts: allContextsRef.current,
         allLocations: allLocationsRef.current,
         allAudioTracks: allAudioTracksRef.current,
-        allPromptBlocks: allPromptBlocksRef.current, // Tools need the global DB for administrator listing
+        allPromptBlocks: allPromptBlocksRef.current,
         allLanguageModels: allLanguageModelsRef.current,
         allSamplers: allSamplersRef.current,
         allStopPatterns: allStopPatternsRef.current,
@@ -356,6 +359,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const triggerDelayedResponseRef = useRef<(characterId: string, thought?: string) => Promise<void>>(null);
 
+    // ✅ Cleanly schedules follow-ups from activeToolActions and tracks timeouts by messageId
     const extractAndScheduleResponses = useCallback((data: InteractionData) => {
         const history = getGlobalMessageHistory(data);
         const protagonistIds = new Set(data.protagonistIds || []);
@@ -364,34 +368,46 @@ export function useChatSession(options: UseChatSessionOptions) {
             const msg = history[i];
             if (hasTextContent(msg) && !protagonistIds.has(msg.character.id)) {
                 const chatMsg = msg as ChatMessage;
-                if (chatMsg.inventory?.___scheduled_responses___) {
-                    try {
-                        const tasks = JSON.parse(chatMsg.inventory.___scheduled_responses___ as string);
-                        for (const task of tasks) {
-                            const delay = task.durationMs;
-                            const charId = task.characterId;
-                            const charName = task.characterName;
-                            const thought = task.thought;
-                            
-                            setTimeout(() => {
-                                triggerDelayedResponseRef.current?.(charId, thought);
-                            }, delay);
-                            
-                            addToast(`⏰ ${charName} scheduled a follow-up in ${formatDelay(delay)}`, 'info');
-                        }
-                    } catch (e) {
-                        console.warn('Failed to parse scheduled responses', e);
+                const tasks = chatMsg.activeToolActions?.scheduledResponses;
+                if (tasks && tasks.length > 0) {
+                    const timeouts: ReturnType<typeof setTimeout>[] = [];
+
+                    for (const task of tasks) {
+                        const delay = task.durationMs;
+                        const charId = task.characterId;
+                        const charName = task.characterName;
+                        const thought = task.thought;
+                        
+                        const tid = setTimeout(() => {
+                            triggerDelayedResponseRef.current?.(charId, thought);
+                            const existing = scheduledTimeoutsRef.current.get(chatMsg.id) || [];
+                            const remaining = existing.filter(t => t !== tid);
+                            if (remaining.length > 0) scheduledTimeoutsRef.current.set(chatMsg.id, remaining);
+                            else scheduledTimeoutsRef.current.delete(chatMsg.id);
+                        }, delay);
+                        
+                        timeouts.push(tid);
+                        addToast(`⏰ ${charName} scheduled a follow-up in ${formatDelay(delay)}`, 'info');
                     }
                     
+                    const existingList = scheduledTimeoutsRef.current.get(chatMsg.id) || [];
+                    scheduledTimeoutsRef.current.set(chatMsg.id, [...existingList, ...timeouts]);
+
+                    // Cleanly remove scheduledResponses from activeToolActions so it doesn't reschedule
                     const updatedHistories = { ...data.interactionHistories };
                     for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
                         const idx = msgs.findIndex(m => m.id === chatMsg.id);
                         if (idx !== -1) {
                             const cleanMsg = { ...msgs[idx] } as ChatMessage;
-                            const cleanInv = cleanMsg.inventory ? { ...cleanMsg.inventory } : {};
-                            delete cleanInv['___scheduled_responses___'];
-                            if (Object.keys(cleanInv).length === 0) cleanMsg.inventory = undefined;
-                            else cleanMsg.inventory = cleanInv;
+                            if (cleanMsg.activeToolActions) {
+                                const cleanActive = { ...cleanMsg.activeToolActions };
+                                delete cleanActive.scheduledResponses;
+                                if (Object.keys(cleanActive).length === 0) {
+                                    delete cleanMsg.activeToolActions;
+                                } else {
+                                    cleanMsg.activeToolActions = cleanActive;
+                                }
+                            }
                             
                             updatedHistories[locId] = [...msgs];
                             updatedHistories[locId][idx] = cleanMsg;
@@ -406,6 +422,35 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, [addToast, setInteractionData]);
 
+    // ✅ Reactively cancel scheduled responses if their triggering message is deleted, trimmed, or chat resets
+    useEffect(() => {
+        if (!interactionData) {
+            for (const timeouts of scheduledTimeoutsRef.current.values()) {
+                timeouts.forEach(t => clearTimeout(t));
+            }
+            scheduledTimeoutsRef.current.clear();
+            return;
+        }
+
+        const activeMessageIds = new Set(getGlobalMessageHistory(interactionData).map(m => m.id));
+        for (const [msgId, timeouts] of scheduledTimeoutsRef.current.entries()) {
+            if (!activeMessageIds.has(msgId)) {
+                timeouts.forEach(t => clearTimeout(t));
+                scheduledTimeoutsRef.current.delete(msgId);
+            }
+        }
+    }, [interactionData]);
+
+    // ✅ Clear all timeouts on unmount
+    useEffect(() => {
+        return () => {
+            for (const timeouts of scheduledTimeoutsRef.current.values()) {
+                timeouts.forEach(t => clearTimeout(t));
+            }
+            scheduledTimeoutsRef.current.clear();
+        };
+    }, []);
+
     const executeTurnPipeline = useCallback(async ({
         data,
         protagonistId,
@@ -418,7 +463,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (!lockAlreadyAcquired && !acquireLock()) return;
         if (!data.profile || !data.profile?.enableCharacterExpression) sentimentEngine.unload();
 
-        // ✅ BOUNDARY RESOLUTION: Compute active blocks exactly at execution time
         const promptBlocks = getActivePromptBlocks(data);
 
         const currentState = getState();
@@ -1037,6 +1081,12 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline]);
 
     const startNewChat = useCallback((char: Character) => {
+        // ✅ Cancel all pending scheduled follow-ups when creating a fresh chat session
+        for (const timeouts of scheduledTimeoutsRef.current.values()) {
+            timeouts.forEach(t => clearTimeout(t));
+        }
+        scheduledTimeoutsRef.current.clear();
+
         const c = createNewInteractionData(char);
         c.name = 'Untitled Session';
         setInteractionData(c);

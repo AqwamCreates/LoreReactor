@@ -2,7 +2,8 @@
 import type { 
     Character, InteractionData, BudgetStrategy, BudgetData, 
     PromptBlock, tool, ChatMessage, LanguageModel, Profile, 
-    ToolExecutionResult, toolUsageDisplayMode, toolUsageDisplayPlacementMode 
+    ToolExecutionResult, toolUsageDisplayMode, toolUsageDisplayPlacementMode,
+    ActiveToolActions, PendingToolAction, Inventory
 } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildRequestBody, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/interactionDataLogic';
@@ -174,7 +175,6 @@ function applyToolReplacements(
         const { rawMatch, resultText } = replacements.rawReplacements[i];
 
         // Raw prompt context: delimited observation boundary (⟪tool()⟫⟦result: ...⟧)
-        // THIS is the only legitimate source of tool results.
         const rawReplacement = `${rawMatch}${toolResultStartString}result: ${resultText}${toolResultEndString} `;
         if (currentRaw.includes(rawMatch)) {
             currentRaw = currentRaw.replace(rawMatch, rawReplacement);
@@ -241,12 +241,11 @@ function nukeHallucinatedResults(text: string): string {
 }
 
 function createTextAccumulationState(initialText: string) {
-    // ✅ NUKE any pre-existing hallucinated tool results from resumed text immediately
     const sanitizedText = nukeHallucinatedResults(initialText);
 
     let rawAcc = sanitizedText;
     let displayAcc = sanitizedText;
-    let lastRawLen = sanitizedText.length; // Track length for delta extraction
+    let lastRawLen = sanitizedText.length;
     let pendingInvs: ToolInvocation[] = [];
     const collectedExecutionResults: ToolExecutionResult[] = [];
 
@@ -322,7 +321,13 @@ export class CharacterActor {
             character,
         };
 
+        // Track persistent state across passes
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
+        let accumulatedActiveToolActions: ActiveToolActions = latestMsg?.activeToolActions ? { ...latestMsg.activeToolActions } : {};
+        let accumulatedPendingActions: PendingToolAction[] = [];
+        let accumulatedLockedLocations: Record<string, string[]> = latestMsg?.characterLockedLocations ? { ...latestMsg.characterLockedLocations } : {};
+        let accumulatedInventory: Inventory = latestMsg?.inventory ? { ...latestMsg.inventory } : {};
+
         if (!isResuming) {
             const probeModelId = borrowedModel
                 ? borrowedModel.id
@@ -375,22 +380,18 @@ export class CharacterActor {
                     const acc = getAccumulators();
                     const lastLen = acc.getLastRawLen();
                     const delta = s.fullText.slice(lastLen);
-                    acc.setLastRawLen(s.fullText.length); // Track absolute backend length for delta extraction
+                    acc.setLastRawLen(s.fullText.length);
 
                     if (params.voiceTracker) params.voiceTracker.feed(s.fullText);
 
                     const parsed = parser.processChunk(delta);
-                    
                     let newRaw = acc.raw + delta;
 
-                    // ✅ AGGRESSIVE REWIND: If the LLM hallucinates a tool result ⟦ during this stream pass,
-                    // truncate the text entirely to the point before the hallucination started.
-                    // This erases both the fake result AND the LLM's reaction to it.
+                    // Truncate fake hallucinations immediately
                     const hallucinationIdx = newRaw.indexOf(toolResultStartString, baseLength);
                     if (hallucinationIdx !== -1) {
                         newRaw = newRaw.substring(0, hallucinationIdx);
                         acc.setRaw(newRaw);
-                        // Abort immediately to prevent further hallucinated context
                         turnAbortCtrl.abort();
                         return;
                     }
@@ -406,7 +407,7 @@ export class CharacterActor {
                         return;
                     }
 
-                    // 2. Compile display text dynamically from raw text using the configured placement mode
+                    // 2. Compile display text dynamically from raw text adhering to placement mode
                     const compiled = compileMessageDisplayText(
                         newRaw,
                         displayCtx.displayMode,
@@ -439,7 +440,6 @@ export class CharacterActor {
                 const onParentAbort = () => turnAbortCtrl.abort();
                 signal.addEventListener('abort', onParentAbort, { once: true });
 
-                // ✅ CAPTURE BASELINE: Any ⟦ generated after this index is a hallucination
                 const baseLength = currentExistingText.length; 
                 const streamCallbacks = createStreamCallbacks(streamToolParser, accState.get, turnAbortCtrl, baseLength, displayContext);
 
@@ -506,9 +506,24 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createChatMessage(data, character, '', { clothingWearingStatuses: resolvedClothingStatuses, knownCharacterNames });
+                    const dummyTargetMsg = createChatMessage(data, character, '', { 
+                        clothingWearingStatuses: resolvedClothingStatuses, 
+                        knownCharacterNames,
+                        activeToolActions: accumulatedActiveToolActions,
+                        pendingToolActions: accumulatedPendingActions,
+                        inventory: accumulatedInventory,
+                        characterLockedLocations: accumulatedLockedLocations,
+                    });
+
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
+
+                    // Preserve state mutations made by tools on dummyTargetMsg across stream passes
+                    if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
+                    if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
+                    if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
+                    if (dummyTargetMsg.characterLockedLocations) accumulatedLockedLocations = { ...dummyTargetMsg.characterLockedLocations };
+                    if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
 
@@ -574,9 +589,24 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createChatMessage(data, character, '', { clothingWearingStatuses: resolvedClothingStatuses, knownCharacterNames });
+                    const dummyTargetMsg = createChatMessage(data, character, '', { 
+                        clothingWearingStatuses: resolvedClothingStatuses, 
+                        knownCharacterNames,
+                        activeToolActions: accumulatedActiveToolActions,
+                        pendingToolActions: accumulatedPendingActions,
+                        inventory: accumulatedInventory,
+                        characterLockedLocations: accumulatedLockedLocations,
+                    });
+
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
+
+                    // Preserve state mutations made by tools on dummyTargetMsg across stream passes
+                    if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
+                    if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
+                    if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
+                    if (dummyTargetMsg.characterLockedLocations) accumulatedLockedLocations = { ...dummyTargetMsg.characterLockedLocations };
+                    if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
 
@@ -619,9 +649,24 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createChatMessage(data, character, '', { clothingWearingStatuses: resolvedClothingStatuses, knownCharacterNames });
+                    const dummyTargetMsg = createChatMessage(data, character, '', { 
+                        clothingWearingStatuses: resolvedClothingStatuses, 
+                        knownCharacterNames,
+                        activeToolActions: accumulatedActiveToolActions,
+                        pendingToolActions: accumulatedPendingActions,
+                        inventory: accumulatedInventory,
+                        characterLockedLocations: accumulatedLockedLocations,
+                    });
+
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
+
+                    // Preserve state mutations made by tools on dummyTargetMsg across stream passes
+                    if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
+                    if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
+                    if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
+                    if (dummyTargetMsg.characterLockedLocations) accumulatedLockedLocations = { ...dummyTargetMsg.characterLockedLocations };
+                    if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
 
@@ -658,39 +703,64 @@ export class CharacterActor {
 
             if (isResuming) {
                 const allExecutionResults = accState.getCollectedExecutionResults();
-                if (allExecutionResults.length > 0) {
-                    const newHistories = { ...data.interactionHistories };
-                    for (const [locId, msgs] of Object.entries(newHistories)) {
-                        const targetIdx = latestMsg 
-                            ? msgs.findIndex(m => m.id === latestMsg.id)
-                            : msgs.findIndex(m => m.character.id === character.id && (m.messageType === 'chat' || m.messageType === 'whisper'));
-                        if (targetIdx !== -1) {
-                            newHistories[locId] = [...msgs];
-                            const targetMsg = { ...msgs[targetIdx] } as ChatMessage;
+                const newHistories = { ...data.interactionHistories };
+                for (const [locId, msgs] of Object.entries(newHistories)) {
+                    const targetIdx = latestMsg 
+                        ? msgs.findIndex(m => m.id === latestMsg.id)
+                        : msgs.findIndex(m => m.character.id === character.id && (m.messageType === 'chat' || m.messageType === 'whisper'));
+                    if (targetIdx !== -1) {
+                        newHistories[locId] = [...msgs];
+                        const targetMsg = { ...msgs[targetIdx] } as ChatMessage;
+                        if (allExecutionResults.length > 0) {
                             targetMsg.toolExecutionResults = [
                                 ...(targetMsg.toolExecutionResults || []),
                                 ...allExecutionResults,
                             ];
-                            if (latestExpression) {
-                                targetMsg.characterExpression = latestExpression;
-                            }
-                            newHistories[locId][targetIdx] = targetMsg;
-                            break;
                         }
+                        if (latestExpression) {
+                            targetMsg.characterExpression = latestExpression;
+                        }
+                        if (accumulatedPendingActions.length > 0) {
+                            targetMsg.pendingToolActions = [
+                                ...(targetMsg.pendingToolActions || []),
+                                ...accumulatedPendingActions,
+                            ];
+                        }
+                        if (Object.keys(accumulatedActiveToolActions).length > 0) {
+                            targetMsg.activeToolActions = accumulatedActiveToolActions;
+                        }
+                        if (Object.keys(accumulatedInventory).length > 0) {
+                            targetMsg.inventory = accumulatedInventory;
+                        }
+                        targetMsg.characterClothingWearingStatuses = resolvedClothingStatuses;
+                        targetMsg.characterLockedLocations = accumulatedLockedLocations;
+
+                        newHistories[locId][targetIdx] = targetMsg;
+                        break;
                     }
-                    updatedData = { ...data, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-                } else {
-                    updatedData = data;
                 }
+                updatedData = { ...data, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
             } else {
+                const hasPending = accumulatedPendingActions.length > 0;
+                const hasActive = Object.keys(accumulatedActiveToolActions).length > 0;
+                const hasInv = Object.keys(accumulatedInventory).length > 0;
+
                 const msg = isTool
                     ? createToolMessage(data, character, rawText, {
                         clothingWearingStatuses: resolvedClothingStatuses,
                         knownCharacterNames,
+                        characterLockedLocations: accumulatedLockedLocations,
+                        pendingToolActions: hasPending ? accumulatedPendingActions : undefined,
+                        activeToolActions: hasActive ? accumulatedActiveToolActions : undefined,
+                        inventory: hasInv ? accumulatedInventory : undefined,
                     })
                     : createChatMessage(data, character, rawText, {
                         clothingWearingStatuses: resolvedClothingStatuses,
                         knownCharacterNames,
+                        characterLockedLocations: accumulatedLockedLocations,
+                        pendingToolActions: hasPending ? accumulatedPendingActions : undefined,
+                        activeToolActions: hasActive ? accumulatedActiveToolActions : undefined,
+                        inventory: hasInv ? accumulatedInventory : undefined,
                     });
 
                 const allExecutionResults = accState.getCollectedExecutionResults();

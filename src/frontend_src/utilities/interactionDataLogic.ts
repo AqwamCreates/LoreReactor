@@ -1,5 +1,9 @@
 // src/frontend_src/utilities/interactionDataLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage, RawInteractionData } from '../types';
+import type { 
+    Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, 
+    TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage, 
+    RawInteractionData, ActiveToolActions, PendingToolAction, Inventory 
+} from '../types';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { v4 as uuidv4 } from 'uuid';
 import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses } from './characterLogic';
@@ -240,7 +244,16 @@ export function createChatMessage(
     interactionData: InteractionData,
     character: Character,
     textContent: string,
-    options?: { files?: string[]; frontCameraImage?: string; knownCharacterNames?: Record<string, Record<string, boolean>>; clothingWearingStatuses?: Record<string, boolean> }
+    options?: { 
+        files?: string[]; 
+        frontCameraImage?: string; 
+        knownCharacterNames?: Record<string, Record<string, boolean>>; 
+        clothingWearingStatuses?: Record<string, boolean>;
+        characterLockedLocations?: Record<string, string[]>;
+        pendingToolActions?: PendingToolAction[];
+        activeToolActions?: ActiveToolActions;
+        inventory?: Inventory;
+    }
 ): ChatMessage {
     const latest = findLatestMessage(interactionData, character);
     const previousMessage = latest?.message;
@@ -269,6 +282,15 @@ export function createChatMessage(
     const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
     const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
     const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
+    const characterLockedLocations = options?.characterLockedLocations ?? { ...prevLockedLocations };
+
+    // ✅ Inherit ongoing RPG inventory across turns
+    const prevInventory = previousMessage?.inventory;
+    const inventory = options?.inventory ?? (prevInventory ? { ...prevInventory } : undefined);
+
+    // ✅ Inherit ongoing active tool state (timers, stopwatches, schedules, notes, trade offers) across turns
+    const prevActiveToolActions = previousMessage?.activeToolActions;
+    const activeToolActions = options?.activeToolActions ?? (prevActiveToolActions ? { ...prevActiveToolActions } : undefined);
 
     return {
         id,
@@ -282,7 +304,10 @@ export function createChatMessage(
         remainingActionStamina,
         knownCharacterNames,
         characterClothingWearingStatuses: clothingWearingStatuses,
-        characterLockedLocations: { ...prevLockedLocations },
+        characterLockedLocations,
+        inventory,
+        activeToolActions,
+        pendingToolActions: options?.pendingToolActions,
         modelTextContentSummaries: {},
         modelInteractionTextContentSummaries: {},
         kvCacheTextContentPaths: {},
@@ -298,7 +323,17 @@ export function createToolMessage(
     interactionData: InteractionData,
     character: Character,
     textContent: string,
-    options?: { files?: string[]; frontCameraImage?: string; knownCharacterNames?: Record<string, Record<string, boolean>>; clothingWearingStatuses?: Record<string, boolean>; toolExecutionResults?: ToolExecutionResult[] }
+    options?: { 
+        files?: string[]; 
+        frontCameraImage?: string; 
+        knownCharacterNames?: Record<string, Record<string, boolean>>; 
+        clothingWearingStatuses?: Record<string, boolean>; 
+        characterLockedLocations?: Record<string, string[]>;
+        toolExecutionResults?: ToolExecutionResult[];
+        pendingToolActions?: PendingToolAction[];
+        activeToolActions?: ActiveToolActions;
+        inventory?: Inventory;
+    }
 ): ToolMessage {
     const latest = findLatestMessage(interactionData, character);
     const previousMessage = latest?.message;
@@ -328,6 +363,13 @@ export function createToolMessage(
     const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
     const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
     const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
+    const characterLockedLocations = options?.characterLockedLocations ?? { ...prevLockedLocations };
+
+    const prevInventory = previousMessage?.inventory;
+    const inventory = options?.inventory ?? (prevInventory ? { ...prevInventory } : undefined);
+
+    const prevActiveToolActions = previousMessage?.activeToolActions;
+    const activeToolActions = options?.activeToolActions ?? (prevActiveToolActions ? { ...prevActiveToolActions } : undefined);
 
     return {
         id,
@@ -342,7 +384,10 @@ export function createToolMessage(
         remainingActionStamina,
         knownCharacterNames,
         characterClothingWearingStatuses: clothingWearingStatuses,
-        characterLockedLocations: { ...prevLockedLocations },
+        characterLockedLocations,
+        inventory,
+        activeToolActions,
+        pendingToolActions: options?.pendingToolActions,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentMessageId: lastMessageId,
