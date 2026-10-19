@@ -38,7 +38,7 @@ I will also always give the tool inputs as {{char}} in-character.
 I will also assume the tools that are not in my list are currently disabled.
 If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality.
 I can call the tool like {{toolCallStartString}}tool(){{toolCallEndString}} to get direct result or access the help page.
-If I never used a tool and intend to use it in the future, I will call the tool without any arguments to understand how it works.
+If I never used a tool and I intend to use it in the future, I will call the tool without any arguments to understand how it works.
 If I do not know how a tool works, I will explore the tool arguments thoroughly.
 The content between these markers will be replaced with the tool's result before I continue writing.
 I may use multiple tools each time I receive tool results.
