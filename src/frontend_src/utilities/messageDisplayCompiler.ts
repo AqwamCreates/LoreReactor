@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/messageDisplayCompiler.ts
-import type { Character, HistoryMessage, InteractionData, ToolExecutionResult, toolUsageDisplayMode, toolUsageDisplayPlacementMode } from '../types';
+import type { Character, InteractionData, TextMessage, ToolExecutionResult, toolUsageDisplayMode, toolUsageDisplayPlacementMode } from '../types';
 import {
     toolCallStartString,
     toolCallEndString,
@@ -99,7 +99,7 @@ function getInsertionIndex(cleanText: string, mappedIndex: number, mode: Placeme
  * toolExecutionResults parameters ensure proper name detokenization and badge formatting.
  */
 export function compileMessageDisplayText(
-    target: HistoryMessage | string | null | undefined,
+    target: TextMessage | string | null | undefined,
     displayMode: toolUsageDisplayMode = 'simple',
     placementMode: PlacementMode = 'inline',
     participants: Character[] = [],

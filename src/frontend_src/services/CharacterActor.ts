@@ -5,7 +5,7 @@ import type {
     ToolExecutionResult, toolUsageDisplayMode, toolUsageDisplayPlacementMode 
 } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
-import { buildRequestBody, convertIdsToDisplayNames, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/interactionDataLogic';
+import { buildRequestBody, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredTextMessages } from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
@@ -85,15 +85,6 @@ export interface DisplayContext {
     placementMode: toolUsageDisplayPlacementMode;
     participants: Character[];
     character: Character;
-}
-
-// ─── Spacing Sanitizer ──────────────────────────────────────────────
-
-function cleanSpacing(str: string): string {
-    return str
-        .replace(/\r\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/^\n+/, '');
 }
 
 // ─── Dual-Text Tool Processing ──────────────────────────────────────
