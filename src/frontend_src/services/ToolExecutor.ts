@@ -10,7 +10,8 @@ import type {
     PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, 
     Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, 
     tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel,
-    entityType 
+    entityType, ActiveToolActions, PendingToolAction, PendingToolActionType,
+    TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry, TradeOffer
 } from '../types';
 import { findLatestMessage } from '../utilities/messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
@@ -27,6 +28,12 @@ import { localURL } from '../../configurations';
 import { embeddingEngine } from './EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from './RetrievalEngine';
 import { retrieveEligibleMemories, detokenizeMemoryContent } from '../utilities/memoryLogic';
+
+// Re-export so consumers importing from ToolExecutor remain compatible
+export type { 
+    PendingToolAction, PendingToolActionType, ActiveToolActions, 
+    TradeOffer, TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry 
+};
 
 export interface ToolResult {
     toolType: string;
@@ -56,65 +63,6 @@ export interface ToolExecutionContext {
     allEntityFolders: EntityFolder[];
     captureFrontCameraImage: () => Promise<string | null>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
-}
-
-// ─── Active & Pending Tool Action Types ──────────────────────────────
-
-export type PendingToolActionType =
-    | 'summon' | 'kick' | 'invite' | 'whisper' | 'creator' | 'destroyer'
-    | 'administrator_switch_model' | 'administrator_toggle_account'
-    | 'administrator_join_session' | 'administrator_leave_session'
-    | 'administrator_accept_join' | 'administrator_reject_join'
-    | 'administrator_add_to_entity_folder' | 'administrator_remove_from_entity_folder'
-    | 'administrator_edit_entity';
-
-export interface PendingToolAction {
-    type: PendingToolActionType;
-    payload: Record<string, string>;
-}
-
-export interface TimerEntry {
-    name: string;
-    targetTimestamp: number;
-}
-
-export interface StopwatchEntry {
-    name: string;
-    startTimestamp: number;
-    pausedElapsedMs?: number;
-}
-
-export interface ScheduleEntry {
-    name: string;
-    triggerTimestamp: number;
-    action: string;
-    repeatIntervalMs?: number;
-}
-
-export interface ScheduledResponseEntry {
-    characterId: string;
-    characterName: string;
-    durationMs: number;
-    thought: string;
-    createdAt: number;
-}
-
-export interface TradeOffer {
-    id: string;
-    fromCharacterId: string;
-    toCharacterId: string;
-    giveItems: Record<string, number>;
-    takeItems: Record<string, number>;
-    timestamp: number;
-}
-
-export interface ActiveToolActions {
-    timers?: TimerEntry[];
-    stopwatches?: StopwatchEntry[];
-    schedules?: ScheduleEntry[];
-    scheduledResponses?: ScheduledResponseEntry[];
-    notes?: Record<string, string>;
-    tradeOffers?: TradeOffer[];
 }
 
 // ─── Canonical entityType Mapping ───────────────────────────────────
@@ -2119,7 +2067,7 @@ async function executeNotify(args: string, _nextMessage: BaseMessage, _interacti
     return { toolType: 'notify', args, textContent: `Sent OS notification "${title}": ${message}`, displayReplacement: `[🔔 Notification sent]` };
 }
 
-// ─── Volume Control Tool ────────────────────────────────────────────
+// ─── Volume Control Tool ────────────────────────────────────
 async function executeVolumeControl(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = (pArgs.get(0, 'action', 'command')?.toLowerCase() || 'get') as 'get' | 'set' | 'mute' | 'unmute';

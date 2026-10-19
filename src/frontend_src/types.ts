@@ -438,20 +438,22 @@ export interface ScheduledResponseEntry {
   createdAt: number;
 }
 
-export interface ActiveToolActions {
-  timers?: TimerEntry[];
-  stopwatches?: StopwatchEntry[];
-  schedules?: ScheduleEntry[];
-  scheduledResponses?: ScheduledResponseEntry[];
-  notes?: Record<string, string>;
+export interface TradeOffer {
+    id: string;
+    fromCharacterId: string;
+    toCharacterId: string;
+    giveItems: Record<string, number>;
+    takeItems: Record<string, number>;
+    timestamp: number;
 }
 
 export interface ActiveToolActions {
-  timers?: TimerEntry[];
-  stopwatches?: StopwatchEntry[];
-  schedules?: ScheduleEntry[];
-  scheduledResponses?: ScheduledResponseEntry[];
-  notes?: Record<string, string>;
+    timers?: TimerEntry[];
+    stopwatches?: StopwatchEntry[];
+    schedules?: ScheduleEntry[];
+    scheduledResponses?: ScheduledResponseEntry[];
+    notes?: Record<string, string>;
+    tradeOffers?: TradeOffer[];
 }
 
 export type PendingToolActionType =
