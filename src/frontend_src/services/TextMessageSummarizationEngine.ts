@@ -1,5 +1,5 @@
 // src/frontend_src/services/TextMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile, SummarizationStep, StopPattern } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, cacheEfficiencyConfigurationType, Profile, SummarizationStep, StopPattern, TextMessage } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -7,7 +7,7 @@ import { createChatHistoryArray, getParticipantTag, replacePlaceholders, getUniv
 import { detectName } from '../utilities/nameDetection';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities/locationLogic';
-import { getLocalMessageHistory } from '../utilities/timelineLogic';
+import { getLocalMessageHistory, getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { getStemmedContentWords } from '../utilities/stemmerHelper';
 
@@ -85,6 +85,7 @@ function hasModelSummary(msg: HistoryMessage, modelId: string): boolean {
 export async function generateCharacterMemory(
     interactionData: InteractionData,
     character: Character,
+    promptBlocks: PromptBlock[], // ✅ FIXED: Added promptBlocks parameter
     modelId: string,
     maxTokens = 512,
 ): Promise<string | null> {
@@ -95,8 +96,8 @@ export async function generateCharacterMemory(
     const languageModelSampler = interactionData.profile?.characterLanguageModelSampler || character.languageModelSampler;
     const stopPattern = interactionData.profile?.characterStopPattern;
 
-    const allPromptBlocks: PromptBlock[] = [];
-    const filteredMessages = getFilteredTextMessages(interactionData, character.id, allPromptBlocks);
+    // ✅ FIXED: Use passed promptBlocks instead of hardcoded empty array
+    const filteredMessages = getFilteredTextMessages(interactionData, character.id, promptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
     const coLocatedParticipants = getCoLocatedParticipants(interactionData, character);
@@ -117,7 +118,7 @@ export async function generateCharacterMemory(
         knownNames: knownCharacterNames,
         existingCharacterText: '',
         modelId,
-        allPromptBlocks,
+        allPromptBlocks: promptBlocks, // ✅ FIXED: Use passed promptBlocks
         localHistory,
         participants,
         coLocatedProtagonists,
@@ -141,7 +142,6 @@ export async function generateCharacterMemory(
         delimiters,
     };
 
-    // ✅ FIXED: Use createChatHistoryArray and join the resulting array
     const { chatHistoryArray } = createChatHistoryArray(ctx);
     const chatHistoryPrompt = chatHistoryArray.join('\n');
     
@@ -293,7 +293,8 @@ export async function generateLocationVisitSummary(
     endIdx: number,
     maxTokens = 512,
 ): Promise<string | null> {
-    const history = getLocalMessageHistory(interactionData, character);
+    // ✅ FIXED: Use global history because startIdx/endIdx are global indices
+    const history = getGlobalMessageHistory(interactionData);
     if (startIdx < 0 || endIdx >= history.length || startIdx > endIdx) return null;
 
     const participants = interactionData.participants;
@@ -301,8 +302,8 @@ export async function generateLocationVisitSummary(
     const languageModelSampler = interactionData.profile?.characterLanguageModelSampler || character.languageModelSampler;
     const stopPattern = interactionData.profile?.characterStopPattern;
 
-    const allPromptBlocks: PromptBlock[] = [];
-    const filteredMessages = getFilteredTextMessages(interactionData, character.id, allPromptBlocks);
+    // ✅ FIXED: Use passed promptBlocks instead of hardcoded empty array
+    const filteredMessages = getFilteredTextMessages(interactionData, character.id, promptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
 
     const activeModel = getLanguageModelEngine().getContext();
@@ -507,7 +508,7 @@ export async function generateRecursiveSummary(
     maxDepth: number,
     maxTokens = 1024,
 ): Promise<Context[]> {
-    const history = getLocalMessageHistory(interactionData, character);
+    const textMessages = getLocalMessageHistory(interactionData, character, ['chat', 'whisper']) as TextMessage[];
     const existingContexts = interactionData.contexts || [];
     const now = Date.now();
 
@@ -515,14 +516,13 @@ export async function generateRecursiveSummary(
     const interactionDataSummarizationSampler = profile?.interactionDataSummarizationSampler;
     const stopPattern = profile?.interactionDataSummarizationStopPattern;
 
-    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
     const filterFlags = getUniversalMessageFilterFlags(
-        chatMessages,
+        textMessages,
         promptBlocks,
-        interactionData.contexts,
-        interactionData.locations,
+        interactionData.contexts || [],
+        interactionData.locations || [],
     );
-    const visibleMessages: HistoryMessage[] = chatMessages.filter((_, i) => !filterFlags[i]);
+    const visibleMessages: HistoryMessage[] = textMessages.filter((_, i) => !filterFlags[i]);
 
     const fullRangeKey = `recursive-global:0-${visibleMessages.length}`;
     for (const context of existingContexts) {
@@ -638,11 +638,11 @@ export async function generateEntropyPruningSummaries(
 ): Promise<Map<string, string>> {
     const results = new Map<string, string>();
     
-    const history = getLocalMessageHistory(interactionData, character);
-    const chatMessages = history.filter((m): m is ChatMessage => m.messageType === 'chat');
+    const textMessages = getLocalMessageHistory(interactionData, character, ['chat', 'whisper']) as TextMessage[];
 
-    const filterFlags = getUniversalMessageFilterFlags(chatMessages, [], interactionData.contexts || [], interactionData.locations || []);
-    const visibleMessages = chatMessages.filter((_, i) => !filterFlags[i]);
+    // ✅ FIXED: Pass promptBlocks instead of hardcoded []
+    const filterFlags = getUniversalMessageFilterFlags(textMessages, promptBlocks, interactionData.contexts || [], interactionData.locations || []);
+    const visibleMessages = textMessages.filter((_, i) => !filterFlags[i]);
 
     if (visibleMessages.length <= entropyPruningChunkSize) return results;
 

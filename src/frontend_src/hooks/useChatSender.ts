@@ -60,17 +60,23 @@ export function useChatSender(opts: UseChatSenderOptions) {
         frontCameraImageBase64: string | undefined
     ) => {
         const currentState = getState();
+        const currentInteractionData = currentState.interactionData;
         const activeCharacter = isMultiplayerClient
             ? (joinProtagonistRef.current || currentState.localProtagonist)
             : currentState.localProtagonist;
 
-        if (!currentState.interactionData || !activeCharacter || (!text && (!files || !files.length))) return;
+        if (!currentInteractionData || !activeCharacter || (!text && (!files || !files.length))) return;
+
+        // ✅ FIX: Filter prompt blocks by the active profile's inputStrategy immediately
+        const activeProfile = currentInteractionData.profile;
+        const activeStrategyBlocks = activeProfile?.inputStrategy 
+            ? (allPromptBlocks || []).filter(pb => activeProfile.inputStrategy!.includes(pb.id))
+            : (allPromptBlocks || []);
 
         // ✅ LAZY LOAD/UNLOAD STRICTLY ON SEND
         // Prevents thrashing on profile switches. Starts loading in background while LLM generates.
-        const profile = currentState.interactionData.profile;
-        const isNarrationEnabled = profile?.narrateTexts 
-            ? Object.values(profile.narrateTexts).some(v => v === true) 
+        const isNarrationEnabled = activeProfile?.narrateTexts 
+            ? Object.values(activeProfile.narrateTexts).some(v => v === true) 
             : false;
 
         if (isNarrationEnabled) {
@@ -102,14 +108,14 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
             if (!acquireLock()) { addToast('Already processing...', 'info'); return; }
             try {
-                const slashMessage = createChatMessage(currentState.interactionData, activeCharacter, '', {});
+                const slashMessage = createChatMessage(currentInteractionData, activeCharacter, '', {});
                 const toolContext = buildToolContext();
                 const toolResult = await executeTool(
                     slashInvocation,
                     slashMessage,
-                    currentState.interactionData,
+                    currentInteractionData,
                     toolContext,
-                    currentState.interactionData.profile?.toolUsageDisplayMode
+                    activeProfile?.toolUsageDisplayMode
                 );
 
                 const toolExecutionResult: ToolExecutionResult = {
@@ -128,13 +134,13 @@ export function useChatSender(opts: UseChatSenderOptions) {
                 const rawCmd = text;
                 slashMessage.textContent = rawCmd;
 
-                const preSlashData = currentState.interactionData;
-                const currentLocId = getCurrentLocationId(currentState.interactionData, activeCharacter) || 'global';
-                const newHistories = { ...currentState.interactionData.interactionHistories };
+                const preSlashData = currentInteractionData;
+                const currentLocId = getCurrentLocationId(currentInteractionData, activeCharacter) || 'global';
+                const newHistories = { ...currentInteractionData.interactionHistories };
                 const currentLocMessages = newHistories[currentLocId] || [];
                 newHistories[currentLocId] = [...currentLocMessages, slashMessage];
 
-                let updatedData = { ...currentState.interactionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+                let updatedData = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
                 updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
 
                 broadcastToolStateChanges(preSlashData, updatedData, onStateBroadcastRef.current);
@@ -149,7 +155,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
                 await executeTurnPipeline({
                     data: updatedData,
                     protagonistId: activeCharacter.id,
-                    allPromptBlocks,
+                    allPromptBlocks: activeStrategyBlocks, // ✅ FIX: Pass filtered blocks
                     errorPrefix: 'Send failed',
                     lockAlreadyAcquired: true,
                 });
@@ -165,8 +171,6 @@ export function useChatSender(opts: UseChatSenderOptions) {
         if (!acquireLock()) { addToast('Already generating...', 'info'); return; }
 
         try {
-            const currentInteractionData = currentState.interactionData;
-
             const { chatRegen, actionRegen } = computeModulatedStaminaRegenationAmounts(activeCharacter, currentInteractionData);
             if (chatRegen > 0) {
                 generateChatStaminaForInteractionData(currentInteractionData, chatRegen, activeCharacter);
@@ -183,7 +187,8 @@ export function useChatSender(opts: UseChatSenderOptions) {
             });
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-            const filteredMessages = getFilteredTextMessages(currentInteractionData, activeCharacter.id, allPromptBlocks || []);
+            // ✅ FIX: Use filtered blocks for message filtering
+            const filteredMessages = getFilteredTextMessages(currentInteractionData, activeCharacter.id, activeStrategyBlocks);
             const knownCharacterNames = detectName(activeCharacter, filteredMessages, text);
 
             const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, {
@@ -269,7 +274,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             await executeTurnPipeline({
                 data: td,
                 protagonistId: activeCharacter.id,
-                allPromptBlocks,
+                allPromptBlocks: activeStrategyBlocks, // ✅ FIX: Pass filtered blocks
                 errorPrefix: 'Send failed',
                 lockAlreadyAcquired: true,
             });
@@ -297,7 +302,14 @@ export function useChatSender(opts: UseChatSenderOptions) {
             ? (joinProtagonistRef.current || protagonist)
             : protagonist;
 
-        const filteredMessages = getFilteredTextMessages(currentInteractionData, activeProtagonist.id, allPromptBlocksRef.current);
+        // ✅ FIX: Filter prompt blocks by the active profile's inputStrategy
+        const activeProfile = currentInteractionData.profile;
+        const activeStrategyBlocks = activeProfile?.inputStrategy 
+            ? allPromptBlocksRef.current.filter(pb => activeProfile.inputStrategy!.includes(pb.id))
+            : allPromptBlocksRef.current;
+
+        // ✅ FIX: Use filtered blocks for message filtering
+        const filteredMessages = getFilteredTextMessages(currentInteractionData, activeProtagonist.id, activeStrategyBlocks);
         const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
         const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
@@ -323,7 +335,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             data: td,
             protagonistId: protagonist.id,
             respondingCharacter: targetChar,
-            allPromptBlocks: allPromptBlocksRef.current,
+            allPromptBlocks: activeStrategyBlocks, // ✅ FIX: Pass filtered blocks
             isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Action failed',
             lockAlreadyAcquired: true,

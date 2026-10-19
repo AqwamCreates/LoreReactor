@@ -213,12 +213,20 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const { captureFrontCameraImage } = useFrontCamera(addToast);
 
+    // ✅ CENTRALIZED HELPER: Filters global prompt blocks down to the active profile's inputStrategy
+    const getActivePromptBlocks = useCallback((data: InteractionData | null | undefined): PromptBlock[] => {
+        const profile = data?.profile;
+        return profile?.inputStrategy 
+            ? allPromptBlocksRef.current.filter(pb => profile.inputStrategy!.includes(pb.id))
+            : allPromptBlocksRef.current;
+    }, []);
+
     const buildToolContext = useCallback((): ToolExecutionContext => ({
         allCharacters: allCharactersRef.current,
         allContexts: allContextsRef.current,
         allLocations: allLocationsRef.current,
         allAudioTracks: allAudioTracksRef.current,
-        allPromptBlocks: allPromptBlocksRef.current,
+        allPromptBlocks: allPromptBlocksRef.current, // Tools need the global DB for administrator listing
         allLanguageModels: allLanguageModelsRef.current,
         allSamplers: allSamplersRef.current,
         allStopPatterns: allStopPatternsRef.current,
@@ -478,16 +486,14 @@ export function useChatSession(options: UseChatSessionOptions) {
                 );
             }
 
-            // ✅ FIX: Catch AbortError locally so the pipeline can continue to save the partial text
             let turnResult: Awaited<ReturnType<typeof chatEngine.runTurn>> | null = null;
             try {
                 turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText, voiceTracker);
             } catch (e) {
                 if ((e as Error).name === 'AbortError') {
-                    // The user clicked stop. Swallow the error so we can process pendingPartialRef below.
                     turnResult = { interactionData: data, isCompleted: false };
                 } else {
-                    throw e; // Let the outer catch handle real network/model errors
+                    throw e;
                 }
             }
 
@@ -514,7 +520,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
             }
 
-            // ✅ Now this block will successfully execute when the user clicks Stop!
             if (pendingPartialRef.current) {
                 const fd = await applyPendingPartial(ud, protagonistId);
                 setInteractionData(fd);
@@ -563,17 +568,22 @@ export function useChatSession(options: UseChatSessionOptions) {
                     return;
                 }
 
+                // ✅ FIX: Use centralized helper to filter prompt blocks for summarization
+                const activeStrategyBlocks = getActivePromptBlocks(ud);
+
                 runSummarization({
                     data: ud,
                     character: respondingChar,
-                    promptBlocks: allPromptBlocksRef.current,
+                    promptBlocks: activeStrategyBlocks,
                     setInteractionData,
                     addToast,
                 });
             } else {
                 const enableAmbientNarration = ud?.profile?.enableAmbientNarration ?? false;
                 if (enableAmbientNarration) {
-                    const ad = await generateAmbientNarration(ud, ctrl.signal, allPromptBlocksRef.current, protagonistId);
+                    // ✅ FIX: Use centralized helper to filter prompt blocks for ambient narration
+                    const activeStrategyBlocks = getActivePromptBlocks(ud);
+                    const ad = await generateAmbientNarration(ud, ctrl.signal, activeStrategyBlocks, protagonistId);
                     const sd = ad || ud;
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
@@ -631,7 +641,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         acquireLock, getState, isModelReadyForGeneration, addToast, releaseLock,
         resetStream, setStreamingState, setStats, getRequestsLastHour, chatEngine,
         applyPendingPartial, setInteractionData, broadcastNewMessages,
-        autoResumeOnCutoff, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses
+        autoResumeOnCutoff, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses,
+        getActivePromptBlocks
     ]);
 
     const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
@@ -647,10 +658,12 @@ export function useChatSession(options: UseChatSessionOptions) {
         const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
 
         try {
+            // ✅ FIX: Filter blocks for delayed response
+            const activeBlocks = getActivePromptBlocks(currentData);
             await chatEngine.runTurn(
                 currentData,
                 abortControllerRef.current || new AbortController(),
-                allPromptBlocksRef.current,
+                activeBlocks,
                 undefined,
                 prefillText
             );
@@ -659,7 +672,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         } finally {
             releaseLock();
         }
-    }, [getState, acquireLock, releaseLock, chatEngine, isLoadingRef]);
+    }, [getState, acquireLock, releaseLock, chatEngine, isLoadingRef, getActivePromptBlocks]);
 
     useEffect(() => {
         triggerDelayedResponseRef.current = triggerDelayedResponse;
@@ -691,16 +704,19 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
 
         const allProtagonistIds = new Set(currentState.interactionData.protagonistIds || [currentState.localProtagonist.id]);
+        
+        // ✅ FIX: Filter blocks for host response
+        const activeBlocks = getActivePromptBlocks(currentState.interactionData);
 
         await executeTurnPipeline({
             data: currentState.interactionData,
             protagonistId: currentState.localProtagonist.id,
-            allPromptBlocks: allPromptBlocksRef.current,
+            allPromptBlocks: activeBlocks,
             isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Host response failed',
             lockAlreadyAcquired: true,
         });
-    }, [getState, acquireLock, executeTurnPipeline]);
+    }, [getState, acquireLock, executeTurnPipeline, getActivePromptBlocks]);
 
     useEffect(() => {
         triggerHostResponseRef.current = triggerHostResponse;
@@ -863,8 +879,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
+            // ✅ FIX: Filter blocks for resume generation
+            const activeBlocks = getActivePromptBlocks(currentInteractionData);
+            
             const result = await chatEngine.handleServerResponse(
-                currentInteractionData, char, allPromptBlocksRef.current, ctrl.signal,
+                currentInteractionData, char, activeBlocks, ctrl.signal,
                 throttledSetStreamingTextWithBroadcast, undefined, existingText,
                 undefined, voiceTracker
             );
@@ -953,7 +972,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [
         getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration,
         setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine,
-        throttledSetStreamingTextWithBroadcast, setStreamingState, setStats, isMultiplayerClient, isSpeculatingRef, resetStream
+        throttledSetStreamingTextWithBroadcast, setStreamingState, setStats, isMultiplayerClient, isSpeculatingRef, resetStream,
+        getActivePromptBlocks
     ]);
 
     useEffect(() => {
@@ -1016,16 +1036,19 @@ export function useChatSession(options: UseChatSessionOptions) {
             || td.participants.find(p => p.id === primaryProtagonistId) 
             || td.participants[0];
 
+        // ✅ FIX: Filter blocks for regeneration
+        const activeBlocks = getActivePromptBlocks(td);
+
         await executeTurnPipeline({
             data: td,
             protagonistId: primaryProtagonistId,
-            allPromptBlocks: allPromptBlocksRef.current,
+            allPromptBlocks: activeBlocks,
             respondingCharacter: respondingChar,
             isProtagonistCharId: (id: string) => protagonistIdSet.has(id),
             errorPrefix: 'Regeneration failed',
             lockAlreadyAcquired: true,
         });
-    }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline]);
+    }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline, getActivePromptBlocks]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);
