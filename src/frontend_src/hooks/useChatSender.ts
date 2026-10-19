@@ -183,7 +183,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
             // ✅ FIX: Use filtered blocks for message filtering
-            const filteredMessages = getFilteredTextMessages(currentInteractionData, activeCharacter.id, promptBlocks);
+            const filteredMessages = getLocalMessageHistory(currentInteractionData, activeCharacter) as TextMessage[];
             const knownCharacterNames = detectName(activeCharacter, filteredMessages, text);
 
             const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, {

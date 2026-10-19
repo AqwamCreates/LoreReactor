@@ -1301,7 +1301,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                 id: uuidv4(),
                 name: `Memory with ${o.name}`,
                 textContent: summary,
-                interactionData,
+                interactionDataId: interactionData.id,
                 firstCreatedTimestamp: ts,
                 lastUpdatedTimestamp: ts
             });

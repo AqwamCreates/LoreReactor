@@ -663,7 +663,7 @@ export function DataManagerModal({
             }
         }
         for (const mem of allMemories) {
-            const interactionId = mem.interactionData?.id;
+            const interactionId = mem.id;
             if (interactionId && !chatIdSet.has(interactionId)) {
                 issues.push({ entityType: 'Memory', entityName: mem.name, issue: 'References missing session', refType: 'Session', refId: interactionId });
             }

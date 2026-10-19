@@ -495,16 +495,13 @@ const memoryRepo = createRepository<Memory, RawMemory>({
   hydrate: (raw, id) => {
     return hydrateEntity<Memory, RawMemory>(raw, id, {
         name: 'Untitled Memory',
-        interactionData: undefined as unknown as InteractionData,
-    }, {
-        interactionData: () => undefined as unknown as InteractionData,
+        textContent: '',
+        interactionDataId: '',
     });
   },
   serialize: (memory) => {
-    const { interactionData, ...rest } = memory;
     return {
-      ...rest,
-      interactionDataId: interactionData?.id ?? '',
+      ...memory,
       lastUpdatedTimestamp: Date.now(),
     } as RawMemory;
   },
@@ -515,19 +512,6 @@ export const loadRawMemory = memoryRepo.loadRaw;
 export const loadAllRawMemories = memoryRepo.loadAll;
 export const saveRawMemory = memoryRepo.save;
 export const deleteRawMemory = memoryRepo.remove;
-
-export function resolveMemoryInteractionData(character: Character, allChats: InteractionData[]): Character {
-  if (!character.memories || Object.keys(character.memories).length === 0) return character;
-  const chatMap = new Map(allChats.map(c => [c.id, c]));
-  const resolved: Record<string, Memory[]> = {};
-  for (const [key, mems] of Object.entries(character.memories)) {
-    resolved[key] = mems.map(m => ({
-      ...m,
-      interactionData: m.interactionData ?? chatMap.get((m as unknown as RawMemory).interactionDataId) ?? undefined,
-    }));
-  }
-  return { ...character, memories: resolved };
-}
 
 async function hydrateMemories(rawMemoryIds: Record<string, string[]> | undefined): Promise<Record<string, Memory[]>> {
   const memories: Record<string, Memory[]> = {};

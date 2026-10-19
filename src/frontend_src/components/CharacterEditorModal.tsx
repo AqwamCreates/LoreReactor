@@ -81,43 +81,16 @@ interface CharacterEditorModalProps {
     isLoadingSamplers?: boolean;
     selectedModel?: LanguageModel | null;
     runningModels?: Record<string, any>;
-    chatNameMap?: Map<string, string>;
     interactionData?: InteractionData | null;
+    allInteractionData: InteractionData[]
     localProtagonistId?: string | null;
 }
 
-export function CharacterEditorModal({ 
-    isReadOnly = false, onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
-    allCharacters, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
-    selectedModel, runningModels,
-    chatNameMap, interactionData, localProtagonistId,
-}: CharacterEditorModalProps) {
-
-    return (
-        <CharacterEditorModalInner
-            onClose={onClose}
-            onSave={onSave}
-            onVoiceTranscribeRequested={onVoiceTranscribeRequested}
-            existingCharacter={existingCharacter}
-            allSamplers={allSamplers}
-            allRetrievalConfigurations={allRetrievalConfigurations} // ✅ ADDED
-            allCharacters={allCharacters}
-            isLoadingSamplers={isLoadingSamplers}
-            selectedModel={selectedModel}
-            runningModels={runningModels}
-            chatNameMap={chatNameMap}
-            interactionData={interactionData}
-            localProtagonistId={localProtagonistId}
-            isReadOnly={isReadOnly}
-        />
-    );
-}
-
-function CharacterEditorModalInner({
+export function CharacterEditorModal({
     onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
     allCharacters, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
     selectedModel, runningModels,
-    chatNameMap, interactionData, localProtagonistId,
+    interactionData, allInteractionData, localProtagonistId,
     isReadOnly = false,
 }: CharacterEditorModalProps) {
     const [activeTab, setActiveTab] = useState<EditorTabId>('general');
@@ -1768,7 +1741,7 @@ function CharacterEditorModalInner({
                     onClose={() => setShowMemoryManager(false)}
                     character={existingCharacter || null}
                     onSaveMemories={setMemories}
-                    chatNameMap={chatNameMap}
+                    allInteractionData={allInteractionData}
                     localProtagonistId={localProtagonistId}
                 />
             )}

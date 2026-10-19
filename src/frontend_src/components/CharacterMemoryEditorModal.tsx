@@ -1,19 +1,19 @@
 // src/frontend_src/components/CharacterMemoryEditorModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, Memory } from '../types';
+import type { Character, Memory, InteractionData, RawInteractionData } from '../types';
 import '../main.css';
 
 export function CharacterMemoryEditorModal({
     character,
     onClose,
     onSaveMemories,
-    chatNameMap,
-    localProtagonistId, // ✅ Changed from localProtagonist (Character) to localProtagonistId (string)
+    allInteractionData,
+    localProtagonistId,
 }: {
     character: Character;
     onClose: () => void;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
-    chatNameMap?: Map<string, string>;
+    allInteractionData?: (InteractionData | RawInteractionData)[];
     localProtagonistId?: string | null;
 }) {
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -32,6 +32,15 @@ export function CharacterMemoryEditorModal({
     const [showMassDeleteConfirm, setShowMassDeleteConfirm] = useState(false);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
+    // ✅ Derive chat map directly from allInteractionData
+    const chatMap = useMemo(() => {
+        const map = new Map<string, InteractionData | RawInteractionData>();
+        for (const chat of allInteractionData || []) {
+            if (chat.id) map.set(chat.id, chat);
+        }
+        return map;
+    }, [allInteractionData]);
+
     useEffect(() => {
         if (editingId && editTextAreaRef.current) {
             editTextAreaRef.current.focus();
@@ -44,9 +53,14 @@ export function CharacterMemoryEditorModal({
         for (const [chatId, mems] of Object.entries(memories)) {
             const filteredMems = mems.filter(mem => {
                 if (!localProtagonistId) return true; 
-                // ✅ Directly compare string IDs
-                const protagIds = mem.interactionData?.protagonistIds;
-                if (!protagIds || protagIds.length === 0) return false; 
+                
+                const memChatId = mem.interactionDataId || chatId;
+                const chat = chatMap.get(memChatId);
+                if (!chat) return false;
+
+                const protagIds = chat.protagonistIds || [];
+                if (protagIds.length === 0) return false; 
+                
                 return protagIds.some(id => id === localProtagonistId);
             });
             
@@ -55,13 +69,12 @@ export function CharacterMemoryEditorModal({
             }
         }
         return result;
-    }, [memories, localProtagonistId]);
+    }, [memories, localProtagonistId, chatMap]);
 
-    const resolveChatInfo = (mem: Memory): { name: string; id: string } => {
-        const id = mem.interactionData?.id
-            ?? (mem as unknown as { interactionDataId?: string }).interactionDataId
-            ?? 'unknown';
-        const name = chatNameMap?.get(id) || 'Unknown Chat';
+    const resolveChatInfo = (mem: Memory, fallbackChatId: string): { name: string; id: string } => {
+        const id = mem.interactionDataId || fallbackChatId || 'unknown';
+        const chat = chatMap.get(id);
+        const name = chat?.name || 'Unknown Chat';
         return { name, id };
     };
 
@@ -92,7 +105,7 @@ export function CharacterMemoryEditorModal({
             const next = { ...prev };
             next[targetChatId] = next[targetChatId].map(m => {
                 if (m.id !== editingId) return m;
-                // ✅ Invalidate embedding when textContent changes so the background queue regenerates it
+                // Invalidate embedding when textContent changes so the background queue regenerates it
                 const { embedding, ...rest } = m;
                 return { ...rest, textContent: editTextContent, lastUpdatedTimestamp: Date.now() } as Memory;
             });
@@ -202,13 +215,13 @@ export function CharacterMemoryEditorModal({
                             {entries.map(([key, mems]) => (
                                 <div key={key} className="editor-section">
                                     <span className="editor-section-title">
-                                        {`💬 ${chatNameMap?.get(key) || key}`}
+                                        {`💬 ${chatMap.get(key)?.name || key}`}
                                     </span>
 
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                                         {mems.map(mem => {
                                             const isEditing = editingId === mem.id;
-                                            const { name: chatName, id: chatId } = resolveChatInfo(mem);
+                                            const { name: chatName, id: chatId } = resolveChatInfo(mem, key);
 
                                             return (
                                                 <div key={mem.id} style={{

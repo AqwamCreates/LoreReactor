@@ -240,7 +240,7 @@ export interface Voice {
 
 export interface Memory extends ObjectData {
   textContent: string;
-  interactionData: InteractionData;
+  interactionDataId: string;
   embedding?: number[],
 }
 
