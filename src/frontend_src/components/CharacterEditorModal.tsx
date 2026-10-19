@@ -5,7 +5,7 @@ import type {
     Character, Sampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
     tool, InteractionData, StopPattern, Voice, RetrievalConfiguration,
-    RawInteractionData
+    RawInteractionData, memorySearchSpace
 } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { 
@@ -207,6 +207,9 @@ export function CharacterEditorModal({
     const [useEmbeddingModelForStarterPrompts, setUseEmbeddingModelForStarterPrompts] = useState(existingCharacter?.useEmbeddingModelForStarterPrompts ?? false);
     const [useEmbeddingModelForKnowledgePrompts, setUseEmbeddingModelForKnowledgePrompts] = useState(existingCharacter?.useEmbeddingModelForKnowledgePrompts ?? false);
     const [useEmbeddingModelForMemories, setUseEmbeddingModelForMemories] = useState(existingCharacter?.useEmbeddingModelForMemories ?? false);
+
+    // ✅ Memory Search Spaces State
+    const [memorySearchSpaces, setMemorySearchSpaces] = useState<memorySearchSpace[]>(existingCharacter?.memorySearchSpaces ?? ['self', 'listener', 'co-located protagonists', 'co-located non-protagonists']);
 
     const [memoryPrompts, setMemoryPrompts] = useState<Record<string, string>>(existingCharacter?.memoryPrompts ?? {});
 
@@ -948,6 +951,9 @@ export function CharacterEditorModal({
             useEmbeddingModelForKnowledgePrompts: useEmbeddingModelForKnowledgePrompts || undefined,
             useEmbeddingModelForMemories: useEmbeddingModelForMemories || undefined,
 
+            // ✅ Added Memory Search Spaces
+            memorySearchSpaces: memorySearchSpaces.length > 0 ? memorySearchSpaces : undefined,
+
             tools: { ...tools },
             clothings,
             knownCharacterNames,
@@ -1358,7 +1364,7 @@ export function CharacterEditorModal({
                                 <div className="editor-section" style={{ margin: 0 }}>
                                     <span className="editor-section-title">Semantic Memory & Search (Embeddings)</span>
                                     <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
-                                        Use the local embedding model for smart context retrieval instead of regex/keywords.
+                                        Use the local embedding model for smart context retrieval.
                                     </div>
                                     <label className="editor-checkbox-label">
                                         <input type="checkbox" checked={useEmbeddingModelForDialoguePrompts} onChange={(e) => setUseEmbeddingModelForDialoguePrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
@@ -1376,6 +1382,41 @@ export function CharacterEditorModal({
                                         <input type="checkbox" checked={useEmbeddingModelForMemories} onChange={(e) => setUseEmbeddingModelForMemories(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
                                         <span>Use Embeddings for Memories</span>
                                     </label>
+
+                                    {/* ✅ Added Memory Search Spaces */}
+                                    <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                                        <span style={{ fontWeight: 'bold', fontSize: '0.7rem' }}>Memory Search Spaces</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>
+                                            Which entities' memories to recall when the character searches their memory.
+                                        </div>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                            {([
+                                                'self',
+                                                'listener',
+                                                'co-located protagonists',
+                                                'non-co-located protagonists',
+                                                'co-located non-protagonists',
+                                                'non-co-located non-protagonists'
+                                            ] as memorySearchSpace[]).map(space => (
+                                                <label key={space} className="editor-checkbox-label">
+                                                    <input 
+                                                        type="checkbox" 
+                                                        checked={memorySearchSpaces.includes(space)} 
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setMemorySearchSpaces(prev => [...prev, space]);
+                                                            } else {
+                                                                setMemorySearchSpaces(prev => prev.filter(s => s !== space));
+                                                            }
+                                                        }} 
+                                                        className="editor-checkbox-input" 
+                                                        disabled={isUploading || isReadOnly} 
+                                                    />
+                                                    <span style={{ textTransform: 'capitalize' }}>{space}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         )}

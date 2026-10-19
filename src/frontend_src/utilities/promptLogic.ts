@@ -1,10 +1,36 @@
 // src/frontend_src/utilities/promptLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, TextMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType, RawInteractionData } from '../types';
+import type {
+  Character,
+  InteractionData,
+  HistoryMessage,
+  ChatMessage,
+  WhisperMessage,
+  TextMessage,
+  Context,
+  StopPattern,
+  PromptBlock,
+  promptBlockType,
+  Location,
+  RegularExpressionTrigger,
+  Clothing,
+  Profile,
+  cacheEfficiencyConfigurationType,
+  RawInteractionData
+} from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt, getEffectiveUseFrontCameraImage, getEnabledTools } from './characterLogic';
+import {
+  getEffectiveMaximumChatStamina,
+  getEffectiveMaximumActionStamina,
+  getEffectiveMessagesToDisableDialoguePrompt,
+  getEffectiveMessagesToDisableMetaThinkInstructions,
+  getEffectiveMessagesToDisableThinkPrompt,
+  getEffectiveMessagesToDisableStarterPrompt,
+  getEffectiveUseFrontCameraImage,
+  getEnabledTools
+} from './characterLogic';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId } from './locationLogic';
@@ -19,41 +45,31 @@ import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageU
 import { embeddingEngine } from '../services/EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from '../services/RetrievalEngine';
 import { retrieveEligibleMemories } from './memoryLogic';
+import { isEntityActiveWithCache, doesAnyTriggerMatchCached, type CombinationCache, type TriggerEvaluationContext } from './triggerLogic';
 
-const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging.";
-const beingIgnoredInstructions = "Anytime a character ignore me talking, there would be an awkward atmosphere.";
-const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them.";
-const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones.";
-const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts.";
-const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns.";
-const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus.";
-const contextAuthorityInstructions = "Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.";
-const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.";
-const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating text gracefully, regardless of the paragraphs, sentences, phrases, words and so on.";
-const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts.";
-const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
-const toolUsageInstructions = `
-I must read answers from the list of available tools to get accurate and precise response when the situation requires it.
-I will also always give the tool inputs as {{character}} in-character.
-I will also assume the tools that are not in my list are currently disabled.
-If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality.
-I can call the tool like {{toolCallStartString}}tool(){{toolCallEndString}} to get direct result or access the help page.
-If I never used a tool and I intend to use it in the future, I will call the tool without any arguments to understand how it works.
-If I do not know how a tool works, I will explore the tool arguments thoroughly.
-The content between these markers will be replaced with the tool's result before I continue writing.
-I may use multiple tools each time I receive tool results.
-Tool invocation markers are only visible to me. I also must continue to generate a response upon performing tool calls or receiving tool results.`;
+const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. ";
+const beingIgnoredInstructions = "Anytime a character ignore me talking, there would be an awkward atmosphere. ";
+const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them. ";
+const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones. ";
+const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts. ";
+const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns. ";
+const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus. ";
+const contextAuthorityInstructions = "Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image. ";
+const summarizationAwarenessInstructions = "If a previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened. ";
+const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating text gracefully, regardless of the paragraphs, sentences, phrases, words and so on. ";
+const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts. ";
+const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on. ";
+const toolUsageInstructions = `I must read answers from the list of available tools to get accurate and precise response when the situation requires it. I will also always give the tool inputs as {{character}} in-character. I will also assume the tools that are not in my list are currently disabled. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. I can call the tool like {{toolCallStartString}}tool(){{toolCallEndString}} to get direct result or access the help page. If I never used a tool and I intend to use it in the future, I will call the tool without any arguments to understand how it works. If I do not know how a tool works, I will explore the tool arguments thoroughly. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools each time I receive tool results. Tool invocation markers are only visible to me. I also must continue to generate a response upon performing tool calls or receiving tool results.`;
 const toolMessageModeInstructions = `I am currently in tool message mode, where I will only interact with the environment and only talk to myself.`;
 
 const DEFAULT_MAX_RECURSION_DEPTH = 3;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 const RECENT_INTERACTION_WINDOW = 20;
-const TEMPLATE_REGEX = /\{\{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?\}\}/g;
-const TOOLS_PLACEHOLDER_REGEX = /\{\{tools(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?\}\}/g;
+
+const TEMPLATE_REGEX = /{{([a-zA-Z0-9_']+)(?:[(-?\d+)?(?::(-?\d+))?])?(#)?}}/g;
+const TOOLS_PLACEHOLDER_REGEX = /{{tools(?:[(-?\d+)?(?::(-?\d+))?])?(#)?}}/g;
 
 const tokenEngine = getLanguageModelEngine();
-
-type CombinationCache = Record<string, Record<string, { characterIdArray: string[]; textContentArray: string[] }>>;
 
 export interface ResolvedImage {
   data: string;
@@ -183,34 +199,34 @@ export interface TemplateContext {
 }
 
 const DEFAULT_TEMPLATES: Record<string, string> = {
-  'System Prompt': "{{systemBlockStart}}{{systemPrompt}}{{systemBlockEnd}}",
-  'Think Prompt': "{{systemBlockStart}}{{thinkPrompt}}{{systemBlockEnd}}",
-  'Meta Think Instructions': "{{systemBlockStart}}{{metaThinkInstructions}}{{systemBlockEnd}}",
-  'Character Tags': "{{systemBlockStart}}Characters Present:\n{{characterTags}}{{systemBlockEnd}}",
-  'Character Tags With Descriptions': "{{systemBlockStart}}Characters Present With Descriptions:\n{{characterTagsWithDescriptions}}{{systemBlockEnd}}",
-  'Appearance Prompt': "{{systemBlockStart}}Start Of The Characters' Appearances List.{{systemBlockEnd}}\n{{appearancePrompt}}\n{{systemBlockStart}}End Of The Characters' Appearances List.{{systemBlockEnd}}",
-  'Knowledge Prompt': "{{systemBlockStart}}Start Of This Character's Knowledge Base.{{systemBlockEnd}}\n{{knowledgePrompt}}\n{{systemBlockStart}}End Of This Character's Knowledge Base.{{systemBlockEnd}}",
-  'Dialogue Prompt': "{{systemBlockStart}}Start Of This Character's Sample dialogues.{{systemBlockEnd}}\n{{dialoguePrompt}}\n{{systemBlockStart}}End Of This Character's Sample dialogues.{{systemBlockEnd}}",
-  'Memory Prompt': "{{systemBlockStart}}Start Of This Character's Recalled Memories.{{systemBlockEnd}}\n{{memoryPrompt}}\n{{systemBlockStart}}End Of This Character's Recalled Memories.{{systemBlockEnd}}",
-  'Chat History': "{{systemBlockStart}}Start Of The Memory.{{systemBlockEnd}}\n{{chatHistory}}\n{{systemBlockStart}}End Of The Memory.{{systemBlockEnd}}",
-  'Context': "{{systemBlockStart}}Start Of The Context.{{systemBlockEnd}}\n{{context}}\n{{systemBlockStart}}End Of The Context.{{systemBlockEnd}}",
-  'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{currentLocation}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}}",
-  'Current Location With Description': "{{systemBlockStart}}Start Of Current Location With Description.{{systemBlockEnd}}\n{{currentLocationWithDescription}}\n{{systemBlockStart}}End Of Current Location With Description.{{systemBlockEnd}}",
-  'Reachable Locations': "{{systemBlockStart}}Reachable Locations:\n{{reachableLocations}}{{systemBlockEnd}}",
-  'Reachable Locations With Descriptions': "{{systemBlockStart}}Reachable Locations With Descriptions:\n{{reachableLocationsWithDescriptions}}{{systemBlockEnd}}",
-  'Sky View': "{{systemBlockStart}}{{skyView}}{{systemBlockEnd}}",
-  'Weather': "{{systemBlockStart}}{{weather}}{{systemBlockEnd}}",
-  'Inventory': "{{systemBlockStart}}{{inventory}}{{systemBlockEnd}}",
-  'Fatigue': "{{systemBlockStart}}{{fatigueInformation}}{{systemBlockEnd}}",
-  'Paragraph Count Instructions': "{{systemBlockStart}}{{paragraphCountInstructions}}{{systemBlockEnd}}",
-  'Date': "{{systemBlockStart}}{{date}}{{systemBlockEnd}}",
-  'Time': "{{systemBlockStart}}{{time}}{{systemBlockEnd}}",
-  'Time Elapsed': "{{systemBlockStart}}{{timeElapsed}}{{systemBlockEnd}}",
-  'Tool Instructions': "{{systemBlockStart}}{{toolInstructions}}{{systemBlockEnd}}",
-  'Tool Message Instructions': "{{systemBlockStart}}{{toolMessageInstructions}}{{systemBlockEnd}}",
-  'Anti-Repetition Nudge': "{{systemBlockStart}}{{antiRepetitionNudge}}{{systemBlockEnd}}",
-  'Starter Prompt': "{{systemBlockStart}}Start Of This Character's Starter Prompt.{{systemBlockEnd}}\n{{starterPrompt}}\n{{systemBlockStart}}End Of This Character's Starter Prompt.{{systemBlockEnd}}",
-  'Text Injection': "{{systemBlockStart}}{{textInjection}}{{systemBlockEnd}}\n{{characterTurnStart}}{{text}}"
+  'System Prompt': "{{systemBlockStart}}{{systemPrompt}}{{systemBlockEnd}} ",
+  'Think Prompt': "{{systemBlockStart}}{{thinkPrompt}}{{systemBlockEnd}} ",
+  'Meta Think Instructions': "{{systemBlockStart}}{{metaThinkInstructions}}{{systemBlockEnd}} ",
+  'Character Tags': "{{systemBlockStart}}Characters Present:\n{{characterTags}}{{systemBlockEnd}} ",
+  'Character Tags With Descriptions': "{{systemBlockStart}}Characters Present With Descriptions:\n{{characterTagsWithDescriptions}}{{systemBlockEnd}} ",
+  'Appearance Prompt': "{{systemBlockStart}}Start Of The Characters' Appearances List.{{systemBlockEnd}}\n{{appearancePrompt}}\n{{systemBlockStart}}End Of The Characters' Appearances List.{{systemBlockEnd}} ",
+  'Knowledge Prompt': "{{systemBlockStart}}Start Of This Character's Knowledge Base.{{systemBlockEnd}}\n{{knowledgePrompt}}\n{{systemBlockStart}}End Of This Character's Knowledge Base.{{systemBlockEnd}} ",
+  'Dialogue Prompt': "{{systemBlockStart}}Start Of This Character's Sample dialogues.{{systemBlockEnd}}\n{{dialoguePrompt}}\n{{systemBlockStart}}End Of This Character's Sample dialogues.{{systemBlockEnd}} ",
+  'Memory Prompt': "{{systemBlockStart}}Start Of This Character's Recalled Memories.{{systemBlockEnd}}\n{{memoryPrompt}}\n{{systemBlockStart}}End Of This Character's Recalled Memories.{{systemBlockEnd}} ",
+  'Chat History': "{{systemBlockStart}}Start Of The Memory.{{systemBlockEnd}}\n{{chatHistory}}\n{{systemBlockStart}}End Of The Memory.{{systemBlockEnd}} ",
+  'Context': "{{systemBlockStart}}Start Of The Context.{{systemBlockEnd}}\n{{context}}\n{{systemBlockStart}}End Of The Context.{{systemBlockEnd}} ",
+  'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{currentLocation}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}} ",
+  'Current Location With Description': "{{systemBlockStart}}Start Of Current Location With Description.{{systemBlockEnd}}\n{{currentLocationWithDescription}}\n{{systemBlockStart}}End Of Current Location With Description.{{systemBlockEnd}} ",
+  'Reachable Locations': "{{systemBlockStart}}Reachable Locations:\n{{reachableLocations}}{{systemBlockEnd}} ",
+  'Reachable Locations With Descriptions': "{{systemBlockStart}}Reachable Locations With Descriptions:\n{{reachableLocationsWithDescriptions}}{{systemBlockEnd}} ",
+  'Sky View': "{{systemBlockStart}}{{skyView}}{{systemBlockEnd}} ",
+  'Weather': "{{systemBlockStart}}{{weather}}{{systemBlockEnd}} ",
+  'Inventory': "{{systemBlockStart}}{{inventory}}{{systemBlockEnd}} ",
+  'Fatigue': "{{systemBlockStart}}{{fatigueInformation}}{{systemBlockEnd}} ",
+  'Paragraph Count Instructions': "{{systemBlockStart}}{{paragraphCountInstructions}}{{systemBlockEnd}} ",
+  'Date': "{{systemBlockStart}}{{date}}{{systemBlockEnd}} ",
+  'Time': "{{systemBlockStart}}{{time}}{{systemBlockEnd}} ",
+  'Time Elapsed': "{{systemBlockStart}}{{timeElapsed}}{{systemBlockEnd}} ",
+  'Tool Instructions': "{{systemBlockStart}}{{toolInstructions}}{{systemBlockEnd}} ",
+  'Tool Message Instructions': "{{systemBlockStart}}{{toolMessageInstructions}}{{systemBlockEnd}} ",
+  'Anti-Repetition Nudge': "{{systemBlockStart}}{{antiRepetitionNudge}}{{systemBlockEnd}} ",
+  'Starter Prompt': "{{systemBlockStart}}Start Of This Character's Starter Prompt.{{systemBlockEnd}}\n{{starterPrompt}}\n{{systemBlockStart}}End Of This Character's Starter Prompt.{{systemBlockEnd}} ",
+  'Text Injection': "{{systemBlockStart}}{{textInjection}}{{systemBlockEnd}}\n{{characterTurnStart}}{{text}} "
 };
 
 export function resolveTemplate(
@@ -321,7 +337,7 @@ export function deriveDelimiters(template?: ModelTemplate): PromptDelimiters {
     return {
       blockStart: () => '',
       blockEnd: "\n",
-      turnStart: (role) => `${role}: `,
+      turnStart: (role) => `${role}:`,
       turnEnd: "\n",
       thinkStart,
       thinkEnd,
@@ -478,14 +494,14 @@ export function replacePlaceholders(
   const protagonistString = buildProtagonistDisplayString(coLocatedProtagonists, participants, knownNames);
   const protagonistPossessive = buildProtagonistPossessiveString(coLocatedProtagonists, participants, knownNames);
   let result = text;
-  result = result.replace(/\{\{character\}\}/g, () => `${characterParticipantTag} (${characterName})`);
-  result = result.replace(/\{\{user\}\}'s/g, () => protagonistPossessive);
-  result = result.replace(/\{\{user\}\}/g, () => protagonistString);
+  result = result.replace(/{{character}}/g, () => `${characterParticipantTag} (${characterName})`);
+  result = result.replace(/{{user}}'s/g, () => protagonistPossessive);
+  result = result.replace(/{{user}}/g, () => protagonistString);
   result = replaceToolsPlaceholders(result, tools);
-  result = result.replace(/\{\{toolCallStartString\}\}/g, () => toolCallStartString);
-  result = result.replace(/\{\{toolCallEndString\}\}/g, () => toolCallEndString);
-  result = result.replace(/\{\{toolResultStartString\}\}/g, () => toolResultStartString);
-  result = result.replace(/\{\{toolResultEndString\}\}/g, () => toolResultEndString);
+  result = result.replace(/{{toolCallStartString}}/g, () => toolCallStartString);
+  result = result.replace(/{{toolCallEndString}}/g, () => toolCallEndString);
+  result = result.replace(/{{toolResultStartString}}/g, () => toolResultStartString);
+  result = result.replace(/{{toolResultEndString}}/g, () => toolResultEndString);
   return result;
 }
 
@@ -496,22 +512,22 @@ export function getFatigueContext(
 ): string {
   const parts: string[] = [];
   if (chatStaminaRatio <= 0.7) {
-    if (chatStaminaRatio > 0.5) parts.push("I am starting to feel slightly winded from talking, but still have plenty of energy to speak.");
-    else if (chatStaminaRatio > 0.3) parts.push("I am somewhat exhausted from talking, but somewhat have the energy to speak.");
-    else if (chatStaminaRatio > 0.1) parts.push("I am quite drained from talking and barely have the energy to speak.");
-    else parts.push("I have no energy left to speak.");
+    if (chatStaminaRatio > 0.5) parts.push("I am starting to feel slightly winded from talking, but still have plenty of energy to speak. ");
+    else if (chatStaminaRatio > 0.3) parts.push("I am somewhat exhausted from talking, but somewhat have the energy to speak. ");
+    else if (chatStaminaRatio > 0.1) parts.push("I am quite drained from talking and barely have the energy to speak. ");
+    else parts.push("I have no energy left to speak. ");
   }
   if (actionStaminaRatio <= 0.7) {
-    if (actionStaminaRatio > 0.5) parts.push("I am starting to feel slightly physically tired, but still have plenty of energy to move.");
-    else if (actionStaminaRatio > 0.3) parts.push("I am somewhat exhausted physically, but somewhat have the energy to act.");
-    else if (actionStaminaRatio > 0.1) parts.push("I am quite drained physically and barely have the energy to move.");
-    else parts.push("I have no physical energy left to act.");
+    if (actionStaminaRatio > 0.5) parts.push("I am starting to feel slightly physically tired, but still have plenty of energy to move. ");
+    else if (actionStaminaRatio > 0.3) parts.push("I am somewhat exhausted physically, but somewhat have the energy to act. ");
+    else if (actionStaminaRatio > 0.1) parts.push("I am quite drained physically and barely have the energy to move. ");
+    else parts.push("I have no physical energy left to act. ");
   }
   if (parts.length === 0 && totalStaminaRatio <= 0.7) {
-    if (totalStaminaRatio > 0.5) parts.push("I am starting to feel slightly winded overall, but still have plenty of energy.");
-    else if (totalStaminaRatio > 0.3) parts.push("I am somewhat exhausted overall, but somewhat have the energy.");
-    else if (totalStaminaRatio > 0.1) parts.push("I am quite drained overall and barely have any energy.");
-    else parts.push("I am completely exhausted and have no energy left.");
+    if (totalStaminaRatio > 0.5) parts.push("I am starting to feel slightly winded overall, but still have plenty of energy. ");
+    else if (totalStaminaRatio > 0.3) parts.push("I am somewhat exhausted overall, but somewhat have the energy. ");
+    else if (totalStaminaRatio > 0.1) parts.push("I am quite drained overall and barely have any energy. ");
+    else parts.push("I am completely exhausted and have no energy left. ");
   }
   return parts.join(" ");
 }
@@ -529,102 +545,6 @@ function isTextMessage(msg: HistoryMessage): msg is TextMessage {
   return msg.messageType === 'chat' || msg.messageType === 'whisper';
 }
 
-function filterArrayBasedOnContext(
-  characterIdArray: string[],
-  textContentArray: string[],
-  selectedCharacterId: string,
-  contextType: regularExpressionContext
-): { characterIdArray: string[]; textContentArray: string[] } {
-  const length = characterIdArray.length;
-  if (length === 0) return { characterIdArray: [], textContentArray: [] };
-  if (contextType === "global") return { characterIdArray, textContentArray };
-  if (contextType === "previous") {
-    for (let i = length - 1; i >= 0; i--) {
-      if (characterIdArray[i] === selectedCharacterId) {
-        return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
-      }
-    }
-    return { characterIdArray: [], textContentArray: [] };
-  }
-  if (contextType === "local") {
-    let targetIndex = -1;
-    const endIndex = length - 1;
-    for (let i = endIndex; i >= 0; i--) {
-      if ((characterIdArray[i] === selectedCharacterId) && (i === endIndex)) continue;
-      if ((characterIdArray[i] !== selectedCharacterId) && (i === endIndex)) {
-        targetIndex = i;
-        break;
-      }
-      if ((characterIdArray[i] === selectedCharacterId) && (characterIdArray[i + 1] !== selectedCharacterId)) {
-        targetIndex = i;
-        break;
-      }
-    }
-    if (targetIndex === -1) return { characterIdArray: [], textContentArray: [] };
-    const startIndex = targetIndex + 1;
-    if (startIndex >= length) return { characterIdArray: [], textContentArray: [] };
-    return {
-      characterIdArray: characterIdArray.slice(startIndex),
-      textContentArray: textContentArray.slice(startIndex)
-    };
-  }
-  return { characterIdArray: [], textContentArray: [] };
-}
-
-function filterArrayBasedOnTarget(
-  characterIdArray: string[],
-  textContentArray: string[],
-  selectedCharacterId: string,
-  targetType: regularExpressionTarget,
-  protagonistIds: string[],
-): { characterIdArray: string[]; textContentArray: string[] } {
-  const length = characterIdArray.length;
-  if (length === 0 || targetType === "everyone") return { characterIdArray, textContentArray };
-  if (targetType === "listener") {
-    for (let i = length - 1; i >= 0; i--) {
-      if (characterIdArray[i] !== selectedCharacterId) {
-        return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
-      }
-    }
-    return { characterIdArray: [], textContentArray: [] };
-  }
-  const protagonistIdSet = new Set(protagonistIds);
-  const matchesTarget: Record<Exclude<regularExpressionTarget, 'everyone' | 'listener'>, (id: string) => boolean> = {
-    'self': (id) => id === selectedCharacterId,
-    'protagonist': (id) => protagonistIdSet.has(id),
-    'non-protagonist': (id) => !protagonistIdSet.has(id) && id !== '___ambient_narrator___',
-    'narrator': (id) => id === '___ambient_narrator___',
-  };
-  const predicate = matchesTarget[targetType];
-  if (!predicate) return { characterIdArray: [], textContentArray: [] };
-  const extractedCharacterIdArray: string[] = [];
-  const extractedTextContentArray: string[] = [];
-  for (let i = 0; i < length; i++) {
-    if (predicate(characterIdArray[i])) {
-      extractedCharacterIdArray.push(characterIdArray[i]);
-      extractedTextContentArray.push(textContentArray[i]);
-    }
-  }
-  return {
-    characterIdArray: extractedCharacterIdArray,
-    textContentArray: extractedTextContentArray
-  };
-}
-
-function doesRegexMatch(regexString: string | undefined, searchSpace: string, sensitivityMultiplier = 1): boolean {
-  if (!regexString) return true;
-  try {
-    const regex = new RegExp(regexString);
-    const matched = regex.test(searchSpace);
-    if (!matched) return false;
-    if (sensitivityMultiplier >= 1) return true;
-    return Math.random() < sensitivityMultiplier;
-  } catch (e) {
-    console.warn(`Invalid regex: ${regexString}`, e);
-    return false;
-  }
-}
-
 function isCharacterBound(context: Context, selectedCharacterId: string): boolean {
   if (!context.characterBindings || context.characterBindings.length === 0) return true;
   return context.characterBindings.includes(selectedCharacterId);
@@ -640,264 +560,6 @@ function isBuiltInBlockType(value: string): value is promptBlockType {
     || value === 'Model Chat Template'
     || value === 'Model Instruction Template'
     || value === 'Model Chat-Instruction Template';
-}
-
-function getFilteredDataCached(
-  cache: CombinationCache,
-  characterIdArray: string[],
-  textContentArray: string[],
-  characterId: string,
-  protagonistIds: string[],
-  ctxType: regularExpressionContext,
-  tgtType: regularExpressionTarget,
-): { characterIdArray: string[]; textContentArray: string[] } {
-  const cacheKey = protagonistIds.join(',');
-  if (!cache[ctxType]) cache[ctxType] = {};
-  const subCache = cache[ctxType];
-  if (!subCache[`${tgtType}:${cacheKey}`]) {
-    const step1 = filterArrayBasedOnContext(characterIdArray, textContentArray, characterId, ctxType);
-    const step2 = filterArrayBasedOnTarget(step1.characterIdArray, step1.textContentArray, characterId, tgtType, protagonistIds);
-    subCache[`${tgtType}:${cacheKey}`] = step2;
-  }
-  return subCache[`${tgtType}:${cacheKey}`];
-}
-
-function doesAnyTriggerMatchCached(
-  triggers: RegularExpressionTrigger[] | undefined,
-  characterIdArray: string[],
-  textContentArray: string[],
-  selectedCharacterId: string,
-  protagonistIds: string[],
-  fallbackSearchSpace: string,
-  combinationCache: CombinationCache,
-  sensitivityMultiplier?: number,
-): boolean {
-  if (!triggers || triggers.length === 0) return false;
-  for (const trigger of triggers) {
-    if (!trigger.trigger) continue;
-    const { textContentArray: filteredTexts } = getFilteredDataCached(
-      combinationCache,
-      characterIdArray,
-      textContentArray,
-      selectedCharacterId,
-      protagonistIds,
-      trigger.context || 'global',
-      trigger.target || 'everyone'
-    );
-    const searchSpace = filteredTexts.length > 0
-      ? `${filteredTexts.join('\n')}\n${fallbackSearchSpace}`
-      : fallbackSearchSpace;
-    if (doesRegexMatch(trigger.trigger, searchSpace, sensitivityMultiplier)) return true;
-  }
-  return false;
-}
-
-type ExclusionEvent = {
-  order: number;
-  subOrder: number;
-  type: 'activation' | 'deactivation';
-};
-
-function getFilteredIndices(
-  characterIdArray: string[],
-  selectedCharacterId: string,
-  contextType: regularExpressionContext,
-  targetType: regularExpressionTarget,
-  protagonistIds: string[],
-): number[] {
-  const length = characterIdArray.length;
-  if (length === 0) return [];
-  let indices: number[] = [];
-  if (contextType === 'global') {
-    indices = Array.from({ length }, (_, i) => i);
-  } else if (contextType === 'previous') {
-    for (let i = length - 1; i >= 0; i--) {
-      if (characterIdArray[i] === selectedCharacterId) return [i];
-    }
-    return [];
-  } else if (contextType === 'local') {
-    let targetIndex = -1;
-    const endIndex = length - 1;
-    for (let i = endIndex; i >= 0; i--) {
-      if ((characterIdArray[i] === selectedCharacterId) && (i === endIndex)) continue;
-      if ((characterIdArray[i] !== selectedCharacterId) && (i === endIndex)) {
-        targetIndex = i;
-        break;
-      }
-      if ((characterIdArray[i] === selectedCharacterId) && (characterIdArray[i + 1] !== selectedCharacterId)) {
-        targetIndex = i;
-        break;
-      }
-    }
-    if (targetIndex === -1) return [];
-    const startIndex = targetIndex + 1;
-    if (startIndex >= length) return [];
-    indices = Array.from({ length: length - startIndex }, (_, k) => startIndex + k);
-  } else {
-    return [];
-  }
-  if (targetType === 'everyone') return indices;
-  if (targetType === 'listener') {
-    for (let i = indices.length - 1; i >= 0; i--) {
-      const idx = indices[i];
-      if (characterIdArray[idx] !== selectedCharacterId) return [idx];
-    }
-    return [];
-  }
-  const protagonistIdSet = new Set(protagonistIds);
-  const matchesTarget: Record<Exclude<regularExpressionTarget, 'everyone' | 'listener'>, (id: string) => boolean> = {
-    self: (id) => id === selectedCharacterId,
-    protagonist: (id) => protagonistIdSet.has(id),
-    'non-protagonist': (id) => !protagonistIdSet.has(id) && id !== '___ambient_narrator___',
-    narrator: (id) => id === '___ambient_narrator___',
-  };
-  const predicate = matchesTarget[targetType as Exclude<regularExpressionTarget, 'everyone' | 'listener'>];
-  if (!predicate) return [];
-  return indices.filter((idx) => predicate(characterIdArray[idx]));
-}
-
-function getLatestExclusionEvent(
-  triggers: RegularExpressionTrigger[] | undefined,
-  type: 'activation' | 'deactivation',
-  characterIdArray: string[],
-  textContentArray: string[],
-  selectedCharacterId: string,
-  protagonistIds: string[],
-  fallbackSearchSpace: string,
-  sensitivityMultiplier?: number,
-): ExclusionEvent | null {
-  let latest: ExclusionEvent | null = null;
-  const consider = (order: number, subOrder: number): void => {
-    if (
-      !latest ||
-      order > latest.order ||
-      (order === latest.order && subOrder > latest.subOrder)
-    ) {
-      latest = { order, subOrder, type };
-    }
-  };
-  for (const trigger of triggers ?? []) {
-    if (!trigger.trigger) continue;
-    const indices = getFilteredIndices(
-      characterIdArray,
-      selectedCharacterId,
-      trigger.context || 'global',
-      trigger.target || 'everyone',
-      protagonistIds,
-    );
-    for (const idx of indices) {
-      const text = textContentArray[idx] ?? '';
-      if (doesRegexMatch(trigger.trigger, text, sensitivityMultiplier)) {
-        consider(idx, 0);
-      }
-    }
-    if (fallbackSearchSpace && doesRegexMatch(trigger.trigger, fallbackSearchSpace, sensitivityMultiplier)) {
-      let subOrder = 0;
-      try {
-        const regex = new RegExp(trigger.trigger);
-        const index = fallbackSearchSpace.search(regex);
-        if (index !== -1) subOrder = index;
-      } catch {
-        // ignore
-      }
-      consider(characterIdArray.length, subOrder);
-    }
-  }
-  return latest;
-}
-
-function isExclusionActiveOrdered(
-  exclusionActivationTriggers: RegularExpressionTrigger[] | undefined,
-  exclusionDeactivationTriggers: RegularExpressionTrigger[] | undefined,
-  characterIdArray: string[],
-  textContentArray: string[],
-  selectedCharacterId: string,
-  protagonistIds: string[],
-  fallbackSearchSpace: string,
-  sensitivityMultiplier?: number,
-): boolean {
-  if (!exclusionActivationTriggers || exclusionActivationTriggers.length === 0) {
-    return false;
-  }
-  const latestActivation = getLatestExclusionEvent(
-    exclusionActivationTriggers,
-    'activation',
-    characterIdArray,
-    textContentArray,
-    selectedCharacterId,
-    protagonistIds,
-    fallbackSearchSpace,
-    sensitivityMultiplier,
-  );
-  if (!latestActivation) return false;
-  const latestDeactivation = getLatestExclusionEvent(
-    exclusionDeactivationTriggers,
-    'deactivation',
-    characterIdArray,
-    textContentArray,
-    selectedCharacterId,
-    protagonistIds,
-    fallbackSearchSpace,
-    sensitivityMultiplier,
-  );
-  if (!latestDeactivation) return true;
-  if (latestDeactivation.order > latestActivation.order) return false;
-  if (latestActivation.order > latestDeactivation.order) return true;
-  return false;
-}
-
-function isEntityActiveWithCache(
-  activationTriggers: RegularExpressionTrigger[] | undefined,
-  deactivationTriggers: RegularExpressionTrigger[] | undefined,
-  exclusionActivationTriggers: RegularExpressionTrigger[] | undefined,
-  exclusionDeactivationTriggers: RegularExpressionTrigger[] | undefined,
-  characterIdArray: string[],
-  textContentArray: string[],
-  selectedCharacterId: string,
-  protagonistIds: string[],
-  fallbackSearchSpace: string,
-  combinationCache: CombinationCache,
-  sensitivityMultiplier?: number,
-): boolean {
-  const hasActivationTriggers = !!activationTriggers && activationTriggers.length > 0;
-  if (hasActivationTriggers) {
-    if (!doesAnyTriggerMatchCached(
-      activationTriggers,
-      characterIdArray,
-      textContentArray,
-      selectedCharacterId,
-      protagonistIds,
-      fallbackSearchSpace,
-      combinationCache,
-      sensitivityMultiplier,
-    )) {
-      return false;
-    }
-  }
-  if (doesAnyTriggerMatchCached(
-    deactivationTriggers,
-    characterIdArray,
-    textContentArray,
-    selectedCharacterId,
-    protagonistIds,
-    fallbackSearchSpace,
-    combinationCache,
-  )) {
-    return false;
-  }
-  if (isExclusionActiveOrdered(
-    exclusionActivationTriggers,
-    exclusionDeactivationTriggers,
-    characterIdArray,
-    textContentArray,
-    selectedCharacterId,
-    protagonistIds,
-    fallbackSearchSpace,
-    sensitivityMultiplier,
-  )) {
-    return false;
-  }
-  return true;
 }
 
 type WithMessageFilterExclusionTriggers = {
@@ -1391,7 +1053,7 @@ function buildCharacterTagsText(ctx: PromptBuildContext): { tags: string[]; tags
         ctx.knownNames,
         ctx.tools
       );
-      const indentedText = replacedDesc.split('\n').map(line => `  ${line}`).join('\n');
+      const indentedText = replacedDesc.split('\n').map(line => `${line}`).join('\n');
       desc += `\n${indentedText}`;
     } else {
       desc += '\nNo description available.';
@@ -1427,7 +1089,7 @@ function buildReachableLocationsText(ctx: PromptBuildContext): { names: string[]
         ctx.knownNames,
         ctx.tools
       );
-      const indentedText = replacedText.split('\n').map(line => `  ${line}`).join('\n');
+      const indentedText = replacedText.split('\n').map(line => `${line}`).join('\n');
       desc += `\n${indentedText}`;
     }
     withDescriptions.push(desc);
@@ -1600,8 +1262,18 @@ function buildMetaThinkText(ctx: PromptBuildContext): string {
 
 async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string> {
   const dialogueSearchSpace = buildDialogueSearchSpace(ctx.textContentArray);
+  
+  const evalContext: TriggerEvaluationContext = {
+    characterIdArray: ctx.characterIdArray,
+    textContentArray: ctx.textContentArray,
+    selectedCharacterId: ctx.characterId,
+    protagonistIds: Array.from(ctx.protagonistIds),
+    fallbackSearchSpace: dialogueSearchSpace,
+    combinationCache: ctx.combinationCache,
+  };
+
   if (ctx.character.useEmbeddingModelForDialoguePrompts && ctx.character.dialogueRetrievalConfiguration && dialogueSearchSpace) {
-    const activePrompts = getActiveDialoguePrompts(ctx.character.dialoguePrompts, dialogueSearchSpace);
+    const activePrompts = getActiveDialoguePrompts(ctx.character.dialoguePrompts, evalContext);
     if (activePrompts.length > 0) {
       const queryVector = await embeddingEngine.embed(dialogueSearchSpace);
       if (queryVector) {
@@ -1637,7 +1309,7 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
       }
     }
   }
-  const activeContents = collectActiveDialoguePromptContent(ctx.character.dialoguePrompts, dialogueSearchSpace);
+  const activeContents = await collectActiveDialoguePromptContent(ctx.character.dialoguePrompts, evalContext);
   if (activeContents.length === 0) return '';
   const lines: string[] = [];
   for (const content of activeContents) {
@@ -1722,12 +1394,10 @@ async function buildKnowledgePromptText(ctx: PromptBuildContext): Promise<string
 async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
   const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
   coLocatedIds.add(ctx.characterId);
-
   const socialHistoryText = ctx.localHistory
     .filter(m => isTextMessage(m) && coLocatedIds.has(m.character.id))
     .map(m => `[${m.character.name}]: ${(m as TextMessage).textContent}`)
     .join('\n');
-
   const retrieved = await retrieveEligibleMemories(
     ctx.character,
     ctx.interactionData,
@@ -1735,9 +1405,7 @@ async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
     ctx.allRawInteractionDataShells || [],
     ctx.knownNames,
   );
-
   if (!retrieved) return '';
-
   return replacePlaceholders(
     retrieved,
     ctx.characterParticipantTag,
@@ -1906,19 +1574,19 @@ function buildInventoryText(ctx: PromptBuildContext): string {
     let timers: { name: string; targetTimestamp: number }[] = [];
     let stopwatches: { name: string; startTimestamp: number; pausedElapsedMs?: number }[] = [];
     for (const [key, value] of Object.entries(latestInventory)) {
-      if (key === '___notes___') {
+      if (key === 'notes') {
         try {
           notes = JSON.parse(value as string);
         } catch {
           // ignore
         }
-      } else if (key === '___timers___') {
+      } else if (key === 'timers') {
         try {
           timers = JSON.parse(value as string);
         } catch {
           // ignore
         }
-      } else if (key === '___stopwatches___') {
+      } else if (key === 'stopwatches') {
         try {
           stopwatches = JSON.parse(value as string);
         } catch {
@@ -2936,9 +2604,9 @@ export async function buildPrompt(
         promptLines.length = 0;
         promptLines.push(
           resolvedInstructionTemplate.instructionTemplate
-            .replace(/\{instruction\}/g, assembledSoFar)
-            .replace(/\{input\}/g, '')
-            .replace(/\{system\}/g, ctx.character.systemPrompt || '')
+            .replace(/{instruction}/g, assembledSoFar)
+            .replace(/{input}/g, '')
+            .replace(/{system}/g, ctx.character.systemPrompt || '')
         );
       } else if (entry === 'Model Chat Template' && resolvedChatTemplate?.chatTemplate) {
         const chatHistoryForTemplate = ctx.localHistory.filter(
@@ -2957,23 +2625,23 @@ export async function buildPrompt(
           );
           promptLines.push(
             resolvedChatTemplate.chatTemplate
-              .replace(/\{role\}/gi, role)
-              .replace(/\{content\}/g, content)
+              .replace(/{role}/gi, role)
+              .replace(/{content}/g, content)
           );
         }
         promptLines.push(
           resolvedChatTemplate.chatTemplate
-            .replace(/\{role\}/gi, 'assistant')
-            .replace(/\{content\}/g, '')
+            .replace(/{role}/gi, 'assistant')
+            .replace(/{content}/g, '')
         );
       } else if (entry === 'Model Chat-Instruction Template' && resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
         const assembledSoFar = promptLines.join('\n');
         promptLines.length = 0;
         promptLines.push(
           resolvedInstructionTemplate.instructionTemplate
-            .replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n${assembledSoFar}`)
-            .replace(/\{input\}/g, '')
-            .replace(/\{system\}/g, ctx.character.systemPrompt || '')
+            .replace(/{instruction}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n${assembledSoFar}`)
+            .replace(/{input}/g, '')
+            .replace(/{system}/g, ctx.character.systemPrompt || '')
         );
         const chatHistoryForTemplate = ctx.localHistory.filter(
           (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
@@ -2991,14 +2659,14 @@ export async function buildPrompt(
           );
           promptLines.push(
             resolvedChatTemplate.chatTemplate
-              .replace(/\{role\}/gi, role)
-              .replace(/\{content\}/g, content)
+              .replace(/{role}/gi, role)
+              .replace(/{content}/g, content)
           );
         }
         promptLines.push(
           resolvedChatTemplate.chatTemplate
-            .replace(/\{role\}/gi, 'assistant')
-            .replace(/\{content\}/g, '')
+            .replace(/{role}/gi, 'assistant')
+            .replace(/{content}/g, '')
         );
       } else if (isBuiltInBlockType(entry)) {
         const lines = blockMap[entry];
