@@ -458,6 +458,7 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
     const history = getLocalMessageHistory(interactionData, character, ['chat', 'whisper'], coLocated.length);
 
     let wasAddressed = false;
+    
     for (let i = history.length - 1; i >= 0; i--) {
         const msg = history[i];
         if (msg.messageType === 'chat' && msg.character.id !== character.id) {
