@@ -165,6 +165,8 @@ export const defaultActions: InterjectableAction[] = [
     { label: 'Pout At', count: 0 },
 ];
 
+export const defaultEntityImageTypes: entityImageType[] = ['promptBlock', 'context', 'location', 'character']
+
 export const defaultInputStrategyPositions: promptBlockType[] = [
     'System Prompt',
     'Think Prompt',
@@ -172,7 +174,6 @@ export const defaultInputStrategyPositions: promptBlockType[] = [
     'Character Tags',
     'Character Tags With Descriptions',
     'Appearance Prompt',
-    'Dialogue Prompt',
     'Chat History',
     'Context',
     'Current Location',
@@ -195,13 +196,15 @@ export const defaultInputStrategyPositions: promptBlockType[] = [
     'Character Image Instructions',
     'Current Location Image Instructions',
     'Anti-Repetition Nudge',
+    'Dialogue Prompt',
+    'Knowledge Prompt',
+    'Memory Prompt',
+    'Starter Prompt',
     'Text Injection',
     'Model Instruction Template', 
     'Model Chat Template', 
     'Model Chat-Instruction Template'
 ];
-
-export const defaultEntityImageTypes: entityImageType[] = ['promptBlock', 'context', 'location', 'character']
 
 export const defaultInputStrategy: promptBlockType[] = [
     'System Prompt',
