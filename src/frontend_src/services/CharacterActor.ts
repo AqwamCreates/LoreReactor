@@ -1,5 +1,9 @@
 // src/frontend_src/services/CharacterActor.ts
-import type { Character, InteractionData, BudgetStrategy, BudgetData, PromptBlock, tool, ChatMessage, LanguageModel, Profile, ToolExecutionResult } from '../types';
+import type { 
+    Character, InteractionData, BudgetStrategy, BudgetData, 
+    PromptBlock, tool, ChatMessage, LanguageModel, Profile, 
+    ToolExecutionResult, toolUsageDisplayMode, toolUsageDisplayPlacementMode 
+} from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildRequestBody, convertIdsToDisplayNames, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { detectName } from '../utilities/nameDetection';
@@ -16,6 +20,7 @@ import { findLatestMessage } from '../utilities/messageLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
 import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import type { StreamingVoiceTracker } from './StreamingVoiceTracker';
+import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
 
 // ─── Result Types ───────────────────────────────────────────────────
 
@@ -73,6 +78,13 @@ export interface ProcessedReplacements {
     rawReplacements: { rawMatch: string; resultText: string }[];
     displayReplacements: { rawMatch: string; displayText: string }[];
     executionResults: ToolExecutionResult[];
+}
+
+export interface DisplayContext {
+    displayMode: toolUsageDisplayMode;
+    placementMode: toolUsageDisplayPlacementMode;
+    participants: Character[];
+    character: Character;
 }
 
 // ─── Spacing Sanitizer ──────────────────────────────────────────────
@@ -162,16 +174,15 @@ function applyToolReplacements(
     accState: ReturnType<typeof createTextAccumulationState>,
     replacements: ProcessedReplacements,
     callbacks?: TurnStreamCallbacks,
+    displayContext?: DisplayContext,
 ): void {
     const acc = accState.get();
     let currentRaw = acc.raw;
-    let currentDisplay = acc.display;
 
     for (let i = 0; i < replacements.rawReplacements.length; i++) {
         const { rawMatch, resultText } = replacements.rawReplacements[i];
-        const { displayText } = replacements.displayReplacements[i];
 
-        // 1. Raw prompt context: delimited observation boundary (⟪tool()⟫⟦result: ...⟧)
+        // Raw prompt context: delimited observation boundary (⟪tool()⟫⟦result: ...⟧)
         // THIS is the only legitimate source of tool results.
         const rawReplacement = `${rawMatch}${toolResultStartString}result: ${resultText}${toolResultEndString} `;
         if (currentRaw.includes(rawMatch)) {
@@ -180,24 +191,23 @@ function applyToolReplacements(
             const trimmedRaw = currentRaw.trimEnd();
             currentRaw = (trimmedRaw ? `${trimmedRaw} ` : '') + rawReplacement;
         }
-
-        // 2. UI Display representation: insert badge cleanly with a single trailing space
-        if (displayText !== '') {
-            if (currentDisplay.includes(rawMatch)) {
-                currentDisplay = currentDisplay.replace(rawMatch, `${displayText} `);
-            } else {
-                const trimmedDisplay = currentDisplay.trimEnd();
-                currentDisplay = (trimmedDisplay ? `${trimmedDisplay} ` : '') + `${displayText} `;
-            }
-        } else if (currentDisplay.includes(rawMatch)) {
-            currentDisplay = currentDisplay.replace(rawMatch, '');
-        }
     }
 
-    currentDisplay = cleanSpacing(currentDisplay);
     acc.setRaw(currentRaw);
-    acc.setDisplay(currentDisplay);
-    callbacks?.onDisplayText(acc.display);
+
+    if (displayContext) {
+        // Compile display representation dynamically adhering to the configured placement mode
+        const compiled = compileMessageDisplayText(
+            currentRaw,
+            displayContext.displayMode,
+            displayContext.placementMode,
+            displayContext.participants,
+            displayContext.character,
+            acc.collectedExecutionResults
+        );
+        acc.setDisplay(compiled);
+        callbacks?.onDisplayText(compiled);
+    }
 }
 
 function classifyError(error: unknown, signal: AbortSignal): TurnError {
@@ -314,6 +324,13 @@ export class CharacterActor {
         const latestMsg = findLatestMessage(data, character)?.message;
         const isToolMessage = latestMsg?.messageType === 'tool';
 
+        const displayContext: DisplayContext = {
+            displayMode: data.profile?.toolUsageDisplayMode ?? 'simple',
+            placementMode: data.profile?.toolUsageDisplayPlacementMode ?? 'inline',
+            participants: data.participants,
+            character,
+        };
+
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
         if (!isResuming) {
             const probeModelId = borrowedModel
@@ -333,7 +350,6 @@ export class CharacterActor {
             let currentExistingText = existingCharacterText || '';
             let finalBudgetData: BudgetData | null = null;
             let lastPromptText = '';
-            let isFirstChunkAfterTool = false;
 
             const streamToolParser = new ToolInvocationParser();
             const accState = createTextAccumulationState(currentExistingText);
@@ -350,9 +366,11 @@ export class CharacterActor {
                     pendingInvocations: ToolInvocation[];
                     addPendingInvocation: (inv: ToolInvocation) => void;
                     clearPendingInvocations: () => void;
+                    collectedExecutionResults: ToolExecutionResult[];
                 },
                 turnAbortCtrl: AbortController,
-                baseLength: number // ✅ NEW: The length of the text before this stream pass started
+                baseLength: number,
+                displayCtx: DisplayContext
             ): StreamCallbacks => ({
                 onToken: async (s) => {
                     latestLatency = s.msPerToken;
@@ -388,28 +406,7 @@ export class CharacterActor {
 
                     acc.setRaw(newRaw);
 
-                    // 1. Flush any text that occurred before the tool call
-                    if (parsed.displayText) {
-                        let incoming = parsed.displayText;
-
-                        if (isFirstChunkAfterTool) {
-                            incoming = incoming.replace(/^[\r\n]+/, '');
-                            if (incoming.length > 0) {
-                                isFirstChunkAfterTool = false;
-                            }
-                        }
-
-                        if (incoming.length > 0) {
-                            if (acc.display.endsWith(' ') && incoming.startsWith(' ')) {
-                                incoming = incoming.trimStart();
-                            }
-                            const cleaned = cleanSpacing(acc.display + incoming);
-                            acc.setDisplay(cleaned);
-                            callbacks?.onDisplayText(cleaned);
-                        }
-                    }
-
-                    // 2. Stop stream immediately upon complete tool call
+                    // 1. Stop stream immediately upon complete tool call
                     if (parsed.toolInvocations.length > 0) {
                         for (const inv of parsed.toolInvocations) {
                             acc.addPendingInvocation(inv);
@@ -417,6 +414,18 @@ export class CharacterActor {
                         turnAbortCtrl.abort();
                         return;
                     }
+
+                    // 2. Compile display text dynamically from raw text using the configured placement mode
+                    const compiled = compileMessageDisplayText(
+                        newRaw,
+                        displayCtx.displayMode,
+                        displayCtx.placementMode,
+                        displayCtx.participants,
+                        displayCtx.character,
+                        acc.collectedExecutionResults
+                    );
+                    acc.setDisplay(compiled);
+                    callbacks?.onDisplayText(compiled);
 
                     const enableExpression = data.profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
@@ -441,7 +450,7 @@ export class CharacterActor {
 
                 // ✅ CAPTURE BASELINE: Any ⟦ generated after this index is a hallucination
                 const baseLength = currentExistingText.length; 
-                const streamCallbacks = createStreamCallbacks(streamToolParser, accState.get, turnAbortCtrl, baseLength);
+                const streamCallbacks = createStreamCallbacks(streamToolParser, accState.get, turnAbortCtrl, baseLength, displayContext);
 
                 try {
                     let resultText = '';
@@ -512,8 +521,7 @@ export class CharacterActor {
 
                     accState.get().addExecutionResults(toolResult.executionResults);
 
-                    applyToolReplacements(accState, toolResult, callbacks);
-                    isFirstChunkAfterTool = true;
+                    applyToolReplacements(accState, toolResult, callbacks, displayContext);
 
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
@@ -581,8 +589,7 @@ export class CharacterActor {
 
                     accState.get().addExecutionResults(toolResult.executionResults);
 
-                    applyToolReplacements(accState, toolResult, callbacks);
-                    isFirstChunkAfterTool = true;
+                    applyToolReplacements(accState, toolResult, callbacks, displayContext);
 
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
@@ -627,8 +634,7 @@ export class CharacterActor {
 
                     accState.get().addExecutionResults(toolResult.executionResults);
 
-                    applyToolReplacements(accState, toolResult, callbacks);
-                    isFirstChunkAfterTool = true;
+                    applyToolReplacements(accState, toolResult, callbacks, displayContext);
 
                     if (params.voiceTracker) {
                         params.voiceTracker.resetPass();
@@ -646,8 +652,15 @@ export class CharacterActor {
                 return { error: { message: 'Empty response from model', type: 'inference' } };
             }
 
-            const cleanDisplay = cleanSpacing(accState.getDisplay());
-            const finalDisplayText = convertIdsToDisplayNames(cleanDisplay, data, character);
+            // Final display text compilation ensures 100% parity with saved message rendering
+            const finalDisplayText = compileMessageDisplayText(
+                rawText,
+                displayContext.displayMode,
+                displayContext.placementMode,
+                displayContext.participants,
+                character,
+                accState.get().collectedExecutionResults
+            );
 
             let updatedData: InteractionData;
             const isTool = isToolMessageText(rawText);

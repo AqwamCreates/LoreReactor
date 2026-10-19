@@ -95,24 +95,28 @@ function getInsertionIndex(cleanText: string, mappedIndex: number, mode: Placeme
 
 /**
  * Centralized compiler: Accepts either a HistoryMessage object directly OR a raw string.
+ * When compiling raw strings (such as during streaming), optional character and
+ * toolExecutionResults parameters ensure proper name detokenization and badge formatting.
  */
 export function compileMessageDisplayText(
     target: HistoryMessage | string | null | undefined,
     displayMode: toolUsageDisplayMode = 'simple',
     placementMode: PlacementMode = 'inline',
-    participants: Character[] = []
+    participants: Character[] = [],
+    character?: Character,
+    toolExecutionResults?: ToolExecutionResult[]
 ): string {
     if (!target) return '';
 
     if (typeof target === 'string') {
-        return compileRawString(target, displayMode, placementMode, participants, undefined, undefined);
+        return compileRawString(target, displayMode, placementMode, participants, character, toolExecutionResults);
     }
 
-    const character = target.character;
+    const char = target.character ?? character;
     const rawText = ('textContent' in target ? target.textContent : '');
-    const toolExecutionResults = 'toolExecutionResults' in target ? target.toolExecutionResults : undefined;
+    const execResults = ('toolExecutionResults' in target ? target.toolExecutionResults : undefined) ?? toolExecutionResults;
 
-    return compileRawString(rawText, displayMode, placementMode, participants, character, toolExecutionResults);
+    return compileRawString(rawText, displayMode, placementMode, participants, char, execResults);
 }
 
 function compileRawString(
@@ -148,7 +152,7 @@ function compileRawString(
         }
     }
 
-    // 4. Extract and Strip tool calls
+    // 4. Extract and Strip tool calls (non-greedy to preserve individual calls)
     const toolRegex = new RegExp(`${callStartEsc}([\\s\\S]*?)${callEndEsc}`, 'g');
     const extractedTools: ExtractedTool[] = [];
     let cleanText = '';
@@ -163,7 +167,7 @@ function compileRawString(
         cleanText += processed.slice(lastIndex, startIndex);
 
         const stored = resultMap.get(rawMatch);
-        let display = '';
+        let display;
         if (stored) {
             display = formatToolDisplay({ ...stored }, rawMatch, mode);
         } else {
@@ -214,13 +218,10 @@ function compileRawString(
         }
     }
 
-    // 7. ✅ FIX: Collapse "ghost paragraphs" (3+ newlines) left behind by extracted tools
-    // When a tool is moved to top/bottom, the newlines that surrounded it are left behind.
-    // This regex finds 3 or more consecutive newlines (with optional spaces/tabs between them)
-    // and collapses them down to exactly 2 newlines (a standard markdown paragraph break).
+    // 7. Collapse "ghost paragraphs" (3+ newlines) left behind by extracted tools
     finalText = finalText.replace(/(?:\r?\n[ \t]*){3,}/g, '\n\n');
     
-    // Clean up multiple spaces and trim
+    // Clean up multiple spaces
     finalText = finalText.replace(/ {2,}/g, ' ');
 
     if (character) {
