@@ -34,10 +34,13 @@ const formatInstructions = "I will always end a format before starting a new one
 
 const toolUsageInstructions = `
 I must read answers from the list of available tools to get accurate and precise response when the situation requires it.
-I will also always give the tool inputs as {{char}} in-character. I will also assume the tools that are not in my list are currently disabled.
+I will also always give the tool inputs as {{char}} in-character.
+I will also assume the tools that are not in my list are currently disabled.
 If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality.
 I can call the tool like {{toolCallStartString}}tool(){{toolCallEndString}} to get direct result or access the help page.
-The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results.
+If I do not know how a tool works, I will explore the tool arguments thoroughly.
+The content between these markers will be replaced with the tool's result before I continue writing.
+I may use multiple tools each time I receive tool results.
 Tool invocation markers are only visible to me. I also must continue to generate a response upon performing tool calls or receiving tool results.`;
 
 const toolMessageModeInstructions = `I am currently in tool message mode, where I will only interact with the environment and only talk to myself.`;
