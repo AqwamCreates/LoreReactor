@@ -157,29 +157,23 @@ export function CharacterMemoryEditorModal({
         setEditTextContent('');
     };
 
-    const handleSaveEdit = (originalTextContent: string, fallbackChatId: string) => {
+    const handleSaveEdit = (originalTextContent: string, chatId: string) => {
         if (!editingId) return;
 
-        let targetChatId = '';
-        let targetMem: Memory | undefined;
-        for (const [chatId, mems] of Object.entries(memories)) {
-            targetMem = mems.find(m => m.id === editingId);
-            if (targetMem) {
-                targetChatId = chatId;
-                break;
-            }
-        }
+        const mems = memories[chatId];
+        if (!mems) return;
 
-        if (!targetChatId || !targetMem) return;
+        const targetMem = mems.find(m => m.id === editingId);
+        if (!targetMem) return;
 
-        const wasEdited = editTextContent !== resolveMemoryDisplayText(targetMem, targetChatId);
+        const wasEdited = editTextContent !== resolveMemoryDisplayText(targetMem, chatId);
         const nextText = wasEdited
-            ? retokenizeText(editTextContent, targetMem, targetChatId)
+            ? retokenizeText(editTextContent, targetMem, chatId)
             : originalTextContent;
 
         setMemories(prev => {
             const next = { ...prev };
-            next[targetChatId] = next[targetChatId].map(m => {
+            next[chatId] = next[chatId].map(m => {
                 if (m.id !== editingId) return m;
                 const { embedding, ...rest } = m;
                 return { ...rest, textContent: nextText, lastUpdatedTimestamp: Date.now() } as Memory;
