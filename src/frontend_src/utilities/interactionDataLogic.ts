@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/interactionDataLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage, RawInteractionData } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { v4 as uuidv4 } from 'uuid';
 import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses } from './characterLogic';
@@ -108,6 +108,7 @@ export async function buildRequestBody(
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
     modelId: string,
+    allRawInteractionDataShells: RawInteractionData[],
     isToolMessage?: boolean
 ): Promise<{ 
     body: Record<string, unknown>; 
@@ -123,7 +124,7 @@ export async function buildRequestBody(
         imagePayloads, 
         characterClothingWearingStatuses, 
         fetchErrors 
-    } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId, isToolMessage);
+    } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId, allRawInteractionDataShells, isToolMessage);
 
     const languageModelSampler = character.languageModelSampler;
 

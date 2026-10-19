@@ -18,6 +18,7 @@ import { getLocationMessageHistory } from '../utilities/timelineLogic';
 import { localURL } from '../../configurations';
 import { embeddingEngine } from './EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from './RetrievalEngine';
+import { retrieveEligibleMemories, detokenizeMemoryContent } from '../utilities/memoryLogic';
 
 export interface ToolResult {
     toolType: string;
@@ -1233,86 +1234,103 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage, interact
 
 // ─── Memory ─────────────────────────────────────────────────────────
 async function executeMemory(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
-    const pArgs = parsePythonArgs(args);
-    const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const character = nextMessage.character;
+  const pArgs = parsePythonArgs(args);
+  const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
+  const character = nextMessage.character;
 
-    if (!action) {
-        return helpResult('memory', 'action="list|recall|save", id="..."', 'manage persistent character memories');
+  if (!action) {
+    return helpResult('memory', 'action="list|recall|save", id="..."', 'manage persistent character memories');
+  }
+
+  if (action === 'list') {
+    const entries: string[] = [];
+    for (const [key, mems] of Object.entries(character.memories || {})) {
+      for (const mem of mems) entries.push(`[${key}] ${mem.id}: ${mem.name}`);
+    }
+    return { toolType: 'memory', args, textContent: entries.join('\n') || 'No memories stored', displayReplacement: `[🧠 ${entries.length} memories]` };
+  }
+
+  if (action === 'recall') {
+    const queryId = pArgs.get(1, 'id', 'memory_id') || pArgs.positional.slice(1).join(' ');
+
+    // Resolve knownNames from the character's latest message state
+    const latest = findLatestMessage(interactionData, character);
+    const knownNames = latest?.message.knownCharacterNames;
+
+    if (queryId) {
+      // 1. Exact id/name match first (searches all memories regardless of search space)
+      for (const [, mems] of Object.entries(character.memories || {})) {
+        const found = mems.find(m => m.id === queryId || m.name?.toLowerCase() === queryId.toLowerCase() || m.id.startsWith(queryId));
+        if (found) {
+          const detokenized = detokenizeMemoryContent(
+            found.textContent,
+            interactionData.participants,
+            knownNames,
+          );
+          return { toolType: 'memory', args, textContent: detokenized, displayReplacement: `[🧠 Recalled "${found.name}"]` };
+        }
+      }
+
+      // 2. Semantic fallback via retrieveEligibleMemories (respects search spaces + detokenizes)
+      const retrieved = await retrieveEligibleMemories(
+        character,
+        interactionData,
+        queryId,
+        context.allRawInteractionDataShells,
+        knownNames,
+      );
+
+      if (retrieved) {
+        return {
+          toolType: 'memory',
+          args,
+          textContent: retrieved,
+          displayReplacement: '[🧠 Semantic Recall]'
+        };
+      }
+      return { toolType: 'memory', args, textContent: `Memory "${queryId}" not found.`, displayReplacement: '[🧠 Not found]' };
     }
 
-    if (action === 'list') {
-        const entries: string[] = [];
-        for (const [key, mems] of Object.entries(character.memories || {})) {
-            for (const mem of mems) entries.push(`[${key}] ${mem.id}: ${mem.name}`);
-        }
-        return { toolType: 'memory', args, textContent: entries.join('\n') || 'No memories stored', displayReplacement: `[🧠 ${entries.length} memories]` };
+    // 3. No query: return all eligible memories (filtered by search space + detokenized)
+    const retrieved = await retrieveEligibleMemories(
+      character,
+      interactionData,
+      '',
+      context.allRawInteractionDataShells,
+      knownNames,
+    );
+
+    return {
+      toolType: 'memory',
+      args,
+      textContent: retrieved || 'No memories found',
+      displayReplacement: '[🧠 Recalled memories]'
+    };
+  }
+
+  if (action === 'save') {
+    const others = interactionData.participants.filter(p => p.id !== character.id);
+    const summary = await generateCharacterMemory(interactionData, character, context.allPromptBlocks, '', 512);
+    if (!summary) return { toolType: 'memory', args, textContent: '[Error: Failed to summarize memory]', displayReplacement: '[Error: Memory error]' };
+    const ts = Date.now();
+    if (!character.memories) character.memories = {};
+    for (const o of others) {
+      if (!character.memories[o.id]) character.memories[o.id] = [];
+      character.memories[o.id].push({
+        id: uuidv4(),
+        name: `Memory with ${o.name}`,
+        textContent: summary,
+        interactionDataId: interactionData.id,
+        firstCreatedTimestamp: ts,
+        lastUpdatedTimestamp: ts
+      });
     }
+    await saveRawCharacter(character as any).catch(console.warn);
+    context.addToast?.(`🧠 Memory saved for ${character.name}`, 'success');
+    return { toolType: 'memory', args, textContent: `Saved memory: ${summary}`, displayReplacement: '[🧠 Memory saved]' };
+  }
 
-    if (action === 'recall') {
-        const queryId = pArgs.get(1, 'id', 'memory_id') || pArgs.positional.slice(1).join(' ');
-        if (queryId) {
-            for (const [, mems] of Object.entries(character.memories || {})) {
-                const found = mems.find(m => m.id === queryId || m.name?.toLowerCase() === queryId.toLowerCase() || m.id.startsWith(queryId));
-                if (found) return { toolType: 'memory', args, textContent: found.textContent, displayReplacement: `[🧠 Recalled "${found.name}"]` };
-            }
-
-            // Semantic Search Fallback
-            if (character.useEmbeddingModelForMemories && character.memoryRetrievalConfiguration) {
-                const queryVector = await embeddingEngine.embed(queryId);
-                if (queryVector) {
-                    const allMems = Object.values(character.memories || {}).flat();
-                    const items: RetrievableItem[] = allMems.map(m => ({
-                        id: m.id, name: m.name, textContent: m.textContent, embedding: m.embedding, firstCreatedTimestamp: m.firstCreatedTimestamp
-                    }));
-                    const overrideConfig = { ...character.memoryRetrievalConfiguration, topK: 3, tokenBudget: 512 };
-                    const results = await retrieveRelevantContext(queryVector, queryId, items, overrideConfig);
-                    if (results.length > 0) {
-                        return {
-                            toolType: 'memory',
-                            args,
-                            textContent: results.map(r => `[${r.name || 'Memory'}]: ${r.textContent}`).join('\n---\n'),
-                            displayReplacement: `[🧠 Semantic Recall: ${results.length} memories]`
-                        };
-                    }
-                }
-            }
-            return { toolType: 'memory', args, textContent: `Memory "${queryId}" not found.`, displayReplacement: '[🧠 Not found]' };
-        }
-
-        const relevant: string[] = [];
-        for (const [, mems] of Object.entries(character.memories || {})) {
-            for (const mem of mems) relevant.push(mem.textContent);
-        }
-        return { toolType: 'memory', args, textContent: relevant.join('\n---\n') || 'No memories found', displayReplacement: `[🧠 Recalled ${relevant.length} memories]` };
-    }
-
-    if (action === 'save') {
-        const others = interactionData.participants.filter(p => p.id !== character.id);
-        const summary = await generateCharacterMemory(interactionData, character, context.allPromptBlocks, '', 512);
-        if (!summary) return { toolType: 'memory', args, textContent: '[Error: Failed to summarize memory]', displayReplacement: '[Error: Memory error]' };
-
-        const ts = Date.now();
-        if (!character.memories) character.memories = {};
-
-        for (const o of others) {
-            if (!character.memories[o.id]) character.memories[o.id] = [];
-            character.memories[o.id].push({
-                id: uuidv4(),
-                name: `Memory with ${o.name}`,
-                textContent: summary,
-                interactionDataId: interactionData.id,
-                firstCreatedTimestamp: ts,
-                lastUpdatedTimestamp: ts
-            });
-        }
-
-        await saveRawCharacter(character as any).catch(console.warn);
-        context.addToast?.(`🧠 Memory saved for ${character.name}`, 'success');
-        return { toolType: 'memory', args, textContent: `Saved memory: ${summary}`, displayReplacement: '[🧠 Memory saved]' };
-    }
-
-    return { toolType: 'memory', args, textContent: `[Error: Unknown memory action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
+  return { toolType: 'memory', args, textContent: `[Error: Unknown memory action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
 // ─── Lookup ─────────────────────────────────────────────────────────

@@ -548,7 +548,7 @@ export function CharacterDialoguePromptEditorModal({
                                     readOnly={isReadOnly}
                                 />
                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>
-                                    The dialogue instructions injected into the prompt. Supports {'{{char}}'} and {'{{user}}'} placeholders.
+                                    The dialogue instructions injected into the prompt. Supports {'{{character}}'} and {'{{user}}'} placeholders.
                                 </div>
                             </div>
 

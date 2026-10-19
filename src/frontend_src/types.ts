@@ -476,7 +476,7 @@ export interface NarratorMessage extends BaseMessage { // Giving a character is 
 
 export type messageType = 'interaction' | 'chat' | 'whisper' | 'tool' | 'narration'
 
-export type TextMessage = ChatMessage | WhisperMessage | NarratorMessage
+export type TextMessage = ChatMessage | WhisperMessage
 
 export type HistoryMessage = InteractionMessage | TextMessage | ToolMessage;
 

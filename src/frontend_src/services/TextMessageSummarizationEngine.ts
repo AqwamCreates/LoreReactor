@@ -10,6 +10,7 @@ import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities
 import { getLocalMessageHistory, getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { getStemmedContentWords } from '../utilities/stemmerHelper';
+import { tokenizeMemoryContent } from '../utilities/memoryLogic';
 
 const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.";
 
@@ -55,7 +56,7 @@ export async function generateMessageSummary(
     if (message.messageType !== 'chat') return null;
     const chatMsg = message as ChatMessage;
     const text = chatMsg.textContent;
-    if (!text || !text) return null;
+    if (!text) return null;
 
     const stops = getSummarizationStopTokens(profile?.interactionDataSummarizationStopPattern);
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
@@ -79,8 +80,8 @@ function hasModelSummary(msg: HistoryMessage, modelId: string): boolean {
 }
 
 /**
- * Generate a character-specific memory summary text.
- * Returns the summary text or null if generation failed.
+ * Generate a character-specific memory summary text with tokenized character references.
+ * Returns the tokenized memory text or null if generation failed.
  */
 export async function generateCharacterMemory(
     interactionData: InteractionData,
@@ -96,7 +97,6 @@ export async function generateCharacterMemory(
     const languageModelSampler = interactionData.profile?.characterLanguageModelSampler || character.languageModelSampler;
     const stopPattern = interactionData.profile?.characterStopPattern;
 
-    // ✅ FIXED: Use passed promptBlocks instead of hardcoded empty array
     const filteredMessages = getFilteredTextMessages(interactionData, character.id, promptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
@@ -118,7 +118,7 @@ export async function generateCharacterMemory(
         knownNames: knownCharacterNames,
         existingCharacterText: '',
         modelId,
-        allPromptBlocks: promptBlocks, // ✅ FIXED: Use passed promptBlocks
+        allPromptBlocks: promptBlocks,
         localHistory,
         participants,
         coLocatedProtagonists,
@@ -161,7 +161,7 @@ export async function generateCharacterMemory(
         memoryPromptTemplate = character.memoryPrompts?.['neutral'];
     }
     
-    const systemDefaultPerspective = `I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. I will never use 'Character #' or 'Character # (Name)' unless I require it.`;
+    const systemDefaultPerspective = `I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. When referring to other participants, I will identify them by their tag (e.g. 'Character 1', 'Character 2') to keep my memory records accurate.`;
 
     const finalMemoryInstruction = memoryPromptTemplate 
         ? replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)
@@ -196,9 +196,10 @@ export async function generateCharacterMemory(
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
-    if (!text || !text) return null;
+    if (!text) return null;
 
-    return text;
+    // Deterministically tokenize "Character #" tags to "{{character@uuid}}"
+    return tokenizeMemoryContent(text, participants);
 }
 
 /**
@@ -235,7 +236,7 @@ export async function generateMissingSummaries(
         if (chatIdx >= 0 && filterFlags[chatIdx]) continue;
         if (hasModelSummary(msg, modelId)) continue;
         const text = (msg as ChatMessage).textContent;
-        if (!text || !text) continue;
+        if (!text) continue;
         toSummarize.push(msg as ChatMessage);
     }
 
@@ -293,7 +294,6 @@ export async function generateLocationVisitSummary(
     endIdx: number,
     maxTokens = 512,
 ): Promise<string | null> {
-    // ✅ FIXED: Use global history because startIdx/endIdx are global indices
     const history = getGlobalMessageHistory(interactionData);
     if (startIdx < 0 || endIdx >= history.length || startIdx > endIdx) return null;
 
@@ -302,7 +302,6 @@ export async function generateLocationVisitSummary(
     const languageModelSampler = interactionData.profile?.characterLanguageModelSampler || character.languageModelSampler;
     const stopPattern = interactionData.profile?.characterStopPattern;
 
-    // ✅ FIXED: Use passed promptBlocks instead of hardcoded empty array
     const filteredMessages = getFilteredTextMessages(interactionData, character.id, promptBlocks);
     const knownCharacterNames = detectName(character, filteredMessages);
 
@@ -393,7 +392,7 @@ export async function generateLocationVisitSummary(
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
-    if (!text || !text) return null;
+    if (!text) return null;
 
     return text;
 }
@@ -640,7 +639,6 @@ export async function generateEntropyPruningSummaries(
     
     const textMessages = getLocalMessageHistory(interactionData, character, ['chat', 'whisper']) as TextMessage[];
 
-    // ✅ FIXED: Pass promptBlocks instead of hardcoded []
     const filterFlags = getUniversalMessageFilterFlags(textMessages, promptBlocks, interactionData.contexts || [], interactionData.locations || []);
     const visibleMessages = textMessages.filter((_, i) => !filterFlags[i]);
 

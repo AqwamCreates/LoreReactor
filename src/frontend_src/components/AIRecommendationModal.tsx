@@ -263,7 +263,7 @@ export function AIRecommendationModal({
         const hasWorld = selectedEntities.includes('World');
         parts.push('You are a creative writing assistant for roleplay. Generate entities matching the schema below.');
         parts.push('You MUST output ONLY valid JSON matching the schema below. No markdown, no commentary, no code fences.');
-        parts.push('Use {{user}} to refer to the user. Use {{char}} instead of character names in prompts.');
+        parts.push('Use {{user}} to refer to the user. Use {{character}} instead of character names in prompts.');
         parts.push('The "description" field is for UI display only. It is NOT injected into prompts or used as AI input. Write it as a short human-readable summary.');
         parts.push('Generate a valid UUID v4 for every "id" field.');
         parts.push('Do not make references to the existing entities at all costs and at all times unless stated otherwise.');
