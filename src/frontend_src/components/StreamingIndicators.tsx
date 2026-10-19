@@ -23,7 +23,6 @@ export function StreamingIndicators({
 }: StreamingIndicatorsProps) {
     const isLoading = useSessionStore(s => s.isLoading);
     const streamingCharacter = useSessionStore(s => s.streamingCharacter);
-    const streamingText = useSessionStore(s => s.streamingText);
     const interactionData = useSessionStore(s => s.interactionData);
 
     const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
