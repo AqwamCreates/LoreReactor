@@ -1,5 +1,5 @@
 // src/frontend_src/dictionaries/defaults.ts
-import type { BudgetData, BudgetStrategy, Character, entityImageType, InterjectableAction, LanguageModel, MultiplayerData, promptBlockType, Sampler, textType, tool, tristateInteger } from '../types';
+import type { BudgetData, BudgetStrategy, Character, entityImageType, InterjectableAction, LanguageModel, memorySearchSpace, MultiplayerData, promptBlockType, Sampler, textType, tool, tristateInteger } from '../types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -262,3 +262,5 @@ export function createDefaultMultiplayerData(): MultiplayerData {
 }
 
 export const defaultContextLength = 8192
+
+export const defaultMemorySearchSpace: memorySearchSpace[] = ['self', 'listener', 'co-located protagonists', 'co-located non-protagonists']
