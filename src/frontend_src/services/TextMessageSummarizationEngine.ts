@@ -11,6 +11,7 @@ import { getLocalMessageHistory, getGlobalMessageHistory } from '../utilities/ti
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { getStemmedContentWords } from '../utilities/stemmerHelper';
 import { tokenizeMemoryContent } from '../utilities/memoryLogic';
+import { getEnabledTools } from '../utilities/characterLogic';
 
 const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat messages. Given a single chat message, produce a brief summary that preserves: character actions, key dialogue points, emotional tone, and plot-relevant details. Output ONLY the summary text with no preamble, no markdown, no quotes.";
 
@@ -129,6 +130,7 @@ export async function generateCharacterMemory(
         characterParticipantTag: getParticipantTag(character, participants),
         characterName: character.name,
         profile,
+        tools: getEnabledTools(character, profile),
         cacheEfficiencyLevels,
         minimalVolatileCacheMode,
         currentLocation: undefined,

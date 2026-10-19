@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useChatSender.ts
 import { useCallback } from 'react';
-import type { Character, PromptBlock, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult, TextMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult, TextMessage } from '../types';
 import { createChatMessage } from '../utilities/interactionDataLogic';
 import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
@@ -33,7 +33,6 @@ interface UseChatSenderOptions {
     joinProtagonistRef: React.RefObject<Character | null>;
     allCharactersRef: React.RefObject<Character[]>;
     allActionsRef: React.RefObject<InterjectableAction[]>;
-    allPromptBlocksRef: React.RefObject<PromptBlock[]>;
     onMessageBroadcastRef: React.RefObject<((message: HistoryMessage) => void) | undefined>;
     onStateBroadcastRef: React.RefObject<((state: Partial<InteractionData>) => void) | undefined>;
     buildToolContext: () => ToolExecutionContext;
@@ -47,7 +46,7 @@ interface UseChatSenderOptions {
 
 export function useChatSender(opts: UseChatSenderOptions) {
     const {
-        isMultiplayerClient, joinProtagonistRef, allCharactersRef, allActionsRef, allPromptBlocksRef,
+        isMultiplayerClient, joinProtagonistRef, allCharactersRef, allActionsRef,
         onMessageBroadcastRef, onStateBroadcastRef, buildToolContext, executeTurnPipeline,
         acquireLock, releaseLock, addToast, setInteractionData, getState,
     } = opts;

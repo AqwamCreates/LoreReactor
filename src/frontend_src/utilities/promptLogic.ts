@@ -1,10 +1,10 @@
 // src/frontend_src/utilities/promptLogic.ts
-import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, TextMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, tool, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType, RawInteractionData } from '../types';
+import type { Character, InteractionData, HistoryMessage, ChatMessage, WhisperMessage, TextMessage, Context, StopPattern, PromptBlock, promptBlockType, regularExpressionContext, regularExpressionTarget, Location, RegularExpressionTrigger, Clothing, Profile, cacheEfficiencyConfigurationType, RawInteractionData } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { fetchMultipleContextUrls } from './linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt, getEffectiveUseFrontCameraImage } from './characterLogic';
+import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt, getEffectiveUseFrontCameraImage, getEnabledTools } from './characterLogic';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId } from './locationLogic';
@@ -1303,11 +1303,6 @@ export function detectUnsummarizedLocationDepartures(
   return segments;
 }
 
-function getEnabledToolNamesFromCharacter(character: Character, profile: Profile | undefined): string[] {
-  const effectiveTools = getEffectiveTools(character, profile);
-  return (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
-}
-
 function buildPromptContext(
   interactionData: InteractionData,
   character: Character,
@@ -1328,7 +1323,7 @@ function buildPromptContext(
   const characterParticipantTag = getParticipantTag(character, participants);
   const characterName = character.name;
   const profile = interactionData.profile;
-  const tools = getEnabledToolNamesFromCharacter(character, profile);
+  const tools = getEnabledTools(character, profile);
   const cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number> =
     profile?.cacheEfficiencyLevels ?? { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
   const minimalVolatileCacheMode = profile?.minimalVolatileCacheMode ?? false;

@@ -679,7 +679,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         joinProtagonistRef,
         allCharactersRef,
         allActionsRef,
-        allPromptBlocksRef,
         onMessageBroadcastRef,
         onStateBroadcastRef,
         buildToolContext,

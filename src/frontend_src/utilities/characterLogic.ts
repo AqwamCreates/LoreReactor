@@ -372,3 +372,8 @@ export function getCharacterStarterMessage(character: Character): string {
     }
     return chosen.replace(/\{\{char\}\}/gi, character.name);
 }
+
+export function getEnabledTools(character: Character, profile: Profile | undefined): string[] {
+    const effectiveTools = getEffectiveTools(character, profile);
+    return (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
+}
