@@ -66,8 +66,8 @@ const DEFAULT_MAX_RECURSION_DEPTH = 3;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 const RECENT_INTERACTION_WINDOW = 20;
 
-const TEMPLATE_REGEX = /{{([a-zA-Z0-9_']+)(?:[(-?\d+)?(?::(-?\d+))?])?(#)?}}/g;
-const TOOLS_PLACEHOLDER_REGEX = /{{tools(?:[(-?\d+)?(?::(-?\d+))?])?(#)?}}/g;
+const TEMPLATE_REGEX = /{{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?}}/g;
+const TOOLS_PLACEHOLDER_REGEX = /{{tools(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?}}/g;
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -117,18 +117,31 @@ const GLOBAL_STRINGS: Record<string, string> = {
   toolResultEndString,
 };
 
-function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string): T[] {
+function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string, exclude = false): T[] {
   const safeArr = arr ?? [];
   if (safeArr.length === 0) return [];
   let start = startStr !== undefined ? parseInt(startStr, 10) : 0;
   let end = endStr !== undefined ? parseInt(endStr, 10) : safeArr.length;
+  
   if (start < 0) start = safeArr.length + start;
   if (end < 0) end = safeArr.length + end;
+  
   if (start < 0) start = 0;
+  if (end < 0) end = 0;
+  if (start > safeArr.length) start = safeArr.length;
   if (end > safeArr.length) end = safeArr.length;
-  if (start >= safeArr.length) return [];
+
   if (start > end) {
-    return safeArr.slice(end, start).reverse();
+    const actualStart = end;
+    const actualEnd = start;
+    if (exclude) {
+      return [...safeArr.slice(0, actualStart), ...safeArr.slice(actualEnd)];
+    }
+    return safeArr.slice(actualStart, actualEnd).reverse();
+  }
+
+  if (exclude) {
+    return [...safeArr.slice(0, start), ...safeArr.slice(end)];
   }
   return safeArr.slice(start, end);
 }
@@ -137,9 +150,10 @@ function formatToolsPlaceholder(
   tools: string[],
   startStr?: string,
   endStr?: string,
-  wantLength = false
+  wantLength = false,
+  wantExclude = false
 ): string {
-  const slice = getSlicedArray(tools ?? [], startStr, endStr);
+  const slice = getSlicedArray(tools ?? [], startStr, endStr, wantExclude);
   if (wantLength) {
     return String(slice.length);
   }
@@ -236,18 +250,19 @@ export function resolveTemplate(
 ): string {
   return template.replace(
     TEMPLATE_REGEX,
-    (_match, key, startStr, endStr, hashStr) => {
+    (_match, key, startStr, endStr, hashStr, excludeStr) => {
       const wantLength = hashStr === '#';
+      const wantExclude = excludeStr === '!';
       const asLengthOrValue = (value: string): string => {
         return wantLength ? String(value.length) : value;
       };
       if (key === 'character') {
         return asLengthOrValue(`${ctx.characterParticipantTag} (${ctx.characterName})`);
       }
-      if (key === 'user') {
+      if (key === 'protagonist') {
         return asLengthOrValue(ctx.protagonistDisplayString);
       }
-      if (key === "user's") {
+      if (key === "protagonist's") {
         return asLengthOrValue(ctx.protagonistPossessiveString);
       }
       if (key === 'tools') {
@@ -255,13 +270,14 @@ export function resolveTemplate(
           ctx.tools ?? [],
           startStr,
           endStr,
-          wantLength
+          wantLength,
+          wantExclude
         );
       }
       if (key in ctx) {
         const val = (ctx as any)[key];
         if (Array.isArray(val)) {
-          const slice = getSlicedArray(val, startStr, endStr);
+          const slice = getSlicedArray(val, startStr, endStr, wantExclude);
           if (wantLength) {
             return String(slice.length);
           }
@@ -470,12 +486,13 @@ function replaceToolsPlaceholders(text: string, tools: string[]): string {
   if (!text) return text;
   return text.replace(
     TOOLS_PLACEHOLDER_REGEX,
-    (_m, startStr, endStr, hashStr) => {
+    (_m, startStr, endStr, hashStr, excludeStr) => {
       return formatToolsPlaceholder(
         tools,
         startStr,
         endStr,
-        hashStr === '#'
+        hashStr === '#',
+        excludeStr === '!'
       );
     }
   );
@@ -495,8 +512,8 @@ export function replacePlaceholders(
   const protagonistPossessive = buildProtagonistPossessiveString(coLocatedProtagonists, participants, knownNames);
   let result = text;
   result = result.replace(/{{character}}/g, () => `${characterParticipantTag} (${characterName})`);
-  result = result.replace(/{{user}}'s/g, () => protagonistPossessive);
-  result = result.replace(/{{user}}/g, () => protagonistString);
+  result = result.replace(/{{protagonist}}'s/g, () => protagonistPossessive);
+  result = result.replace(/{{protagonist}}/g, () => protagonistString);
   result = replaceToolsPlaceholders(result, tools);
   result = result.replace(/{{toolCallStartString}}/g, () => toolCallStartString);
   result = result.replace(/{{toolCallEndString}}/g, () => toolCallEndString);
