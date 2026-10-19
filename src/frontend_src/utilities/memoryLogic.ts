@@ -35,7 +35,7 @@ export function buildMemoryQueryText(
     coLocatedIds.add(character.id); // The character is always co-located to themselves
 
     // We MUST use global history to access messages from other locations (non-co-located)
-    const globalHistory = getLocalMessageHistory(interactionData, character,['chat', 'whisper']);
+    const globalHistory = getLocalMessageHistory(interactionData, character, ['chat', 'whisper']);
     if (globalHistory.length === 0) return '';
 
     // Take only the most recent messages based on the strict window size
