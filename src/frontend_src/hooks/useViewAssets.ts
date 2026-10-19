@@ -1,12 +1,10 @@
 // frontend_src/hooks/useViewAssets.ts
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, InteractionData} from '../types';
+import type { Character, InteractionData, HistoryMessage } from '../types';
 import { getCharacterImageUrl, getLocationImageUrl, getMultiplayerCharacterImageUrl } from '../storages/serverStorage';
 import { getCurrentLocationId } from '../utilities/locationLogic';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import type { viewMode } from '../components/views/types';
-
-const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 interface UseViewAssetsOptions {
     viewMode: viewMode;
@@ -74,8 +72,8 @@ function resolveLocationBackgroundUrl(
     const history = getLocalMessageHistory(interactionData, localProtagonist, ['chat', 'whisper']);
     for (let i = history.length - 1; i >= 0; i--) {
         const msg = history[i];
-        if (msg.character.id === protagonistId && 'textContent' in msg) {
-            lastUserText = msg.textContent;
+        if (msg.character?.id === protagonistId && 'textContent' in msg) {
+            lastUserText = (msg as any).textContent;
             break;
         }
     }
@@ -152,6 +150,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
         }
 
         for (const msg of chatMessages) {
+            if (!msg.character) continue;
             const url = resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression, isMultiplayerChat);
             cache.set(`character:${msg.character.id}`, url);
             cache.set(msg.id, url);
@@ -207,7 +206,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
             if (!bestId || bestOverlap <= 0) return;
 
-            const msg = chatMessages.find(m => m.id === bestId);
+            const msg = chatMessages.find(m => m.id === bestId) as HistoryMessage | undefined;
             if (!msg?.character) return;
 
             for (const el of document.querySelectorAll('.message-row')) el.classList.remove('is-active');
@@ -216,7 +215,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             
             lastViewedMessageIdRef.current = bestId;
 
-            if (msg.character.id === currentCharacter?.id || msg.character.id === AMBIENT_NARRATOR_ID) {
+            if (msg.character.id === currentCharacter?.id || msg.messageType === 'narration') {
                 setCenterAvatar(null);
             } else {
                 setCenterAvatar(msg.character);
@@ -228,8 +227,8 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
             if (!centerAvatarRef.current) {
                 for (let i = chatMessages.length - 1; i >= 0; i--) {
-                    const m = chatMessages[i];
-                    if (m.character && m.character.id !== currentCharacter?.id && m.character.id !== AMBIENT_NARRATOR_ID) {
+                    const m = chatMessages[i] as HistoryMessage;
+                    if (m.character && m.character.id !== currentCharacter?.id && m.messageType !== 'narration') {
                         setCenterAvatar(m.character);
                         break;
                     }

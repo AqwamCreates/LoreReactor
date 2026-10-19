@@ -1015,7 +1015,7 @@ function App() {
     ]);
 
     const baseViewProps: ViewModeProps = {
-        displayMessages: committedMessages as ChatMessage[],
+        displayMessages: committedMessages as TextMessage[],
         portraitUrlCache: viewAssets.portraitUrlCache, 
         displayNameCache,
         streamingText, 

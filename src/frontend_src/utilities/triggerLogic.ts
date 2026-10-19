@@ -94,8 +94,8 @@ export function filterArrayBasedOnTarget(
   const matchesTarget: Record<Exclude<regularExpressionTarget, 'everyone' | 'listener'>, (id: string) => boolean> = {
     'self': (id) => id === selectedCharacterId,
     'protagonist': (id) => protagonistIdSet.has(id),
-    'non-protagonist': (id) => !protagonistIdSet.has(id) && id !== '___ambient_narrator___',
-    'narrator': (id) => id === '___ambient_narrator___',
+    'non-protagonist': (id) => !protagonistIdSet.has(id),
+    'narrator': () => false, // Narrator messages are filtered out by the caller before reaching this logic
   };
   const predicate = matchesTarget[targetType];
   if (!predicate) return { characterIdArray: [], textContentArray: [] };
@@ -163,8 +163,8 @@ export function getFilteredIndices(
   const matchesTarget: Record<Exclude<regularExpressionTarget, 'everyone' | 'listener'>, (id: string) => boolean> = {
     self: (id) => id === selectedCharacterId,
     protagonist: (id) => protagonistIdSet.has(id),
-    'non-protagonist': (id) => !protagonistIdSet.has(id) && id !== '___ambient_narrator___',
-    narrator: (id) => id === '___ambient_narrator___',
+    'non-protagonist': (id) => !protagonistIdSet.has(id),
+    narrator: () => false, // Narrator messages are filtered out by the caller before reaching this logic
   };
   const predicate = matchesTarget[targetType as Exclude<regularExpressionTarget, 'everyone' | 'listener'>];
   if (!predicate) return [];

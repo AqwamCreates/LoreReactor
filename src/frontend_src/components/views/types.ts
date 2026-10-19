@@ -1,12 +1,12 @@
 // src/frontend_src/components/views/types.ts
 import type React from 'react';
-import type { ChatMessage, Character } from '../../types';
+import type { TextMessage, Character, NarrationMessage } from '../../types';
 import type { DisplayNameCache } from '../../utilities/immersionLogic';
 
 export type viewMode = 'ladder' | 'cinematic' | 'visual novel';
 
 export interface ViewModeProps {
-    displayMessages: ChatMessage[];
+    displayMessages: (TextMessage | NarrationMessage)[];
     portraitUrlCache: Map<string, string | null>; // ✅ FIXED: Allow null values
     displayNameCache: DisplayNameCache | null; // ✅ FIXED: Allow null/any
     streamingText: string | null; 

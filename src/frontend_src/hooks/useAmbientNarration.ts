@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useAmbientNarration.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, ChatMessage, PromptBlock } from '../types';
-import { createChatMessage, addMessageToInteractionData } from '../utilities/interactionDataLogic';
+import type { Character, InteractionData, ChatMessage, NarrationMessage, PromptBlock, HistoryMessage, TextMessage } from '../types';
+import { addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { useSessionStore } from './useSessionStore';
@@ -9,7 +9,6 @@ import { getCoLocatedParticipants, getCurrentLocationId } from '../utilities/loc
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
-import { AMBIENT_NARRATOR } from '../ambientNarration/narrator';
 
 const engine = getLanguageModelEngine();
 
@@ -35,25 +34,28 @@ export function useAmbientNarration(
         const coLocatedCount = protagonistStub ? getCoLocatedParticipants(data, protagonistStub).length : 0;
         const messageWindow = coLocatedCount + 1;
 
-        const allChatMessages = getGlobalMessageHistory(data, ['chat']) as ChatMessage[]
+        // ✅ Fetch both chat and narration messages to properly filter and avoid repeating recent narrations
+        const allRelevantMessages = getGlobalMessageHistory(data, ['chat', 'narration']) as HistoryMessage[];
 
         const filterFlags = getUniversalMessageFilterFlags(
-            allChatMessages,
+            allRelevantMessages as TextMessage[],
             promptBlocks,
             data.contexts || [],
             data.locations || [],
         );
-        const visibleChatMessages = allChatMessages.filter((_, i) => !filterFlags[i]);
+        
+        const visibleMessages = allRelevantMessages.filter((_, i) => !filterFlags[i]);
 
-        const recentMessages = visibleChatMessages
-            .filter(m => m.character.id !== '___ambient_narrator___')
-            .slice(-messageWindow);
+        // ✅ Filter by messageType instead of magic string character ID
+        const recentChatMessages = visibleMessages
+            .filter(m => m.messageType === 'chat')
+            .slice(-messageWindow) as ChatMessage[];
 
-        const recentText = recentMessages.map(m => m.textContent).join('\n');
+        const recentText = recentChatMessages.map(m => m.textContent).join('\n');
         const { tags, dominantMood } = detectContext(recentText);
 
-        const recentAmbient = visibleChatMessages
-            .filter(m => m.character.id === '___ambient_narrator___')
+        const recentAmbient = visibleMessages
+            .filter(m => m.messageType === 'narration')
             .slice(-5)
             .map(m => m.textContent);
 
@@ -102,7 +104,8 @@ export function useAmbientNarration(
 
         if (!selected) selected = composeFallbackSentence(tags, dominantMood, recentAmbient);
 
-        setStreamingState(AMBIENT_NARRATOR, '');
+        // ✅ Pass null for character since this is a system-level narration event
+        setStreamingState(null, '');
         streamingTextRef.current = '';
 
         for (let i = 0; i < selected.length; i++) {
@@ -113,12 +116,24 @@ export function useAmbientNarration(
             await new Promise(r => setTimeout(r, 20));
         }
 
-        const chatMessage = createChatMessage(data, AMBIENT_NARRATOR, selected);
+        // ✅ Create a standalone NarrationMessage instead of a ChatMessage with a dummy character
+        const narrationMessage: NarrationMessage = {
+            id: `nar-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+            messageType: 'narration',
+            textContent: selected,
+            // Note: BaseMessage strictly requires `character: Character` in your current types.ts. 
+            // We cast null to satisfy the compiler without injecting a fake character object at runtime.
+            character: null as unknown as Character, 
+            firstCreatedTimestamp: Date.now(),
+            lastUpdatedTimestamp: Date.now(),
+            characterClothingWearingStatuses: {},
+            characterLockedLocations: {},
+        };
         
         // ✅ Anchor to the local protagonist's actual location using the stub
         const currentLocId = protagonistStub ? getCurrentLocationId(data, protagonistStub) : 'global';
         
-        return addMessageToInteractionData(data, chatMessage, currentLocId || 'global');
+        return addMessageToInteractionData(data, narrationMessage, currentLocId || 'global');
     }, [setStreamingState, setStreamingText, streamingTextRef]);
 
     return { generateAmbientNarration };

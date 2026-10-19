@@ -527,7 +527,7 @@ export interface ToolMessage extends BaseMessage { // Acts like a scratch pad fo
   frontCameraImage?: string;
 }
 
-export interface NarratorMessage extends BaseMessage { // Giving a character is optional. By default, it uses the default narrator.
+export interface NarrationMessage extends BaseMessage { // Giving a character is optional. By default, it uses the default narrator.
   messageType: 'narration'
   textContent: string;
 }
@@ -536,7 +536,7 @@ export type messageType = 'interaction' | 'chat' | 'whisper' | 'tool' | 'narrati
 
 export type TextMessage = ChatMessage | WhisperMessage
 
-export type HistoryMessage = InteractionMessage | TextMessage | ToolMessage;
+export type HistoryMessage = InteractionMessage | TextMessage | ToolMessage | NarrationMessage;
 
 export interface RawBaseMessage {
   characterId: string;
@@ -585,7 +585,12 @@ export interface RawWhisperMessage extends RawBaseMessage {
   kvCacheInteractionTextContentSummaries: Record<string, string>;
 }
 
-export type RawHistoryMessage = RawInteractionMessage | RawChatMessage | RawWhisperMessage;
+export interface RawNarrationMessage extends RawBaseMessage { // Giving a character is optional. By default, it uses the default narrator.
+  messageType: 'narration'
+  textContent: string;
+}
+
+export type RawHistoryMessage = RawInteractionMessage | RawChatMessage | RawWhisperMessage | RawNarrationMessage;
 export interface Account extends ObjectData {
 
   username: string

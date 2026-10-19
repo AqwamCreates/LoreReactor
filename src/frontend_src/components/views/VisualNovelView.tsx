@@ -1,7 +1,7 @@
 // src/frontend_src/components/views/VisualNovelView.tsx
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { ViewModeProps } from './types';
-import type { Character, HistoryMessage, textType } from '../../types';
+import type { Character, HistoryMessage, textType, TextMessage, NarrationMessage } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
@@ -18,8 +18,6 @@ import {
     TARGET_OPTIONS,
     type CategoryConversion,
 } from '../../utilities/textDisplayReformatter';
-
-const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {
@@ -102,21 +100,26 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [chatMessages.length, focusedMessageId, setFocusedMessageId]);
 
     const lastMsg = displayMessages[displayMessages.length - 1];
-    const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character.id === streamingCharacter.id;
-
-    const lastSpeaker = useMemo(() => {
-        return chatMessages.length > 0 ? chatMessages[chatMessages.length - 1] : null;
-    }, [chatMessages]);
+    const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.messageType !== 'narration' && lastMsg?.character?.id === streamingCharacter.id;
 
     const displayedMessage = useMemo(() => {
         if (viewIndex !== null && viewIndex >= 0 && viewIndex < chatMessages.length) {
             return chatMessages[viewIndex];
         }
-        return lastSpeaker;
-    }, [viewIndex, chatMessages, lastSpeaker]);
+        // ✅ Fallback to the actual last message (which could be a NarrationMessage) instead of just the last chat speaker
+        return lastMsg; 
+    }, [viewIndex, chatMessages, lastMsg]);
 
-    const displayedTextContent = useCompiledMessageText(displayedMessage);
-    const streamingCompiledText = useCompiledMessageText(isStreamingInList ? lastMsg : null);
+    // ✅ Unconditionally call the hook to satisfy React's Rules of Hooks.
+    // Pass null when it's a narration message to satisfy TypeScript's strict parameter check.
+    const isNarration = displayedMessage?.messageType === 'narration';
+    const compiledText = useCompiledMessageText(isNarration ? null : (displayedMessage as TextMessage | undefined));
+    
+    // Bypass compilation for narration and use the raw text directly
+    const displayedTextContent = isNarration && displayedMessage ? (displayedMessage as NarrationMessage).textContent : compiledText;
+
+    // isStreamingInList already guarantees lastMsg is not a narration message, so the cast is safe.
+    const streamingCompiledText = useCompiledMessageText(isStreamingInList ? (lastMsg as TextMessage) : null);
 
     // ✅ Use the centralized compiled string directly from props
     const activeStreamingText: string | null = useMemo(() => {
@@ -130,26 +133,32 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return interactionData?.participants || [];
     }, [interactionData]);
 
+    // ✅ Check messageType instead of magic string ID. Also catches streaming ambient narration.
+    const isAmbientSpeaker = displayedMessage?.messageType === 'narration' || (isLoading && !streamingCharacter && viewIndex === null);
+
     const activeSpeaker = useMemo(() => {
+        if (isAmbientSpeaker) return null;
+        // ✅ Removed redundant !== 'narration' checks. 
+        // Because of the early return above, TypeScript correctly narrows these to TextMessage.
         if (viewIndex !== null && displayedMessage) return displayedMessage.character;
         if (isLoading && streamingCharacter) return streamingCharacter;
         if (isStreamingInList && lastMsg?.character) return lastMsg.character;
         if (displayedMessage?.character) return displayedMessage.character;
         if (centerAvatar) return centerAvatar;
-        return visibleCharacters.find((c: Character) => c.id !== AMBIENT_NARRATOR_ID && c.id !== localProtagonistId)
+        return visibleCharacters.find((c: Character) => c.id !== localProtagonistId)
             || visibleCharacters[0]
             || null;
-    }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, localProtagonistId]);
+    }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, localProtagonistId, isAmbientSpeaker]);
 
     const activeSpeakerDisplayName = useMemo(() => {
-        if (!activeSpeaker || activeSpeaker.id === AMBIENT_NARRATOR_ID) return 'System';
+        if (isAmbientSpeaker) return 'System';
+        if (!activeSpeaker) return 'System';
         const msgIdx = displayedMessage ? chatMessages.findIndex(m => m.id === displayedMessage.id) : chatMessages.length - 1;
         return resolveDelayedDisplayNameFromCache(displayNameCache, msgIdx, activeSpeaker.id);
-    }, [displayNameCache, displayedMessage, chatMessages, activeSpeaker]);
+    }, [displayNameCache, displayedMessage, chatMessages, activeSpeaker, isAmbientSpeaker]);
 
-    const isWaitingForGeneration = isLoading && !activeStreamingText && viewIndex === null;
+    const isWaitingForGeneration = isLoading && !activeStreamingText && viewIndex === null && !isAmbientSpeaker;
     const isEditingLastSpeaker = editingId !== null && displayedMessage?.id === editingId;
-    const isAmbientSpeaker = displayedMessage?.character.id === AMBIENT_NARRATOR_ID;
 
     const hasParentBranch = !!interactionData?.parentInteractionDataId;
 
@@ -188,8 +197,9 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [setFocusedMessageId]);
 
     const spriteCharacterIds = useMemo(() => {
+        // ✅ Removed AMBIENT_NARRATOR_ID check as the narrator is no longer a participant
         return visibleCharacters
-            .filter((c: Character) => c.id !== AMBIENT_NARRATOR_ID && c.id !== localProtagonistId)
+            .filter((c: Character) => c.id !== localProtagonistId)
             .map((c: Character) => c.id);
     }, [visibleCharacters, localProtagonistId]);
 
@@ -333,7 +343,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return Object.values(interactionData.interactionHistories as Record<string, HistoryMessage[]>).some(arr => arr && arr.length > 0);
     }, [interactionData]);
 
-    if (hasMessages && chatMessages.length === 0) {
+    if (hasMessages && chatMessages.length === 0 && !displayedMessage) {
         return <div className="vn-stage-container" style={{ background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' }} />;
     }
 
@@ -466,19 +476,25 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                     <>
                                         <button type="button" className="vn-toolbar-btn" onClick={() => onCopyText(displayedTextContent || '')} title="Copy Text">📋</button>
                                         
-                                        {onPlayVoice && (
-                                            <button type="button" className="vn-toolbar-btn" onClick={() => onPlayVoice(displayedMessage.textContent, displayedMessage.character)} title="Narrate with character voice">🔊</button>
+                                        {onPlayVoice && !isAmbientSpeaker && (
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => onPlayVoice(displayedMessage.textContent, displayedMessage.character as Character)} title="Narrate with character voice">🔊</button>
                                         )}
 
-                                        <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Continue Generation">▶</button>
-                                        <button 
-                                            type="button" 
-                                            className="vn-toolbar-btn" 
-                                            onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData?.protagonistIds || [])} 
-                                            title="Regenerate"
-                                        >
-                                            ↻
-                                        </button>
+                                        {!isAmbientSpeaker && (
+                                            <button type="button" className="vn-toolbar-btn" onClick={() => onResumeGeneration(displayedMessage.id)} title="Continue Generation">▶</button>
+                                        )}
+                                        
+                                        {!isAmbientSpeaker && (
+                                            <button 
+                                                type="button" 
+                                                className="vn-toolbar-btn" 
+                                                onClick={() => handleRegenerateFromMessageWithRollback(displayedMessage.id, interactionData?.protagonistIds || [])} 
+                                                title="Regenerate"
+                                            >
+                                                ↻
+                                            </button>
+                                        )}
+                                        
                                         <button
                                             type="button"
                                             className="vn-toolbar-btn"

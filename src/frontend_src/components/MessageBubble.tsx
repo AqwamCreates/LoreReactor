@@ -1,6 +1,6 @@
 // src/frontend_src/components/MessageBubble.tsx
 import React from 'react';
-import type { Character, TextMessage, textType } from '../types';
+import type { Character, NarrationMessage, TextMessage, textType } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useSessionStore } from '../hooks/useSessionStore';
@@ -17,7 +17,7 @@ import {
 } from '../utilities/textDisplayReformatter';
 
 interface MessageBubbleProps {
-    message: TextMessage;
+    message: (TextMessage | NarrationMessage);
     index: number;
     viewMode: 'ladder' | 'cinematic';
     protagonistIds: string[];
@@ -54,8 +54,6 @@ interface MessageBubbleProps {
     canDelete: boolean;
 }
 
-const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
-
 export const MessageBubble = React.memo(function MessageBubble({
     message, index, viewMode, protagonistIds, localProtagonistId,
     editingId, editDraft, massDeleteId, isMassActive, massStartIndex,
@@ -87,7 +85,14 @@ export const MessageBubble = React.memo(function MessageBubble({
     const branchChat = useSessionStore(s => s.branchChat);
     const cloneChat = useSessionStore(s => s.cloneChat);
 
-    const displayedTextContent = useCompiledMessageText(message);
+    const isNarration = message.messageType === 'narration';
+
+    // ✅ Call the hook unconditionally to satisfy React Rules of Hooks.
+    // Pass null if it's a narration message to satisfy TypeScript.
+    const compiledText = useCompiledMessageText(isNarration ? null : (message as TextMessage));
+
+    // Use the raw text for narration, otherwise use the compiled text.
+    const displayedTextContent = isNarration ? message.textContent : compiledText;
 
     const [conversions, setConversions] = React.useState<CategoryConversion[]>([]);
     const [isRawEditing, setIsRawEditing] = React.useState(false);
@@ -96,11 +101,10 @@ export const MessageBubble = React.memo(function MessageBubble({
     const editTokenDebounceRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const prevIsEditingRef = React.useRef(false);
 
-    const isAmbient = message.character.id === AMBIENT_NARRATOR_ID;
-    const isLocalProtagonist = localProtagonistId ? message.character.id === localProtagonistId : false;
+    const isLocalProtagonist = localProtagonistId && message.character ? message.character.id === localProtagonistId : false;
     const isEditing = editingId === message.id;
     const inDelRange = isMassActive && massStartIndex !== null && massStartIndex !== -1 && index >= massStartIndex;
-    const showAvatar = viewMode === 'ladder' && !isLocalProtagonist && !isAmbient;
+    const showAvatar = viewMode === 'ladder' && !isLocalProtagonist && !isNarration;
     const isWhisper = message.messageType === 'whisper';
 
     React.useEffect(() => {
@@ -219,7 +223,7 @@ export const MessageBubble = React.memo(function MessageBubble({
         'message-bubble',
         viewMode === 'cinematic' ? 'cinematic-bubble' : '',
         isLocalProtagonist ? 'bubble-user' : 'bubble-ai',
-        isAmbient ? 'bubble-ambient' : '',
+        isNarration ? 'bubble-ambient' : '',
         isWhisper ? 'bubble-whisper' : '',
         isEditing ? 'bubble-editing' : '',
         inDelRange ? 'bubble-marked-for-delete' : '',
@@ -239,7 +243,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                         src={portraitUrl}
                                         alt={displayName}
                                         className="character-avatar"
-                                        onClick={e => onAvatarClick(e, message.id, message.character)}
+                                        onClick={e => onAvatarClick(e, message.id, message.character as Character)}
                                         onError={e => { e.currentTarget.style.display = 'none'; }}
                                         style={{ cursor: 'pointer' }}
                                     />
@@ -247,7 +251,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                 : (
                                     <div
                                         className="character-avatar placeholder"
-                                        onClick={e => onAvatarClick(e, message.id, message.character)}
+                                        onClick={e => onAvatarClick(e, message.id, message.character as Character)}
                                         style={{ cursor: 'pointer' }}
                                     />
                                 )}
@@ -270,8 +274,8 @@ export const MessageBubble = React.memo(function MessageBubble({
                     }}
                 >
                     {viewMode === 'cinematic' && (
-                        <div className={`cinematic-bubble-header ${isAmbient ? 'cinematic-bubble-header-ambient' : ''}`}>
-                            <span>{isAmbient ? '✦' : displayName}</span>
+                        <div className={`cinematic-bubble-header ${isNarration ? 'cinematic-bubble-header-ambient' : ''}`}>
+                            <span>{isNarration ? '✦' : displayName}</span>
                         </div>
                     )}
 
@@ -391,7 +395,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                         <>
                             <MemoizedMessageText text={displayedTextContent} />
 
-                            {message.files && message.files.length > 0 && (
+                            {'files' in message && message.files && message.files.length > 0 && (
                                 <div className="message-attachment-indicator" title={`${message.files.length} attached file${message.files.length !== 1 ? 's' : ''}`}>
                                     📎 {message.files.length}
                                 </div>
@@ -402,7 +406,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                     <span className="toolbar-lock">🔒 Locked</span>
                                 ) : !isMassActive ? (
                                     <>
-                                        {!isLocalProtagonist && (
+                                        {!isLocalProtagonist && !isNarration && (
                                             <button
                                                 type="button"
                                                 onClick={() => onResumeGeneration(message.id)}
@@ -424,14 +428,16 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             📋
                                         </button>
 
-                                        <button
-                                            type="button"
-                                            onClick={() => onPlayVoice(message.textContent, message.character)}
-                                            className="toolbar-button"
-                                            title="Narrate with character voice"
-                                        >
-                                            🔊
-                                        </button>
+                                        {!isNarration && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onPlayVoice(message.textContent, message.character as Character)}
+                                                className="toolbar-button"
+                                                title="Narrate with character voice"
+                                            >
+                                                🔊
+                                            </button>
+                                        )}
 
                                         <button
                                             type="button"
@@ -444,7 +450,7 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             ✎
                                         </button>
 
-                                        {!isLocalProtagonist && (
+                                        {!isLocalProtagonist && !isNarration && (
                                             <button
                                                 type="button"
                                                 onClick={() => onRegenerateFromMessage(message.id, protagonistIds)}

@@ -1,9 +1,7 @@
 // src/frontend_src/hooks/useVisualNovelSpriteStates.ts
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import type { ChatMessage } from '../types';
+import type { TextMessage } from '../types';
 import { useSessionStore } from './useSessionStore';
-
-const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 export type BreathingPattern = 'calm' | 'fast' | 'heavy' | 'subtle' | 'tremble' | 'none';
 
@@ -26,7 +24,7 @@ interface VisualNovelMovementEntry {
 }
 
 interface UseVisualNovelSpriteStatesOptions {
-    chatMessages: ChatMessage[];
+    chatMessages: TextMessage[];
     visibleCharacterIds: string[];
     protagonistId: string | undefined;
     viewedMessageIndex: number | null;
@@ -96,7 +94,8 @@ function parseMovementsFromClause(clause: string, speakerId: string, participant
     const movements: ParsedMovement[] = [];
     const lowerClause = clause.toLowerCase();
 
-    const mentionedChars = participantIds.filter(id => id !== speakerId && id !== AMBIENT_NARRATOR_ID);
+    // ✅ Removed AMBIENT_NARRATOR_ID check as the narrator is no longer a participant character
+    const mentionedChars = participantIds.filter(id => id !== speakerId);
     const firstMentioned = mentionedChars.length > 0 ? mentionedChars[0] : undefined;
 
     // --- Dynamic Breathing & Recovery Detection ---
@@ -629,10 +628,12 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
 
         for (let i = 0; i < chatMessages.length; i++) {
             const message = chatMessages[i];
-            if (message.messageType !== 'chat') continue;
+            
+            // ✅ Safely ignore non-chat/whisper messages and ensure character exists
+            if (message.messageType !== 'chat' && message.messageType !== 'whisper') continue;
+            if (!message.character) continue;
 
             const speakerId = message.character.id;
-            if (speakerId === AMBIENT_NARRATOR_ID) continue;
             if (!states.has(speakerId)) continue;
 
             const movements = parseMovementFromText(message.textContent, speakerId, visibleCharacterIds);
@@ -679,7 +680,7 @@ export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOp
         };
     }, [chatMessages, visibleCharacterIds, isReady]);
 
-    const [rollbackOverride, setRollbackOverride] = useState<{ index: number; chatRef: ChatMessage[] } | null>(null);
+    const [rollbackOverride, setRollbackOverride] = useState<{ index: number; chatRef: TextMessage[] } | null>(null);
 
     const rollbackToMessage = useCallback((messageIndex: number) => {
         setRollbackOverride({ index: messageIndex, chatRef: chatMessages });

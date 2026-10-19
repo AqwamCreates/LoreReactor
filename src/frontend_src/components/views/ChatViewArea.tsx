@@ -1,7 +1,7 @@
 // src/frontend_src/components/views/ChatViewArea.tsx
 import { useMemo } from 'react';
 import type { ViewModeProps, viewMode } from './types';
-import type { ChatMessage, TextMessage, WhisperMessage } from '../../types';
+import type { ChatMessage, NarrationMessage, TextMessage, WhisperMessage } from '../../types';
 import { useSessionStore } from '../../hooks/useSessionStore';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 import { LadderView } from './LadderView';
@@ -11,7 +11,7 @@ import { VisualNovelView } from './VisualNovelView';
 interface ChatViewAreaProps {
     viewMode: viewMode;
     baseProps: ViewModeProps;
-    safeMessages: TextMessage[];
+    safeMessages: (TextMessage | NarrationMessage)[];
     displayNameCache: any;
     isMultiplayerChat: boolean;
 }
