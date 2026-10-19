@@ -85,7 +85,7 @@ function hasModelSummary(msg: HistoryMessage, modelId: string): boolean {
 export async function generateCharacterMemory(
     interactionData: InteractionData,
     character: Character,
-    promptBlocks: PromptBlock[], // ✅ FIXED: Added promptBlocks parameter
+    promptBlocks: PromptBlock[],
     modelId: string,
     maxTokens = 512,
 ): Promise<string | null> {

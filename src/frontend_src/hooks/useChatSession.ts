@@ -655,11 +655,11 @@ export function useChatSession(options: UseChatSessionOptions) {
         const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
 
         try {
-            const activeBlocks = getActivePromptBlocks(currentData);
+            const promptBlocks = getActivePromptBlocks(currentData);
             await chatEngine.runTurn(
                 currentData,
                 abortControllerRef.current || new AbortController(),
-                activeBlocks,
+                promptBlocks,
                 undefined,
                 prefillText
             );
@@ -871,10 +871,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            const activeBlocks = getActivePromptBlocks(currentInteractionData);
+            const promptBlocks = getActivePromptBlocks(currentInteractionData);
             
             const result = await chatEngine.handleServerResponse(
-                currentInteractionData, char, activeBlocks, ctrl.signal,
+                currentInteractionData, char, promptBlocks, ctrl.signal,
                 throttledSetStreamingTextWithBroadcast, undefined, existingText,
                 undefined, voiceTracker
             );
