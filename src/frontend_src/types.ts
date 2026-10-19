@@ -304,6 +304,8 @@ export interface TextCharacterInjection extends ObjectData {
 
 }
 
+export type memorySearchSpace = 'co-located protagonists' | 'non-co-located protagonists' | 'co-located non-protagonists' | 'non-co-located non-protagonists' 
+
 export interface Character extends ObjectData {
   aliases?: string[],
   images?: Record<string, string>;
@@ -338,6 +340,7 @@ export interface Character extends ObjectData {
   useEmbeddingModelForStarterPrompts?: boolean,
   useEmbeddingModelForKnowledgePrompts?: boolean,
   useEmbeddingModelForMemories?: boolean,
+  memorySearchSpaces?: memorySearchSpace[],
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;
@@ -384,6 +387,7 @@ export interface RawCharacter extends RawData {
   useEmbeddingModelForStarterPrompts?: boolean,
   useEmbeddingModelForKnowledgePrompts?: boolean,
   useEmbeddingModelForMemories?: boolean,
+  memorySearchSpaces?: memorySearchSpace[],
   doNotInjectCharacterImage?: boolean;
   numberOfMessagesToDisableThinkPrompt: number;
   numberOfMessagesToDisableMetaThinkInstructions: number;

@@ -33,7 +33,15 @@ const noRepeatInstructions = "If I want to repeat myself or others, I will talk 
 const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts.";
 const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.";
 
-const toolMessageMode = `I am currently in tool message mode, where I will only interact with the environment and only talk to myself.`;
+const toolUsageInstructions = `
+    I must read answers from the list of available tools to get accurate and precise response when the situation requires it.
+    I will also always give the tool inputs as {{char}} in-character. I will also assume the tools that are not in my list are currently disabled.
+    If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality.
+    I can call the tool like ${toolCallStartString}tool()${toolCallEndString} to get direct result or access the help page.
+    The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. 
+    Tool invocation markers are only visible to me. I also must continue to generate a response upon performing tool calls or receiving tool results.`
+
+const toolMessageModeInstructions = `I am currently in tool message mode, where I will only interact with the environment and only talk to myself.`;
 
 const DEFAULT_MAX_RECURSION_DEPTH = 3;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
@@ -1880,14 +1888,15 @@ function buildToolInstructionText(ctx: PromptBuildContext): string {
     const enabledToolNames = (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 
     const firstTool = enabledToolNames[0] || "tool"; // Cannot return an empty string for the instruction text due to the language models' tendencies on calling disabled tools.
-    lines.push(`I must read answers from the list of available tools to get accurate and precise response when the situation requires it. I will also assume the tools that are not in my list are currently disabled. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. I can call the tool like ${toolCallStartString}${firstTool}()${toolCallEndString} to get direct result or access the help page. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools in sequence if I need intermediate results. Tool invocation markers are only visible to me. I will also continue to generate a response upon performing tool calls or receiving tool results. Available tools: ${enabledToolNames.join(', ')}.`);
+    const toolListString = enabledToolNames.join(', ')
+    lines.push(`${toolUsageInstructions} Available tools: ${toolListString}.`);
     lines.push(`When I use ${toolCallStartString}tool()${toolCallEndString} as my first word, I will activate tool message mode where the whole message text are only visible to me.`)
 
     return lines.join('\n');
 }
 
 function buildToolMessageInstructionText(): string {
-    return toolMessageMode;
+    return toolMessageModeInstructions;
 }
 
 function buildFatigueText(
