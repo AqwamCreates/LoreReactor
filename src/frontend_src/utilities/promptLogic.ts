@@ -2375,7 +2375,7 @@ function buildParagraphCountInstructionsText(
 
   const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
 
-  return `I understand that I can create a minimum of 1 paragraph and a maximum of {{currentChatStamina}} ${paragraphText}. If I exceed this, I will naturally stop my paragraphs as soon as possible.`;
+  return `I understand that I can create a minimum of 1 paragraph and a maximum of {{currentChatStamina}} ${paragraphText}. If I exceed this, I will immediately and naturally stop creating new paragraphs.`;
 }
 
 function buildAntiRepetitionNudgeText(ctx: PromptBuildContext): string {
