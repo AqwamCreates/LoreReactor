@@ -458,8 +458,8 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
     const history = getLocalMessageHistory(interactionData, character, ['chat', 'whisper'], coLocated.length);
 
     let wasAddressed = false;
-    for (let i = history.length; i < history.length; i++) {
-        if (i < 0) continue;
+    // ✅ FIX: Corrected loop to iterate backwards through history
+    for (let i = history.length - 1; i >= 0; i--) {
         const msg = history[i];
         if (msg.messageType === 'chat' && msg.character.id !== character.id) {
             if ((msg as ChatMessage).textContent.toLowerCase().includes(character.name.toLowerCase())) {
