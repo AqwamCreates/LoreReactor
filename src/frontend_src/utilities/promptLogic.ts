@@ -7,7 +7,7 @@ import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getEffectiveTools, getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, getEffectiveMessagesToDisableDialoguePrompt, getEffectiveMessagesToDisableMetaThinkInstructions, getEffectiveMessagesToDisableThinkPrompt, getEffectiveMessagesToDisableStarterPrompt, getEffectiveUseFrontCameraImage } from './characterLogic';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
-import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId, } from './locationLogic';
+import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/TextMessageSummarizationEngine';
@@ -45,16 +45,17 @@ const toolMessageModeInstructions = `I am currently in tool message mode, where 
 const DEFAULT_MAX_RECURSION_DEPTH = 3;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 const RECENT_INTERACTION_WINDOW = 20;
-const TEMPLATE_REGEX = /\{\{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?\}\}/g;
-const TOOLS_PLACEHOLDER_REGEX = /\{\{tools(?:\[(-?\d+)?(?::(-?\d+))?\])?\}\}/g;
+
+const TEMPLATE_REGEX = /\{\{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?\}\}/g;
+const TOOLS_PLACEHOLDER_REGEX = /\{\{tools(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?\}\}/g;
+
 const tokenEngine = getLanguageModelEngine();
 
 type CombinationCache = Record<string, Record<string, { characterIdArray: string[]; textContentArray: string[] }>>;
 
-// ─── Resolved Image Type ───────────────────────────────────────────
 export interface ResolvedImage {
-  data: string; // Pure base64 string (no data:image/... prefix)
-  id: number;   // The exact ID referenced in the text instructions
+  data: string;
+  id: number;
 }
 
 interface TrackedImage {
@@ -65,22 +66,23 @@ interface TrackedImage {
   base64Data: string;
 }
 
-// ─── Image Fetch Helper (Correctly handles JSON-wrapped server images) ──
 async function fetchImageAsBase64(url: string): Promise<string | null> {
   try {
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) return null;
+
     const data = await response.json();
+
     if (data && typeof data.base64 === 'string') {
       return data.base64.includes(',') ? data.base64.split(',')[1] : data.base64;
     }
+
     return null;
   } catch {
     return null;
   }
 }
 
-// ─── Global Strings Map for Template Resolution ────────────────────
 const GLOBAL_STRINGS: Record<string, string> = {
   topicExpansionInstructions,
   beingIgnoredInstructions,
@@ -100,33 +102,43 @@ const GLOBAL_STRINGS: Record<string, string> = {
   toolResultEndString,
 };
 
-function formatToolsPlaceholder(tools: string[], startStr?: string, endStr?: string): string {
-  const arr = tools ?? [];
+function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string): T[] {
+  const safeArr = arr ?? [];
 
-  if (startStr === undefined && endStr === undefined) {
-    return arr.join(', ');
-  }
+  if (safeArr.length === 0) return [];
 
   let start = startStr !== undefined ? parseInt(startStr, 10) : 0;
-  let end = endStr !== undefined ? parseInt(endStr, 10) : arr.length;
+  let end = endStr !== undefined ? parseInt(endStr, 10) : safeArr.length;
 
-  if (arr.length === 0) return '';
-
-  if (start < 0) start = arr.length + start;
-  if (end < 0) end = arr.length + end;
+  if (start < 0) start = safeArr.length + start;
+  if (end < 0) end = safeArr.length + end;
 
   if (start < 0) start = 0;
-  if (end > arr.length) end = arr.length;
-  if (start >= arr.length) return '';
+  if (end > safeArr.length) end = safeArr.length;
+  if (start >= safeArr.length) return [];
 
   if (start > end) {
-    return arr.slice(end, start).reverse().join(', ');
+    return safeArr.slice(end, start).reverse();
   }
 
-  return arr.slice(start, end).join(', ');
+  return safeArr.slice(start, end);
 }
 
-// ─── Template Engine ───────────────────────────────────────────────
+function formatToolsPlaceholder(
+  tools: string[],
+  startStr?: string,
+  endStr?: string,
+  wantLength = false
+): string {
+  const slice = getSlicedArray(tools ?? [], startStr, endStr);
+
+  if (wantLength) {
+    return String(slice.length);
+  }
+
+  return slice.join(', ');
+}
+
 export interface TemplateContext {
   characterParticipantTag: string;
   characterName: string;
@@ -203,10 +215,10 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   'Date': "{{systemBlockStart}}{{date}}{{systemBlockEnd}}",
   'Time': "{{systemBlockStart}}{{time}}{{systemBlockEnd}}",
   'Time Elapsed': "{{systemBlockStart}}{{timeElapsed}}{{systemBlockEnd}}",
-  'Starter Prompt': "{{systemBlockStart}}Start Of This Character's Starter Prompt.{{systemBlockEnd}}\n{{starterPrompt}}\n{{systemBlockStart}}End Of This Character's Starter Prompt.{{systemBlockEnd}}",
   'Tool Instructions': "{{systemBlockStart}}{{toolInstructions}}{{systemBlockEnd}}",
   'Tool Message Instructions': "{{systemBlockStart}}{{toolMessageInstructions}}{{systemBlockEnd}}",
   'Anti-Repetition Nudge': "{{systemBlockStart}}{{antiRepetitionNudge}}{{systemBlockEnd}}",
+  'Starter Prompt': "{{systemBlockStart}}Start Of This Character's Starter Prompt.{{systemBlockEnd}}\n{{starterPrompt}}\n{{systemBlockStart}}End Of This Character's Starter Prompt.{{systemBlockEnd}}",
   'Text Injection': "{{systemBlockStart}}{{textInjection}}{{systemBlockEnd}}\n{{characterTurnStart}}{{text}}"
 };
 
@@ -215,74 +227,116 @@ export function resolveTemplate(
   ctx: TemplateContext,
   delimiters: PromptDelimiters
 ): string {
-  return template.replace(TEMPLATE_REGEX, (_match, key, startStr, endStr) => {
-    if (key === 'char') return `${ctx.characterParticipantTag} (${ctx.characterName})`;
-    if (key === 'user') return ctx.protagonistDisplayString;
-    if (key === "user's") return ctx.protagonistPossessiveString;
+  return template.replace(
+    TEMPLATE_REGEX,
+    (_match, key, startStr, endStr, hashStr) => {
+      const wantLength = hashStr === '#';
 
-    if (key === 'tools') {
-      return formatToolsPlaceholder(ctx.tools ?? [], startStr, endStr);
-    }
+      const asLengthOrValue = (value: string): string => {
+        return wantLength ? String(value.length) : value;
+      };
 
-    if (key in ctx) {
-      const val = (ctx as any)[key];
-
-      if (Array.isArray(val)) {
-        if (startStr === undefined && endStr === undefined) return val.join('\n');
-
-        let start = startStr !== undefined ? parseInt(startStr, 10) : 0;
-        let end = endStr !== undefined ? parseInt(endStr, 10) : val.length;
-
-        if (val.length === 0) return '';
-
-        if (start < 0) start = val.length + start;
-        if (end < 0) end = val.length + end;
-
-        if (start < 0) start = 0;
-        if (end > val.length) end = val.length;
-        if (start >= val.length) return '';
-
-        if (start > end) return val.slice(end, start).reverse().join('\n');
-
-        return val.slice(start, end).join('\n');
+      if (key === 'char') {
+        return asLengthOrValue(`${ctx.characterParticipantTag} (${ctx.characterName})`);
       }
 
-      return String(val);
+      if (key === 'user') {
+        return asLengthOrValue(ctx.protagonistDisplayString);
+      }
+
+      if (key === "user's") {
+        return asLengthOrValue(ctx.protagonistPossessiveString);
+      }
+
+      if (key === 'tools') {
+        return formatToolsPlaceholder(
+          ctx.tools ?? [],
+          startStr,
+          endStr,
+          wantLength
+        );
+      }
+
+      if (key in ctx) {
+        const val = (ctx as any)[key];
+
+        if (Array.isArray(val)) {
+          const slice = getSlicedArray(val, startStr, endStr);
+
+          if (wantLength) {
+            return String(slice.length);
+          }
+
+          return slice.join('\n');
+        }
+
+        return asLengthOrValue(String(val));
+      }
+
+      if (key === 'systemBlockStart') {
+        return asLengthOrValue(delimiters.blockStart('system'));
+      }
+
+      if (key === 'systemBlockEnd') {
+        return asLengthOrValue(delimiters.blockEnd);
+      }
+
+      if (key === 'userTurnStart') {
+        return asLengthOrValue(delimiters.turnStart('user'));
+      }
+
+      if (key === 'userTurnEnd') {
+        return asLengthOrValue(delimiters.turnEnd);
+      }
+
+      if (key === 'assistantTurnStart') {
+        return asLengthOrValue(delimiters.turnStart('assistant'));
+      }
+
+      if (key === 'assistantTurnEnd') {
+        return asLengthOrValue(delimiters.turnEnd);
+      }
+
+      if (key === 'thinkStart') {
+        return asLengthOrValue(delimiters.thinkStart);
+      }
+
+      if (key === 'thinkEnd') {
+        return asLengthOrValue(delimiters.thinkEnd);
+      }
+
+      if (key in GLOBAL_STRINGS) {
+        return asLengthOrValue(GLOBAL_STRINGS[key]);
+      }
+
+      return '';
     }
-
-    if (key === 'systemBlockStart') return delimiters.blockStart('system');
-    if (key === 'systemBlockEnd') return delimiters.blockEnd;
-    if (key === 'userTurnStart') return delimiters.turnStart('user');
-    if (key === 'userTurnEnd') return delimiters.turnEnd;
-    if (key === 'assistantTurnStart') return delimiters.turnStart('assistant');
-    if (key === 'assistantTurnEnd') return delimiters.turnEnd;
-    if (key === 'thinkStart') return delimiters.thinkStart;
-    if (key === 'thinkEnd') return delimiters.thinkEnd;
-
-    if (key in GLOBAL_STRINGS) return GLOBAL_STRINGS[key];
-
-    return '';
-  });
+  );
 }
 
-// ─── Image Reference Type ──────────────────────────────────────────
 export interface EntityImageRef {
   entityId: string;
   filename: string;
 }
 
-// ─── Compile Trigger Regexes Helper ─────────────────────────────────
 function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | undefined): RegExp[] {
   if (!triggers || triggers.length === 0) return [];
+
   const regexes: RegExp[] = [];
+
   for (const t of triggers) {
     if (!t.trigger) continue;
-    try { regexes.push(new RegExp(t.trigger)); } catch { /* skip invalid */ }
+
+    try {
+      regexes.push(new RegExp(t.trigger));
+    } catch {
+      // skip invalid
+    }
   }
+
   return regexes;
 }
 
-// ─── Dynamic Prompt Delimiters ─────────────────────────────────────
 interface PromptDelimiters {
   blockStart: (role: string) => string;
   blockEnd: string;
@@ -329,7 +383,6 @@ export function deriveDelimiters(template?: ModelTemplate): PromptDelimiters {
   };
 }
 
-// ─── Prompt Build Context ─────────────────────────────────────────
 interface PromptBuildContext {
   interactionData: InteractionData;
   character: Character;
@@ -359,16 +412,18 @@ interface PromptBuildContext {
   delimiters: PromptDelimiters;
 }
 
-// ─── Small Helpers ────────────────────────────────────────────────
 function formatTimerDuration(ms: number): string {
   const totalSeconds = Math.floor(Math.abs(ms) / 1000);
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
+
   const parts: string[] = [];
+
   if (hours > 0) parts.push(`${hours}h`);
   if (minutes > 0) parts.push(`${minutes}m`);
   if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
+
   return parts.join(' ');
 }
 
@@ -392,10 +447,13 @@ export function getKnownDisplayName(
 ): string | null {
   const candidates = [targetChar.name, ...(targetChar.aliases ?? [])];
   const knownMap = knownNames[targetChar.id];
+
   if (!knownMap) return null;
+
   for (const candidate of candidates) {
     if (knownMap[candidate]) return candidate;
   }
+
   return null;
 }
 
@@ -415,6 +473,7 @@ function buildProtagonistDisplayString(
   knownNames: Record<string, Record<string, boolean>>,
 ): string {
   if (coLocatedProtagonists.length === 0) return '';
+
   const parts = coLocatedProtagonists.map(p => getFullDisplayName(p, participants, knownNames));
   return parts.join(' and ');
 }
@@ -425,20 +484,31 @@ function buildProtagonistPossessiveString(
   knownNames: Record<string, Record<string, boolean>>,
 ): string {
   if (coLocatedProtagonists.length === 0) return '';
+
   const parts = coLocatedProtagonists.map(p => {
     const tag = getParticipantTag(p, participants);
     const knownName = getKnownDisplayName(p, knownNames);
     const name = knownName ?? tag;
     return `${name}'s`;
   });
+
   return parts.join(' and ');
 }
 
 function replaceToolsPlaceholders(text: string, tools: string[]): string {
   if (!text) return text;
-  return text.replace(TOOLS_PLACEHOLDER_REGEX, (_m, startStr, endStr) => {
-    return formatToolsPlaceholder(tools, startStr, endStr);
-  });
+
+  return text.replace(
+    TOOLS_PLACEHOLDER_REGEX,
+    (_m, startStr, endStr, hashStr) => {
+      return formatToolsPlaceholder(
+        tools,
+        startStr,
+        endStr,
+        hashStr === '#'
+      );
+    }
+  );
 }
 
 export function replacePlaceholders(
@@ -456,6 +526,7 @@ export function replacePlaceholders(
   const protagonistPossessive = buildProtagonistPossessiveString(coLocatedProtagonists, participants, knownNames);
 
   let result = text;
+
   result = result.replace(/\{\{char\}\}/g, () => `${characterParticipantTag} (${characterName})`);
   result = result.replace(/\{\{user\}\}'s/g, () => protagonistPossessive);
   result = result.replace(/\{\{user\}\}/g, () => protagonistString);
@@ -501,13 +572,14 @@ export function getFatigueContext(
   return parts.join(" ");
 }
 
-// ─── Whisper Visibility Helpers ─────────────────────────────────────
 function isMessageVisibleTo(msg: HistoryMessage, characterId: string): boolean {
   if (msg.messageType === 'chat') return true;
+
   if (msg.messageType === 'whisper') {
     const whisper = msg as WhisperMessage;
     return whisper.character.id === characterId || whisper.targetCharacterIds.includes(characterId);
   }
+
   return false;
 }
 
@@ -515,7 +587,6 @@ function isTextMessage(msg: HistoryMessage): msg is TextMessage {
   return msg.messageType === 'chat' || msg.messageType === 'whisper';
 }
 
-// ─── Regex / Filter Helpers ───────────────────────────────────────
 function filterArrayBasedOnContext(
   characterIdArray: string[],
   textContentArray: string[],
@@ -523,14 +594,18 @@ function filterArrayBasedOnContext(
   contextType: regularExpressionContext
 ): { characterIdArray: string[]; textContentArray: string[] } {
   const length = characterIdArray.length;
+
   if (length === 0) return { characterIdArray: [], textContentArray: [] };
 
   if (contextType === "global") return { characterIdArray, textContentArray };
 
   if (contextType === "previous") {
     for (let i = length - 1; i >= 0; i--) {
-      if (characterIdArray[i] === selectedCharacterId) return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
+      if (characterIdArray[i] === selectedCharacterId) {
+        return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
+      }
     }
+
     return { characterIdArray: [], textContentArray: [] };
   }
 
@@ -540,16 +615,26 @@ function filterArrayBasedOnContext(
 
     for (let i = endIndex; i >= 0; i--) {
       if ((characterIdArray[i] === selectedCharacterId) && (i === endIndex)) continue;
-      if ((characterIdArray[i] !== selectedCharacterId) && (i === endIndex)) { targetIndex = i; break; }
-      if ((characterIdArray[i] === selectedCharacterId) && (characterIdArray[i + 1] !== selectedCharacterId)) { targetIndex = i; break; }
+      if ((characterIdArray[i] !== selectedCharacterId) && (i === endIndex)) {
+        targetIndex = i;
+        break;
+      }
+      if ((characterIdArray[i] === selectedCharacterId) && (characterIdArray[i + 1] !== selectedCharacterId)) {
+        targetIndex = i;
+        break;
+      }
     }
 
     if (targetIndex === -1) return { characterIdArray: [], textContentArray: [] };
 
     const startIndex = targetIndex + 1;
+
     if (startIndex >= length) return { characterIdArray: [], textContentArray: [] };
 
-    return { characterIdArray: characterIdArray.slice(startIndex), textContentArray: textContentArray.slice(startIndex) };
+    return {
+      characterIdArray: characterIdArray.slice(startIndex),
+      textContentArray: textContentArray.slice(startIndex)
+    };
   }
 
   return { characterIdArray: [], textContentArray: [] };
@@ -563,16 +648,21 @@ function filterArrayBasedOnTarget(
   protagonistIds: string[],
 ): { characterIdArray: string[]; textContentArray: string[] } {
   const length = characterIdArray.length;
+
   if (length === 0 || targetType === "everyone") return { characterIdArray, textContentArray };
 
   if (targetType === "listener") {
     for (let i = length - 1; i >= 0; i--) {
-      if (characterIdArray[i] !== selectedCharacterId) return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
+      if (characterIdArray[i] !== selectedCharacterId) {
+        return { characterIdArray: [characterIdArray[i]], textContentArray: [textContentArray[i]] };
+      }
     }
+
     return { characterIdArray: [], textContentArray: [] };
   }
 
   const protagonistIdSet = new Set(protagonistIds);
+
   const matchesTarget: Record<Exclude<regularExpressionTarget, 'everyone' | 'listener'>, (id: string) => boolean> = {
     'self': (id) => id === selectedCharacterId,
     'protagonist': (id) => protagonistIdSet.has(id),
@@ -581,6 +671,7 @@ function filterArrayBasedOnTarget(
   };
 
   const predicate = matchesTarget[targetType];
+
   if (!predicate) return { characterIdArray: [], textContentArray: [] };
 
   const extractedCharacterIdArray: string[] = [];
@@ -593,7 +684,10 @@ function filterArrayBasedOnTarget(
     }
   }
 
-  return { characterIdArray: extractedCharacterIdArray, textContentArray: extractedTextContentArray };
+  return {
+    characterIdArray: extractedCharacterIdArray,
+    textContentArray: extractedTextContentArray
+  };
 }
 
 function doesRegexMatch(regexString: string | undefined, searchSpace: string, sensitivityMultiplier = 1): boolean {
@@ -602,8 +696,10 @@ function doesRegexMatch(regexString: string | undefined, searchSpace: string, se
   try {
     const regex = new RegExp(regexString);
     const matched = regex.test(searchSpace);
+
     if (!matched) return false;
     if (sensitivityMultiplier >= 1) return true;
+
     return Math.random() < sensitivityMultiplier;
   } catch (e) {
     console.warn(`Invalid regex: ${regexString}`, e);
@@ -638,7 +734,9 @@ function getFilteredDataCached(
   tgtType: regularExpressionTarget,
 ): { characterIdArray: string[]; textContentArray: string[] } {
   const cacheKey = protagonistIds.join(',');
+
   if (!cache[ctxType]) cache[ctxType] = {};
+
   const subCache = cache[ctxType];
 
   if (!subCache[`${tgtType}:${cacheKey}`]) {
@@ -666,9 +764,13 @@ function doesAnyTriggerMatchCached(
     if (!trigger.trigger) continue;
 
     const { textContentArray: filteredTexts } = getFilteredDataCached(
-      combinationCache, characterIdArray, textContentArray,
-      selectedCharacterId, protagonistIds,
-      trigger.context || 'global', trigger.target || 'everyone'
+      combinationCache,
+      characterIdArray,
+      textContentArray,
+      selectedCharacterId,
+      protagonistIds,
+      trigger.context || 'global',
+      trigger.target || 'everyone'
     );
 
     const searchSpace = filteredTexts.length > 0
@@ -681,7 +783,6 @@ function doesAnyTriggerMatchCached(
   return false;
 }
 
-// ─── Ordered Exclusion Helpers ─────────────────────────────────────
 type ExclusionEvent = {
   order: number;
   subOrder: number;
@@ -696,6 +797,7 @@ function getFilteredIndices(
   protagonistIds: string[],
 ): number[] {
   const length = characterIdArray.length;
+
   if (length === 0) return [];
 
   let indices: number[] = [];
@@ -706,6 +808,7 @@ function getFilteredIndices(
     for (let i = length - 1; i >= 0; i--) {
       if (characterIdArray[i] === selectedCharacterId) return [i];
     }
+
     return [];
   } else if (contextType === 'local') {
     let targetIndex = -1;
@@ -713,13 +816,20 @@ function getFilteredIndices(
 
     for (let i = endIndex; i >= 0; i--) {
       if ((characterIdArray[i] === selectedCharacterId) && (i === endIndex)) continue;
-      if ((characterIdArray[i] !== selectedCharacterId) && (i === endIndex)) { targetIndex = i; break; }
-      if ((characterIdArray[i] === selectedCharacterId) && (characterIdArray[i + 1] !== selectedCharacterId)) { targetIndex = i; break; }
+      if ((characterIdArray[i] !== selectedCharacterId) && (i === endIndex)) {
+        targetIndex = i;
+        break;
+      }
+      if ((characterIdArray[i] === selectedCharacterId) && (characterIdArray[i + 1] !== selectedCharacterId)) {
+        targetIndex = i;
+        break;
+      }
     }
 
     if (targetIndex === -1) return [];
 
     const startIndex = targetIndex + 1;
+
     if (startIndex >= length) return [];
 
     indices = Array.from({ length: length - startIndex }, (_, k) => startIndex + k);
@@ -734,10 +844,12 @@ function getFilteredIndices(
       const idx = indices[i];
       if (characterIdArray[idx] !== selectedCharacterId) return [idx];
     }
+
     return [];
   }
 
   const protagonistIdSet = new Set(protagonistIds);
+
   const matchesTarget: Record<Exclude<regularExpressionTarget, 'everyone' | 'listener'>, (id: string) => boolean> = {
     self: (id) => id === selectedCharacterId,
     protagonist: (id) => protagonistIdSet.has(id),
@@ -746,6 +858,7 @@ function getFilteredIndices(
   };
 
   const predicate = matchesTarget[targetType as Exclude<regularExpressionTarget, 'everyone' | 'listener'>];
+
   if (!predicate) return [];
 
   return indices.filter((idx) => predicate(characterIdArray[idx]));
@@ -786,6 +899,7 @@ function getLatestExclusionEvent(
 
     for (const idx of indices) {
       const text = textContentArray[idx] ?? '';
+
       if (doesRegexMatch(trigger.trigger, text, sensitivityMultiplier)) {
         consider(idx, 0);
       }
@@ -793,11 +907,15 @@ function getLatestExclusionEvent(
 
     if (fallbackSearchSpace && doesRegexMatch(trigger.trigger, fallbackSearchSpace, sensitivityMultiplier)) {
       let subOrder = 0;
+
       try {
         const regex = new RegExp(trigger.trigger);
         const index = fallbackSearchSpace.search(regex);
         if (index !== -1) subOrder = index;
-      } catch { /* ignore */ }
+      } catch {
+        // ignore
+      }
+
       consider(characterIdArray.length, subOrder);
     }
   }
@@ -847,7 +965,6 @@ function isExclusionActiveOrdered(
   if (latestDeactivation.order > latestActivation.order) return false;
   if (latestActivation.order > latestDeactivation.order) return true;
 
-  // Same message/order: exclusion deactivation wins.
   return false;
 }
 
@@ -909,7 +1026,6 @@ function isEntityActiveWithCache(
   return true;
 }
 
-// ─── Message Filter Helpers ────────────────────────────────────────
 type WithMessageFilterExclusionTriggers = {
   messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
@@ -917,10 +1033,12 @@ type WithMessageFilterExclusionTriggers = {
 
 function matchesAnyRegex(regexes: RegExp[], text: string): boolean {
   if (!regexes || regexes.length === 0) return false;
+
   for (const regex of regexes) {
     regex.lastIndex = 0;
     if (regex.test(text)) return true;
   }
+
   return false;
 }
 
@@ -933,6 +1051,7 @@ function applyMessageFilterTriggers(
   exclusionDeactivationTriggers?: RegularExpressionTrigger[] | undefined,
 ): void {
   const activationRegexes = compileTriggerRegexes(activationTriggers);
+
   if (activationRegexes.length === 0) return;
 
   const deactivationRegexes = compileTriggerRegexes(deactivationTriggers);
@@ -945,7 +1064,9 @@ function applyMessageFilterTriggers(
 
   const excludeRange = (start: number, end: number): void => {
     if (start < 0) return;
+
     const safeEnd = Math.min(end, textMessages.length - 1);
+
     for (let i = start; i <= safeEnd; i++) {
       excluded[i] = true;
     }
@@ -971,15 +1092,18 @@ function applyMessageFilterTriggers(
 
         if (matchesAnyRegex(deactivationRegexes, text)) {
           including = false;
+
           if (poisoned) {
             excludeRange(segmentStart, i);
           }
+
           poisoned = false;
           segmentStart = -1;
         }
       } else {
         excluded[i] = true;
       }
+
       continue;
     }
 
@@ -994,9 +1118,11 @@ function applyMessageFilterTriggers(
 
     if (matchesAnyRegex(deactivationRegexes, text)) {
       including = false;
+
       if (poisoned) {
         excludeRange(segmentStart, i);
       }
+
       poisoned = false;
       segmentStart = -1;
     }
@@ -1018,7 +1144,9 @@ function getMessageFilterFlags(
 
   for (const context of contexts) {
     if (!isCharacterBound(context, characterId)) continue;
+
     const source = context as Context & WithMessageFilterExclusionTriggers;
+
     applyMessageFilterTriggers(
       textMessages,
       excluded,
@@ -1039,6 +1167,7 @@ function getMessageFilterFlags(
     }
 
     const source = location as Location & WithMessageFilterExclusionTriggers;
+
     applyMessageFilterTriggers(
       textMessages,
       excluded,
@@ -1051,7 +1180,9 @@ function getMessageFilterFlags(
 
   for (const block of promptBlocks) {
     if (!isPromptBlockCharacterBound(block, characterId)) continue;
+
     const source = block as PromptBlock & WithMessageFilterExclusionTriggers;
+
     applyMessageFilterTriggers(
       textMessages,
       excluded,
@@ -1080,12 +1211,12 @@ export function getFilteredTextMessages(
 
   const contexts = interactionData.contexts || [];
   const locations = interactionData.locations || [];
+
   const filterFlags = getMessageFilterFlags(localHistory, contexts, locations, allPromptBlocks, characterId);
 
   return localHistory.filter((_, i) => !filterFlags[i]);
 }
 
-// ─── Context Resolution ──────────────────────────────────────────
 async function resolveContextEntries(
   contexts: Context[],
   chatSearchSpace: string,
@@ -1098,6 +1229,7 @@ async function resolveContextEntries(
   contextSensitivity?: number
 ): Promise<{ context: Context; combinedText: string }[]> {
   const sensitivityForCharacter = contextSensitivity ?? 1;
+
   const activated = new Set<string>();
   const activatedMap = new Map<string, Context>();
 
@@ -1110,9 +1242,12 @@ async function resolveContextEntries(
       context.regularExpressionDeactivationTriggers,
       context.regularExpressionExclusionActivationTriggers,
       context.regularExpressionExclusionDeactivationTriggers,
-      characterIdArray, textContentArray,
-      selectedCharacterId, protagonistIds,
-      chatSearchSpace, combinationCache,
+      characterIdArray,
+      textContentArray,
+      selectedCharacterId,
+      protagonistIds,
+      chatSearchSpace,
+      combinationCache,
       sensitivityForCharacter,
     )) {
       activated.add(context.id);
@@ -1121,6 +1256,7 @@ async function resolveContextEntries(
   }
 
   const activationDepth = new Map<string, number>();
+
   for (const id of activated) {
     activationDepth.set(id, 0);
   }
@@ -1133,13 +1269,17 @@ async function resolveContextEntries(
     recursionDepth++;
 
     const activatedTextParts: string[] = [];
+
     for (const c of activatedMap.values()) {
       if (c.text) activatedTextParts.push(c.text);
+
       const fetched = fetchedContentMap?.get(c.id);
+
       if (fetched) activatedTextParts.push(fetched);
     }
 
     const activatedText = activatedTextParts.join('\n');
+
     if (!activatedText) break;
 
     for (const context of contexts) {
@@ -1147,6 +1287,7 @@ async function resolveContextEntries(
       if (!isCharacterBound(context, selectedCharacterId)) continue;
 
       const contextMaxDepth = context.maximumRecursionDepth ?? DEFAULT_MAX_RECURSION_DEPTH;
+
       if (contextMaxDepth === 0) continue;
       if (recursionDepth > contextMaxDepth) continue;
 
@@ -1155,9 +1296,12 @@ async function resolveContextEntries(
         context.regularExpressionDeactivationTriggers,
         context.regularExpressionExclusionActivationTriggers,
         context.regularExpressionExclusionDeactivationTriggers,
-        characterIdArray, textContentArray,
-        selectedCharacterId, protagonistIds,
-        activatedText, combinationCache,
+        characterIdArray,
+        textContentArray,
+        selectedCharacterId,
+        protagonistIds,
+        activatedText,
+        combinationCache,
         sensitivityForCharacter,
       )) {
         activated.add(context.id);
@@ -1169,6 +1313,7 @@ async function resolveContextEntries(
   }
 
   const orderedActivated: Context[] = [];
+
   for (const context of contexts) {
     if (activatedMap.has(context.id)) orderedActivated.push(context);
   }
@@ -1179,14 +1324,24 @@ async function resolveContextEntries(
     const fetchedContent = fetchedContentMap?.get(context.id);
 
     let combinedText: string;
-    if (context.text && fetchedContent) combinedText = `${context.text}\n--- Web Content ---\n${fetchedContent}`;
-    else if (fetchedContent) combinedText = fetchedContent;
-    else if (context.text) combinedText = context.text;
-    else continue;
+
+    if (context.text && fetchedContent) {
+      combinedText = `${context.text}\n--- Web Content ---\n${fetchedContent}`;
+    } else if (fetchedContent) {
+      combinedText = fetchedContent;
+    } else if (context.text) {
+      combinedText = context.text;
+    } else {
+      continue;
+    }
 
     let numberOfTokens: number;
-    if (context.tokenBudget && context.tokenBudget > 0) numberOfTokens = context.tokenBudget;
-    else numberOfTokens = await tokenEngine.countTokens(combinedText);
+
+    if (context.tokenBudget && context.tokenBudget > 0) {
+      numberOfTokens = context.tokenBudget;
+    } else {
+      numberOfTokens = await tokenEngine.countTokens(combinedText);
+    }
 
     formattedEntries.push({ context, combinedText, numberOfTokens });
   }
@@ -1210,7 +1365,6 @@ async function resolveContextEntries(
   return budgetEntries.map(e => ({ context: e.context, combinedText: e.combinedText }));
 }
 
-// ─── Clothing ─────────────────────────────────────────────────────
 function resolveClothingWearingStatus(
   character: Character,
   interactionData: InteractionData,
@@ -1219,11 +1373,13 @@ function resolveClothingWearingStatus(
   combinationCache: CombinationCache,
 ): Record<string, boolean> {
   const clothings = character.clothings;
+
   if (!clothings || clothings.length === 0) return {};
 
   const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
   const protagonistIds = coLocatedProtagonists.map(p => p.id);
   const characterId = character.id;
+
   const prevMsg = findLatestMessage(interactionData, character);
   const prevStatus = (prevMsg?.message as ChatMessage)?.characterClothingWearingStatuses ?? {};
 
@@ -1240,20 +1396,28 @@ function resolveClothingWearingStatus(
     if (clothing.regularExpressionActivationTriggers && clothing.regularExpressionActivationTriggers.length > 0) {
       const activated = doesAnyTriggerMatchCached(
         clothing.regularExpressionActivationTriggers,
-        characterIdArray, textContentArray,
-        characterId, protagonistIds,
-        '', combinationCache,
+        characterIdArray,
+        textContentArray,
+        characterId,
+        protagonistIds,
+        '',
+        combinationCache,
       );
+
       if (activated) status[clothing.id] = true;
     }
 
     if (clothing.regularExpressionDeactivationTriggers && clothing.regularExpressionDeactivationTriggers.length > 0) {
       const deactivated = doesAnyTriggerMatchCached(
         clothing.regularExpressionDeactivationTriggers,
-        characterIdArray, textContentArray,
-        characterId, protagonistIds,
-        '', combinationCache,
+        characterIdArray,
+        textContentArray,
+        characterId,
+        protagonistIds,
+        '',
+        combinationCache,
       );
+
       if (deactivated) status[clothing.id] = false;
     }
   }
@@ -1281,12 +1445,14 @@ function getVisibleClothingDescriptions(
 
     while (queue.length > 0) {
       const boundId = queue.shift();
+
       if (boundId === undefined) break;
       if (coveredIds.has(boundId)) continue;
 
       coveredIds.add(boundId);
 
       const boundClothing = clothingMap.get(boundId);
+
       if (boundClothing) {
         for (const transitiveBound of boundClothing.clothingBindings) {
           if (!coveredIds.has(transitiveBound)) queue.push(transitiveBound);
@@ -1306,7 +1472,6 @@ function getVisibleClothingDescriptions(
   return visible;
 }
 
-// ─── Location Visit Segments ──────────────────────────────────────
 export interface LocationVisitSegment {
   characterId: string;
   locationId: string;
@@ -1328,6 +1493,7 @@ export function detectUnsummarizedLocationDepartures(
 
   const latest = findLatestMessage(interactionData, character);
   const currentLocationId = latest?.locationId;
+
   const globalHistory = Object.values(histories).flat().sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
 
   const segments: LocationVisitSegment[] = [];
@@ -1336,10 +1502,12 @@ export function detectUnsummarizedLocationDepartures(
     if (locationId === currentLocationId) continue;
 
     const charMessages = messages.filter(m => m.character.id === character.id && isTextMessage(m));
+
     if (charMessages.length === 0) continue;
 
     const lastMsg = charMessages[charMessages.length - 1];
     const existingSummary = (lastMsg as ChatMessage).modelInteractionTextContentSummaries?.[modelId];
+
     if (existingSummary) continue;
 
     const startIdx = globalHistory.findIndex(m => m.id === charMessages[0].id);
@@ -1360,7 +1528,6 @@ export function detectUnsummarizedLocationDepartures(
   return segments;
 }
 
-// ─── Context Builder ──────────────────────────────────────────────
 function getEnabledToolNamesFromCharacter(character: Character, profile: Profile | undefined): string[] {
   const effectiveTools = getEffectiveTools(character, profile);
   return (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
@@ -1442,7 +1609,6 @@ function buildPromptContext(
   };
 }
 
-// ─── Prompt Section Builders ─────────────────────────────────────
 function buildCharacterTagsText(ctx: PromptBuildContext): { tags: string[]; tagsWithDescriptions: string[] } {
   const tags: string[] = [];
   const tagsWithDescriptions: string[] = [];
@@ -1468,6 +1634,7 @@ function buildCharacterTagsText(ctx: PromptBuildContext): { tags: string[]; tags
       );
 
       const indentedText = replacedDesc.split('\n').map(line => `  ${line}`).join('\n');
+
       desc += `\n${indentedText}`;
     } else {
       desc += '\nNo description available.';
@@ -1481,14 +1648,18 @@ function buildCharacterTagsText(ctx: PromptBuildContext): { tags: string[]; tags
 
 function buildReachableLocationsText(ctx: PromptBuildContext): { names: string[]; withDescriptions: string[] } {
   const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
+
   const names: string[] = [];
   const withDescriptions: string[] = [];
 
   for (const loc of reachable) {
     const locName = replacePlaceholders(
       loc.name || 'Unknown Location',
-      ctx.characterParticipantTag, ctx.characterName,
-      ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      ctx.participants,
+      ctx.knownNames,
       ctx.tools
     );
 
@@ -1499,12 +1670,16 @@ function buildReachableLocationsText(ctx: PromptBuildContext): { names: string[]
     if (loc.text) {
       const replacedText = replacePlaceholders(
         loc.text,
-        ctx.characterParticipantTag, ctx.characterName,
-        ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+        ctx.characterParticipantTag,
+        ctx.characterName,
+        ctx.coLocatedProtagonists,
+        ctx.participants,
+        ctx.knownNames,
         ctx.tools
       );
 
       const indentedText = replacedText.split('\n').map(line => `  ${line}`).join('\n');
+
       desc += `\n${indentedText}`;
     }
 
@@ -1518,13 +1693,16 @@ function buildAppearanceText(ctx: PromptBuildContext, wearingStatus: Record<stri
   const lines: string[] = [];
 
   const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt);
+
   if (!hasAnyAppearance) return '';
 
   const nameLevel = ctx.cacheEfficiencyLevels['Character Name'] ?? 0;
 
   let participantsToRender: Character[];
-  if (nameLevel >= 2) participantsToRender = ctx.participants;
-  else if (nameLevel >= 1) {
+
+  if (nameLevel >= 2) {
+    participantsToRender = ctx.participants;
+  } else if (nameLevel >= 1) {
     const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
     coLocatedIds.add(ctx.characterId);
     participantsToRender = ctx.participants.filter(p => coLocatedIds.has(p.id));
@@ -1536,38 +1714,53 @@ function buildAppearanceText(ctx: PromptBuildContext, wearingStatus: Record<stri
 
   for (const participant of participantsToRender) {
     const appearancePrompt = participant.appearancePrompt;
+
     if (!appearancePrompt) continue;
 
     const otherParticipantId = getParticipantId(participant, ctx.participants);
     const isCurrent = otherParticipantId === ctx.characterParticipantId;
+
     const otherTag = getParticipantTag(participant, ctx.participants);
     const knownName = getKnownDisplayName(participant, ctx.knownNames);
 
     const finalAppearancePrompt = replacePlaceholders(
-      appearancePrompt, ctx.characterParticipantTag, ctx.characterName,
-      ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+      appearancePrompt,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      ctx.participants,
+      ctx.knownNames,
       ctx.tools
     );
 
     const useFrozenName = nameLevel >= 1 && !isCurrent;
+
     const roleStr = useFrozenName
       ? `${otherTag} (${knownName ?? participant.name})`
       : (knownName ? `${otherTag} (${knownName})` : otherTag);
 
     const appearanceText = `${ctx.delimiters.blockStart(roleStr)}${finalAppearancePrompt}${ctx.delimiters.blockEnd}`;
+
     lines.push(appearanceText);
   }
 
   const visibleClothingDescriptions = getVisibleClothingDescriptions(ctx.character.clothings ?? [], wearingStatus);
+
   if (visibleClothingDescriptions.length > 0) {
     const clothingLines = visibleClothingDescriptions.map(desc => {
       const replaced = replacePlaceholders(
-        desc, ctx.characterParticipantTag, ctx.characterName,
-        ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+        desc,
+        ctx.characterParticipantTag,
+        ctx.characterName,
+        ctx.coLocatedProtagonists,
+        ctx.participants,
+        ctx.knownNames,
         ctx.tools
       );
+
       return `${ctx.delimiters.blockStart('system')}${replaced}${ctx.delimiters.blockEnd}`;
     });
+
     lines.push(...clothingLines);
   }
 
@@ -1576,12 +1769,24 @@ function buildAppearanceText(ctx: PromptBuildContext, wearingStatus: Record<stri
 
 function buildSystemPromptText(ctx: PromptBuildContext): string {
   const lines: string[] = [];
+
   const systemLevel = ctx.cacheEfficiencyLevels['System Prompt'] ?? 0;
+
   let systemPrompt = ctx.character.systemPrompt;
 
   if (systemLevel >= 2) {
     for (const p of ctx.participants) {
-      if (p.systemPrompt) lines.push(`${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(p.systemPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.tools)}`);
+      if (p.systemPrompt) {
+        lines.push(`${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(
+          p.systemPrompt,
+          ctx.characterParticipantTag,
+          ctx.characterName,
+          ctx.coLocatedProtagonists,
+          ctx.participants,
+          ctx.knownNames,
+          ctx.tools
+        )}`);
+      }
     }
   } else if (systemLevel >= 1) {
     const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
@@ -1589,10 +1794,30 @@ function buildSystemPromptText(ctx: PromptBuildContext): string {
 
     for (const p of ctx.participants) {
       if (!coLocatedIds.has(p.id)) continue;
-      if (p.systemPrompt) lines.push(`${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(p.systemPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.tools)}`);
+
+      if (p.systemPrompt) {
+        lines.push(`${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(
+          p.systemPrompt,
+          ctx.characterParticipantTag,
+          ctx.characterName,
+          ctx.coLocatedProtagonists,
+          ctx.participants,
+          ctx.knownNames,
+          ctx.tools
+        )}`);
+      }
     }
   } else if (systemPrompt) {
-    systemPrompt = replacePlaceholders(systemPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.tools);
+    systemPrompt = replacePlaceholders(
+      systemPrompt,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      ctx.participants,
+      ctx.knownNames,
+      ctx.tools
+    );
+
     lines.push(`${ctx.characterParticipantTag} Prompt: ${systemPrompt}`);
   }
 
@@ -1601,12 +1826,24 @@ function buildSystemPromptText(ctx: PromptBuildContext): string {
 
 function buildThinkPromptText(ctx: PromptBuildContext): string {
   const lines: string[] = [];
+
   const thinkLevel = ctx.cacheEfficiencyLevels['Think Prompt'] ?? 0;
+
   let thinkPrompt = ctx.character.thinkPrompt;
 
   if (thinkLevel >= 2) {
     for (const p of ctx.participants) {
-      if (p.thinkPrompt) lines.push(`I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(p.thinkPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.tools)}`);
+      if (p.thinkPrompt) {
+        lines.push(`I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(
+          p.thinkPrompt,
+          ctx.characterParticipantTag,
+          ctx.characterName,
+          ctx.coLocatedProtagonists,
+          ctx.participants,
+          ctx.knownNames,
+          ctx.tools
+        )}`);
+      }
     }
   } else if (thinkLevel >= 1) {
     const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
@@ -1614,10 +1851,30 @@ function buildThinkPromptText(ctx: PromptBuildContext): string {
 
     for (const p of ctx.participants) {
       if (!coLocatedIds.has(p.id)) continue;
-      if (p.thinkPrompt) lines.push(`I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(p.thinkPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.tools)}`);
+
+      if (p.thinkPrompt) {
+        lines.push(`I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(
+          p.thinkPrompt,
+          ctx.characterParticipantTag,
+          ctx.characterName,
+          ctx.coLocatedProtagonists,
+          ctx.participants,
+          ctx.knownNames,
+          ctx.tools
+        )}`);
+      }
     }
   } else if (thinkPrompt) {
-    thinkPrompt = replacePlaceholders(thinkPrompt, ctx.characterParticipantTag, ctx.characterName, ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.tools);
+    thinkPrompt = replacePlaceholders(
+      thinkPrompt,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      ctx.participants,
+      ctx.knownNames,
+      ctx.tools
+    );
+
     lines.push(thinkPrompt);
   }
 
@@ -1626,13 +1883,13 @@ function buildThinkPromptText(ctx: PromptBuildContext): string {
 
 function buildMetaThinkText(ctx: PromptBuildContext): string {
   const characterInstructions = `I will respond exclusively as ${ctx.characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${ctx.characterParticipantTag} is likely to use.`;
+
   return `${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions}`;
 }
 
 async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string> {
   const dialogueSearchSpace = buildDialogueSearchSpace(ctx.textContentArray);
 
-  // 1. Semantic Search (Current Chat Context)
   if (ctx.character.useEmbeddingModelForDialoguePrompts && ctx.character.dialogueRetrievalConfiguration && dialogueSearchSpace) {
     const activePrompts = getActiveDialoguePrompts(ctx.character.dialoguePrompts, dialogueSearchSpace);
 
@@ -1641,23 +1898,35 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
 
       if (queryVector) {
         const items: RetrievableItem[] = activePrompts.map(dp => ({
-          id: dp.id, name: dp.name, textContent: dp.textContent,
-          embedding: dp.embedding, firstCreatedTimestamp: dp.firstCreatedTimestamp
+          id: dp.id,
+          name: dp.name,
+          textContent: dp.textContent,
+          embedding: dp.embedding,
+          firstCreatedTimestamp: dp.firstCreatedTimestamp
         }));
 
-        const results = await retrieveRelevantContext(queryVector, dialogueSearchSpace, items, ctx.character.dialogueRetrievalConfiguration);
+        const results = await retrieveRelevantContext(
+          queryVector,
+          dialogueSearchSpace,
+          items,
+          ctx.character.dialogueRetrievalConfiguration
+        );
 
         if (results.length > 0) {
           const selectedPrompt = activePrompts.find(p => p.id === results[0].id);
 
           if (selectedPrompt) {
             const skipProb = selectedPrompt.skipProbability ?? 0;
+
             if (skipProb > 0 && Math.random() < skipProb) return '';
 
             return replacePlaceholders(
               selectedPrompt.textContent,
-              ctx.characterParticipantTag, ctx.characterName,
-              ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+              ctx.characterParticipantTag,
+              ctx.characterName,
+              ctx.coLocatedProtagonists,
+              ctx.participants,
+              ctx.knownNames,
               ctx.tools
             );
           }
@@ -1666,8 +1935,8 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
     }
   }
 
-  // 2. Fallback: Use the original dedicated utility
   const activeContents = collectActiveDialoguePromptContent(ctx.character.dialoguePrompts, dialogueSearchSpace);
+
   if (activeContents.length === 0) return '';
 
   const lines: string[] = [];
@@ -1675,10 +1944,14 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
   for (const content of activeContents) {
     const replacedDialogue = replacePlaceholders(
       content,
-      ctx.characterParticipantTag, ctx.characterName,
-      ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      ctx.participants,
+      ctx.knownNames,
       ctx.tools
     );
+
     lines.push(replacedDialogue);
   }
 
@@ -1687,9 +1960,9 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
 
 async function buildKnowledgePromptText(ctx: PromptBuildContext): Promise<string> {
   const allKnowledgePrompts = ctx.character.knowledgePrompts || [];
+
   if (allKnowledgePrompts.length === 0) return '';
 
-  // 1. Regex Filter
   const activePrompts = allKnowledgePrompts.filter(kp =>
     isEntityActiveWithCache(
       kp.regularExpressionActivationTriggers,
@@ -1707,7 +1980,6 @@ async function buildKnowledgePromptText(ctx: PromptBuildContext): Promise<string
 
   if (activePrompts.length === 0) return '';
 
-  // 2. Semantic Search (Current Chat Context)
   if (ctx.character.useEmbeddingModelForKnowledgePrompts && ctx.character.knowledgeRetrievalConfiguration) {
     const queryText = ctx.textContentArray.join('\n');
 
@@ -1716,17 +1988,28 @@ async function buildKnowledgePromptText(ctx: PromptBuildContext): Promise<string
 
       if (queryVector) {
         const items: RetrievableItem[] = activePrompts.map(kp => ({
-          id: kp.id, name: kp.name, textContent: kp.textContent,
-          embedding: kp.embedding, firstCreatedTimestamp: kp.firstCreatedTimestamp
+          id: kp.id,
+          name: kp.name,
+          textContent: kp.textContent,
+          embedding: kp.embedding,
+          firstCreatedTimestamp: kp.firstCreatedTimestamp
         }));
 
-        const results = await retrieveRelevantContext(queryVector, queryText, items, ctx.character.knowledgeRetrievalConfiguration);
+        const results = await retrieveRelevantContext(
+          queryVector,
+          queryText,
+          items,
+          ctx.character.knowledgeRetrievalConfiguration
+        );
 
         if (results.length > 0) {
           return replacePlaceholders(
             results.map(r => r.textContent).join('\n---\n'),
-            ctx.characterParticipantTag, ctx.characterName,
-            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+            ctx.characterParticipantTag,
+            ctx.characterName,
+            ctx.coLocatedProtagonists,
+            ctx.participants,
+            ctx.knownNames,
             ctx.tools
           );
         }
@@ -1734,16 +2017,19 @@ async function buildKnowledgePromptText(ctx: PromptBuildContext): Promise<string
     }
   }
 
-  // 3. Fallback: Dump all active knowledge
   const validPrompts = activePrompts.filter(kp => kp.textContent && kp.textContent.length > 0);
+
   if (validPrompts.length === 0) return '';
 
   const joinedText = validPrompts.map(kp => kp.textContent).join('\n---\n');
 
   return replacePlaceholders(
     joinedText,
-    ctx.characterParticipantTag, ctx.characterName,
-    ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+    ctx.characterParticipantTag,
+    ctx.characterName,
+    ctx.coLocatedProtagonists,
+    ctx.participants,
+    ctx.knownNames,
     ctx.tools
   );
 }
@@ -1754,7 +2040,6 @@ async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
 
   if (allMemories.length === 0) return '';
 
-  // Semantic Search (Current Chat Context filtered by co-located participants)
   if (ctx.character.useEmbeddingModelForMemories && ctx.character.memoryRetrievalConfiguration) {
     const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
     coLocatedIds.add(ctx.characterId);
@@ -1769,17 +2054,28 @@ async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
 
       if (queryVector) {
         const items: RetrievableItem[] = allMemories.map(m => ({
-          id: m.id, name: m.name, textContent: m.textContent,
-          embedding: m.embedding, firstCreatedTimestamp: m.firstCreatedTimestamp
+          id: m.id,
+          name: m.name,
+          textContent: m.textContent,
+          embedding: m.embedding,
+          firstCreatedTimestamp: m.firstCreatedTimestamp
         }));
 
-        const results = await retrieveRelevantContext(queryVector, socialHistoryText, items, ctx.character.memoryRetrievalConfiguration);
+        const results = await retrieveRelevantContext(
+          queryVector,
+          socialHistoryText,
+          items,
+          ctx.character.memoryRetrievalConfiguration
+        );
 
         if (results.length > 0) {
           return replacePlaceholders(
             results.map(r => r.textContent).join('\n---\n'),
-            ctx.characterParticipantTag, ctx.characterName,
-            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+            ctx.characterParticipantTag,
+            ctx.characterName,
+            ctx.coLocatedProtagonists,
+            ctx.participants,
+            ctx.knownNames,
             ctx.tools
           );
         }
@@ -1792,9 +2088,9 @@ async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
 
 async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> {
   const allStarterPrompts = ctx.character.starterPrompts || [];
+
   if (!allStarterPrompts || allStarterPrompts.length === 0) return '';
 
-  // 1. Filter by Regex Triggers using the existing cache mechanism
   const activePrompts = allStarterPrompts.filter(sp =>
     isEntityActiveWithCache(
       sp.regularExpressionActivationTriggers,
@@ -1812,12 +2108,14 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
 
   if (activePrompts.length === 0) return '';
 
-  // 2. Semantic Search (Pre-Arrival Context Matching)
   if (ctx.character.useEmbeddingModelForStarterPrompts && ctx.character.starterPromptRetrievalConfiguration) {
     const preArrivalHistory = getLatestLocalLocationMessageHistory(ctx.interactionData, ['chat', 'whisper']);
 
     if (preArrivalHistory.length > 0) {
-      const historyText = preArrivalHistory.map(m => `[${m.character.name}]: ${(m as TextMessage).textContent}`).join('\n');
+      const historyText = preArrivalHistory
+        .map(m => `[${m.character.name}]: ${(m as TextMessage).textContent}`)
+        .join('\n');
+
       const queryVector = await embeddingEngine.embed(historyText);
 
       if (queryVector) {
@@ -1829,7 +2127,12 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
           firstCreatedTimestamp: sp.firstCreatedTimestamp
         }));
 
-        const results = await retrieveRelevantContext(queryVector, historyText, items, ctx.character.starterPromptRetrievalConfiguration);
+        const results = await retrieveRelevantContext(
+          queryVector,
+          historyText,
+          items,
+          ctx.character.starterPromptRetrievalConfiguration
+        );
 
         if (results.length > 0) {
           const selectedPrompt = activePrompts.find(p => p.id === results[0].id) || activePrompts[0];
@@ -1840,8 +2143,11 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
 
           return replacePlaceholders(
             results[0].textContent,
-            ctx.characterParticipantTag, ctx.characterName,
-            ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+            ctx.characterParticipantTag,
+            ctx.characterName,
+            ctx.coLocatedProtagonists,
+            ctx.participants,
+            ctx.knownNames,
             ctx.tools
           );
         }
@@ -1849,11 +2155,12 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
     }
   }
 
-  // 3. Fallback: Weighted Random Roll among active prompts
   const validPrompts = activePrompts.filter(sp => sp.textContent && sp.textContent.length > 0);
+
   if (validPrompts.length === 0) return '';
 
   let totalWeight = 0;
+
   for (const sp of validPrompts) totalWeight += (sp.weight > 0 ? sp.weight : 1);
 
   if (totalWeight > 0) {
@@ -1863,7 +2170,11 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
     for (const sp of validPrompts) {
       const w = sp.weight > 0 ? sp.weight : 1;
       roll -= w;
-      if (roll <= 0) { selectedPrompt = sp; break; }
+
+      if (roll <= 0) {
+        selectedPrompt = sp;
+        break;
+      }
     }
 
     if (selectedPrompt.skipProbability > 0 && Math.random() < selectedPrompt.skipProbability) {
@@ -1872,8 +2183,11 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
 
     return replacePlaceholders(
       selectedPrompt.textContent,
-      ctx.characterParticipantTag, ctx.characterName,
-      ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      ctx.participants,
+      ctx.knownNames,
       ctx.tools
     );
   }
@@ -1889,13 +2203,16 @@ function buildLocationText(ctx: PromptBuildContext): { basic: string; withDescri
 
   const locationName = replacePlaceholders(
     location.name || 'Unknown Location',
-    ctx.characterParticipantTag, ctx.characterName,
-    ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+    ctx.characterParticipantTag,
+    ctx.characterName,
+    ctx.coLocatedProtagonists,
+    ctx.participants,
+    ctx.knownNames,
     ctx.tools
   );
 
-  // --- Basic Location (Name, Owner, Reachable) ---
   const basicLines: string[] = [];
+
   basicLines.push(`Current Location: ${locationName}`);
 
   if (location.ownerBindings && location.ownerBindings.length > 0) {
@@ -1907,32 +2224,39 @@ function buildLocationText(ctx: PromptBuildContext): { basic: string; withDescri
   }
 
   const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
+
   if (reachable.length > 0) {
     const reachableNames = reachable.map(r => replacePlaceholders(
       r.name || 'Unknown Location',
-      ctx.characterParticipantTag, ctx.characterName,
-      ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      ctx.participants,
+      ctx.knownNames,
       ctx.tools
     ));
 
     basicLines.push(`From ${locationName}, I can travel to: ${reachableNames.join(', ')}.`);
   }
 
-  // --- Location With Description (Name + Text ONLY) ---
   const withDescLines: string[] = [];
+
   withDescLines.push(`Current Location: ${locationName}`);
 
   if (location.text) {
     const replacedLocationText = replacePlaceholders(
       location.text,
-      ctx.characterParticipantTag, ctx.characterName,
-      ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      ctx.participants,
+      ctx.knownNames,
       ctx.tools
     );
+
     withDescLines.push(replacedLocationText);
   }
 
-  // --- Images (Always collect if present) ---
   if (location.images && location.images.length > 0) {
     for (const img of location.images) images.push({ entityId: location.id, filename: img });
   }
@@ -1946,6 +2270,7 @@ function buildLocationText(ctx: PromptBuildContext): { basic: string; withDescri
 
 function buildInventoryText(ctx: PromptBuildContext): string {
   const lines: string[] = [];
+
   const latest = findLatestMessage(ctx.interactionData, ctx.character);
   const latestInventory = latest?.message.inventory;
 
@@ -1953,25 +2278,41 @@ function buildInventoryText(ctx: PromptBuildContext): string {
     const now = Date.now();
 
     const userInventoryEntries: string[] = [];
+
     let notes: Record<string, string> = {};
     let timers: { name: string; targetTimestamp: number }[] = [];
     let stopwatches: { name: string; startTimestamp: number; pausedElapsedMs?: number }[] = [];
 
     for (const [key, value] of Object.entries(latestInventory)) {
       if (key === '___notes___') {
-        try { notes = JSON.parse(value as string); } catch { }
+        try {
+          notes = JSON.parse(value as string);
+        } catch {
+          // ignore
+        }
       } else if (key === '___timers___') {
-        try { timers = JSON.parse(value as string); } catch { }
+        try {
+          timers = JSON.parse(value as string);
+        } catch {
+          // ignore
+        }
       } else if (key === '___stopwatches___') {
-        try { stopwatches = JSON.parse(value as string); } catch { }
+        try {
+          stopwatches = JSON.parse(value as string);
+        } catch {
+          // ignore
+        }
       } else {
         userInventoryEntries.push(`${key}: ${value}`);
       }
     }
 
-    if (userInventoryEntries.length > 0) lines.push(`[Current Inventory]\n${userInventoryEntries.join('\n')}`);
+    if (userInventoryEntries.length > 0) {
+      lines.push(`[Current Inventory]\n${userInventoryEntries.join('\n')}`);
+    }
 
     const noteEntries = Object.entries(notes);
+
     if (noteEntries.length > 0) {
       const formattedNotes = noteEntries.map(([k, v]) => `${k}: ${v}`).join('\n');
       lines.push(`[Active Notes]\n${formattedNotes}`);
@@ -1982,6 +2323,7 @@ function buildInventoryText(ctx: PromptBuildContext): string {
         const remaining = t.targetTimestamp - now;
         return remaining <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatTimerDuration(remaining)} remaining`;
       });
+
       lines.push(`[Active Timers]\n${timerStatuses.join('\n')}`);
     }
 
@@ -1991,6 +2333,7 @@ function buildInventoryText(ctx: PromptBuildContext): string {
         const status = s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
         return `${s.name}: ${formatTimerDuration(elapsed)} (${status})`;
       });
+
       lines.push(`[Active Stopwatches]\n${swStatuses.join('\n')}`);
     }
   }
@@ -2034,6 +2377,7 @@ function buildParagraphCountInstructionsText(
 
 function buildAntiRepetitionNudgeText(ctx: PromptBuildContext): string {
   const windowSize = Math.max(2, ctx.coLocatedParticipants.length * 2);
+
   const localHistory = getLocalMessageHistory(ctx.interactionData, ctx.character, ['chat', 'whisper'], windowSize);
   const recentAiMessages = localHistory.filter(m => m.character.id === ctx.characterId) as TextMessage[];
 
@@ -2069,6 +2413,7 @@ function buildAntiRepetitionNudgeText(ctx: PromptBuildContext): string {
   };
 
   const allSentences: Set<string>[] = [];
+
   for (const text of texts) allSentences.push(...extractSentenceShingles(text));
 
   let structuralLoopDetected = false;
@@ -2079,6 +2424,7 @@ function buildAntiRepetitionNudgeText(ctx: PromptBuildContext): string {
       const setB = allSentences[j];
 
       let intersection = 0;
+
       for (const shingle of setA) {
         if (setB.has(shingle)) intersection++;
       }
@@ -2116,6 +2462,7 @@ function buildAntiRepetitionNudgeText(ctx: PromptBuildContext): string {
     if (setA.size === 0 || setB.size === 0) continue;
 
     let intersection = 0;
+
     for (const w of setA) {
       if (setB.has(w)) intersection++;
     }
@@ -2154,7 +2501,6 @@ function buildTextInjectionText(ctx: PromptBuildContext, hasBeenSummarized: bool
   return lines.join('\n');
 }
 
-// ─── Chat History Prompt ──────────────────────────────────────────
 export function createChatHistoryArray(
   ctx: PromptBuildContext,
 ): { chatHistoryArray: string[]; hasBeenSummarized: boolean } {
@@ -2200,7 +2546,11 @@ export function createChatHistoryArray(
       for (let i = 0; i < processedMessages.length; i++) {
         const msg = processedMessages[i].msg;
 
-        if (i < cutoff && (msg as ChatMessage).modelTextContentSummaries && (msg as ChatMessage).modelTextContentSummaries[ctx.modelId]) {
+        if (
+          i < cutoff &&
+          (msg as ChatMessage).modelTextContentSummaries &&
+          (msg as ChatMessage).modelTextContentSummaries[ctx.modelId]
+        ) {
           processedMessages[i].text = (msg as ChatMessage).modelTextContentSummaries[ctx.modelId];
           hasBeenSummarized = true;
         }
@@ -2229,6 +2579,7 @@ export function createChatHistoryArray(
         keywordScore = words.length > 0 ? keywordScore / words.length : 0;
 
         const combinedScore = (keywordWeight * keywordScore) + (recencyWeight * recencyScore);
+
         return combinedScore >= threshold;
       });
     }
@@ -2263,21 +2614,31 @@ export function createChatHistoryArray(
           }
         }
 
-        if (hardBoundary) { cutoffIndex = i; break; }
-        if (accumulatedTokens >= maxRawTokens) { cutoffIndex = i; break; }
+        if (hardBoundary) {
+          cutoffIndex = i;
+          break;
+        }
+
+        if (accumulatedTokens >= maxRawTokens) {
+          cutoffIndex = i;
+          break;
+        }
 
         if (previousChunk.length > 0) {
           const currentWords = new Set<string>();
+
           for (const msg of currentChunk) {
             for (const w of getStemmedContentWords(msg.text)) currentWords.add(w);
           }
 
           const previousWords = new Set<string>();
+
           for (const msg of previousChunk) {
             for (const w of getStemmedContentWords(msg.text)) previousWords.add(w);
           }
 
           let intersection = 0;
+
           for (const w of currentWords) {
             if (previousWords.has(w)) intersection++;
           }
@@ -2324,6 +2685,7 @@ export function createChatHistoryArray(
   }
 
   const hasLocationData = !!locs && locs.length > 0 && currentLocationId !== undefined;
+
   const locationVisitSummaries: { characterName: string; locationName: string; summary: string }[] = [];
 
   if (hasLocationData) {
@@ -2334,9 +2696,10 @@ export function createChatHistoryArray(
       if (msg.character.id === ctx.characterId) continue;
 
       const summary = (msg as ChatMessage).modelInteractionTextContentSummaries?.[ctx.modelId];
-      if (!summary) continue;
 
+      if (!summary) continue;
       if (seenSummaries.has(msg.id)) continue;
+
       seenSummaries.add(msg.id);
 
       const msgLoc = messageLocationMap.get(msg.id);
@@ -2346,8 +2709,11 @@ export function createChatHistoryArray(
 
         const locName = replacePlaceholders(
           loc?.name || 'Unknown Location',
-          ctx.characterParticipantTag, ctx.characterName,
-          ctx.coLocatedProtagonists, participants, ctx.knownNames,
+          ctx.characterParticipantTag,
+          ctx.characterName,
+          ctx.coLocatedProtagonists,
+          participants,
+          ctx.knownNames,
           ctx.tools
         );
 
@@ -2383,6 +2749,7 @@ export function createChatHistoryArray(
     for (const lvs of locationVisitSummaries) {
       chatHistoryArray.push(`${ctx.delimiters.blockStart('system')}[Memory of ${lvs.locationName}] As ${lvs.characterName}: ${lvs.summary}${ctx.delimiters.blockEnd}`);
     }
+
     hasBeenSummarized = true;
   }
 
@@ -2391,8 +2758,11 @@ export function createChatHistoryArray(
   if (currentLocation) {
     const sceneName = replacePlaceholders(
       currentLocation.name || 'Unknown Location',
-      ctx.characterParticipantTag, ctx.characterName,
-      ctx.coLocatedProtagonists, participants, ctx.knownNames,
+      ctx.characterParticipantTag,
+      ctx.characterName,
+      ctx.coLocatedProtagonists,
+      participants,
+      ctx.knownNames,
       ctx.tools
     );
 
@@ -2403,10 +2773,12 @@ export function createChatHistoryArray(
     const otherCharacter = p.msg.character;
     const otherTag = getParticipantTag(otherCharacter, participants);
     const knownName = getKnownDisplayName(otherCharacter, ctx.knownNames);
+
     const roleStr = knownName ? `${otherTag} (${knownName})` : otherTag;
 
     const isWhisper = p.msg.messageType === 'whisper';
     const whisperSuffix = isWhisper ? ' [Whisper]' : '';
+
     const finalRoleStr = `${roleStr}${whisperSuffix}`;
 
     let chatHistoryText = ctx.delimiters.turnStart(finalRoleStr);
@@ -2422,13 +2794,13 @@ export function createChatHistoryArray(
     );
 
     chatHistoryText = `${chatHistoryText}${replacedText}${ctx.delimiters.turnEnd}`;
+
     chatHistoryArray.push(chatHistoryText);
   }
 
   return { chatHistoryArray, hasBeenSummarized };
 }
 
-// ─── Volatile Section Classification ─────────────────────────────
 const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
   'Context',
   'Current Location',
@@ -2465,7 +2837,13 @@ function buildStructuredMessages(
   const volatileEntries: string[] = [];
 
   for (const entry of inputStrategy) {
-    if (entry === 'Model Instruction Template' || entry === 'Model Chat Template' || entry === 'Model Chat-Instruction Template') continue;
+    if (
+      entry === 'Model Instruction Template' ||
+      entry === 'Model Chat Template' ||
+      entry === 'Model Chat-Instruction Template'
+    ) {
+      continue;
+    }
 
     if (VOLATILE_BLOCK_TYPES.has(entry)) volatileEntries.push(entry);
     else stableEntries.push(entry);
@@ -2486,10 +2864,17 @@ function buildStructuredMessages(
 
   for (const entry of orderedEntries) {
     const lines = blockMap[entry];
+
     if (!lines || lines.length === 0) continue;
 
-    // Skip the strictly ordered RAG blocks and Text Injection, we will append them manually at the end
-    if (entry === 'Knowledge Prompt' || entry === 'Dialogue Prompt' || entry === 'Memory Prompt' || entry === 'Text Injection') continue;
+    if (
+      entry === 'Knowledge Prompt' ||
+      entry === 'Dialogue Prompt' ||
+      entry === 'Memory Prompt' ||
+      entry === 'Text Injection'
+    ) {
+      continue;
+    }
 
     if (entry === 'Chat History') historyLines.push(...lines);
     else if (VOLATILE_BLOCK_TYPES.has(entry)) volatileLines.push(...lines);
@@ -2504,7 +2889,6 @@ function buildStructuredMessages(
   if (historyLines.length > 0) messages.push({ role: 'system', content: historyLines.join('\n') });
   if (volatileLines.length > 0) messages.push({ role: 'user', content: volatileLines.join('\n') });
 
-  // STRICT RAG ORDER: Knowledge -> Dialogue -> Memory
   const ragLines: string[] = [];
 
   if (blockMap['Knowledge Prompt']?.length) ragLines.push(...blockMap['Knowledge Prompt']!);
@@ -2513,13 +2897,13 @@ function buildStructuredMessages(
 
   if (ragLines.length > 0) messages.push({ role: 'user', content: ragLines.join('\n') });
 
-  // TEXT INJECTION (The absolute final trigger)
-  if (blockMap['Text Injection']?.length) messages.push({ role: 'assistant', content: blockMap['Text Injection']!.join('\n') });
+  if (blockMap['Text Injection']?.length) {
+    messages.push({ role: 'assistant', content: blockMap['Text Injection']!.join('\n') });
+  }
 
   return messages;
 }
 
-// ─── Builder Registry ───────────────────────────────────────────────
 interface BuilderContext {
   ctx: PromptBuildContext;
   activeContextIds: Set<string>;
@@ -2529,7 +2913,7 @@ interface BuilderContext {
   latitude?: number;
   longitude?: number;
   timeData: TimeData | null;
-  isToolMessage: boolean | undefined,
+  isToolMessage: boolean | undefined;
   promptBlockById: Map<string, PromptBlock>;
 }
 
@@ -2546,10 +2930,6 @@ async function buildPromptBlocks(
 
     if (blockType === 'Think Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableThinkPrompt(ctx.character, ctx.profile)) continue;
     if (blockType === 'Meta Think Instructions' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableMetaThinkInstructions(ctx.character, ctx.profile)) continue;
-    if (blockType === 'Dialogue Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableDialoguePrompt(ctx.character, ctx.profile)) continue;
-    if (blockType === 'Starter Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableStarterPrompt(ctx.character, ctx.profile)) continue;
-
-    // Ordered validation checks matching promptBlockType
     if (blockType === 'System Prompt' && templateContext.systemPrompt.trim().length === 0) continue;
     if (blockType === 'Think Prompt' && templateContext.thinkPrompt.trim().length === 0) continue;
     if (blockType === 'Meta Think Instructions' && templateContext.metaThinkInstructions.trim().length === 0) continue;
@@ -2557,7 +2937,6 @@ async function buildPromptBlocks(
     if (blockType === 'Character Tags With Descriptions' && templateContext.characterTagsWithDescriptions.length === 0) continue;
     if (blockType === 'Appearance Prompt' && templateContext.appearancePrompt.trim().length === 0) continue;
     if (blockType === 'Knowledge Prompt' && templateContext.knowledgePrompt.trim().length === 0) continue;
-    if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.trim().length === 0) continue;
     if (blockType === 'Memory Prompt' && templateContext.memoryPrompt.trim().length === 0) continue;
     if (blockType === 'Chat History' && templateContext.chatHistory.length === 0) continue;
     if (blockType === 'Context' && templateContext.context.length === 0) continue;
@@ -2573,11 +2952,13 @@ async function buildPromptBlocks(
     if (blockType === 'Date' && templateContext.date.trim().length === 0) continue;
     if (blockType === 'Time' && templateContext.time.trim().length === 0) continue;
     if (blockType === 'Time Elapsed' && templateContext.timeElapsed.trim().length === 0) continue;
-    if (blockType === 'Starter Prompt' && templateContext.starterPrompt.trim().length === 0) continue;
     if (blockType === 'Tool Instructions' && templateContext.toolInstructions.trim().length === 0) continue;
     if (blockType === 'Tool Message Instructions' && templateContext.toolMessageInstructions.trim().length === 0) continue;
+    if (blockType === 'Dialogue Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableDialoguePrompt(ctx.character, ctx.profile)) continue;
+    if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.trim().length === 0) continue;
+    if (blockType === 'Starter Prompt' && templateContext.starterPrompt.trim().length === 0) continue;
+    if (blockType === 'Starter Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableStarterPrompt(ctx.character, ctx.profile)) continue;
 
-    // Native Image Instructions Integration (No Image = No Block)
     if (blockType === 'Character Image Instructions') {
       if (templateContext.characterImageInstructions.trim().length === 0) continue;
       blockMap[blockType] = [templateContext.characterImageInstructions];
@@ -2630,7 +3011,6 @@ async function buildPromptBlocks(
   return blockMap;
 }
 
-// ─── Main Orchestrator ────────────────────────────────────────────
 interface BuildResult {
   messages: OpenAIMessage[];
   stops: string[];
@@ -2649,22 +3029,33 @@ export async function buildPrompt(
   isToolMessage?: boolean,
 ): Promise<BuildResult> {
   const activeModel = tokenEngine.getContext();
+
   const effectiveChatTemplateKey = activeModel?.chatTemplate;
   const resolvedChatTemplate = effectiveChatTemplateKey ? getModelTemplate(effectiveChatTemplateKey) : undefined;
+
   const delimiters = deriveDelimiters(resolvedChatTemplate);
 
-  const ctx = buildPromptContext(interactionData, character, knownNames, allPromptBlocks, modelId, existingCharacterText, delimiters);
+  const ctx = buildPromptContext(
+    interactionData,
+    character,
+    knownNames,
+    allPromptBlocks,
+    modelId,
+    existingCharacterText,
+    delimiters
+  );
 
   const profile = ctx.profile;
   const inputStrategy = profile?.inputStrategy ?? defaultInputStrategy;
 
   const effectiveContextSensitivity = (() => {
     const profileValue = profile?.contextSensitivity;
+
     if (profileValue === undefined || profileValue === -1) return character.contextSensitivity ?? 1;
+
     return profileValue;
   })();
 
-  // 1. Location Summaries
   const segments = detectUnsummarizedLocationDepartures(interactionData, character, modelId);
 
   for (const segment of segments) {
@@ -2690,6 +3081,7 @@ export async function buildPrompt(
             if (!chatMsg.modelInteractionTextContentSummaries) chatMsg.modelInteractionTextContentSummaries = {};
 
             chatMsg.modelInteractionTextContentSummaries[modelId] = summary;
+
             break;
           }
         }
@@ -2699,7 +3091,6 @@ export async function buildPrompt(
     }
   }
 
-  // 2. Context Fetching
   const fetchErrors: string[] = [];
   const fetchedContentMap = new Map<string, string>();
 
@@ -2725,14 +3116,24 @@ export async function buildPrompt(
       const validResults = results.filter(r => !r.error && r.textContent.length > 0);
 
       if (validResults.length > 0) {
-        fetchedContentMap.set(context.id, validResults.map(r => `[Source: ${r.url}]\n${r.textContent}`).join('\n---\n'));
+        fetchedContentMap.set(
+          context.id,
+          validResults.map(r => `[Source: ${r.url}]\n${r.textContent}`).join('\n---\n')
+        );
       }
     }));
   }
 
   const resolvedContextsWithWeb = await resolveContextEntries(
-    contexts, ctx.textContentArray.join('\n'), ctx.characterId, [...ctx.protagonistIds],
-    ctx.characterIdArray, ctx.textContentArray, ctx.combinationCache, fetchedContentMap, effectiveContextSensitivity
+    contexts,
+    ctx.textContentArray.join('\n'),
+    ctx.characterId,
+    [...ctx.protagonistIds],
+    ctx.characterIdArray,
+    ctx.textContentArray,
+    ctx.combinationCache,
+    fetchedContentMap,
+    effectiveContextSensitivity
   );
 
   const activeContextIds = new Set<string>();
@@ -2751,28 +3152,47 @@ export async function buildPrompt(
       ctx.tools
     );
 
-    if (context.useBase64Encoding) contextLines.push(`[base64:${btoa(unescape(encodeURIComponent(replacedText)))}]`);
-    else contextLines.push(replacedText);
+    if (context.useBase64Encoding) {
+      contextLines.push(`[base64:${btoa(unescape(encodeURIComponent(replacedText)))}]`);
+    } else {
+      contextLines.push(replacedText);
+    }
   }
 
-  // 3. Stop Patterns & Clothing
   const allTextSearchSpace = ctx.textContentArray.join('\n');
-  const allStopPatterns = [...(character.languageModelSampler?.stopPatterns || []), ...(character.stopPatterns || [])];
+
+  const allStopPatterns = [
+    ...(character.languageModelSampler?.stopPatterns || []),
+    ...(character.stopPatterns || [])
+  ];
+
   const activeStopPatterns: StopPattern[] = [];
 
   for (const stopPattern of allStopPatterns) {
     if (isEntityActiveWithCache(
-      stopPattern.regularExpressionActivationTriggers, stopPattern.regularExpressionDeactivationTriggers,
-      stopPattern.regularExpressionExclusionActivationTriggers, stopPattern.regularExpressionExclusionDeactivationTriggers,
-      ctx.characterIdArray, ctx.textContentArray, ctx.characterId, [...ctx.protagonistIds], allTextSearchSpace, ctx.combinationCache
+      stopPattern.regularExpressionActivationTriggers,
+      stopPattern.regularExpressionDeactivationTriggers,
+      stopPattern.regularExpressionExclusionActivationTriggers,
+      stopPattern.regularExpressionExclusionDeactivationTriggers,
+      ctx.characterIdArray,
+      ctx.textContentArray,
+      ctx.characterId,
+      [...ctx.protagonistIds],
+      allTextSearchSpace,
+      ctx.combinationCache
     )) {
       activeStopPatterns.push(stopPattern);
     }
   }
 
-  const characterClothingWearingStatuses = resolveClothingWearingStatus(character, interactionData, ctx.characterIdArray, ctx.textContentArray, ctx.combinationCache);
+  const characterClothingWearingStatuses = resolveClothingWearingStatus(
+    character,
+    interactionData,
+    ctx.characterIdArray,
+    ctx.textContentArray,
+    ctx.combinationCache
+  );
 
-  // 4. Pre-calculate async/shared dependencies for builders
   let latitude: number | undefined = ctx.currentLocation?.latitude;
   let longitude: number | undefined = ctx.currentLocation?.longitude;
 
@@ -2787,7 +3207,6 @@ export async function buildPrompt(
 
   const timeData = getTimeDataFromCoordinates(latitude, longitude);
 
-  // 5. Build Template Context Data
   const locationResult = buildLocationText(ctx);
   const chatHistoryResult = createChatHistoryArray(ctx);
   const reachableLocationsResult = buildReachableLocationsText(ctx);
@@ -2797,6 +3216,7 @@ export async function buildPrompt(
 
   if (ctx.currentLocation?.hasSkyView && timeData) {
     const skySummary = generateSkyViewText(timeData.rawTimestamp, latitude, longitude);
+
     if (skySummary) skyViewText = `[Sky & Celestial View]\n${skySummary}`;
   }
 
@@ -2804,13 +3224,16 @@ export async function buildPrompt(
 
   if (ctx.currentLocation?.hasWeather && profile?.weatherApiKey && latitude && longitude) {
     const weatherLine = await fetchCurrentWeather(latitude, longitude, profile.weatherApiKey);
+
     if (weatherLine) weatherText = weatherLine;
   }
 
   let dateText = '';
+
   if (timeData) dateText = `Today's date is ${timeData.formattedDate}.`;
 
   let timeText = '';
+
   if (timeData) timeText = `The current time is ${timeData.formattedTime}.`;
 
   let timeElapsedText = '';
@@ -2837,7 +3260,6 @@ export async function buildPrompt(
     timeElapsedText = `It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.`;
   }
 
-  // --- STAMINA CALCULATIONS ---
   const effectiveMaxChatStamina = getEffectiveMaximumChatStamina(ctx.character, ctx.profile);
   const effectiveMaxActionStamina = getEffectiveMaximumActionStamina(ctx.character, ctx.profile);
 
@@ -2855,15 +3277,14 @@ export async function buildPrompt(
 
   const formatStamina = (val: number) => val === Number.POSITIVE_INFINITY ? 'Infinity' : String(Math.round(val));
   const formatRatio = (val: number) => String(Math.round(val * 100) / 100);
-  // ----------------------------
 
   const hasBeenSummarized = chatHistoryResult.hasBeenSummarized;
   const textInjectionText = buildTextInjectionText(ctx, hasBeenSummarized, contextLines);
 
-  // ─── 6. IMAGE AGGREGATION PHASE ─────────────────────────────────
   const allowedImageTypes = profile?.entityImageTypes ?? ['promptBlock', 'context', 'location', 'character'];
 
   let globalIdCounter = 1;
+
   const trackedImages: TrackedImage[] = [];
 
   const charImgInst: string[] = [];
@@ -2894,6 +3315,7 @@ export async function buildPrompt(
           base64Data = fcImg.includes(',') ? fcImg.split(',')[1] : fcImg;
         } else {
           const imagePath = await getCharacterImageUrlWithFallBack(char.id, charExpression);
+
           if (imagePath) base64Data = await fetchImageAsBase64(imagePath);
         }
 
@@ -2919,19 +3341,30 @@ export async function buildPrompt(
         if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
 
         if (!isEntityActiveWithCache(
-          block.regularExpressionActivationTriggers, block.regularExpressionDeactivationTriggers,
-          block.regularExpressionExclusionActivationTriggers, block.regularExpressionExclusionDeactivationTriggers,
-          ctx.characterIdArray, ctx.textContentArray, ctx.characterId, [...ctx.protagonistIds], allTextSearchSpace, ctx.combinationCache
-        )) continue;
+          block.regularExpressionActivationTriggers,
+          block.regularExpressionDeactivationTriggers,
+          block.regularExpressionExclusionActivationTriggers,
+          block.regularExpressionExclusionDeactivationTriggers,
+          ctx.characterIdArray,
+          ctx.textContentArray,
+          ctx.characterId,
+          [...ctx.protagonistIds],
+          allTextSearchSpace,
+          ctx.combinationCache
+        )) {
+          continue;
+        }
 
         if (block.images && block.images.length > 0) {
           let localIdx = 1;
 
           for (const img of block.images) {
             const imageUrl = getPromptBlockImageUrl(block.id, img);
+
             if (!imageUrl) continue;
 
             const base64Data = await fetchImageAsBase64(imageUrl);
+
             if (!base64Data) continue;
 
             const id = globalIdCounter++;
@@ -2945,6 +3378,7 @@ export async function buildPrompt(
             });
 
             promptImgInst.push(`Image ${id} - Prompt Block '${block.name}' Image ${localIdx}`);
+
             localIdx++;
           }
         }
@@ -2956,9 +3390,11 @@ export async function buildPrompt(
 
           for (const img of context.images) {
             const imageUrl = getContextImageUrl(context.id, img);
+
             if (!imageUrl) continue;
 
             const base64Data = await fetchImageAsBase64(imageUrl);
+
             if (!base64Data) continue;
 
             const id = globalIdCounter++;
@@ -2972,6 +3408,7 @@ export async function buildPrompt(
             });
 
             ctxImgInst.push(`Image ${id} - Context '${context.name}' Image ${localIdx}`);
+
             localIdx++;
           }
         }
@@ -2984,9 +3421,11 @@ export async function buildPrompt(
 
         for (const img of loc.images) {
           const imageUrl = getLocationImageUrl(loc.id, img);
+
           if (!imageUrl) continue;
 
           const base64Data = await fetchImageAsBase64(imageUrl);
+
           if (!base64Data) continue;
 
           const id = globalIdCounter++;
@@ -3000,6 +3439,7 @@ export async function buildPrompt(
           });
 
           locImgInst.push(`Image ${id} - Location '${loc.name || 'Unknown Location'}' Image ${localIdx}`);
+
           localIdx++;
         }
       }
@@ -3076,18 +3516,24 @@ export async function buildPrompt(
   );
 
   const promptBlockById = new Map<string, PromptBlock>();
+
   for (const pb of allPromptBlocks) promptBlockById.set(pb.id, pb);
 
   const builderCtx: BuilderContext = {
-    ctx, activeContextIds, characterClothingWearingStatuses, contextLines,
-    hasBeenSummarized, latitude, longitude, timeData,
-    isToolMessage, promptBlockById
+    ctx,
+    activeContextIds,
+    characterClothingWearingStatuses,
+    contextLines,
+    hasBeenSummarized,
+    latitude,
+    longitude,
+    timeData,
+    isToolMessage,
+    promptBlockById
   };
 
-  // 7. Build blocks on-demand using registry (Lazy Evaluation)
   const blockMap = await buildPromptBlocks(builderCtx, inputStrategy, templateContext, delimiters);
 
-  // 8. Custom Prompt Blocks (Regex Activated text only, images already handled)
   const regexActivatedBlocks: string[] = [];
 
   for (const block of allPromptBlocks) {
@@ -3096,10 +3542,19 @@ export async function buildPrompt(
     if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
 
     if (!isEntityActiveWithCache(
-      block.regularExpressionActivationTriggers, block.regularExpressionDeactivationTriggers,
-      block.regularExpressionExclusionActivationTriggers, block.regularExpressionExclusionDeactivationTriggers,
-      ctx.characterIdArray, ctx.textContentArray, ctx.characterId, [...ctx.protagonistIds], allTextSearchSpace, ctx.combinationCache
-    )) continue;
+      block.regularExpressionActivationTriggers,
+      block.regularExpressionDeactivationTriggers,
+      block.regularExpressionExclusionActivationTriggers,
+      block.regularExpressionExclusionDeactivationTriggers,
+      ctx.characterIdArray,
+      ctx.textContentArray,
+      ctx.characterId,
+      [...ctx.protagonistIds],
+      allTextSearchSpace,
+      ctx.combinationCache
+    )) {
+      continue;
+    }
 
     let text = block.textContent;
 
@@ -3115,8 +3570,11 @@ export async function buildPrompt(
     }
   }
 
-  // 9. Message Assembly
-  const hasTemplateOverride = inputStrategy.some(e => e === 'Model Chat Template' || e === 'Model Instruction Template' || e === 'Model Chat-Instruction Template');
+  const hasTemplateOverride = inputStrategy.some(e =>
+    e === 'Model Chat Template' ||
+    e === 'Model Instruction Template' ||
+    e === 'Model Chat-Instruction Template'
+  );
 
   let messages: OpenAIMessage[];
 
@@ -3130,10 +3588,19 @@ export async function buildPrompt(
     for (const entry of inputStrategy) {
       if (entry === 'Model Instruction Template' && resolvedInstructionTemplate?.instructionTemplate) {
         const assembledSoFar = promptLines.join('\n');
+
         promptLines.length = 0;
-        promptLines.push(resolvedInstructionTemplate.instructionTemplate.replace(/\{instruction\}/g, assembledSoFar).replace(/\{input\}/g, '').replace(/\{system\}/g, ctx.character.systemPrompt || ''));
+
+        promptLines.push(
+          resolvedInstructionTemplate.instructionTemplate
+            .replace(/\{instruction\}/g, assembledSoFar)
+            .replace(/\{input\}/g, '')
+            .replace(/\{system\}/g, ctx.character.systemPrompt || '')
+        );
       } else if (entry === 'Model Chat Template' && resolvedChatTemplate?.chatTemplate) {
-        const chatHistoryForTemplate = ctx.localHistory.filter((m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
+        const chatHistoryForTemplate = ctx.localHistory.filter(
+          (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
+        );
 
         for (const msg of chatHistoryForTemplate) {
           const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
@@ -3148,17 +3615,33 @@ export async function buildPrompt(
             ctx.tools
           );
 
-          promptLines.push(resolvedChatTemplate.chatTemplate.replace(/\{role\}/gi, role).replace(/\{content\}/g, content));
+          promptLines.push(
+            resolvedChatTemplate.chatTemplate
+              .replace(/\{role\}/gi, role)
+              .replace(/\{content\}/g, content)
+          );
         }
 
-        promptLines.push(resolvedChatTemplate.chatTemplate.replace(/\{role\}/gi, 'assistant').replace(/\{content\}/g, ''));
+        promptLines.push(
+          resolvedChatTemplate.chatTemplate
+            .replace(/\{role\}/gi, 'assistant')
+            .replace(/\{content\}/g, '')
+        );
       } else if (entry === 'Model Chat-Instruction Template' && resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
         const assembledSoFar = promptLines.join('\n');
+
         promptLines.length = 0;
 
-        promptLines.push(resolvedInstructionTemplate.instructionTemplate.replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n${assembledSoFar}`).replace(/\{input\}/g, '').replace(/\{system\}/g, ctx.character.systemPrompt || ''));
+        promptLines.push(
+          resolvedInstructionTemplate.instructionTemplate
+            .replace(/\{instruction\}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n${assembledSoFar}`)
+            .replace(/\{input\}/g, '')
+            .replace(/\{system\}/g, ctx.character.systemPrompt || '')
+        );
 
-        const chatHistoryForTemplate = ctx.localHistory.filter((m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId));
+        const chatHistoryForTemplate = ctx.localHistory.filter(
+          (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
+        );
 
         for (const msg of chatHistoryForTemplate) {
           const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
@@ -3173,24 +3656,36 @@ export async function buildPrompt(
             ctx.tools
           );
 
-          promptLines.push(resolvedChatTemplate.chatTemplate.replace(/\{role\}/gi, role).replace(/\{content\}/g, content));
+          promptLines.push(
+            resolvedChatTemplate.chatTemplate
+              .replace(/\{role\}/gi, role)
+              .replace(/\{content\}/g, content)
+          );
         }
 
-        promptLines.push(resolvedChatTemplate.chatTemplate.replace(/\{role\}/gi, 'assistant').replace(/\{content\}/g, ''));
+        promptLines.push(
+          resolvedChatTemplate.chatTemplate
+            .replace(/\{role\}/gi, 'assistant')
+            .replace(/\{content\}/g, '')
+        );
       } else if (isBuiltInBlockType(entry)) {
         const lines = blockMap[entry];
+
         if (lines?.length) promptLines.push(...lines);
       } else {
         const block = promptBlockById.get(entry);
+
         if (!block) continue;
 
         const lines = blockMap[block.id];
+
         if (lines?.length) promptLines.push(...lines);
       }
     }
 
     for (const blockId of regexActivatedBlocks) {
       const lines = blockMap[blockId];
+
       if (lines?.length) promptLines.push(...lines);
     }
 
@@ -3203,24 +3698,28 @@ export async function buildPrompt(
 
       for (const blockId of regexActivatedBlocks) {
         const lines = blockMap[blockId];
+
         if (lines?.length) extraLines.push(...lines);
       }
 
       if (extraLines.length > 0) {
         const lastSystemMsg = [...messages].reverse().find(m => m.role === 'system');
 
-        if (lastSystemMsg && typeof lastSystemMsg.content === 'string') lastSystemMsg.content += '\n' + extraLines.join('\n');
-        else messages.push({ role: 'system', content: extraLines.join('\n') });
+        if (lastSystemMsg && typeof lastSystemMsg.content === 'string') {
+          lastSystemMsg.content += '\n' + extraLines.join('\n');
+        } else {
+          messages.push({ role: 'system', content: extraLines.join('\n') });
+        }
       }
     }
   }
 
-  // 10. Stop Tokens
   let defaultStops: string[] = [];
 
   if (!profile?.doNotInjectDefaultStopTokens) {
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
     const turnEndStop = delimiters.turnEnd;
+
     defaultStops = [...templateStops, turnEndStop].filter(s => s.length > 0);
   }
 
@@ -3238,7 +3737,6 @@ export async function buildPrompt(
   };
 }
 
-// ─── Universal Message Filter ─────────────────────────────────────
 export function getUniversalMessageFilterFlags(
   textMessages: TextMessage[],
   promptBlocks: PromptBlock[],
