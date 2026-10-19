@@ -2294,25 +2294,25 @@ function buildStructuredMessages(
     inputStrategy: (promptBlockType | string)[],
     minimalVolatileCacheMode: boolean,
 ): OpenAIMessage[] {
-    const staticEntries: string[] = [];
+    const stableEntries: string[] = [];
     const volatileEntries: string[] = [];
 
     for (const entry of inputStrategy) {
         if (entry === 'Model Instruction Template' || entry === 'Model Chat Template' || entry === 'Model Chat-Instruction Template') continue;
 
         if (VOLATILE_BLOCK_TYPES.has(entry)) volatileEntries.push(entry);
-        else staticEntries.push(entry);
+        else stableEntries.push(entry);
     }
 
     const orderedEntries = minimalVolatileCacheMode
-        ? [...staticEntries, ...volatileEntries]
+        ? [...stableEntries, ...volatileEntries]
         : inputStrategy.filter(e =>
             e !== 'Model Instruction Template' &&
             e !== 'Model Chat Template' &&
             e !== 'Model Chat-Instruction Template'
         );
 
-    const staticLines: string[] = [];
+    const stableLines: string[] = [];
     const semiStableLines: string[] = [];
     const historyLines: string[] = [];
     const volatileLines: string[] = [];
@@ -2327,12 +2327,12 @@ function buildStructuredMessages(
         if (entry === 'Chat History') historyLines.push(...lines);
         else if (VOLATILE_BLOCK_TYPES.has(entry)) volatileLines.push(...lines);
         else if (entry === 'Starter Prompt' || entry === 'Sky View') semiStableLines.push(...lines);
-        else staticLines.push(...lines);
+        else stableLines.push(...lines);
     }
 
     const messages: OpenAIMessage[] = [];
 
-    if (staticLines.length > 0) messages.push({ role: 'system', content: staticLines.join('\n') });
+    if (stableLines.length > 0) messages.push({ role: 'system', content: stableLines.join('\n') });
     if (semiStableLines.length > 0) messages.push({ role: 'system', content: semiStableLines.join('\n') });
     if (historyLines.length > 0) messages.push({ role: 'system', content: historyLines.join('\n') });
     if (volatileLines.length > 0) messages.push({ role: 'user', content: volatileLines.join('\n') });
