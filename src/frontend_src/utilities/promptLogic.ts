@@ -2954,8 +2954,8 @@ async function buildPromptBlocks(
     if (blockType === 'Time Elapsed' && templateContext.timeElapsed.trim().length === 0) continue;
     if (blockType === 'Tool Instructions' && templateContext.toolInstructions.trim().length === 0) continue;
     if (blockType === 'Tool Message Instructions' && templateContext.toolMessageInstructions.trim().length === 0) continue;
-    if (blockType === 'Dialogue Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableDialoguePrompt(ctx.character, ctx.profile)) continue;
     if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.trim().length === 0) continue;
+    if (blockType === 'Dialogue Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableDialoguePrompt(ctx.character, ctx.profile)) continue;
     if (blockType === 'Starter Prompt' && templateContext.starterPrompt.trim().length === 0) continue;
     if (blockType === 'Starter Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableStarterPrompt(ctx.character, ctx.profile)) continue;
 
