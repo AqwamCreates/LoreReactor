@@ -428,20 +428,6 @@ export function AppModals({
         return list;
     }, [allRawInteractionDataShells, interactionData]);
 
-    const activeChatId = interactionData?.id;
-    const activeChatName = interactionData?.name;
-
-    const chatNameMap = useMemo(() => {
-        const map = new Map<string, string>();
-        for (const shell of chatShellsWithIdentifiers) {
-            map.set(shell.id, shell.name || 'Untitled Session');
-        }
-        if (activeChatId) {
-            map.set(activeChatId, activeChatName || 'Untitled Session');
-        }
-        return map;
-    }, [chatShellsWithIdentifiers, activeChatId, activeChatName]);
-
     const strategyModelIds = useMemo(() => {
         const set = new Set<string>();
         if (activeStrategy) {
@@ -1146,7 +1132,7 @@ export function AppModals({
                     interactionData={interactionData}
                     selectedModel={effectiveTokenizerModel} 
                     runningModels={runningModels} 
-                    chatNameMap={chatNameMap} 
+                    allRawInteractionDataShells={allRawInteractionDataShells} 
                 />
             )}
 

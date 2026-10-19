@@ -4,7 +4,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import type { 
     Character, Sampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
-    tool, InteractionData, StopPattern, Voice, RetrievalConfiguration
+    tool, InteractionData, StopPattern, Voice, RetrievalConfiguration,
+    RawInteractionData
 } from '../types';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { 
@@ -82,7 +83,7 @@ interface CharacterEditorModalProps {
     selectedModel?: LanguageModel | null;
     runningModels?: Record<string, any>;
     interactionData?: InteractionData | null;
-    allInteractionData: InteractionData[]
+    allRawInteractionDataShells: RawInteractionData[]
     localProtagonistId?: string | null;
 }
 
@@ -90,7 +91,7 @@ export function CharacterEditorModal({
     onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
     allCharacters, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
     selectedModel, runningModels,
-    interactionData, allInteractionData, localProtagonistId,
+    interactionData, allRawInteractionDataShells, localProtagonistId,
     isReadOnly = false,
 }: CharacterEditorModalProps) {
     const [activeTab, setActiveTab] = useState<EditorTabId>('general');
@@ -1741,7 +1742,7 @@ export function CharacterEditorModal({
                     onClose={() => setShowMemoryManager(false)}
                     character={existingCharacter || null}
                     onSaveMemories={setMemories}
-                    allInteractionData={allInteractionData}
+                    allRawInteractionDataShells={allRawInteractionDataShells}
                     localProtagonistId={localProtagonistId}
                 />
             )}

@@ -6,7 +6,6 @@ import { processPendingToolActions, executeTool, type ToolExecutionContext } fro
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
-import { getFilteredTextMessages } from '../utilities/promptLogic';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import {
     computeModulatedStaminaRegenationAmounts,

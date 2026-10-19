@@ -1,19 +1,19 @@
 // src/frontend_src/components/CharacterMemoryEditorModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, Memory, InteractionData, RawInteractionData } from '../types';
+import type { Character, Memory, RawInteractionData } from '../types';
 import '../main.css';
 
 export function CharacterMemoryEditorModal({
     character,
     onClose,
     onSaveMemories,
-    allInteractionData,
+    allRawInteractionDataShells,
     localProtagonistId,
 }: {
     character: Character;
     onClose: () => void;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
-    allInteractionData?: (InteractionData | RawInteractionData)[];
+    allRawInteractionDataShells: RawInteractionData[];
     localProtagonistId?: string | null;
 }) {
     const [editingId, setEditingId] = useState<string | null>(null);
@@ -34,12 +34,12 @@ export function CharacterMemoryEditorModal({
 
     // ✅ Derive chat map directly from allInteractionData
     const chatMap = useMemo(() => {
-        const map = new Map<string, InteractionData | RawInteractionData>();
-        for (const chat of allInteractionData || []) {
+        const map = new Map<string, RawInteractionData>();
+        for (const chat of allRawInteractionDataShells || []) {
             if (chat.id) map.set(chat.id, chat);
         }
         return map;
-    }, [allInteractionData]);
+    }, [allRawInteractionDataShells]);
 
     useEffect(() => {
         if (editingId && editTextAreaRef.current) {
