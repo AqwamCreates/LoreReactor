@@ -69,7 +69,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
         // ✅ FIX: Filter prompt blocks by the active profile's inputStrategy immediately
         const activeProfile = currentInteractionData.profile;
-        const activeStrategyBlocks = activeProfile?.inputStrategy 
+        const promptBlocks = activeProfile?.inputStrategy 
             ? (allPromptBlocks || []).filter(pb => activeProfile.inputStrategy!.includes(pb.id))
             : (allPromptBlocks || []);
 
@@ -155,7 +155,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
                 await executeTurnPipeline({
                     data: updatedData,
                     protagonistId: activeCharacter.id,
-                    allPromptBlocks: activeStrategyBlocks, // ✅ FIX: Pass filtered blocks
+                    allPromptBlocks: promptBlocks, // ✅ FIX: Pass filtered blocks
                     errorPrefix: 'Send failed',
                     lockAlreadyAcquired: true,
                 });
@@ -188,7 +188,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
             // ✅ FIX: Use filtered blocks for message filtering
-            const filteredMessages = getFilteredTextMessages(currentInteractionData, activeCharacter.id, activeStrategyBlocks);
+            const filteredMessages = getFilteredTextMessages(currentInteractionData, activeCharacter.id, promptBlocks);
             const knownCharacterNames = detectName(activeCharacter, filteredMessages, text);
 
             const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, {
@@ -274,7 +274,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             await executeTurnPipeline({
                 data: td,
                 protagonistId: activeCharacter.id,
-                allPromptBlocks: activeStrategyBlocks, // ✅ FIX: Pass filtered blocks
+                allPromptBlocks: promptBlocks, // ✅ FIX: Pass filtered blocks
                 errorPrefix: 'Send failed',
                 lockAlreadyAcquired: true,
             });
@@ -304,12 +304,12 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
         // ✅ FIX: Filter prompt blocks by the active profile's inputStrategy
         const activeProfile = currentInteractionData.profile;
-        const activeStrategyBlocks = activeProfile?.inputStrategy 
+        const promptBlocks = activeProfile?.inputStrategy 
             ? allPromptBlocksRef.current.filter(pb => activeProfile.inputStrategy!.includes(pb.id))
             : allPromptBlocksRef.current;
 
         // ✅ FIX: Use filtered blocks for message filtering
-        const filteredMessages = getFilteredTextMessages(currentInteractionData, activeProtagonist.id, activeStrategyBlocks);
+        const filteredMessages = getFilteredTextMessages(currentInteractionData, activeProtagonist.id, promptBlocks);
         const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
         const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
@@ -335,7 +335,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             data: td,
             protagonistId: protagonist.id,
             respondingCharacter: targetChar,
-            allPromptBlocks: activeStrategyBlocks, // ✅ FIX: Pass filtered blocks
+            allPromptBlocks: promptBlocks, // ✅ FIX: Pass filtered blocks
             isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Action failed',
             lockAlreadyAcquired: true,
