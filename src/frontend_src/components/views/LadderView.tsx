@@ -11,7 +11,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const {
         displayMessages,
         portraitUrlCache, displayNameCache,
-        compiledStreamingText, // ✅ UPDATED: Replaced formattedStreamingText
+        streamingText, // ✅ UPDATED: Replaced formattedStreamingText
         chatHistoryRef, messageEndRef, editTextAreaRef,
         parentMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
@@ -197,7 +197,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
 
             {!isStreamingInList && (
                 <StreamingIndicators
-                    compiledStreamingText={compiledStreamingText} // ✅ UPDATED: Pass raw compiled string
+                    streamingText={streamingText} // ✅ UPDATED: Pass raw compiled string
                     viewMode="ladder"
                     selectedCharacterId={selectedCharacterId ?? undefined}
                     streamingPortraitUrl={streamingPortraitUrl}

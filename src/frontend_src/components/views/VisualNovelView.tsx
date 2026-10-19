@@ -25,7 +25,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const {
         displayMessages,
         portraitUrlCache,
-        compiledStreamingText, // ✅ Centralized from App.tsx
+        streamingText, // ✅ Centralized from App.tsx
         centerAvatar, displayNameCache,
         messageEndRef, editTextAreaRef,
         onSaveEdit,
@@ -123,8 +123,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         if (isStreamingInList && lastMsg) {
             return streamingCompiledText;
         }
-        return isLoading && compiledStreamingText ? compiledStreamingText : null;
-    }, [isStreamingInList, lastMsg, streamingCompiledText, isLoading, compiledStreamingText]);
+        return isLoading && streamingText ? streamingText : null;
+    }, [isStreamingInList, lastMsg, streamingCompiledText, isLoading, streamingText]);
 
     const visibleCharacters = useMemo(() => {
         return interactionData?.participants || [];

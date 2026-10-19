@@ -211,15 +211,6 @@ function App() {
         activeStrategy, budgetData, playVoice,
     } = session;
 
-    const displayMode = interactionData?.profile?.toolUsageDisplayMode ?? 'simple';
-    const placementMode = interactionData?.profile?.toolUsageDisplayPlacementMode ?? 'inline';
-    const participants = interactionData?.participants ?? EMPTY_PARTICIPANTS;
-
-    const compiledStreamingText = useMemo(
-        () => streamingText ? compileMessageDisplayText(streamingText, displayMode, placementMode, participants) : null,
-        [streamingText, displayMode, placementMode, participants]
-    );
-
     // ─── Chat Restoration ────────────────────────────────────
     const { activeChatRestored } = useChatRestoration({
         sessionLoaded,
@@ -1031,7 +1022,7 @@ function App() {
         displayMessages: committedMessages as ChatMessage[],
         portraitUrlCache: viewAssets.portraitUrlCache, 
         displayNameCache,
-        compiledStreamingText, 
+        streamingText, 
         centerAvatar: viewAssets.centerAvatar,
         parentMessageId: interactionData?.parentMessageId ?? null,
         parentInteractionDataName: parentChatName,

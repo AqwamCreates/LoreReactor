@@ -13,7 +13,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const {
         displayMessages,
         portraitUrlCache, displayNameCache,
-        compiledStreamingText, // ✅ UPDATED: Replaced formattedStreamingText
+        streamingText, // ✅ UPDATED: Replaced formattedStreamingText
         centerAvatar,
         chatHistoryRef, messageEndRef, editTextAreaRef,
         parentMessageId, parentInteractionDataName,
@@ -161,7 +161,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
 
             <div className="chat-history" ref={chatHistoryRef}>
                 <StreamingIndicators
-                    compiledStreamingText={compiledStreamingText} // ✅ UPDATED: Pass raw compiled string
+                    streamingText={streamingText} // ✅ UPDATED: Pass raw compiled string
                     viewMode="cinematic"
                     selectedCharacterId={selectedCharacterId ?? undefined}
                     streamingPortraitUrl={streamingPortraitUrl}

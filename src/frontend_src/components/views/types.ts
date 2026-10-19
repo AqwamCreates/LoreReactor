@@ -9,7 +9,7 @@ export interface ViewModeProps {
     displayMessages: ChatMessage[];
     portraitUrlCache: Map<string, string | null>; // ✅ FIXED: Allow null values
     displayNameCache: DisplayNameCache | null; // ✅ FIXED: Allow null/any
-    compiledStreamingText: string | null; 
+    streamingText: string | null; 
     centerAvatar: Character | null;
     parentMessageId: string | null;
     parentInteractionDataName: string | null;

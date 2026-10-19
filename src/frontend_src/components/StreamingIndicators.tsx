@@ -8,7 +8,7 @@ import { MemoizedMessageText } from './MemoizedMessageText';
 const AMBIENT_NARRATOR_ID = '___ambient_narrator___';
 
 interface StreamingIndicatorsProps {
-    compiledStreamingText: string | null; // ✅ CHANGED
+    streamingText: string | null; // ✅ CHANGED
     viewMode: 'ladder' | 'cinematic' | 'vn';
     selectedCharacterId: string | undefined;
     streamingPortraitUrl: string | null;
@@ -17,7 +17,7 @@ interface StreamingIndicatorsProps {
 }
 
 export function StreamingIndicators({
-    compiledStreamingText,
+    streamingText,
     viewMode, streamingPortraitUrl,
     messagesLength, onAvatarClick,
 }: StreamingIndicatorsProps) {
@@ -85,7 +85,7 @@ export function StreamingIndicators({
                 <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
                     <span className="message-text" style={{ display: 'inline' }}>
                         {/* ✅ Render the raw string through the universal memoized formatter */}
-                        {compiledStreamingText ? <MemoizedMessageText text={compiledStreamingText} /> : null}
+                        {streamingText ? <MemoizedMessageText text={streamingText} /> : null}
                     </span>
                     <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>
                 </div>
