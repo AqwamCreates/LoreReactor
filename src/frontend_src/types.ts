@@ -304,7 +304,7 @@ export interface TextCharacterInjection extends ObjectData {
 
 }
 
-export type memorySearchSpace = 'co-located protagonists' | 'non-co-located protagonists' | 'co-located non-protagonists' | 'non-co-located non-protagonists' 
+export type memorySearchSpace = 'self' | 'listener' | 'co-located protagonists' | 'non-co-located protagonists' | 'co-located non-protagonists' | 'non-co-located non-protagonists' 
 
 export interface Character extends ObjectData {
   aliases?: string[],
@@ -469,9 +469,14 @@ export interface ToolMessage extends BaseMessage { // Acts like a scratch pad fo
   frontCameraImage?: string;
 }
 
-export type messageType = 'interaction' | 'chat' | 'whisper' | 'tool'
+export interface NarratorMessage extends BaseMessage { // Giving a character is optional. By default, it uses the default narrator.
+  messageType: 'narration'
+  textContent: string;
+}
 
-export type TextMessage = ChatMessage | WhisperMessage
+export type messageType = 'interaction' | 'chat' | 'whisper' | 'tool' | 'narration'
+
+export type TextMessage = ChatMessage | WhisperMessage | NarratorMessage
 
 export type HistoryMessage = InteractionMessage | TextMessage | ToolMessage;
 
