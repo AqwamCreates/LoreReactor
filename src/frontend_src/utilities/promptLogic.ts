@@ -2928,10 +2928,10 @@ async function buildPromptBlocks(
   for (const blockType of inputStrategy) {
     const { ctx } = builderCtx;
 
-    if (blockType === 'Think Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableThinkPrompt(ctx.character, ctx.profile)) continue;
-    if (blockType === 'Meta Think Instructions' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableMetaThinkInstructions(ctx.character, ctx.profile)) continue;
     if (blockType === 'System Prompt' && templateContext.systemPrompt.trim().length === 0) continue;
     if (blockType === 'Think Prompt' && templateContext.thinkPrompt.trim().length === 0) continue;
+    if (blockType === 'Think Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableThinkPrompt(ctx.character, ctx.profile)) continue;
+    if (blockType === 'Meta Think Instructions' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableMetaThinkInstructions(ctx.character, ctx.profile)) continue;
     if (blockType === 'Meta Think Instructions' && templateContext.metaThinkInstructions.trim().length === 0) continue;
     if (blockType === 'Character Tags' && templateContext.characterTags.length === 0) continue;
     if (blockType === 'Character Tags With Descriptions' && templateContext.characterTagsWithDescriptions.length === 0) continue;
