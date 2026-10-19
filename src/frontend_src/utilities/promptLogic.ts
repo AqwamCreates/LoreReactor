@@ -3229,6 +3229,8 @@ export async function buildPrompt(
 
   const imagePayloads = trackedImages.map(img => ({ data: img.base64Data, id: img.globalId }));
 
+  console.log(messages)
+
   return {
     messages,
     stops: uniqueStops,
