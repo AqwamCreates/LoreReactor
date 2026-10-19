@@ -1,24 +1,27 @@
 // src/frontend_src/components/CharacterMemoryEditorModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, Memory, RawInteractionData } from '../types';
+import { detokenizeMemoryContent } from '../utilities/memoryLogic';
 import '../main.css';
 
 export function CharacterMemoryEditorModal({
     character,
     onClose,
     onSaveMemories,
+    allCharacters,
     allRawInteractionDataShells,
     localProtagonistId,
 }: {
     character: Character;
     onClose: () => void;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
+    allCharacters: Character[];
     allRawInteractionDataShells: RawInteractionData[];
     localProtagonistId?: string | null;
 }) {
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editTextContent, setEditTextContent] = useState('');
-    
+
     const [memories, setMemories] = useState<Record<string, Memory[]>>(() => {
         try {
             return structuredClone(character.memories ?? {});
@@ -27,12 +30,11 @@ export function CharacterMemoryEditorModal({
             return character.memories ?? {};
         }
     });
-    
+
     const [hasChanges, setHasChanges] = useState(false);
     const [showMassDeleteConfirm, setShowMassDeleteConfirm] = useState(false);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
 
-    // ✅ Derive chat map directly from allInteractionData
     const chatMap = useMemo(() => {
         const map = new Map<string, RawInteractionData>();
         for (const chat of allRawInteractionDataShells || []) {
@@ -40,6 +42,73 @@ export function CharacterMemoryEditorModal({
         }
         return map;
     }, [allRawInteractionDataShells]);
+
+    /**
+     * Resolves raw participantIds from a session shell into full Character objects
+     * using the global allCharacters roster.
+     */
+    const buildParticipantsFromSession = (
+        chat: RawInteractionData | undefined,
+        fallbackDictKey: string,
+    ): Character[] => {
+        if (chat?.participantIds && chat.participantIds.length > 0) {
+            return chat.participantIds
+                .map(id => allCharacters.find(c => c.id === id))
+                .filter((c): c is Character => !!c);
+        }
+
+        // Fallback for manually authored memories lacking a session shell
+        if (fallbackDictKey === character.id || fallbackDictKey === 'self') {
+            return [character];
+        }
+        const other = allCharacters.find(c => c.id === fallbackDictKey);
+        return other ? [character, other] : [character];
+    };
+
+    const resolveMemoryDisplayText = (mem: Memory, fallbackChatId: string): string => {
+        const chatId = mem.interactionDataId || fallbackChatId;
+        const chat = chatMap.get(chatId);
+        const participants = buildParticipantsFromSession(chat, fallbackChatId);
+
+        const knownNames: Record<string, Record<string, boolean>> = {};
+        const protagIds = new Set(chat?.protagonistIds || []);
+        for (const pid of protagIds) {
+            const p = participants.find(pp => pp.id === pid);
+            if (!p) continue;
+            knownNames[pid] = {};
+            if (p.name) knownNames[pid][p.name] = true;
+            for (const alias of p.aliases ?? []) {
+                knownNames[pid][alias] = true;
+            }
+        }
+
+        return detokenizeMemoryContent(mem.textContent || '', participants, knownNames);
+    };
+
+    const retokenizeText = (text: string, mem: Memory, fallbackChatId: string): string => {
+        const chatId = mem.interactionDataId || fallbackChatId;
+        const chat = chatMap.get(chatId);
+        const participants = buildParticipantsFromSession(chat, fallbackChatId);
+
+        if (participants.length === 0) return text;
+
+        let tokenized = text;
+        const candidates: { id: string; name: string }[] = [];
+        for (const p of participants) {
+            for (const alias of p.aliases ?? []) candidates.push({ id: p.id, name: alias });
+            if (p.name) candidates.push({ id: p.id, name: p.name });
+        }
+        // Sort by length descending to prevent partial replacements (e.g. "Al" replacing "Alice")
+        candidates.sort((a, b) => b.name.length - a.name.length);
+
+        for (const c of candidates) {
+            if (!c.name) continue;
+            const escaped = c.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            tokenized = tokenized.replace(new RegExp(`\\b${escaped}\\b`, 'g'), `{{character@${c.id}}}`);
+        }
+
+        return tokenized;
+    };
 
     useEffect(() => {
         if (editingId && editTextAreaRef.current) {
@@ -49,21 +118,21 @@ export function CharacterMemoryEditorModal({
 
     const filteredMemories = useMemo(() => {
         const result: Record<string, Memory[]> = {};
-        
+
         for (const [chatId, mems] of Object.entries(memories)) {
             const filteredMems = mems.filter(mem => {
-                if (!localProtagonistId) return true; 
-                
+                if (!localProtagonistId) return true;
+
                 const memChatId = mem.interactionDataId || chatId;
                 const chat = chatMap.get(memChatId);
                 if (!chat) return false;
 
                 const protagIds = chat.protagonistIds || [];
-                if (protagIds.length === 0) return false; 
-                
+                if (protagIds.length === 0) return false;
+
                 return protagIds.some(id => id === localProtagonistId);
             });
-            
+
             if (filteredMems.length > 0) {
                 result[chatId] = filteredMems;
             }
@@ -78,9 +147,9 @@ export function CharacterMemoryEditorModal({
         return { name, id };
     };
 
-    const handleStartEdit = (mem: Memory) => {
+    const handleStartEdit = (mem: Memory, fallbackChatId: string) => {
         setEditingId(mem.id);
-        setEditTextContent(mem.textContent || '');
+        setEditTextContent(resolveMemoryDisplayText(mem, fallbackChatId));
     };
 
     const handleCancelEdit = () => {
@@ -88,26 +157,32 @@ export function CharacterMemoryEditorModal({
         setEditTextContent('');
     };
 
-    const handleSaveEdit = () => {
+    const handleSaveEdit = (originalTextContent: string, fallbackChatId: string) => {
         if (!editingId) return;
-        
+
         let targetChatId = '';
+        let targetMem: Memory | undefined;
         for (const [chatId, mems] of Object.entries(memories)) {
-            if (mems.some(m => m.id === editingId)) {
+            targetMem = mems.find(m => m.id === editingId);
+            if (targetMem) {
                 targetChatId = chatId;
                 break;
             }
         }
 
-        if (!targetChatId) return;
+        if (!targetChatId || !targetMem) return;
+
+        const wasEdited = editTextContent !== resolveMemoryDisplayText(targetMem, targetChatId);
+        const nextText = wasEdited
+            ? retokenizeText(editTextContent, targetMem, targetChatId)
+            : originalTextContent;
 
         setMemories(prev => {
             const next = { ...prev };
             next[targetChatId] = next[targetChatId].map(m => {
                 if (m.id !== editingId) return m;
-                // Invalidate embedding when textContent changes so the background queue regenerates it
                 const { embedding, ...rest } = m;
-                return { ...rest, textContent: editTextContent, lastUpdatedTimestamp: Date.now() } as Memory;
+                return { ...rest, textContent: nextText, lastUpdatedTimestamp: Date.now() } as Memory;
             });
             return next;
         });
@@ -222,6 +297,7 @@ export function CharacterMemoryEditorModal({
                                         {mems.map(mem => {
                                             const isEditing = editingId === mem.id;
                                             const { name: chatName, id: chatId } = resolveChatInfo(mem, key);
+                                            const displayText = resolveMemoryDisplayText(mem, key);
 
                                             return (
                                                 <div key={mem.id} style={{
@@ -241,7 +317,13 @@ export function CharacterMemoryEditorModal({
                                                             />
                                                             <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
                                                                 <button type="button" className="editor-button editor-button-cancel" onClick={handleCancelEdit}>Cancel</button>
-                                                                <button type="button" className="editor-button editor-button-save" onClick={handleSaveEdit}>Save</button>
+                                                                <button
+                                                                    type="button"
+                                                                    className="editor-button editor-button-save"
+                                                                    onClick={() => handleSaveEdit(mem.textContent || '', key)}
+                                                                >
+                                                                    Save
+                                                                </button>
                                                             </div>
                                                         </div>
                                                     ) : (
@@ -252,7 +334,7 @@ export function CharacterMemoryEditorModal({
                                                                 whiteSpace: 'pre-wrap',
                                                                 wordBreak: 'break-word',
                                                             }}>
-                                                                {mem.textContent || "(Empty memory)"}
+                                                                {displayText || "(Empty memory)"}
                                                             </div>
                                                             <div style={{
                                                                 display: 'flex',
@@ -271,7 +353,7 @@ export function CharacterMemoryEditorModal({
                                                                     <button
                                                                         type="button"
                                                                         className="toolbar-button"
-                                                                        onClick={() => handleStartEdit(mem)}
+                                                                        onClick={() => handleStartEdit(mem, key)}
                                                                         title="Edit memory"
                                                                         style={{ fontSize: '0.65rem' }}
                                                                     >

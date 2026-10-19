@@ -108,8 +108,8 @@ export async function buildRequestBody(
     existingCharacterText: string,
     allPromptBlocks: PromptBlock[],
     modelId: string,
+    isToolMessage: boolean,
     allRawInteractionDataShells: RawInteractionData[],
-    isToolMessage?: boolean
 ): Promise<{ 
     body: Record<string, unknown>; 
     knownCharacterNames: Record<string, Record<string, boolean>>; 
@@ -124,7 +124,7 @@ export async function buildRequestBody(
         imagePayloads, 
         characterClothingWearingStatuses, 
         fetchErrors 
-    } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId, allRawInteractionDataShells, isToolMessage);
+    } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId, isToolMessage, allRawInteractionDataShells);
 
     const languageModelSampler = character.languageModelSampler;
 

@@ -2491,8 +2491,8 @@ export async function buildPrompt(
   existingCharacterText: string,
   allPromptBlocks: PromptBlock[],
   modelId: string,
+  isToolMessage: boolean,
   allRawInteractionDataShells: RawInteractionData[],
-  isToolMessage?: boolean,
 ): Promise<BuildResult> {
   const activeModel = tokenEngine.getContext();
   const effectiveChatTemplateKey = activeModel?.chatTemplate;

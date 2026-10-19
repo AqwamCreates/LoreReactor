@@ -1742,6 +1742,7 @@ export function CharacterEditorModal({
                     onClose={() => setShowMemoryManager(false)}
                     character={existingCharacter || null}
                     onSaveMemories={setMemories}
+                    allCharacters={allCharacters}
                     allRawInteractionDataShells={allRawInteractionDataShells}
                     localProtagonistId={localProtagonistId}
                 />
