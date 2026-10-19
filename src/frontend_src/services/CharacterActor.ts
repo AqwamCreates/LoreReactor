@@ -323,7 +323,7 @@ export class CharacterActor {
                     : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
-                    const probeResult = await buildRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId, isToolMessage);
+                    const probeResult = await buildRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId, isToolMessage, toolContext.allRawInteractionDataShells);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
                 } catch { /* non-critical */ }
             }
@@ -500,7 +500,7 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage);
+                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
@@ -544,7 +544,7 @@ export class CharacterActor {
 
                     accState.get().setLastRawLen(0);
                     const { body: probeBody } = await buildRequestBody(
-                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, '', isToolMessage
+                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, '', isToolMessage, toolContext.allRawInteractionDataShells
                     );
                     let promptText = '';
                     if (typeof probeBody.prompt === 'string') {
@@ -560,7 +560,7 @@ export class CharacterActor {
                     const activeModelId = selection?.modelId || '';
 
                     const { body } = await buildRequestBody(
-                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage
+                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage, toolContext.allRawInteractionDataShells
                     );
 
                     await runSingleStreamPass(body, true);
@@ -615,7 +615,7 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage);
+                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
