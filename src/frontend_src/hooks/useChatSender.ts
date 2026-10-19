@@ -65,11 +65,8 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
         if (!currentInteractionData || !activeCharacter || (!text && (!files || !files.length))) return;
 
-        // ✅ FIX: Filter prompt blocks by the active profile's inputStrategy immediately
         const activeProfile = currentInteractionData.profile;
 
-        // ✅ LAZY LOAD/UNLOAD STRICTLY ON SEND
-        // Prevents thrashing on profile switches. Starts loading in background while LLM generates.
         const isNarrationEnabled = activeProfile?.narrateTexts 
             ? Object.values(activeProfile.narrateTexts).some(v => v === true) 
             : false;
@@ -181,9 +178,9 @@ export function useChatSender(opts: UseChatSenderOptions) {
             });
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-            // ✅ FIX: Use filtered blocks for message filtering
-            const filteredMessages = getLocalMessageHistory(currentInteractionData, activeCharacter) as TextMessage[];
-            const knownCharacterNames = detectName(activeCharacter, filteredMessages, text);
+            // ✅ FIX: Filter history to only include text messages (chat/whisper) to prevent crashes in detectName
+            const textMessages = getLocalMessageHistory(currentInteractionData, activeCharacter, ['chat', 'whisper']) as TextMessage[];
+            const knownCharacterNames = detectName(activeCharacter, textMessages, text);
 
             const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, {
                 files: encodedFiles,
@@ -295,8 +292,9 @@ export function useChatSender(opts: UseChatSenderOptions) {
             ? (joinProtagonistRef.current || protagonist)
             : protagonist;
 
-        const filteredMessages = getLocalMessageHistory(currentInteractionData, activeProtagonist) as TextMessage[];
-        const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
+        // ✅ FIX: Filter history to only include text messages (chat/whisper) to prevent crashes in detectName
+        const textMessages = getLocalMessageHistory(currentInteractionData, activeProtagonist, ['chat', 'whisper']) as TextMessage[];
+        const knownCharacterNames = detectName(activeProtagonist, textMessages);
 
         const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
 
@@ -325,7 +323,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             errorPrefix: 'Action failed',
             lockAlreadyAcquired: true,
         });
-    }, [getState, acquireLock, addToast, isMultiplayerClient, setInteractionData, executeTurnPipeline, releaseLock, joinProtagonistRef, allPromptBlocksRef, onMessageBroadcastRef]);
+    }, [getState, acquireLock, addToast, isMultiplayerClient, setInteractionData, executeTurnPipeline, releaseLock, joinProtagonistRef, onMessageBroadcastRef]);
 
     return {
         sendMessage,
