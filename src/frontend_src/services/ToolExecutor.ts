@@ -1289,7 +1289,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 
     if (action === 'save') {
         const others = interactionData.participants.filter(p => p.id !== character.id);
-        const summary = await generateCharacterMemory(interactionData, character, '', 512);
+        const summary = await generateCharacterMemory(interactionData, character, context.allPromptBlocks, '', 512);
         if (!summary) return { toolType: 'memory', args, textContent: '[Error: Failed to summarize memory]', displayReplacement: '[Error: Memory error]' };
 
         const ts = Date.now();

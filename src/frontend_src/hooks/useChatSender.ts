@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useChatSender.ts
 import { useCallback } from 'react';
-import type { Character, PromptBlock, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult } from '../types';
+import type { Character, PromptBlock, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult, TextMessage } from '../types';
 import { createChatMessage } from '../utilities/interactionDataLogic';
 import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
@@ -55,7 +55,6 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
     const sendMessage = useCallback(async (
         text: string,
-        allPromptBlocks: PromptBlock[],
         files: File[] | undefined,
         frontCameraImageBase64: string | undefined
     ) => {
@@ -69,9 +68,6 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
         // ✅ FIX: Filter prompt blocks by the active profile's inputStrategy immediately
         const activeProfile = currentInteractionData.profile;
-        const promptBlocks = activeProfile?.inputStrategy 
-            ? (allPromptBlocks || []).filter(pb => activeProfile.inputStrategy!.includes(pb.id))
-            : (allPromptBlocks || []);
 
         // ✅ LAZY LOAD/UNLOAD STRICTLY ON SEND
         // Prevents thrashing on profile switches. Starts loading in background while LLM generates.
@@ -155,7 +151,6 @@ export function useChatSender(opts: UseChatSenderOptions) {
                 await executeTurnPipeline({
                     data: updatedData,
                     protagonistId: activeCharacter.id,
-                    allPromptBlocks: promptBlocks, // ✅ FIX: Pass filtered blocks
                     errorPrefix: 'Send failed',
                     lockAlreadyAcquired: true,
                 });
@@ -274,7 +269,6 @@ export function useChatSender(opts: UseChatSenderOptions) {
             await executeTurnPipeline({
                 data: td,
                 protagonistId: activeCharacter.id,
-                allPromptBlocks: promptBlocks, // ✅ FIX: Pass filtered blocks
                 errorPrefix: 'Send failed',
                 lockAlreadyAcquired: true,
             });
@@ -302,14 +296,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             ? (joinProtagonistRef.current || protagonist)
             : protagonist;
 
-        // ✅ FIX: Filter prompt blocks by the active profile's inputStrategy
-        const activeProfile = currentInteractionData.profile;
-        const promptBlocks = activeProfile?.inputStrategy 
-            ? allPromptBlocksRef.current.filter(pb => activeProfile.inputStrategy!.includes(pb.id))
-            : allPromptBlocksRef.current;
-
-        // ✅ FIX: Use filtered blocks for message filtering
-        const filteredMessages = getFilteredTextMessages(currentInteractionData, activeProtagonist.id, promptBlocks);
+        const filteredMessages = getLocalMessageHistory(currentInteractionData, activeProtagonist) as TextMessage[];
         const knownCharacterNames = detectName(activeProtagonist, filteredMessages);
 
         const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
@@ -335,7 +322,6 @@ export function useChatSender(opts: UseChatSenderOptions) {
             data: td,
             protagonistId: protagonist.id,
             respondingCharacter: targetChar,
-            allPromptBlocks: promptBlocks, // ✅ FIX: Pass filtered blocks
             isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Action failed',
             lockAlreadyAcquired: true,

@@ -675,10 +675,10 @@ function App() {
         const profileCam = interactionData?.profile?.useFrontCameraImage;
         if (profileCam === 1) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
         else if (profileCam === 0 && currentCharacter?.useFrontCameraImage) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
-        sendMessage(textToSend, promptBlocks.promptBlocks, pendingFiles, frontCam);
+        sendMessage(textToSend, pendingFiles, frontCam);
         setInputText(''); setPendingFiles([]);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    }, [inputText, pendingFiles, sendMessage, promptBlocks, captureFrontCameraImage, interactionData, currentCharacter]);
+    }, [inputText, pendingFiles, sendMessage, captureFrontCameraImage, interactionData, currentCharacter]);
 
     const handleToggleMic = useCallback(async () => {
         if (isRecording) { 
@@ -1181,7 +1181,7 @@ function App() {
             } else if (e.data?.type === 'OVERLAY_OPENED') {
                 setIsOverlayOpen(true);
             } else if (e.data?.type === 'SEND_MESSAGE' && e.data?.text !== undefined) {
-                sendMessage(e.data.text, promptBlocks.promptBlocks, e.data.files || [], undefined);
+                sendMessage(e.data.text, e.data.files || [], undefined);
             } else if (e.data?.type === 'INTERJECT_ACTION' && e.data?.label) {
                 const protagonistId = localProtagonist?.id ?? interactionData?.protagonistIds?.[0];
                 const companionChar = interactionData?.participants?.find((p: Character) => p.id !== protagonistId) 

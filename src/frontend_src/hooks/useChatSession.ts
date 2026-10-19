@@ -181,7 +181,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const pendingHostResponseRef = useRef(false);
     const triggerHostResponseRef = useRef<(() => Promise<void>) | null>(null);
-    const pendingResumeRef = useRef<{ messageId: string; allPromptBlocks: PromptBlock[] } | null>(null);
+    const pendingResumeRef = useRef<{ messageId: string } | null>(null);
 
     const lastTurnContextRef = useRef<{ modelId: string; prompt: string; metadata: RequestMetadata } | null>(null);
     const requestTimestampsRef = useRef<number[]>([]);
@@ -410,7 +410,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         data,
         protagonistId,
         existingCharacterText = '',
-        allPromptBlocks,
         respondingCharacter,
         isProtagonistCharId,
         errorPrefix = 'Generation failed',
@@ -418,6 +417,9 @@ export function useChatSession(options: UseChatSessionOptions) {
     }: GenerationTurnOptions) => {
         if (!lockAlreadyAcquired && !acquireLock()) return;
         if (!data.profile || !data.profile?.enableCharacterExpression) sentimentEngine.unload();
+
+        // ✅ BOUNDARY RESOLUTION: Compute active blocks exactly at execution time
+        const promptBlocks = getActivePromptBlocks(data);
 
         const currentState = getState();
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) {
@@ -488,7 +490,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             let turnResult: Awaited<ReturnType<typeof chatEngine.runTurn>> | null = null;
             try {
-                turnResult = await chatEngine.runTurn(data, ctrl, allPromptBlocks, metadata, existingCharacterText, voiceTracker);
+                turnResult = await chatEngine.runTurn(data, ctrl, promptBlocks, metadata, existingCharacterText, voiceTracker);
             } catch (e) {
                 if ((e as Error).name === 'AbortError') {
                     turnResult = { interactionData: data, isCompleted: false };
@@ -568,22 +570,17 @@ export function useChatSession(options: UseChatSessionOptions) {
                     return;
                 }
 
-                // ✅ FIX: Use centralized helper to filter prompt blocks for summarization
-                const activeStrategyBlocks = getActivePromptBlocks(ud);
-
                 runSummarization({
                     data: ud,
                     character: respondingChar,
-                    promptBlocks: activeStrategyBlocks,
+                    promptBlocks: promptBlocks,
                     setInteractionData,
                     addToast,
                 });
             } else {
                 const enableAmbientNarration = ud?.profile?.enableAmbientNarration ?? false;
                 if (enableAmbientNarration) {
-                    // ✅ FIX: Use centralized helper to filter prompt blocks for ambient narration
-                    const activeStrategyBlocks = getActivePromptBlocks(ud);
-                    const ad = await generateAmbientNarration(ud, ctrl.signal, activeStrategyBlocks, protagonistId);
+                    const ad = await generateAmbientNarration(ud, ctrl.signal, promptBlocks, protagonistId);
                     const sd = ad || ud;
                     setInteractionData(sd);
                     broadcastNewMessages(preTurnCount, sd);
@@ -658,7 +655,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
 
         try {
-            // ✅ FIX: Filter blocks for delayed response
             const activeBlocks = getActivePromptBlocks(currentData);
             await chatEngine.runTurn(
                 currentData,
@@ -705,18 +701,14 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         const allProtagonistIds = new Set(currentState.interactionData.protagonistIds || [currentState.localProtagonist.id]);
         
-        // ✅ FIX: Filter blocks for host response
-        const activeBlocks = getActivePromptBlocks(currentState.interactionData);
-
         await executeTurnPipeline({
             data: currentState.interactionData,
             protagonistId: currentState.localProtagonist.id,
-            allPromptBlocks: activeBlocks,
             isProtagonistCharId: (id: string) => allProtagonistIds.has(id),
             errorPrefix: 'Host response failed',
             lockAlreadyAcquired: true,
         });
-    }, [getState, acquireLock, executeTurnPipeline, getActivePromptBlocks]);
+    }, [getState, acquireLock, executeTurnPipeline]);
 
     useEffect(() => {
         triggerHostResponseRef.current = triggerHostResponse;
@@ -879,7 +871,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            // ✅ FIX: Filter blocks for resume generation
             const activeBlocks = getActivePromptBlocks(currentInteractionData);
             
             const result = await chatEngine.handleServerResponse(
@@ -1036,19 +1027,15 @@ export function useChatSession(options: UseChatSessionOptions) {
             || td.participants.find(p => p.id === primaryProtagonistId) 
             || td.participants[0];
 
-        // ✅ FIX: Filter blocks for regeneration
-        const activeBlocks = getActivePromptBlocks(td);
-
         await executeTurnPipeline({
             data: td,
             protagonistId: primaryProtagonistId,
-            allPromptBlocks: activeBlocks,
             respondingCharacter: respondingChar,
             isProtagonistCharId: (id: string) => protagonistIdSet.has(id),
             errorPrefix: 'Regeneration failed',
             lockAlreadyAcquired: true,
         });
-    }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline, getActivePromptBlocks]);
+    }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline]);
 
     const startNewChat = useCallback((char: Character) => {
         const c = createNewInteractionData(char);

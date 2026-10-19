@@ -4,7 +4,6 @@ import type {
     HistoryMessage,
     Profile,
     StopPattern,
-    PromptBlock,
     Character,
     TextMessage,
 } from '../types';
@@ -219,7 +218,6 @@ export function injectStopSignals(data: InteractionData, patterns: string[]): In
 export interface GenerationTurnOptions {
     data: InteractionData;
     protagonistId: string;
-    allPromptBlocks: PromptBlock[];
     respondingCharacter?: Character;
     existingCharacterText?: string,
     isProtagonistCharId?: (charId: string) => boolean;
