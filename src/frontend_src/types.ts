@@ -412,6 +412,60 @@ export interface ToolExecutionResult {
     displayReplacement: string;
 }
 
+export interface TimerEntry {
+  name: string;
+  targetTimestamp: number;
+}
+
+export interface StopwatchEntry {
+  name: string;
+  startTimestamp: number;
+  pausedElapsedMs?: number;
+}
+
+export interface ScheduleEntry {
+  name: string;
+  triggerTimestamp: number;
+  action: string;
+  repeatIntervalMs?: number;
+}
+
+export interface ScheduledResponseEntry {
+  characterId: string;
+  characterName: string;
+  durationMs: number;
+  thought?: string;
+  createdAt: number;
+}
+
+export interface ActiveToolActions {
+  timers?: TimerEntry[];
+  stopwatches?: StopwatchEntry[];
+  schedules?: ScheduleEntry[];
+  scheduledResponses?: ScheduledResponseEntry[];
+  notes?: Record<string, string>;
+}
+
+export interface ActiveToolActions {
+  timers?: TimerEntry[];
+  stopwatches?: StopwatchEntry[];
+  schedules?: ScheduleEntry[];
+  scheduledResponses?: ScheduledResponseEntry[];
+  notes?: Record<string, string>;
+}
+
+export type PendingToolActionType =
+  | 'summon' | 'kick' | 'invite' | 'whisper' | 'creator' | 'destroyer'
+  | 'administrator_switch_model' | 'administrator_toggle_account' 
+  | 'administrator_join_session' | 'administrator_leave_session' 
+  | 'administrator_accept_join' | 'administrator_reject_join'
+  | 'administrator_add_to_entity_folder' | 'administrator_remove_from_entity_folder'
+  | 'administrator_edit_entity';
+
+export interface PendingToolAction {
+  type: PendingToolActionType;
+  payload: Record<string, string>;
+}
 export interface BaseMessage {
   id: string;
   character: Character;
@@ -424,6 +478,8 @@ export interface BaseMessage {
   characterLockedLocations: Record<string, string[]> // Location Ids -> An array of character Ids.
   isPresent?: boolean;
   isConverged?: boolean; // Because when traversing the messages in reverse at convergence, it would take the wrong path as it does not see it made that jump.
+  activeToolActions?: ActiveToolActions,
+  pendingToolActions?: PendingToolAction[];
   parentMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;
@@ -489,6 +545,8 @@ export interface RawBaseMessage {
   inventory?: Inventory,
   isPresent?: boolean;
   isConverged?: boolean; // Because when traversing the messages in reverse at convergence, it would take the wrong path as it does not see it made that jump.
+  activeToolActions?: ActiveToolActions,
+  pendingToolActions?: PendingToolAction[];
   parentMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;

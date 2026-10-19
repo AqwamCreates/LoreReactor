@@ -4,7 +4,14 @@ import { fetchLinkContent } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace, getActiveDialoguePrompts } from '../utilities/dialoguePromptLogic';
 import { isEntityActiveWithCache, type TriggerEvaluationContext, type CombinationCache } from '../utilities/triggerLogic';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
-import type { BaseMessage, Character, Context, Location, AudioTrack, Profile, InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage, PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel } from '../types';
+import type { 
+    BaseMessage, Character, Context, Location, AudioTrack, Profile, 
+    InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage, 
+    PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, 
+    Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, 
+    tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel,
+    entityType 
+} from '../types';
 import { findLatestMessage } from '../utilities/messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocation, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../utilities/locationLogic';
@@ -34,7 +41,7 @@ export interface ToolExecutionContext {
     allLocations: Location[];
     allAudioTracks: AudioTrack[];
     allWorlds: World[];
-    allLanguageModels: LanguageModel[]
+    allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
@@ -51,44 +58,45 @@ export interface ToolExecutionContext {
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-// ✅ Moved to top to prevent Temporal Dead Zone (TDZ) issues when referenced in executeAdministrator
-const VALID_ENTITY_TYPES = [
-    'character', 'context', 'location', 'audio_track', 'prompt_block',
-    'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world',
-    'memory', 'extension', 'account', 'multiplayer_data', 'entity_folder'
-];
+// ─── Active & Pending Tool Action Types ──────────────────────────────
 
-function getEntitiesByType(context: ToolExecutionContext | undefined, rawType: string): any[] {
-    if (!context) return [];
-    switch (rawType.toLowerCase().replace(/[-_\s]/g, '')) {
-        case 'character': return context.allCharacters || [];
-        case 'context': return context.allContexts || [];
-        case 'location': return context.allLocations || [];
-        case 'audiotrack': return context.allAudioTracks || [];
-        case 'promptblock': return context.allPromptBlocks || [];
-        case 'stoppattern': return context.allStopPatterns || [];
-        case 'sampler': return context.allSamplers || [];
-        case 'budgetstrategy': return context.allBudgetStrategies || [];
-        case 'profile': return context.allProfiles || [];
-        case 'world': return context.allWorlds || [];
-        case 'memory': return context.allMemories || [];
-        case 'extension': return context.allExtensions || [];
-        case 'account': return context.allAccounts || [];
-        case 'multiplayerdata': return context.allMultiplayerData || [];
-        case 'interactionData': return context.allRawInteractionDataShells || [];
-        case 'entityFolder': return context.allEntityFolders || [];
-        default: return [];
-    }
-}
+export type PendingToolActionType =
+    | 'summon' | 'kick' | 'invite' | 'whisper' | 'creator' | 'destroyer'
+    | 'administrator_switch_model' | 'administrator_toggle_account'
+    | 'administrator_join_session' | 'administrator_leave_session'
+    | 'administrator_accept_join' | 'administrator_reject_join'
+    | 'administrator_add_to_entity_folder' | 'administrator_remove_from_entity_folder'
+    | 'administrator_edit_entity';
 
 export interface PendingToolAction {
-    type: 'summon' | 'kick' | 'invite' | 'whisper' | 'creator' | 'destroyer' |
-    'administrator_switch_model' |
-    'administrator_toggle_account' | 'administrator_join_session' |
-    'administrator_leave_session' | 'administrator_accept_join' | 'administrator_reject_join' |
-    'administrator_add_to_entity_folder' | 'administrator_remove_from_entity_folder' |
-    'administrator_edit_entity';
+    type: PendingToolActionType;
     payload: Record<string, string>;
+}
+
+export interface TimerEntry {
+    name: string;
+    targetTimestamp: number;
+}
+
+export interface StopwatchEntry {
+    name: string;
+    startTimestamp: number;
+    pausedElapsedMs?: number;
+}
+
+export interface ScheduleEntry {
+    name: string;
+    triggerTimestamp: number;
+    action: string;
+    repeatIntervalMs?: number;
+}
+
+export interface ScheduledResponseEntry {
+    characterId: string;
+    characterName: string;
+    durationMs: number;
+    thought: string;
+    createdAt: number;
 }
 
 export interface TradeOffer {
@@ -98,6 +106,99 @@ export interface TradeOffer {
     giveItems: Record<string, number>;
     takeItems: Record<string, number>;
     timestamp: number;
+}
+
+export interface ActiveToolActions {
+    timers?: TimerEntry[];
+    stopwatches?: StopwatchEntry[];
+    schedules?: ScheduleEntry[];
+    scheduledResponses?: ScheduledResponseEntry[];
+    notes?: Record<string, string>;
+    tradeOffers?: TradeOffer[];
+}
+
+// ─── Canonical entityType Mapping ───────────────────────────────────
+
+export const VALID_ENTITY_TYPES: entityType[] = [
+    'character', 'context', 'location', 'audioTrack', 'world',
+    'interactionData', 'model', 'sampler', 'promptBlock', 'stopPattern',
+    'retrievalConfiguration', 'budgetStrategy', 'profile', 'account',
+    'multiplayerData', 'entityFolder'
+];
+
+/**
+ * Maps the AI's underscore / snake_case forms to canonical entityType from types.ts
+ */
+export function normalizeEntityType(raw: string): entityType | null {
+    if (!raw) return null;
+    const cleaned = raw.toLowerCase().replace(/[-_\s]/g, '');
+    const map: Record<string, entityType> = {
+        character: 'character',
+        characters: 'character',
+        context: 'context',
+        contexts: 'context',
+        location: 'location',
+        locations: 'location',
+        audiotrack: 'audioTrack',
+        audiotracks: 'audioTrack',
+        audio: 'audioTrack',
+        world: 'world',
+        worlds: 'world',
+        interactiondata: 'interactionData',
+        interactiondatas: 'interactionData',
+        session: 'interactionData',
+        sessions: 'interactionData',
+        chat: 'interactionData',
+        chats: 'interactionData',
+        model: 'model',
+        models: 'model',
+        languagemodel: 'model',
+        languagemodels: 'model',
+        sampler: 'sampler',
+        samplers: 'sampler',
+        promptblock: 'promptBlock',
+        promptblocks: 'promptBlock',
+        stoppattern: 'stopPattern',
+        stoppatterns: 'stopPattern',
+        retrievalconfiguration: 'retrievalConfiguration',
+        retrievalconfigurations: 'retrievalConfiguration',
+        budgetstrategy: 'budgetStrategy',
+        budgetstrategies: 'budgetStrategy',
+        profile: 'profile',
+        profiles: 'profile',
+        account: 'account',
+        accounts: 'account',
+        multiplayerdata: 'multiplayerData',
+        multiplayerdatas: 'multiplayerData',
+        entityfolder: 'entityFolder',
+        entityfolders: 'entityFolder',
+        folder: 'entityFolder',
+        folders: 'entityFolder',
+    };
+    return map[cleaned] ?? null;
+}
+
+function getEntitiesByType(context: ToolExecutionContext | undefined, type: entityType): any[] {
+    if (!context) return [];
+    switch (type) {
+        case 'character': return context.allCharacters || [];
+        case 'context': return context.allContexts || [];
+        case 'location': return context.allLocations || [];
+        case 'audioTrack': return context.allAudioTracks || [];
+        case 'world': return context.allWorlds || [];
+        case 'interactionData': return context.allRawInteractionDataShells || [];
+        case 'model': return context.allLanguageModels || [];
+        case 'sampler': return context.allSamplers || [];
+        case 'promptBlock': return context.allPromptBlocks || [];
+        case 'stopPattern': return context.allStopPatterns || [];
+        case 'retrievalConfiguration': return context.allRetrievalConfigurations || [];
+        case 'budgetStrategy': return context.allBudgetStrategies || [];
+        case 'profile': return context.allProfiles || [];
+        case 'account': return context.allAccounts || [];
+        case 'multiplayerData': return context.allMultiplayerData || [];
+        case 'entityFolder': return context.allEntityFolders || [];
+        default: return [];
+    }
 }
 
 // ─── Universal Python & CLI Argument Parser ─────────────────────────
@@ -123,7 +224,6 @@ export class ArgAccessor {
                 return val;
             }
         }
-        // ✅ FIX: Handle negative dummy indices gracefully instead of relying on JS array [-1] behavior
         return index >= 0 ? this.positional[index] : undefined;
     }
 
@@ -135,13 +235,6 @@ export class ArgAccessor {
     }
 }
 
-/**
- * Universal argument parser supporting Python function call syntax:
- *   func(val1, key="value", count=10)
- * As well as CLI space/quote-delimited syntax:
- *   set Bomb 5m
- *   wear "Alice" "Blue Dress"
- */
 export function parsePythonArgs(rawArgs: string): ArgAccessor {
     const trimmed = rawArgs;
     if (!trimmed) return new ArgAccessor([], {}, rawArgs);
@@ -152,7 +245,6 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
         input = fnMatch[1];
     }
 
-    // Determine if input uses top-level commas as argument delimiters
     let hasTopLevelCommas = false;
     {
         let q: '"' | "'" | null = null;
@@ -250,21 +342,21 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
     return new ArgAccessor(positional, kwargs, rawArgs);
 }
 
-export function loadPendingToolActions(inventory: Inventory | undefined): PendingToolAction[] {
-    if (!inventory || typeof inventory['___pending_tool_actions___'] !== 'string') return [];
-    try { return JSON.parse(inventory['___pending_tool_actions___'] as string); } catch { return []; }
-}
-
-export function savePendingToolActions(inventory: Inventory, actions: PendingToolAction[]): void {
-    if (actions.length === 0) { delete inventory['___pending_tool_actions___']; } else { inventory['___pending_tool_actions___'] = JSON.stringify(actions); }
-}
+// ─── Clean First-Class Helpers ──────────────────────────────────────
 
 function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction): void {
-    const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
-    const actions = loadPendingToolActions(inventory);
-    actions.push(action);
-    savePendingToolActions(inventory, actions);
-    nextMessage.inventory = inventory;
+    if (!nextMessage.pendingToolActions) {
+        nextMessage.pendingToolActions = [];
+    }
+    nextMessage.pendingToolActions.push(action);
+}
+
+function resolveActiveToolActions(nextMessage: BaseMessage, interactionData: InteractionData): ActiveToolActions {
+    if (nextMessage.activeToolActions) {
+        return { ...nextMessage.activeToolActions };
+    }
+    const latest = findLatestMessage(interactionData, nextMessage.character);
+    return latest?.message?.activeToolActions ? { ...latest.message.activeToolActions } : {};
 }
 
 // ─── Entity Resolution Helpers ──────────────────────────────────────
@@ -274,7 +366,7 @@ function resolveCharacter(idOrName: string, interactionData: InteractionData, al
     if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
         query = query.slice(1, -1).toLowerCase();
     }
-    const participants = interactionData.participants
+    const participants = interactionData.participants;
     let found = participants.find(c => c.id.toLowerCase() === query || c.name.toLowerCase() === query || c.id.startsWith(query));
     if (found) return found;
     found = allCharacters.find(c => c.id.toLowerCase() === query || c.name.toLowerCase() === query || c.id.startsWith(query));
@@ -358,7 +450,7 @@ export async function executeTool(
 
     try {
         const result = await executeFunction(args, nextMessage, interactionData, context, displayMode);
-        if (!result || !result.textContent || !result.textContent) {
+        if (!result || !result.textContent) {
             return { toolType, args, textContent: "Something went wrong", displayReplacement: result?.displayReplacement || "" };
         }
         return result;
@@ -420,7 +512,7 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
         return helpResult('whisper', 'target_char_id="...", text="..."', 'send private message visible only to target(s)');
     }
 
-    const targetIdentifiers = targetIdsStr.split(',').map(id => id).filter(Boolean);
+    const targetIdentifiers = targetIdsStr.split(',').map(id => id.trim()).filter(Boolean);
     const allChars = context.allCharacters || [];
     const validTargetIds: string[] = [];
     const validTargetNames: string[] = [];
@@ -495,9 +587,9 @@ function executeRandomPick(args: string): ToolResult {
     let options = pArgs.positional;
     const optKwarg = pArgs.get(-1, 'options', 'choices');
     if (optKwarg) {
-        options = optKwarg.split(',').map(s => s).filter(Boolean);
+        options = optKwarg.split(',').map(s => s.trim()).filter(Boolean);
     } else if (options.length === 1 && options[0].includes(',')) {
-        options = options[0].split(',').map(s => s).filter(Boolean);
+        options = options[0].split(',').map(s => s.trim()).filter(Boolean);
     }
 
     if (options.length === 0) {
@@ -676,7 +768,7 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
         return { toolType: 'rng', args, textContent: `[Error: RNG table "${tableId}" not found in contexts]`, displayReplacement: '[Error: Table not found]' };
     }
 
-    const lines = tableContext.text.split('\n').map(l => l).filter(Boolean);
+    const lines = tableContext.text.split('\n').map(l => l.trim()).filter(Boolean);
     const entries: { min: number; max: number; result: string }[] = [];
     let globalMax = 0;
 
@@ -735,10 +827,7 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     return { toolType: 'move', args, textContent: `Moved to "${targetLocation.name}" (${targetLocation.id}).`, displayReplacement: `[🚶 Moved to "${targetLocation.name}"]` };
 }
 
-// ─── Timer Helpers ──────────────────────────────────────────────────
-interface TimerEntry { name: string; targetTimestamp: number }
-interface StopwatchEntry { name: string; startTimestamp: number; pausedElapsedMs?: number }
-
+// ─── Duration Parser ────────────────────────────────────────────────
 function parseDurationToMs(input: string): number | null {
     const trimmed = input.toLowerCase();
     let totalMs = 0, matched = false;
@@ -764,22 +853,6 @@ function formatDuration(ms: number): string {
     return parts.join(' ');
 }
 
-function loadTimers(inventory: Inventory | undefined): TimerEntry[] {
-    if (!inventory || typeof inventory['___timers___'] !== 'string') return [];
-    try { return JSON.parse(inventory['___timers___'] as string); } catch { return []; }
-}
-function saveTimers(inventory: Inventory, timers: TimerEntry[]): void {
-    if (timers.length === 0) delete inventory['___timers___']; else inventory['___timers___'] = JSON.stringify(timers);
-}
-
-function loadStopwatches(inventory: Inventory | undefined): StopwatchEntry[] {
-    if (!inventory || typeof inventory['___stopwatches___'] !== 'string') return [];
-    try { return JSON.parse(inventory['___stopwatches___'] as string); } catch { return []; }
-}
-function saveStopwatches(inventory: Inventory, stopwatches: StopwatchEntry[]): void {
-    if (stopwatches.length === 0) delete inventory['___stopwatches___']; else inventory['___stopwatches___'] = JSON.stringify(stopwatches);
-}
-
 // ─── Timer ──────────────────────────────────────────────────────────
 function executeTimer(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
@@ -788,9 +861,8 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
         return helpResult('timer', 'action="set|check|delete|list", name="...", duration="..."', 'manage countdown timers');
     }
 
-    const latest = findLatestMessage(interactionData, nextMessage.character);
-    const inventory = latest?.message?.inventory ? { ...latest.message.inventory } : {};
-    const timers = loadTimers(inventory);
+    const activeActions = resolveActiveToolActions(nextMessage, interactionData);
+    const timers = activeActions.timers ? [...activeActions.timers] : [];
     const now = Date.now();
 
     switch (action) {
@@ -803,8 +875,8 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
             }
             const filtered = timers.filter(t => t.name.toLowerCase() !== name.toLowerCase());
             filtered.push({ name, targetTimestamp: now + durationMs });
-            saveTimers(inventory, filtered);
-            nextMessage.inventory = inventory;
+            activeActions.timers = filtered;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'timer', args, textContent: `Timer "${name}" set for ${formatDuration(durationMs)}.`, displayReplacement: `[⏱️ Timer "${name}" set]` };
         }
         case 'check': {
@@ -823,8 +895,8 @@ function executeTimer(args: string, nextMessage: BaseMessage, interactionData: I
             const idx = timers.findIndex(t => t.name.toLowerCase() === name);
             if (idx === -1) return { toolType: 'timer', args, textContent: `No timer named "${name}".`, displayReplacement: '[⏱️ Not found]' };
             timers.splice(idx, 1);
-            saveTimers(inventory, timers);
-            nextMessage.inventory = inventory;
+            activeActions.timers = timers;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'timer', args, textContent: `Timer "${name}" deleted.`, displayReplacement: `[⏱️ Deleted "${name}"]` };
         }
         case 'list': {
@@ -845,9 +917,8 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
         return helpResult('stopwatch', 'action="start|stop|pause|resume|reset|check|list", name="..."', 'manage stopwatch counters');
     }
 
-    const latest = findLatestMessage(interactionData, nextMessage.character);
-    const inventory = latest?.message?.inventory ? { ...latest.message.inventory } : {};
-    const stopwatches = loadStopwatches(inventory);
+    const activeActions = resolveActiveToolActions(nextMessage, interactionData);
+    const stopwatches = activeActions.stopwatches ? [...activeActions.stopwatches] : [];
     const now = Date.now();
 
     switch (action) {
@@ -855,8 +926,8 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
             if (!name) return { toolType: 'stopwatch', args, textContent: '[Error: stopwatch(action="start", name="...") requires name]', displayReplacement: '[Error: Usage]' };
             const filtered = stopwatches.filter(s => s.name.toLowerCase() !== name.toLowerCase());
             filtered.push({ name, startTimestamp: now });
-            saveStopwatches(inventory, filtered);
-            nextMessage.inventory = inventory;
+            activeActions.stopwatches = filtered;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'stopwatch', args, textContent: `Stopwatch "${name}" started.`, displayReplacement: `[⏱️ Started "${name}"]` };
         }
         case 'pause': {
@@ -864,8 +935,8 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
             if (!sw) return { toolType: 'stopwatch', args, textContent: `No stopwatch named "${name}".`, displayReplacement: '[⏱️ Not found]' };
             if (sw.pausedElapsedMs === undefined) {
                 sw.pausedElapsedMs = now - sw.startTimestamp;
-                saveStopwatches(inventory, stopwatches);
-                nextMessage.inventory = inventory;
+                activeActions.stopwatches = stopwatches;
+                nextMessage.activeToolActions = activeActions;
             }
             return { toolType: 'stopwatch', args, textContent: `Stopwatch "${name}" paused at ${formatDuration(sw.pausedElapsedMs)}.`, displayReplacement: `[⏱️ Paused "${name}"]` };
         }
@@ -875,8 +946,8 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
             if (sw.pausedElapsedMs !== undefined) {
                 sw.startTimestamp = now - sw.pausedElapsedMs;
                 delete sw.pausedElapsedMs;
-                saveStopwatches(inventory, stopwatches);
-                nextMessage.inventory = inventory;
+                activeActions.stopwatches = stopwatches;
+                nextMessage.activeToolActions = activeActions;
             }
             return { toolType: 'stopwatch', args, textContent: `Stopwatch "${name}" resumed.`, displayReplacement: `[⏱️ Resumed "${name}"]` };
         }
@@ -885,8 +956,8 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
             if (!sw) return { toolType: 'stopwatch', args, textContent: `No stopwatch named "${name}".`, displayReplacement: '[⏱️ Not found]' };
             sw.startTimestamp = now;
             delete sw.pausedElapsedMs;
-            saveStopwatches(inventory, stopwatches);
-            nextMessage.inventory = inventory;
+            activeActions.stopwatches = stopwatches;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'stopwatch', args, textContent: `Stopwatch "${name}" reset.`, displayReplacement: `[⏱️ Reset "${name}"]` };
         }
         case 'stop': {
@@ -895,8 +966,8 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
             const sw = stopwatches[idx];
             const elapsed = sw.pausedElapsedMs !== undefined ? sw.pausedElapsedMs : now - sw.startTimestamp;
             stopwatches.splice(idx, 1);
-            saveStopwatches(inventory, stopwatches);
-            nextMessage.inventory = inventory;
+            activeActions.stopwatches = stopwatches;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'stopwatch', args, textContent: `Stopwatch "${name}" stopped at ${formatDuration(elapsed)}.`, displayReplacement: `[⏱️ Stopped at ${formatDuration(elapsed)}]` };
         }
         case 'check':
@@ -915,16 +986,6 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Schedule ───────────────────────────────────────────────────────
-interface ScheduleEntry { name: string; triggerTimestamp: number; action: string; repeatIntervalMs?: number }
-
-function loadSchedules(inventory: Inventory | undefined): ScheduleEntry[] {
-    if (!inventory || typeof inventory['___schedules___'] !== 'string') return [];
-    try { return JSON.parse(inventory['___schedules___'] as string); } catch { return []; }
-}
-function saveSchedules(inventory: Inventory, schedules: ScheduleEntry[]): void {
-    if (schedules.length === 0) delete inventory['___schedules___']; else inventory['___schedules___'] = JSON.stringify(schedules);
-}
-
 function executeSchedule(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -932,9 +993,8 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
         return helpResult('schedule', 'action="set|set_repeat|cancel|cancel_all|list", name="...", duration="...", action_desc="..."', 'schedule automated actions');
     }
 
-    const latest = findLatestMessage(interactionData, nextMessage.character);
-    const inventory = latest?.message?.inventory ? { ...latest.message.inventory } : {};
-    const schedules = loadSchedules(inventory);
+    const activeActions = resolveActiveToolActions(nextMessage, interactionData);
+    const schedules = activeActions.schedules ? [...activeActions.schedules] : [];
     const now = Date.now();
 
     switch (action) {
@@ -948,8 +1008,8 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             }
             const filtered = schedules.filter(s => s.name.toLowerCase() !== name.toLowerCase());
             filtered.push({ name, triggerTimestamp: now + durationMs, action: desc });
-            saveSchedules(inventory, filtered);
-            nextMessage.inventory = inventory;
+            activeActions.schedules = filtered;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'schedule', args, textContent: `Scheduled "${name}" in ${formatDuration(durationMs)}: ${desc}`, displayReplacement: `[📅 Scheduled "${name}"]` };
         }
         case 'set_repeat': {
@@ -962,8 +1022,8 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             }
             const filtered = schedules.filter(s => s.name.toLowerCase() !== name.toLowerCase());
             filtered.push({ name, triggerTimestamp: now + intervalMs, action: desc, repeatIntervalMs: intervalMs });
-            saveSchedules(inventory, filtered);
-            nextMessage.inventory = inventory;
+            activeActions.schedules = filtered;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'schedule', args, textContent: `Repeating schedule "${name}" every ${formatDuration(intervalMs)}: ${desc}`, displayReplacement: `[📅 Repeat "${name}"]` };
         }
         case 'cancel': {
@@ -971,13 +1031,13 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             const idx = schedules.findIndex(s => s.name.toLowerCase() === name);
             if (idx === -1) return { toolType: 'schedule', args, textContent: `No schedule named "${name}".`, displayReplacement: '[📅 Not found]' };
             schedules.splice(idx, 1);
-            saveSchedules(inventory, schedules);
-            nextMessage.inventory = inventory;
+            activeActions.schedules = schedules;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'schedule', args, textContent: `Cancelled "${name}".`, displayReplacement: `[📅 Cancelled "${name}"]` };
         }
         case 'cancel_all': {
-            saveSchedules(inventory, []);
-            nextMessage.inventory = inventory;
+            activeActions.schedules = [];
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'schedule', args, textContent: 'Cancelled all schedules.', displayReplacement: '[📅 Cancelled all]' };
         }
         case 'list': {
@@ -1043,7 +1103,6 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
         return helpResult('dialogue', 'action="list|recall", prompt_id="..."', 'manage dialogue prompts');
     }
 
-    // 1. Get filtered chat history for activation evaluation
     const localHistory = getLocalMessageHistory(interactionData, nextMessage.character, ['chat', 'whisper']) as TextMessage[];
     const filterFlags = getUniversalMessageFilterFlags(localHistory, context.allPromptBlocks || [], interactionData.contexts || [], interactionData.locations || []);
     
@@ -1052,7 +1111,6 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
     const textArray = filteredHistory.map(m => m.textContent);
     const searchSpace = buildDialogueSearchSpace(textArray);
 
-    // 2. Construct Evaluation Context
     const combinationCache: CombinationCache = {};
     const evalContext: TriggerEvaluationContext = {
         characterIdArray,
@@ -1063,7 +1121,6 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
         combinationCache,
     };
 
-    // 3. FILTER using the new centralized logic
     const activeDialoguePrompts = getActiveDialoguePrompts(allDialoguePrompts, evalContext);
 
     if (action === 'list') {
@@ -1074,7 +1131,6 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'prompt_id', 'id') || pArgs.positional.slice(1).join(' ');
         
-        // Exact match ONLY within active prompts
         const matched = activeDialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
         
         if (matched.length > 0) {
@@ -1082,7 +1138,6 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
             return { toolType: 'dialogue', args, textContent: recalled.join('\n') || 'No active instructions', displayReplacement: `[💬 Recalled ${recalled.length} instruction(s)]` };
         }
 
-        // Semantic Search Fallback (ALSO restricted to active prompts)
         if (nextMessage.character.useEmbeddingModelForDialoguePrompts && nextMessage.character.dialogueRetrievalConfiguration) {
             const queryVector = await embeddingEngine.embed(queryId);
             if (queryVector) {
@@ -1117,7 +1172,6 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage, interact
         return helpResult('knowledge', 'action="list|recall|fuzzy_recall", id="..."', 'inspect character knowledge base');
     }
 
-    // 1. Get filtered chat history for activation evaluation
     const localHistory = getLocalMessageHistory(interactionData, nextMessage.character, ['chat', 'whisper']) as TextMessage[];
     const filterFlags = getUniversalMessageFilterFlags(localHistory, context.allPromptBlocks || [], interactionData.contexts || [], interactionData.locations || []);
     
@@ -1128,7 +1182,6 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage, interact
 
     const combinationCache: CombinationCache = {};
 
-    // 2. FILTER using the new centralized logic
     const activeKnowledgePrompts = allKnowledgePrompts.filter(kp =>
         isEntityActiveWithCache(
             kp.regularExpressionActivationTriggers,
@@ -1151,7 +1204,6 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage, interact
 
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'id', 'knowledge_id') || pArgs.positional.slice(1).join(' ');
-        // 3. Exact match ONLY within active prompts
         const matched = activeKnowledgePrompts.filter(kp => kp.id === queryId || kp.name?.toLowerCase() === queryId?.toLowerCase() || kp.id.startsWith(queryId || ""));
         if (matched.length === 0) return { toolType: 'knowledge', args, textContent: `No active knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
         return { toolType: 'knowledge', args, textContent: matched.map(k => `[${k.name}]: ${k.textContent}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
@@ -1167,7 +1219,6 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage, interact
         if (!queryVector) {
             return { toolType: 'knowledge', args, textContent: 'Failed to generate embedding for fuzzy recall.', displayReplacement: '[🧠 Fuzzy Recall: Error]' };
         }
-        // 4. Semantic Search restricted to ACTIVE prompts
         const items: RetrievableItem[] = activeKnowledgePrompts.map(kp => ({
             id: kp.id,
             name: kp.name,
@@ -1210,12 +1261,10 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'id', 'memory_id') || pArgs.positional.slice(1).join(' ');
-        // Resolve knownNames from the character's latest message state
         const latest = findLatestMessage(interactionData, character);
         const knownNames = latest?.message.knownCharacterNames;
 
         if (queryId) {
-            // 1. Exact id/name match first (searches all memories regardless of search space)
             for (const [, mems] of Object.entries(character.memories || {})) {
                 const found = mems.find(m => m.id === queryId || m.name?.toLowerCase() === queryId.toLowerCase() || m.id.startsWith(queryId));
                 if (found) {
@@ -1228,7 +1277,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                 }
             }
 
-            // 2. Semantic fallback via retrieveEligibleMemories (respects search spaces + detokenizes)
             const retrieved = await retrieveEligibleMemories(
                 character,
                 interactionData,
@@ -1247,7 +1295,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
             return { toolType: 'memory', args, textContent: `Memory "${queryId}" not found.`, displayReplacement: '[🧠 Not found]' };
         }
 
-        // 3. No query: return all eligible memories (filtered by search space + detokenized)
         const retrieved = await retrieveEligibleMemories(
             character,
             interactionData,
@@ -1379,10 +1426,8 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
         return helpResult('note', 'action="set|get|delete|list", key="...", text="..."', 'manage persistent character notes');
     }
 
-    const latest = findLatestMessage(interactionData, nextMessage.character);
-    const inventory = latest?.message?.inventory ? { ...latest.message.inventory } : {};
-    let notes: Record<string, string> = {};
-    try { notes = JSON.parse((inventory['___notes___'] as string) || '{}'); } catch { notes = {}; }
+    const activeActions = resolveActiveToolActions(nextMessage, interactionData);
+    const notes = activeActions.notes ? { ...activeActions.notes } : {};
 
     switch (action) {
         case 'set': {
@@ -1390,8 +1435,8 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
             const text = pArgs.get(2, 'text', 'content', 'value') || pArgs.positional.slice(2).join(' ');
             if (!key || !text) return { toolType: 'note', args, textContent: '[Error: note(action="set", key="...", text="...") requires key and text]', displayReplacement: '[Error: Usage]' };
             notes[key] = text;
-            inventory['___notes___'] = JSON.stringify(notes);
-            nextMessage.inventory = inventory;
+            activeActions.notes = notes;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'note', args, textContent: `Saved note "${key}".`, displayReplacement: `[📝 Note: "${key}"]` };
         }
         case 'get': {
@@ -1401,8 +1446,8 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
         case 'delete': {
             const key = pArgs.get(1, 'key', 'name');
             if (key) delete notes[key];
-            inventory['___notes___'] = JSON.stringify(notes);
-            nextMessage.inventory = inventory;
+            activeActions.notes = notes;
+            nextMessage.activeToolActions = activeActions;
             return { toolType: 'note', args, textContent: `Deleted note "${key}".`, displayReplacement: `[📝 Deleted "${key}"]` };
         }
         case 'list': {
@@ -1423,11 +1468,13 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
     }
 
     const latest = findLatestMessage(interactionData, nextMessage.character);
-    const inventory: Inventory = latest?.message?.inventory ? { ...latest.message.inventory } : {};
+    const inventory: Inventory = nextMessage.inventory 
+        ? { ...nextMessage.inventory } 
+        : (latest?.message?.inventory ? { ...latest.message.inventory } : {});
 
     switch (action) {
         case 'list': {
-            const items = Object.entries(inventory).filter(([k]) => !k.startsWith('___')).map(([k, v]) => `${k}: ${v}`);
+            const items = Object.entries(inventory).map(([k, v]) => `${k}: ${v}`);
             return { toolType: 'inventory', args, textContent: items.join('\n') || 'Empty inventory', displayReplacement: `[📦 ${items.length} item(s)]` };
         }
         case 'add': {
@@ -1462,20 +1509,12 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 }
 
 // ─── Trade ──────────────────────────────────────────────────────────
-function loadTradeOffers(inventory: Inventory | undefined): TradeOffer[] {
-    if (!inventory || typeof inventory['___trade_offers___'] !== 'string') return [];
-    try { return JSON.parse(inventory['___trade_offers___'] as string); } catch { return []; }
-}
-function saveTradeOffers(inventory: Inventory, offers: TradeOffer[]): void {
-    if (offers.length === 0) delete inventory['___trade_offers___']; else inventory['___trade_offers___'] = JSON.stringify(offers);
-}
-
 function parseItemList(input: string): Record<string, number> {
     const res: Record<string, number> = {};
-    const tokens = input.split(',').map(s => s).filter(Boolean);
+    const tokens = input.split(',').map(s => s.trim()).filter(Boolean);
     for (const token of tokens) {
         const parts = token.split(':');
-        const name = parts[0];
+        const name = parts[0]?.trim();
         const qty = parts[1] ? Number(parts[1]) : 1;
         if (name) res[name] = Number.isNaN(qty) ? 1 : qty;
     }
@@ -1489,8 +1528,13 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         return helpResult('trade', 'action="give|take|offer|accept|decline|list_offers", ...', 'transfer items or manage trade offers');
     }
 
-    const myLatest = findLatestMessage(interactionData, nextMessage.character);
-    const myInv: Inventory = myLatest?.message?.inventory ? { ...myLatest.message.inventory } : {};
+    const latest = findLatestMessage(interactionData, nextMessage.character);
+    const myInv: Inventory = nextMessage.inventory 
+        ? { ...nextMessage.inventory } 
+        : (latest?.message?.inventory ? { ...latest.message.inventory } : {});
+        
+    const activeActions = resolveActiveToolActions(nextMessage, interactionData);
+    const offers = activeActions.tradeOffers ? [...activeActions.tradeOffers] : [];
 
     if (action === 'give') {
         const targetQuery = pArgs.get(1, 'target_character_id', 'target', 'character_id', 'character', 'to');
@@ -1541,20 +1585,19 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         }
         const targetChar = resolveCharacter(targetQuery, interactionData, context.allCharacters || []);
         if (!targetChar) return { toolType: 'trade', args, textContent: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
-        const offers = loadTradeOffers(myInv);
+        
         const offerId = uuidv4().slice(0, 8);
         const newOffer: TradeOffer = {
             id: offerId, fromCharacterId: nextMessage.character.id, toCharacterId: targetChar.id,
             giveItems: parseItemList(giveRaw), takeItems: parseItemList(takeRaw), timestamp: Date.now(),
         };
         offers.push(newOffer);
-        saveTradeOffers(myInv, offers);
-        nextMessage.inventory = myInv;
+        activeActions.tradeOffers = offers;
+        nextMessage.activeToolActions = activeActions;
         return { toolType: 'trade', args, textContent: `Offered trade [${offerId}] to ${targetChar.name} (Give: ${giveRaw}, Take: ${takeRaw}).`, displayReplacement: `[🤝 Offered trade to ${targetChar.name}]` };
     }
 
     if (action === 'list_offers') {
-        const offers = loadTradeOffers(myInv);
         if (offers.length === 0) return { toolType: 'trade', args, textContent: 'No pending trade offers.', displayReplacement: '[🤝 No offers]' };
         const list = offers.map(o => `Offer [${o.id}] with ${o.toCharacterId}: Give ${JSON.stringify(o.giveItems)}, Take ${JSON.stringify(o.takeItems)}`).join('\n');
         return { toolType: 'trade', args, textContent: list, displayReplacement: `[🤝 ${offers.length} offer(s)]` };
@@ -1562,12 +1605,11 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
 
     if (action === 'accept' || action === 'decline') {
         const offerId = pArgs.get(1, 'offer_id', 'id')?.toLowerCase();
-        const offers = loadTradeOffers(myInv);
         const idx = offers.findIndex(o => o.id.toLowerCase() === offerId);
         if (idx === -1) return { toolType: 'trade', args, textContent: `Offer "${offerId}" not found.`, displayReplacement: '[🤝 Not found]' };
         offers.splice(idx, 1);
-        saveTradeOffers(myInv, offers);
-        nextMessage.inventory = myInv;
+        activeActions.tradeOffers = offers;
+        nextMessage.activeToolActions = activeActions;
         return { toolType: 'trade', args, textContent: `${action === 'accept' ? 'Accepted' : 'Declined'} trade offer [${offerId}].`, displayReplacement: `[🤝 ${action === 'accept' ? 'Accepted' : 'Declined'}]` };
     }
 
@@ -1765,7 +1807,7 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
     const latest = findLatestMessage(interactionData, targetChar);
     const loc = latest ? interactionData.locations?.find(l => l.id === latest.locationId)?.name || 'unknown' : 'unknown';
     const expr = latest?.message.characterExpression || 'neutral';
-    const items = Object.keys(latest?.message.inventory || {}).filter(k => !k.startsWith('___')).length;
+    const items = Object.keys(latest?.message.inventory || {}).length;
     return {
         toolType: 'inspect', args,
         textContent: `${targetChar.name} (${targetChar.id}): Location: ${loc}, Expression: ${expr}, Items: ${items}`,
@@ -1784,22 +1826,19 @@ function executeAdministrator(
         return helpResult('administrator', 'action="list_entities|view_entity|edit_entity|add_to_entity_folder|switch_model|...", entity_type="...", entity_id="..."', 'manage and inspect all system entities and settings');
     }
 
-    if (action === 'list_entities' || (action.startsWith('list_') && action !== 'list_chats')) {
+    if (action === 'list_entities' || (action.startsWith('list_') && action !== 'list_chats' && action !== 'list_sessions')) {
         let rawType = pArgs.get(1, 'entity_type', 'type') || '';
         if (!rawType && action.startsWith('list_')) {
-            let candidate = action.slice(5);
-            if (candidate.endsWith('s') && candidate !== 'multiplayer_data') {
-                candidate = candidate.slice(0, -1);
-            }
-            rawType = candidate;
+            rawType = action.slice(5);
         }
-        if (!rawType) {
+        const resolvedType = normalizeEntityType(rawType);
+        if (!resolvedType) {
             return { toolType: 'administrator', args, textContent: `[Error: administrator(action="list_entities", entity_type="...") requires an entity type. Valid: ${VALID_ENTITY_TYPES.join(', ')}]`, displayReplacement: '[Error: Usage]' };
         }
 
-        const entities = getEntitiesByType(context, rawType);
+        const entities = getEntitiesByType(context, resolvedType);
         if (entities.length === 0) {
-            return { toolType: 'administrator', args, textContent: `No entities found for type "${rawType}".`, displayReplacement: `[📁 0 ${rawType}]` };
+            return { toolType: 'administrator', args, textContent: `No entities found for type "${resolvedType}".`, displayReplacement: `[📁 0 ${resolvedType}]` };
         }
 
         const lines = entities.map((item: any) => {
@@ -1811,17 +1850,18 @@ function executeAdministrator(
             return `• [${item.id}] "${label}"${extra}`;
         });
 
-        return { toolType: 'administrator', args, textContent: `Entities for "${rawType}" (${entities.length}):\n${lines.join('\n')}`, displayReplacement: `[🔧 ${entities.length} ${rawType}(s)]` };
+        return { toolType: 'administrator', args, textContent: `Entities for "${resolvedType}" (${entities.length}):\n${lines.join('\n')}`, displayReplacement: `[🔧 ${entities.length} ${resolvedType}(s)]` };
     }
 
     if (action === 'view_entity' || action === 'get_entity') {
-        const rawType = pArgs.get(1, 'entity_type', 'type')?.toLowerCase();
+        const rawType = pArgs.get(1, 'entity_type', 'type') || '';
         const query = pArgs.get(2, 'entity_id', 'id', 'name');
-        if (!rawType || !query) {
+        const resolvedType = normalizeEntityType(rawType);
+        if (!resolvedType || !query) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="view_entity", entity_type="...", entity_id="...") requires entity_type and entity_id]', displayReplacement: '[Error: Usage]' };
         }
 
-        const entities = getEntitiesByType(context, rawType);
+        const entities = getEntitiesByType(context, resolvedType);
         const item = entities.find((x: any) =>
             x.id?.toLowerCase() === query.toLowerCase() ||
             (x.name && x.name.toLowerCase() === query.toLowerCase()) ||
@@ -1830,24 +1870,25 @@ function executeAdministrator(
         );
 
         if (!item) {
-            return { toolType: 'administrator', args, textContent: `[Error: ${rawType} entity "${query}" not found]`, displayReplacement: '[Error: Not found]' };
+            return { toolType: 'administrator', args, textContent: `[Error: ${resolvedType} entity "${query}" not found]`, displayReplacement: '[Error: Not found]' };
         }
 
         const { kvCacheTextContentPaths, kvCacheInteractionTextContentSummaries, ...displayItem } = item;
-        return { toolType: 'administrator', args, textContent: `[Entity: ${rawType}]\n${JSON.stringify(displayItem, null, 2)}`, displayReplacement: `[🔧 View: ${item.name || item.username || item.id}]` };
+        return { toolType: 'administrator', args, textContent: `[Entity: ${resolvedType}]\n${JSON.stringify(displayItem, null, 2)}`, displayReplacement: `[🔧 View: ${item.name || item.username || item.id}]` };
     }
 
     if (action === 'edit_entity') {
-        const entityType = pArgs.get(1, 'entity_type', 'type')?.toLowerCase();
+        const rawType = pArgs.get(1, 'entity_type', 'type') || '';
         const entityId = pArgs.get(2, 'entity_id', 'id');
         const field = pArgs.get(3, 'field', 'key');
         const value = pArgs.get(4, 'value', 'val') || pArgs.positional.slice(4).join(' ');
 
-        if (!entityType || !entityId || !field || value === undefined) {
+        const resolvedType = normalizeEntityType(rawType);
+        if (!resolvedType || !entityId || !field || value === undefined) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="edit_entity", entity_type="...", entity_id="...", field="...", value="...") requires all arguments]', displayReplacement: '[Error: Usage]' };
         }
 
-        const entities = getEntitiesByType(context, entityType);
+        const entities = getEntitiesByType(context, resolvedType);
         const item = entities.find((x: any) =>
             x.id?.toLowerCase() === entityId.toLowerCase() ||
             (x.name && x.name.toLowerCase() === entityId.toLowerCase())
@@ -1855,9 +1896,9 @@ function executeAdministrator(
         const targetId = item ? item.id : entityId;
         const targetName = item?.name || item?.username || entityId;
 
-        appendPendingAction(nextMessage, { type: 'administrator_edit_entity', payload: { entityType, entityId: targetId, field, value } });
-        context.addToast?.(`Administrator: Edit ${entityType} "${targetName}" [${field}] initiated.`, 'info');
-        return { toolType: 'administrator', args, textContent: `Requested edit on ${entityType} "${targetName}": set ${field} = "${value}".`, displayReplacement: `[🔧 Edit: ${targetName}.${field}]` };
+        appendPendingAction(nextMessage, { type: 'administrator_edit_entity', payload: { entityType: resolvedType, entityId: targetId, field, value } });
+        context.addToast?.(`Administrator: Edit ${resolvedType} "${targetName}" [${field}] initiated.`, 'info');
+        return { toolType: 'administrator', args, textContent: `Requested edit on ${resolvedType} "${targetName}": set ${field} = "${value}".`, displayReplacement: `[🔧 Edit: ${targetName}.${field}]` };
     }
 
     if (action === 'add_to_entity_folder') {
@@ -1945,44 +1986,40 @@ function executeAdministrator(
 // ─── Creator ────────────────────────────────────────────────────────
 function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const entityType = pArgs.get(0, 'entity_type', 'type')?.toLowerCase();
+    const rawType = pArgs.get(0, 'entity_type', 'type') || '';
     const entityName = pArgs.get(1, 'name', 'entity_name') || pArgs.positional.slice(1).join(' ');
 
-    if (!entityType || !entityName) {
+    const resolvedType = normalizeEntityType(rawType);
+    if (!resolvedType || !entityName) {
         return helpResult('creator', 'entity_type="...", name="..."', `valid types: ${VALID_ENTITY_TYPES.join(', ')}`);
     }
-    if (!VALID_ENTITY_TYPES.includes(entityType)) {
-        return { toolType: 'creator', args, textContent: `[Error: Unknown type "${entityType}". Valid: ${VALID_ENTITY_TYPES.join(', ')}]`, displayReplacement: '[Error: Invalid type]' };
-    }
 
-    appendPendingAction(nextMessage, { type: 'creator', payload: { entityType, entityName } });
-    context.addToast?.(`Creator: ${entityType} "${entityName}" initiated.`, 'info');
-    return { toolType: 'creator', args, textContent: `Created ${entityType} "${entityName}".`, displayReplacement: `[🛠️ ${entityType}: "${entityName}"]` };
+    appendPendingAction(nextMessage, { type: 'creator', payload: { entityType: resolvedType, entityName } });
+    context.addToast?.(`Creator: ${resolvedType} "${entityName}" initiated.`, 'info');
+    return { toolType: 'creator', args, textContent: `Created ${resolvedType} "${entityName}".`, displayReplacement: `[🛠️ ${resolvedType}: "${entityName}"]` };
 }
 
 // ─── Destroyer ──────────────────────────────────────────────────────
 function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const entityType = pArgs.get(0, 'entity_type', 'type')?.toLowerCase();
+    const rawType = pArgs.get(0, 'entity_type', 'type') || '';
     const entityId = pArgs.get(1, 'entity_id', 'id', 'name') || pArgs.positional.slice(1).join(' ');
 
-    if (!entityType || !entityId) {
+    const resolvedType = normalizeEntityType(rawType);
+    if (!resolvedType || !entityId) {
         return helpResult('destroyer', 'entity_type="...", entity_id="..."', `valid types: ${VALID_ENTITY_TYPES.join(', ')}`);
     }
-    if (!VALID_ENTITY_TYPES.includes(entityType)) {
-        return { toolType: 'destroyer', args, textContent: `[Error: Unknown type "${entityType}"]`, displayReplacement: '[Error: Invalid type]' };
-    }
-    if (entityType === 'character' && interactionData.protagonistIds?.includes(entityId)) {
+    if (resolvedType === 'character' && interactionData.protagonistIds?.includes(entityId)) {
         return { toolType: 'destroyer', args, textContent: '[Error: Cannot destroy session protagonist]', displayReplacement: '[Error: Protected character]' };
     }
 
-    appendPendingAction(nextMessage, { type: 'destroyer', payload: { entityType, entityId, entityName: entityId } });
-    context.addToast?.(`Destroyer: ${entityType} "${entityId}" initiated.`, 'info');
-    return { toolType: 'destroyer', args, textContent: `Destroyed ${entityType} "${entityId}".`, displayReplacement: `[💀 Destroyed: "${entityId}"]` };
+    appendPendingAction(nextMessage, { type: 'destroyer', payload: { entityType: resolvedType, entityId, entityName: entityId } });
+    context.addToast?.(`Destroyer: ${resolvedType} "${entityId}" initiated.`, 'info');
+    return { toolType: 'destroyer', args, textContent: `Destroyed ${resolvedType} "${entityId}".`, displayReplacement: `[💀 Destroyed: "${entityId}"]` };
 }
 
-// ─── Schedule Response ──────────────────────────────────────────────────────
-function executeScheduleResponse(args: string, nextMessage: BaseMessage): ToolResult {
+// ─── Schedule Response ──────────────────────────────────────────────
+function executeScheduleResponse(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const durationRaw = pArgs.get(0, 'duration', 'time', 'delay');
     const thought = pArgs.get(1, 'thought', 'reason', 'prompt') || pArgs.positional.slice(1).join(' ') || 'Checking in later';
@@ -1992,15 +2029,17 @@ function executeScheduleResponse(args: string, nextMessage: BaseMessage): ToolRe
         return helpResult('schedule_response', 'duration="2h", thought="Check if Sensei is awake"', 'schedule a delayed follow-up response from this character');
     }
 
-    const inventory = nextMessage.inventory ? { ...nextMessage.inventory } : {};
-    let scheduled: any[] = [];
-    try { scheduled = JSON.parse(inventory['___scheduled_responses___'] as string || '[]'); } catch {}
+    const activeActions = resolveActiveToolActions(nextMessage, interactionData);
+    const scheduled = activeActions.scheduledResponses ? [...activeActions.scheduledResponses] : [];
     scheduled.push({
-        characterId: nextMessage.character.id, characterName: nextMessage.character.name,
-        durationMs, thought, createdAt: Date.now()
+        characterId: nextMessage.character.id,
+        characterName: nextMessage.character.name,
+        durationMs,
+        thought,
+        createdAt: Date.now()
     });
-    inventory['___scheduled_responses___'] = JSON.stringify(scheduled);
-    nextMessage.inventory = inventory;
+    activeActions.scheduledResponses = scheduled;
+    nextMessage.activeToolActions = activeActions;
 
     return {
         toolType: 'schedule_response', args,
@@ -2335,7 +2374,7 @@ async function executeVirtualHearing(args: string, _nextMessage: BaseMessage, _i
     return { toolType: 'virtual_hearing', args, textContent: res.message || (res.active ? 'Hearing is ACTIVE.' : 'Hearing is IDLE.'), displayReplacement: res.active ? '[🎧 Hearing: Active]' : '[🎧 Hearing: Idle]' };
 }
 
-// ─── Virtual Vision Tool ────────────────────────────────────────────
+// ─── Virtual Vision Tool ────────────────────────────────────
 async function executeVirtualVision(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const target = (pArgs.get(0, 'target', 'mode')?.toLowerCase() || 'active') as 'active' | 'fullscreen' | 'region';
@@ -2501,8 +2540,8 @@ export function processPendingToolActions(
     const latestInfo = findLatestMessage(data, targetMsg.character);
     if (!latestInfo) return data;
 
-    const actions = loadPendingToolActions(targetMsg.inventory);
-    if (actions.length === 0) return data;
+    const actions = targetMsg.pendingToolActions;
+    if (!actions || actions.length === 0) return data;
 
     let updatedData = { ...data, interactionHistories: { ...data.interactionHistories } };
     let changed = false;
@@ -2610,9 +2649,7 @@ export function processPendingToolActions(
     const targetMsgIdx = locMsgs.findIndex(m => m.id === targetMsg.id);
     if (targetMsgIdx !== -1) {
         const cleanedMsg = { ...locMsgs[targetMsgIdx] } as ChatMessage;
-        const cleanedInventory = cleanedMsg.inventory ? { ...cleanedMsg.inventory } : {};
-        delete cleanedInventory['___pending_tool_actions___'];
-        if (Object.keys(cleanedInventory).length === 0) delete cleanedMsg.inventory; else cleanedMsg.inventory = cleanedInventory;
+        delete cleanedMsg.pendingToolActions;
         updatedData.interactionHistories[locId] = [...locMsgs];
         updatedData.interactionHistories[locId][targetMsgIdx] = cleanedMsg;
     }

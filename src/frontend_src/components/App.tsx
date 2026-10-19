@@ -15,7 +15,6 @@ import { localURL } from '../../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
-import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler'; 
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Account, MultiplayerData, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, RawInteractionData, cloudBackend, TextMessage } from '../types';
 import { useSessionStore } from '../hooks/useSessionStore';
 
@@ -76,9 +75,6 @@ import '../main.css';
 import { useWorldManager } from '../hooks/useWorldManager';
 
 // ─── Types & Helpers ─────────────────────────────────────────────────
-
-// ✅ FIX: Stable reference to prevent Zustand infinite re-render loops when participants is undefined
-const EMPTY_PARTICIPANTS: Character[] = [];
 
 interface LoadStep { id: string; label: string; icon: string; done: boolean; }
 
