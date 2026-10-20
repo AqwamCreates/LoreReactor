@@ -657,8 +657,42 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const ad = await generateAmbientNarration(ud, ctrl.signal, promptBlocks, protagonistId);
                     const sd = ad || ud;
                     setInteractionData(sd);
+
+                    // ✅ Scope ambient narration voice retrieval to the specific location where it was added
+                    const currentLocId = getCurrentLocationId(sd, respondingChar) || 'global';
+                    const locationMessages = sd.interactionHistories[currentLocId] || [];
+                    const lastMsg = locationMessages[locationMessages.length - 1];
+
                     broadcastNewMessages(preTurnCount, sd);
                     saveRawInteractionData(sd).catch(e => console.error('Failed to save ambient narration:', e));
+
+                    // ✅ Allow location-scoped ambient narration text to use character voice narration overrides & behavior ('wait' / 'continue' / 'interrupt')
+                    if (lastMsg && 'textContent' in lastMsg && lastMsg.textContent) {
+                        if (narrationBehaviour === 'interrupt' && currentVoiceTrackerRef.current) {
+                            currentVoiceTrackerRef.current.stopImmediate();
+                            currentVoiceTrackerRef.current = null;
+                        }
+
+                        const baseChar = allCharactersRef.current[0] || sd.participants[0];
+                        if (baseChar) {
+                            const voiceTracker = new StreamingVoiceTracker(baseChar, allCharactersRef.current);
+                            currentVoiceTrackerRef.current = voiceTracker;
+
+                            const started = await voiceTracker.start().catch(() => false);
+                            if (started) {
+                                voiceTracker.feed(lastMsg.textContent);
+                                if (narrationBehaviour === 'wait') {
+                                    await voiceTracker.waitForPlaybackCompletion();
+                                } else {
+                                    await voiceTracker.flushAndStop();
+                                }
+                                voiceTracker.stopImmediate();
+                                if (currentVoiceTrackerRef.current === voiceTracker) {
+                                    currentVoiceTrackerRef.current = null;
+                                }
+                            }
+                        }
+                    }
                 } else {
                     setInteractionData(ud);
                     broadcastNewMessages(preTurnCount, ud);
