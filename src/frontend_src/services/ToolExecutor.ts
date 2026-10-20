@@ -460,7 +460,7 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
         return helpResult('whisper', 'target_char_id="...", text="..."', 'send private message visible only to target(s)');
     }
 
-    const targetIdentifiers = targetIdsStr.split(',').map(id => id.trim()).filter(Boolean);
+    const targetIdentifiers = targetIdsStr.split(',').filter(Boolean);
     const allChars = context.allCharacters || [];
     const validTargetIds: string[] = [];
     const validTargetNames: string[] = [];

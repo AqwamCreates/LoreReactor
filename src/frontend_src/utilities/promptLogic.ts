@@ -2092,57 +2092,57 @@ async function buildPromptBlocks(
   const blockMap: Record<string, string[]> = {};
   for (const blockType of inputStrategy) {
     const { ctx } = builderCtx;
-    if (blockType === 'System Prompt' && templateContext.systemPrompt.trim().length === 0) continue;
-    if (blockType === 'Think Prompt' && templateContext.thinkPrompt.trim().length === 0) continue;
+    if (blockType === 'System Prompt' && templateContext.systemPrompt.length === 0) continue;
+    if (blockType === 'Think Prompt' && templateContext.thinkPrompt.length === 0) continue;
     if (blockType === 'Think Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableThinkPrompt(ctx.character, ctx.profile)) continue;
     if (blockType === 'Meta Think Instructions' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableMetaThinkInstructions(ctx.character, ctx.profile)) continue;
-    if (blockType === 'Meta Think Instructions' && templateContext.metaThinkInstructions.trim().length === 0) continue;
+    if (blockType === 'Meta Think Instructions' && templateContext.metaThinkInstructions.length === 0) continue;
     if (blockType === 'Character Tags' && templateContext.characterTags.length === 0) continue;
     if (blockType === 'Character Tags With Descriptions' && templateContext.characterTagsWithDescriptions.length === 0) continue;
-    if (blockType === 'Knowledge Prompt' && templateContext.knowledgePrompt.trim().length === 0) continue;
+    if (blockType === 'Knowledge Prompt' && templateContext.knowledgePrompt.length === 0) continue;
     if (blockType === 'Chat History' && templateContext.chatHistory.length === 0) continue;
-    if (blockType === 'Appearance Prompt' && templateContext.appearancePrompt.trim().length === 0) continue;
+    if (blockType === 'Appearance Prompt' && templateContext.appearancePrompt.length === 0) continue;
     if (blockType === 'Context' && templateContext.context.length === 0) continue;
-    if (blockType === 'Current Location' && templateContext.currentLocation.trim().length === 0) continue;
-    if (blockType === 'Current Location With Description' && templateContext.currentLocationWithDescription.trim().length === 0) continue;
+    if (blockType === 'Current Location' && templateContext.currentLocation.length === 0) continue;
+    if (blockType === 'Current Location With Description' && templateContext.currentLocationWithDescription.length === 0) continue;
     if (blockType === 'Reachable Locations' && templateContext.reachableLocations.length === 0) continue;
     if (blockType === 'Reachable Locations With Descriptions' && templateContext.reachableLocationsWithDescriptions.length === 0) continue;
-    if (blockType === 'Sky View' && templateContext.skyView.trim().length === 0) continue;
-    if (blockType === 'Weather' && templateContext.weather.trim().length === 0) continue;
-    if (blockType === 'Inventory' && templateContext.inventory.trim().length === 0) continue;
-    if (blockType === 'Fatigue' && templateContext.fatigueInformation.trim().length === 0) continue;
-    if (blockType === 'Paragraph Count Instructions' && templateContext.paragraphCountInstructions.trim().length === 0) continue;
-    if (blockType === 'Date' && templateContext.date.trim().length === 0) continue;
-    if (blockType === 'Time' && templateContext.time.trim().length === 0) continue;
-    if (blockType === 'Time Elapsed' && templateContext.timeElapsed.trim().length === 0) continue;
-    if (blockType === 'Tool Instructions' && templateContext.toolInstructions.trim().length === 0) continue;
-    if (blockType === 'Tool Message Instructions' && templateContext.toolMessageInstructions.trim().length === 0) continue;
-    if (blockType === 'Memory Prompt' && templateContext.memoryPrompt.trim().length === 0) continue;
-    if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.trim().length === 0) continue;
+    if (blockType === 'Sky View' && templateContext.skyView.length === 0) continue;
+    if (blockType === 'Weather' && templateContext.weather.length === 0) continue;
+    if (blockType === 'Inventory' && templateContext.inventory.length === 0) continue;
+    if (blockType === 'Fatigue' && templateContext.fatigueInformation.length === 0) continue;
+    if (blockType === 'Paragraph Count Instructions' && templateContext.paragraphCountInstructions.length === 0) continue;
+    if (blockType === 'Date' && templateContext.date.length === 0) continue;
+    if (blockType === 'Time' && templateContext.time.length === 0) continue;
+    if (blockType === 'Time Elapsed' && templateContext.timeElapsed.length === 0) continue;
+    if (blockType === 'Tool Instructions' && templateContext.toolInstructions.length === 0) continue;
+    if (blockType === 'Tool Message Instructions' && templateContext.toolMessageInstructions.length === 0) continue;
+    if (blockType === 'Memory Prompt' && templateContext.memoryPrompt.length === 0) continue;
+    if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.length === 0) continue;
     if (blockType === 'Dialogue Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableDialoguePrompt(ctx.character, ctx.profile)) continue;
-    if (blockType === 'Starter Prompt' && templateContext.starterPrompt.trim().length === 0) continue;
+    if (blockType === 'Starter Prompt' && templateContext.starterPrompt.length === 0) continue;
     if (blockType === 'Starter Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableStarterPrompt(ctx.character, ctx.profile)) continue;
     if (blockType === 'Character Image Instructions') {
-      if (templateContext.characterImageInstructions.trim().length === 0) continue;
+      if (templateContext.characterImageInstructions.length === 0) continue;
       blockMap[blockType] = [templateContext.characterImageInstructions];
       continue;
     }
     if (blockType === 'Prompt Block Image Instructions') {
-      if (templateContext.promptBlockImageInstructions.trim().length === 0) continue;
+      if (templateContext.promptBlockImageInstructions.length === 0) continue;
       blockMap[blockType] = [templateContext.promptBlockImageInstructions];
       continue;
     }
     if (blockType === 'Context Image Instructions') {
-      if (templateContext.contextImageInstructions.trim().length === 0) continue;
+      if (templateContext.contextImageInstructions.length === 0) continue;
       blockMap[blockType] = [templateContext.contextImageInstructions];
       continue;
     }
     if (blockType === 'Current Location Image Instructions') {
-      if (templateContext.currentLocationImageInstructions.trim().length === 0) continue;
+      if (templateContext.currentLocationImageInstructions.length === 0) continue;
       blockMap[blockType] = [templateContext.currentLocationImageInstructions];
       continue;
     }
-    if (blockType === 'Anti-Repetition Nudge' && templateContext.antiRepetitionNudge.trim().length === 0) continue;
+    if (blockType === 'Anti-Repetition Nudge' && templateContext.antiRepetitionNudge.length === 0) continue;
     const template = DEFAULT_TEMPLATES[blockType];
     let resolvedContent = '';
     if (template) {
@@ -2157,7 +2157,7 @@ async function buildPromptBlocks(
         resolvedContent = resolveTemplate(text, templateContext, delimiters);
       }
     }
-    if (resolvedContent.trim().length > 0) blockMap[blockType] = [resolvedContent];
+    if (resolvedContent.length > 0) blockMap[blockType] = [resolvedContent];
   }
   return blockMap;
 }
@@ -2600,7 +2600,7 @@ export async function buildPrompt(
       text = `{{systemBlockStart}}${text}{{systemBlockEnd}}`;
     }
     const resolvedText = resolveTemplate(text, templateContext, delimiters);
-    if (resolvedText.trim().length > 0) {
+    if (resolvedText.length > 0) {
       if (!blockMap[block.id]) blockMap[block.id] = [resolvedText];
       if (!inputStrategy.includes(block.id)) regexActivatedBlocks.push(block.id);
     }

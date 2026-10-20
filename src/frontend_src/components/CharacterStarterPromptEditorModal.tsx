@@ -52,7 +52,7 @@ export function CharacterStarterPromptEditorModal({
     }, [isReadOnly]);
 
     const handleSave = useCallback(() => {
-        const validItems = items.filter(item => item.textContent.trim().length > 0);
+        const validItems = items.filter(item => item.textContent.length > 0);
         onSaveStarterPrompts(validItems);
         onClose();
     }, [items, onSaveStarterPrompts, onClose]);
