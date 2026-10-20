@@ -3,6 +3,7 @@ import type { InteractionData, Character } from '../types';
 import { runTurnSequence } from './InteractionOrchestrator';
 import { computeGlobalScore, computeAutonomousTickDelay } from '../utilities/dynamicCharacterLogic';
 import type { HandleServerResponseResult } from '../hooks/useChatEngine';
+import { processPendingToolActions } from './ToolExecutor';
 
 export class CharacterSoul {
     private timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -11,6 +12,7 @@ export class CharacterSoul {
     private isExecuting = false;
     private acquireLock: (() => boolean) | null = null;
     private releaseLock: (() => void) | null = null;
+    private getAllCharacters: (() => Character[]) | null = null;
 
     start(
         executor: (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>,
@@ -20,6 +22,7 @@ export class CharacterSoul {
         onSpeakerChange?: (char: Character | null) => void,
         acquireLock?: () => boolean,
         releaseLock?: () => void,
+        getAllCharacters?: () => Character[],
     ): void {
         const initialData = getData();
         // Do not even start if autonomous mode is disabled
@@ -34,6 +37,7 @@ export class CharacterSoul {
         this.abortController = new AbortController();
         this.acquireLock = acquireLock ?? null;
         this.releaseLock = releaseLock ?? null;
+        this.getAllCharacters = getAllCharacters ?? null;
 
         const initialDelay = initialData.profile.autonomousInteractionIntervalMs || 1000;
         this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, initialDelay);
@@ -116,9 +120,19 @@ export class CharacterSoul {
                 }
 
                 if (result) {
+                    // FIX: Execute pending tool actions so autonomous characters can move, kick, invite, etc.
+                    const allChars = this.getAllCharacters 
+                        ? this.getAllCharacters() 
+                        : (freshDataAfterTurn.participants || []);
+
+                    const dataWithTools = processPendingToolActions(
+                        result.interactionData,
+                        allChars
+                    );
+
                     // PRESERVE LIVE PROFILE: Never overwrite the user's latest profile with the pre-turn snapshot
                     const mergedData: InteractionData = {
-                        ...result.interactionData,
+                        ...dataWithTools,
                         profile: freshDataAfterTurn.profile,
                         lastUpdatedTimestamp: Date.now()
                     };
