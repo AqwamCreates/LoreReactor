@@ -4,7 +4,7 @@
 
 const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.0;
 const DEFAULT_CHAT_PROBABILITY_VALUE = 0.8;          // Calibrated: 80% baseline chance to speak
-const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 5;
+const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
 const DEFAULT_CHAT_STAMINA_REGENERATION_RATE_VALUE = 0.3; // Stamina per second. Default is 0.3 stamina per second.
 const DEFAULT_NAME_SENSITIVITY_VALUE = 1.0;
 const DEFAULT_SKIP_PROBABILITY_VALUE = 0.05;         // Natural small hesitation baseline (5%)
