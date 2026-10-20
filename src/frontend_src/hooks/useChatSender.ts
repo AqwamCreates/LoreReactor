@@ -2,11 +2,11 @@
 import { useCallback } from 'react';
 import type { Character, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult, TextMessage, InteractionMessage } from '../types';
 import { createChatMessage } from '../utilities/interactionDataLogic';
-import { processPendingToolActions, executeTool, parsePythonArgs, type ToolExecutionContext } from '../services/ToolExecutor';
+import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
-import { getLocalMessageHistory } from '../utilities/timelineLogic';
+import { getLocalMessageHistory, getGlobalMessageHistory } from '../utilities/timelineLogic';
 import {
     computeModulatedStaminaRegenationAmounts,
     computeChatStaminaConsumptionCost,
@@ -135,63 +135,23 @@ export function useChatSender(opts: UseChatSenderOptions) {
                 const currentLocMessages = newHistories[currentLocId] || [];
                 newHistories[currentLocId] = [...currentLocMessages, slashMessage];
 
-                // Check and handle physical location transitions for /move and /teleport
-                const hasLocations = currentInteractionData.locations && currentInteractionData.locations.length > 0;
-                let finalLocId: string | undefined = undefined;
-
-                if (hasLocations && (slashInvocation.toolType === 'move' || slashInvocation.toolType === 'teleport')) {
-                    if (!toolResult.textContent.startsWith('[Error:') && !toolResult.textContent.startsWith('Already at')) {
-                        const pArgs = parsePythonArgs(slashInvocation.args);
-                        const targetQuery = (pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to') || pArgs.positional.join(' ')).toLowerCase().replace(/^["']|["']$/g, '');
-                        const targetLoc = currentInteractionData.locations.find(l => 
-                            l.id.toLowerCase() === targetQuery || 
-                            l.name.toLowerCase() === targetQuery || 
-                            l.id.toLowerCase().startsWith(targetQuery)
-                        );
-                        if (targetLoc) {
-                            finalLocId = targetLoc.id;
-                        }
-                    }
-                }
-
-                let currentActionStamina = slashMessage.remainingActionStamina;
-
-                if (hasLocations && finalLocId && currentLocId !== finalLocId) {
-                    if (slashInvocation.toolType === 'move') {
-                        const movementCost = computeMovementCost(currentLocId, finalLocId, currentInteractionData.locations);
-                        if (movementCost > 0 && currentActionStamina !== undefined) {
-                            currentActionStamina = Math.max(0, currentActionStamina - movementCost);
-                            slashMessage.remainingActionStamina = currentActionStamina;
-                        }
-                    }
-
-                    const arrivalInteraction: InteractionMessage = {
-                        messageType: 'interaction',
-                        id: uuidv4(),
-                        character: { ...activeCharacter },
-                        isPresent: true,
-                        remainingChatStamina: slashMessage.remainingChatStamina,
-                        remainingActionStamina: currentActionStamina,
-                        characterClothingWearingStatuses: slashMessage.characterClothingWearingStatuses,
-                        characterLockedLocations: slashMessage.characterLockedLocations,
-                        parentMessageId: slashMessage.id,
-                        firstCreatedTimestamp: slashMessage.firstCreatedTimestamp + 1,
-                        lastUpdatedTimestamp: slashMessage.firstCreatedTimestamp + 1,
-                    };
-
-                    onMessageBroadcastRef.current?.(arrivalInteraction);
-
-                    const finalLocMessages = newHistories[finalLocId] || [];
-                    newHistories[finalLocId] = [...finalLocMessages, arrivalInteraction];
-                }
-
                 let updatedData = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+
+                // Process pending tool actions (move, teleport, kick, invite, summon, etc.)
+                const prePendingCount = getGlobalMessageHistory(updatedData).length;
                 updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
 
                 broadcastToolStateChanges(preSlashData, updatedData, onStateBroadcastRef.current);
                 setInteractionData(updatedData);
 
+                // Broadcast user slash message
                 onMessageBroadcastRef.current?.(slashMessage);
+
+                // Broadcast any arrival, kick, or whisper messages created by processPendingToolActions
+                const postPendingHistory = getGlobalMessageHistory(updatedData);
+                for (let i = prePendingCount; i < postPendingHistory.length; i++) {
+                    onMessageBroadcastRef.current?.(postPendingHistory[i]);
+                }
 
                 if (isMultiplayerClient) {
                     releaseLock();

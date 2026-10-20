@@ -1,7 +1,18 @@
 // src/frontend_src/services/InteractionOrchestrator.ts
-import type { Character, InteractionData, HistoryMessage, InteractionMessage, ChatMessage, Location } from '../types';
-import { getEffectiveChatProbability, consumeChatStaminaForMessage, consumeActionStaminaForMessage, generateActionStaminaForInteractionData, generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity } from '../utilities/characterLogic';
-import { getCurrentLocationId, findLocationByRegularExpression, getReachableLocationsByCharacter, sampleReachableLocationByWeight, assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
+import type { 
+    Character, InteractionData, HistoryMessage, InteractionMessage, 
+    ChatMessage, Location, Inventory, ActiveToolActions 
+} from '../types';
+import { 
+    getEffectiveChatProbability, consumeChatStaminaForMessage, 
+    consumeActionStaminaForMessage, generateActionStaminaForInteractionData, 
+    generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity 
+} from '../utilities/characterLogic';
+import { 
+    getCurrentLocationId, findReachableLocationByRegularExpression, 
+    getReachableLocationsByCharacter, sampleReachableLocationByWeight, 
+    assignInitialLocationsIfNeeded 
+} from '../utilities/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import {
     countParagraphs,
@@ -23,7 +34,7 @@ export interface TurnSequenceOptions {
 }
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
-    return msg.messageType === 'chat' || msg.messageType == 'whisper';
+    return msg.messageType === 'chat' || msg.messageType === 'whisper';
 }
 
 function createSilentInteraction(
@@ -33,6 +44,8 @@ function createSilentInteraction(
     clothingWearingStatuses: Record<string, boolean>,
     lockedLocations: Record<string, string[]>,
     parentId: string | null | undefined,
+    inventory?: Inventory,
+    activeToolActions?: ActiveToolActions,
 ): InteractionMessage {
     const now = Date.now();
     return {
@@ -43,6 +56,8 @@ function createSilentInteraction(
         remainingActionStamina: previousActionStamina,
         characterClothingWearingStatuses: clothingWearingStatuses,
         characterLockedLocations: { ...lockedLocations },
+        inventory: inventory ? { ...inventory } : undefined,
+        activeToolActions: activeToolActions ? { ...activeToolActions } : undefined,
         parentMessageId: parentId ?? null,
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
@@ -200,7 +215,7 @@ export async function runTurnSequence(
             const newLastEntry = allResultMessages.length > 0 ? allResultMessages[allResultMessages.length - 1] : undefined;
             
             if (newLastEntry && newLastEntry.character.id === speaker.id && hasTextContent(newLastEntry)) {
-                // 1. Consume speaker's stamina
+                // 1. Consume speaker's chat stamina
                 const paragraphs = countParagraphs((newLastEntry as ChatMessage).textContent);
                 const chatCost = computeChatStaminaConsumptionCost(speaker, resultData, paragraphs);
                 
@@ -214,37 +229,46 @@ export async function runTurnSequence(
                     }
                 }
 
+                // 2. Validate and handle spatial movement via regex
                 if (hasLocations) {
                     const currentLocId = getCurrentLocationId(resultData, speaker);
-                    const regexLoc = findLocationByRegularExpression(resultData.locations, (newLastEntry as ChatMessage).textContent, speaker);
-                    const finalLoc = regexLoc !== undefined ? regexLoc : (currentLocId ? resultData.locations.find(l => l.id === currentLocId) : undefined);
+                    // FIX: Must check reachability and locks, not bypass with global regex
+                    const regexLoc = findReachableLocationByRegularExpression(resultData, (newLastEntry as ChatMessage).textContent, speaker);
 
                     if (regexLoc && currentLocId && regexLoc.id !== currentLocId) {
                         const movementCost = computeMovementCost(currentLocId, regexLoc.id, resultData.locations);
+                        let finalActionStamina = newLastEntry.remainingActionStamina;
+
                         for (const msgs of Object.values(resultData.interactionHistories || {})) {
                             const idx = msgs.findIndex(m => m.id === newLastEntry.id);
                             if (idx !== -1) {
                                 consumeActionStaminaForMessage(msgs[idx], movementCost);
+                                finalActionStamina = msgs[idx].remainingActionStamina;
                                 break;
                             }
                         }
-                    }
 
-                    const targetLocationId = finalLoc ? finalLoc.id : currentLocId;
-                    if (targetLocationId) {
-                        for (const [locId, msgs] of Object.entries(resultData.interactionHistories || {})) {
-                            const idx = msgs.findIndex(m => m.id === newLastEntry.id);
-                            if (idx !== -1) {
-                                if (locId !== targetLocationId) {
-                                    const msg = msgs.splice(idx, 1)[0];
-                                    if (!resultData.interactionHistories[targetLocationId]) {
-                                        resultData.interactionHistories[targetLocationId] = [];
-                                    }
-                                    resultData.interactionHistories[targetLocationId].push(msg);
-                                }
-                                break;
-                            }
+                        // FIX: Dialogue stays in origin location; an arrival interaction is created in destination
+                        const arrivalInteraction: InteractionMessage = {
+                            messageType: 'interaction',
+                            id: uuidv4(),
+                            character: { ...speaker },
+                            isPresent: true,
+                            remainingChatStamina: newLastEntry.remainingChatStamina,
+                            remainingActionStamina: finalActionStamina,
+                            inventory: newLastEntry.inventory ? { ...newLastEntry.inventory } : undefined,
+                            activeToolActions: newLastEntry.activeToolActions ? { ...newLastEntry.activeToolActions } : undefined,
+                            characterClothingWearingStatuses: (newLastEntry as ChatMessage).characterClothingWearingStatuses ?? {},
+                            characterLockedLocations: (newLastEntry as ChatMessage).characterLockedLocations ?? {},
+                            parentMessageId: newLastEntry.id,
+                            firstCreatedTimestamp: newLastEntry.firstCreatedTimestamp + 1,
+                            lastUpdatedTimestamp: newLastEntry.firstCreatedTimestamp + 1,
+                        };
+
+                        if (!resultData.interactionHistories[regexLoc.id]) {
+                            resultData.interactionHistories[regexLoc.id] = [];
                         }
+                        resultData.interactionHistories[regexLoc.id] = [...resultData.interactionHistories[regexLoc.id], arrivalInteraction];
                     }
                 }
             }
@@ -259,7 +283,7 @@ export async function runTurnSequence(
 
             if (!sequenceCompleted) break;
         } else {
-            // Action/Movement branch
+            // Action/Movement branch (Non-colocated autonomous movement)
             const actionEligible = remaining.filter(p => {
                 if (actedThisSequence.has(p.id)) return false;
                 return !isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIds, !!hasLocations);
@@ -321,6 +345,8 @@ export async function runTurnSequence(
             const prevActionStamina = previousMessage?.remainingActionStamina;
             const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses ?? {};
             const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
+            const prevInventory = previousMessage?.inventory;
+            const prevActiveToolActions = previousMessage?.activeToolActions;
 
             const reachable = getReachableLocationsByCharacter(workingData, mover, triggeringMessageText);
             const newLoc: Location | undefined = sampleReachableLocationByWeight(reachable, mover);
@@ -351,6 +377,7 @@ export async function runTurnSequence(
                 const flatSortedMsgs = Object.values(workingData.interactionHistories || {}).flat().sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
                 const lastParentId = flatSortedMsgs.length > 0 ? flatSortedMsgs[flatSortedMsgs.length - 1].id : null;
 
+                // FIX: Inherit inventory and activeToolActions during autonomous movement
                 const silent = createSilentInteraction(
                     mover,
                     prevChatStamina,
@@ -358,12 +385,14 @@ export async function runTurnSequence(
                     prevClothingStatuses,
                     prevLockedLocations,
                     lastParentId,
+                    prevInventory,
+                    prevActiveToolActions
                 );
 
                 if (!workingData.interactionHistories[newLoc.id]) {
                     workingData.interactionHistories[newLoc.id] = [];
                 }
-                workingData.interactionHistories[newLoc.id].push(silent);
+                workingData.interactionHistories[newLoc.id] = [...workingData.interactionHistories[newLoc.id], silent];
             }
 
             actedThisSequence.add(mover.id);
