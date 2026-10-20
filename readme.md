@@ -22,7 +22,8 @@ Finally, you need to run this code depending on your operating system.
 
 | Operating System | Windows               | Mac / Linux          |
 |------------------|-----------------------|----------------------|
-| Command          | ```start/start.bat``` | ```start/start.sh``` |
+| Website          | ```start/start.bat``` | ```start/start.sh``` |
+| Binaries         | ```start/build.bat``` | ```start/build.sh``` |
 
 You then can use LoreReactor directly or install the local backends first. The cloud setup have been fully prepared for you.
 
