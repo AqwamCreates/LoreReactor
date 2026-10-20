@@ -8,7 +8,7 @@ import type {
     BaseMessage, Character, Context, Location, AudioTrack, Profile, 
     InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage, 
     PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory, 
-    Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, 
+    Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, ToolMessage,
     tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel,
     entityType, ActiveToolActions, PendingToolAction, PendingToolActionType,
     TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry, TradeOffer
@@ -771,6 +771,15 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     if (isCharacterLockedFromLocation(interactionData, nextMessage.character.id, targetLocation.id)) {
         return { toolType: 'move', args, textContent: `[Error: Location "${targetLocation.name}" is locked]`, displayReplacement: '[Error: Location locked]' };
     }
+
+    // Add this dispatcher:
+    appendPendingAction(nextMessage, {
+        type: 'move',
+        payload: {
+            destinationLocationId: targetLocation.id,
+            destinationLocationName: targetLocation.name
+        }
+    });
 
     return { 
         toolType: 'move', 
@@ -1705,6 +1714,15 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
 
     const originName = currentLocation ? `"${currentLocation.name}"` : 'the area';
 
+    // Add this dispatcher:
+    appendPendingAction(nextMessage, {
+        type: 'teleport',
+        payload: {
+            destinationLocationId: targetLocation.id,
+            destinationLocationName: targetLocation.name
+        }
+    });
+
     return { 
         toolType: 'teleport', 
         args, 
@@ -2528,144 +2546,265 @@ async function executeHardwareControl(args: string): Promise<ToolResult> {
 export function processPendingToolActions(
     data: InteractionData, allCharacters: Character[], options?: { onToast?: (msg: string, type: 'success' | 'error' | 'info') => void }
 ): InteractionData {
-    const protagonistIds = new Set(data.protagonistIds ?? []);
     const history = getGlobalMessageHistory(data);
-    let lastAiCharId: string | null = null;
+    
+    // Scan all messages for unprocessed actions
+    const messagesWithPending = history.filter(m => m.pendingToolActions && m.pendingToolActions.length > 0);
+    
+    if (messagesWithPending.length === 0) return data;
 
-    for (let i = history.length - 1; i >= 0; i--) {
-        const msg = history[i];
-        if (msg.messageType === 'chat' && !protagonistIds.has(msg.character.id)) { lastAiCharId = msg.character.id; break; }
-    }
+    let updatedData = { ...data, interactionHistories: { ...data.interactionHistories } };
+    let changed = false;
 
-    if (!lastAiCharId) return data;
-
+    // Helper to find the previous state of a character to inherit their wearing/lock status
     const findPrevMsg = (d: InteractionData, charId: string) => {
-        const char = allCharacters.find(c => c.id === charId);
+        const char = allCharacters.find(c => c.id === charId) || d.participants.find(p => p.id === charId);
         if (!char) return null;
         const latest = findLatestMessage(d, char);
         return latest?.message || null;
     };
 
-    const charLastMsg = findPrevMsg(data, lastAiCharId);
-    if (!charLastMsg || charLastMsg.messageType !== 'chat') return data;
+    let sequenceTime = Date.now();
+    let currentLastMessageId = history.length > 0 ? history[history.length - 1].id : null;
 
-    const targetMsg = charLastMsg as ChatMessage;
-    const latestInfo = findLatestMessage(data, targetMsg.character);
-    if (!latestInfo) return data;
+    for (const targetMsg of messagesWithPending) {
+        const actions = targetMsg.pendingToolActions!;
+        
+        for (const action of actions) {
+            sequenceTime++; // Increment timestamp to prevent timeline collisions
 
-    const actions = targetMsg.pendingToolActions;
-    if (!actions || actions.length === 0) return data;
-
-    let updatedData = { ...data, interactionHistories: { ...data.interactionHistories } };
-    let changed = false;
-
-    for (const action of actions) {
-        switch (action.type) {
-            case 'summon': {
-                const charId = action.payload.characterId;
-                const sessionParticipants = updatedData.participants || [];
-                if (sessionParticipants.some(p => p.id === charId)) break;
-                const realCharacter = allCharacters.find(c => c.id === charId);
-                if (!realCharacter) { options?.onToast?.(`⚠️ Cannot summon "${action.payload.characterName}": not found.`, 'error'); break; }
-                updatedData = { ...updatedData, participants: [...sessionParticipants, { ...realCharacter }], lastUpdatedTimestamp: Date.now() };
-                changed = true;
-                options?.onToast?.(`✨ ${realCharacter.name} joined.`, 'info');
-                break;
-            }
-            case 'kick': {
-                const sessionParticipants = updatedData.participants || [];
-                const kickedChar = sessionParticipants.find(p => p.id === action.payload.characterId);
-                if (kickedChar) {
+            switch (action.type) {
+                // ─── 1. MOVE (SEPARATE BLOCK) ──────────────────────────────
+                case 'move': {
                     const destLocId = action.payload.destinationLocationId;
-                    const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id);
-                    const prevLockedLocations = prevKickedMsg?.characterLockedLocations ?? {};
-                    const kickMsg: HistoryMessage = {
-                        messageType: 'interaction', id: uuidv4(), character: { ...kickedChar }, isPresent: true,
-                        characterClothingWearingStatuses: (prevKickedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
-                        characterLockedLocations: { ...prevLockedLocations },
-                        parentMessageId: history.length > 0 ? history[history.length - 1].id : null,
-                        firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
-                    };
                     if (destLocId) {
+                        const prevMsg = findPrevMsg(updatedData, targetMsg.character.id) as ChatMessage | undefined;
+                        
+                        // Deduct action stamina for moving on foot
+                        let updatedActionStamina = prevMsg?.remainingActionStamina;
+                        if (updatedActionStamina !== undefined) {
+                            const currentLocId = getCurrentLocation(updatedData, targetMsg.character)?.id;
+                            if (currentLocId && currentLocId !== destLocId && updatedData.locations) {
+                                const fromLoc = updatedData.locations.find(l => l.id === currentLocId);
+                                const movementCost = fromLoc?.locationDistances?.[destLocId] ?? 1;
+                                updatedActionStamina = Math.max(0, updatedActionStamina - movementCost);
+                            }
+                        }
+
+                        const moveMsg: HistoryMessage = {
+                            messageType: 'interaction',
+                            id: uuidv4(),
+                            character: { ...targetMsg.character },
+                            isPresent: true,
+                            
+                            // Inherit state so items/stamina are preserved
+                            remainingChatStamina: prevMsg?.remainingChatStamina,
+                            remainingActionStamina: updatedActionStamina,
+                            inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
+                            activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
+                            characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
+                            characterLockedLocations: prevMsg?.characterLockedLocations ?? {},
+                            
+                            parentMessageId: currentLastMessageId,
+                            firstCreatedTimestamp: sequenceTime, 
+                            lastUpdatedTimestamp: sequenceTime,
+                        };
+                        currentLastMessageId = moveMsg.id;
+
                         if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
-                        updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], kickMsg];
+                        updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], moveMsg];
+                        changed = true;
+                        options?.onToast?.(`🚶 ${targetMsg.character.name} moved to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
                     }
-                    updatedData = { ...updatedData, lastUpdatedTimestamp: Date.now() };
-                    changed = true;
-                    options?.onToast?.(`👢 ${action.payload.characterName} kicked to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                    break;
                 }
-                break;
-            }
-            case 'invite': {
-                const charId = action.payload.characterId;
-                let invitedChar = (updatedData.participants || []).find(p => p.id === charId);
-                if (!invitedChar) invitedChar = allCharacters.find(c => c.id === charId);
-                if (invitedChar) {
-                    const charToInvite = invitedChar;
-                    const kickerLoc = getCurrentLocation(updatedData, charLastMsg.character);
-                    const currentLocId = kickerLoc?.id;
-                    const prevInvitedMsg = findPrevMsg(updatedData, charToInvite.id);
-                    const prevLockedLocations = prevInvitedMsg?.characterLockedLocations ?? {};
-                    const inviteMsg: HistoryMessage = {
-                        messageType: 'interaction', id: uuidv4(), character: { ...charToInvite }, isPresent: true,
-                        characterClothingWearingStatuses: (prevInvitedMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
-                        characterLockedLocations: { ...prevLockedLocations },
-                        parentMessageId: history.length > 0 ? history[history.length - 1].id : null,
-                        firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
+
+                // ─── 2. TELEPORT (SEPARATE BLOCK) ──────────────────────────
+                case 'teleport': {
+                    const destLocId = action.payload.destinationLocationId;
+                    if (destLocId) {
+                        const prevMsg = findPrevMsg(updatedData, targetMsg.character.id) as ChatMessage | undefined;
+
+                        const teleportMsg: HistoryMessage = {
+                            messageType: 'interaction',
+                            id: uuidv4(),
+                            character: { ...targetMsg.character },
+                            isPresent: true,
+                            
+                            // Teleporting retains full action stamina (no movement cost deducted)
+                            remainingChatStamina: prevMsg?.remainingChatStamina,
+                            remainingActionStamina: prevMsg?.remainingActionStamina,
+                            inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
+                            activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
+                            characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
+                            characterLockedLocations: prevMsg?.characterLockedLocations ?? {},
+                            
+                            parentMessageId: currentLastMessageId,
+                            firstCreatedTimestamp: sequenceTime, 
+                            lastUpdatedTimestamp: sequenceTime,
+                        };
+                        currentLastMessageId = teleportMsg.id;
+
+                        if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
+                        updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], teleportMsg];
+                        changed = true;
+                        options?.onToast?.(`⚡ ${targetMsg.character.name} teleported to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                    }
+                    break;
+                }
+
+                // ─── 3. WHISPER ───────────────────────────────────────────
+                case 'whisper': {
+                    const targetIds = action.payload.targetCharacterIds.split(',');
+                    const text = action.payload.text;
+                    const senderLatest = findLatestMessage(updatedData, targetMsg.character);
+                    const locId = senderLatest?.locationId || 'global';
+                    
+                    const whisperMsg: WhisperMessage = {
+                        messageType: 'whisper',
+                        id: uuidv4(),
+                        character: { ...targetMsg.character },
+                        textContent: text,
+                        targetCharacterIds: targetIds,
+                        files: [],
+                        modelTextContentSummaries: {},
+                        modelInteractionTextContentSummaries: {},
+                        kvCacheTextContentPaths: {},
+                        kvCacheTextContentSummaryPaths: {},
+                        kvCacheInteractionTextContentSummaries: {},
+                        characterClothingWearingStatuses: (targetMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
+                        characterLockedLocations: (targetMsg as ChatMessage)?.characterLockedLocations ?? {},
+                        parentMessageId: currentLastMessageId, 
+                        firstCreatedTimestamp: sequenceTime, 
+                        lastUpdatedTimestamp: sequenceTime,
                     };
-                    if (currentLocId) {
-                        if (!updatedData.interactionHistories[currentLocId]) updatedData.interactionHistories[currentLocId] = [];
-                        updatedData.interactionHistories[currentLocId] = [...updatedData.interactionHistories[currentLocId], inviteMsg];
-                    }
-                    const isAlreadyPart = (updatedData.participants || []).some(p => p.id === charToInvite.id);
-                    const newParticipants = isAlreadyPart ? (updatedData.participants || []) : [...(updatedData.participants || []), { ...charToInvite }];
-                    updatedData = { ...updatedData, participants: newParticipants, lastUpdatedTimestamp: Date.now() };
+                    currentLastMessageId = whisperMsg.id;
+
+                    if (!updatedData.interactionHistories[locId]) updatedData.interactionHistories[locId] = [];
+                    updatedData.interactionHistories[locId] = [...updatedData.interactionHistories[locId], whisperMsg];
+                    updatedData = { ...updatedData, lastUpdatedTimestamp: sequenceTime };
                     changed = true;
-                    options?.onToast?.(`📨 ${action.payload.characterName} arrived.`, 'info');
+                    break;
                 }
-                break;
+
+                // ─── 4. INVITE ────────────────────────────────────────────
+                case 'invite': {
+                    const charId = action.payload.characterId;
+                    let invitedChar = (updatedData.participants || []).find(p => p.id === charId);
+                    if (!invitedChar) invitedChar = allCharacters.find(c => c.id === charId);
+                    if (invitedChar) {
+                        const charToInvite = invitedChar;
+                        const inviterLoc = getCurrentLocation(updatedData, targetMsg.character);
+                        const currentLocId = inviterLoc?.id;
+                        
+                        const prevInvitedMsg = findPrevMsg(updatedData, charToInvite.id) as ChatMessage | undefined;
+                        
+                        const inviteMsg: HistoryMessage = {
+                            messageType: 'interaction',
+                            id: uuidv4(),
+                            character: { ...charToInvite },
+                            isPresent: true,
+                            remainingChatStamina: prevInvitedMsg?.remainingChatStamina,
+                            remainingActionStamina: prevInvitedMsg?.remainingActionStamina,
+                            inventory: prevInvitedMsg?.inventory ? { ...prevInvitedMsg.inventory } : undefined,
+                            activeToolActions: prevInvitedMsg?.activeToolActions ? { ...prevInvitedMsg.activeToolActions } : undefined,
+                            characterClothingWearingStatuses: prevInvitedMsg?.characterClothingWearingStatuses ?? {},
+                            characterLockedLocations: prevInvitedMsg?.characterLockedLocations ?? {},
+                            parentMessageId: currentLastMessageId,
+                            firstCreatedTimestamp: sequenceTime, 
+                            lastUpdatedTimestamp: sequenceTime,
+                        };
+                        currentLastMessageId = inviteMsg.id;
+
+                        if (currentLocId) {
+                            if (!updatedData.interactionHistories[currentLocId]) updatedData.interactionHistories[currentLocId] = [];
+                            updatedData.interactionHistories[currentLocId] = [...updatedData.interactionHistories[currentLocId], inviteMsg];
+                        }
+                        const isAlreadyPart = (updatedData.participants || []).some(p => p.id === charToInvite.id);
+                        const newParticipants = isAlreadyPart ? (updatedData.participants || []) : [...(updatedData.participants || []), { ...charToInvite }];
+                        updatedData = { ...updatedData, participants: newParticipants, lastUpdatedTimestamp: sequenceTime };
+                        changed = true;
+                        options?.onToast?.(`📨 ${action.payload.characterName} arrived.`, 'info');
+                    }
+                    break;
+                }
+
+                // ─── 5. KICK ──────────────────────────────────────────────
+                case 'kick': {
+                    const sessionParticipants = updatedData.participants || [];
+                    const kickedChar = sessionParticipants.find(p => p.id === action.payload.characterId);
+                    if (kickedChar) {
+                        const destLocId = action.payload.destinationLocationId;
+                        const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id) as ChatMessage | undefined;
+                        
+                        const kickMsg: HistoryMessage = {
+                            messageType: 'interaction',
+                            id: uuidv4(),
+                            character: { ...kickedChar },
+                            isPresent: true,
+                            remainingChatStamina: prevKickedMsg?.remainingChatStamina,
+                            remainingActionStamina: prevKickedMsg?.remainingActionStamina,
+                            inventory: prevKickedMsg?.inventory ? { ...prevKickedMsg.inventory } : undefined,
+                            activeToolActions: prevKickedMsg?.activeToolActions ? { ...prevKickedMsg.activeToolActions } : undefined,
+                            characterClothingWearingStatuses: prevKickedMsg?.characterClothingWearingStatuses ?? {},
+                            characterLockedLocations: prevKickedMsg?.characterLockedLocations ?? {},
+                            parentMessageId: currentLastMessageId,
+                            firstCreatedTimestamp: sequenceTime, 
+                            lastUpdatedTimestamp: sequenceTime,
+                        };
+                        currentLastMessageId = kickMsg.id;
+
+                        if (destLocId) {
+                            if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
+                            updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], kickMsg];
+                        }
+                        updatedData = { ...updatedData, lastUpdatedTimestamp: sequenceTime };
+                        changed = true;
+                        options?.onToast?.(`👢 ${action.payload.characterName} kicked to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                    }
+                    break;
+                }
+
+                // ─── 6. SUMMON ────────────────────────────────────────────
+                case 'summon': {
+                    const charId = action.payload.characterId;
+                    const sessionParticipants = updatedData.participants || [];
+                    if (sessionParticipants.some(p => p.id === charId)) break;
+                    const realCharacter = allCharacters.find(c => c.id === charId);
+                    if (!realCharacter) { options?.onToast?.(`⚠️ Cannot summon "${action.payload.characterName}": not found.`, 'error'); break; }
+                    updatedData = { ...updatedData, participants: [...sessionParticipants, { ...realCharacter }], lastUpdatedTimestamp: sequenceTime };
+                    changed = true;
+                    options?.onToast?.(`✨ ${realCharacter.name} joined.`, 'info');
+                    break;
+                }
+
+                // ─── 7. ADMINISTRATOR COMMANDS ────────────────────────────
+                case 'administrator_switch_model': options?.onToast?.(`🔧 Switch to "${action.payload.modelName}" requested.`, 'info'); break;
+                case 'administrator_toggle_account': options?.onToast?.(`🔑 Toggle account "${action.payload.accountId}" requested.`, 'info'); break;
+                case 'administrator_join_session': options?.onToast?.(`👥 Join session "${action.payload.sessionId}" requested.`, 'info'); break;
+                case 'administrator_leave_session': options?.onToast?.(`👥 Leave session "${action.payload.sessionId}" requested.`, 'info'); break;
+                case 'administrator_accept_join': options?.onToast?.(`👥 Accept join for "${action.payload.accountId}" requested.`, 'info'); break;
+                case 'administrator_reject_join': options?.onToast?.(`👥 Reject join for "${action.payload.accountId}" requested.`, 'info'); break;
+                case 'administrator_edit_entity': options?.onToast?.(`🔧 Edit ${action.payload.entityType} "${action.payload.entityId}" (${action.payload.field}) requested.`, 'info'); break;
+                case 'creator': options?.onToast?.(`🛠️ ${action.payload.entityType} "${action.payload.entityName}" creation requested.`, 'info'); break;
+                case 'destroyer': options?.onToast?.(`💀 ${action.payload.entityType} "${action.payload.entityName}" deletion requested.`, 'info'); break;
             }
-            case 'whisper': {
-                const targetIds = action.payload.targetCharacterIds.split(',');
-                const text = action.payload.text;
-                const senderLatest = findLatestMessage(updatedData, charLastMsg.character);
-                const locId = senderLatest?.locationId || 'global';
-                const whisperMsg: WhisperMessage = {
-                    messageType: 'whisper', id: uuidv4(), character: { ...charLastMsg.character }, textContent: text, targetCharacterIds: targetIds, files: [],
-                    modelTextContentSummaries: {}, modelInteractionTextContentSummaries: {}, kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {},
-                    characterClothingWearingStatuses: (charLastMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
-                    characterLockedLocations: charLastMsg.characterLockedLocations ?? {},
-                    parentMessageId: charLastMsg.id, firstCreatedTimestamp: Date.now(), lastUpdatedTimestamp: Date.now(),
-                };
-                if (!updatedData.interactionHistories[locId]) updatedData.interactionHistories[locId] = [];
-                updatedData.interactionHistories[locId] = [...updatedData.interactionHistories[locId], whisperMsg];
-                updatedData = { ...updatedData, lastUpdatedTimestamp: Date.now() };
+        }
+
+        // Accurately locate targetMsg inside the active InteractionHistories and delete its pending flags
+        for (const [locId, msgs] of Object.entries(updatedData.interactionHistories)) {
+            const targetMsgIdx = msgs.findIndex(m => m.id === targetMsg.id);
+            if (targetMsgIdx !== -1) {
+                const cleanedMsg = { ...msgs[targetMsgIdx] } as ChatMessage | ToolMessage | WhisperMessage;
+                delete cleanedMsg.pendingToolActions;
+                updatedData.interactionHistories[locId] = [...msgs];
+                updatedData.interactionHistories[locId][targetMsgIdx] = cleanedMsg;
                 changed = true;
                 break;
             }
-            case 'administrator_switch_model': options?.onToast?.(`🔧 Switch to "${action.payload.modelName}" requested.`, 'info'); break;
-            case 'administrator_toggle_account': options?.onToast?.(`🔑 Toggle account "${action.payload.accountId}" requested.`, 'info'); break;
-            case 'administrator_join_session': options?.onToast?.(`👥 Join session "${action.payload.sessionId}" requested.`, 'info'); break;
-            case 'administrator_leave_session': options?.onToast?.(`👥 Leave session "${action.payload.sessionId}" requested.`, 'info'); break;
-            case 'administrator_accept_join': options?.onToast?.(`👥 Accept join for "${action.payload.accountId}" requested.`, 'info'); break;
-            case 'administrator_reject_join': options?.onToast?.(`👥 Reject join for "${action.payload.accountId}" requested.`, 'info'); break;
-            case 'administrator_edit_entity': options?.onToast?.(`🔧 Edit ${action.payload.entityType} "${action.payload.entityId}" (${action.payload.field}) requested.`, 'info'); break;
-            case 'creator': options?.onToast?.(`🛠️ ${action.payload.entityType} "${action.payload.entityName}" creation requested.`, 'info'); break;
-            case 'destroyer': options?.onToast?.(`💀 ${action.payload.entityType} "${action.payload.entityName}" deletion requested.`, 'info'); break;
         }
     }
 
     if (!changed) return data;
-
-    const locId = latestInfo.locationId;
-    const locMsgs = updatedData.interactionHistories[locId] || [];
-    const targetMsgIdx = locMsgs.findIndex(m => m.id === targetMsg.id);
-    if (targetMsgIdx !== -1) {
-        const cleanedMsg = { ...locMsgs[targetMsgIdx] } as ChatMessage;
-        delete cleanedMsg.pendingToolActions;
-        updatedData.interactionHistories[locId] = [...locMsgs];
-        updatedData.interactionHistories[locId][targetMsgIdx] = cleanedMsg;
-    }
-
-    return { ...updatedData, lastUpdatedTimestamp: Date.now() };
+    return { ...updatedData, lastUpdatedTimestamp: sequenceTime };
 }
