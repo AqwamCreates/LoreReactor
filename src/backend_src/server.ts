@@ -2173,7 +2173,7 @@ app.post('/api/web/fetch', async (req, response) => {
         const currentText = await page.evaluate(() => document.body?.innerText || '');
 
         // Check if page loaded real content and is no longer on a challenge screen
-        if (currentText.trim().length > 0 && !isBotChallenge(currentText)) {
+        if (currentText.length > 0 && !isBotChallenge(currentText)) {
           // Brief pause to allow any late post-redirect DOM elements to settle
           await new Promise((r) => setTimeout(r, 1500));
           finalText = await page.evaluate(() => document.body?.innerText || '');
