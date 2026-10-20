@@ -510,10 +510,6 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     color: var(--text-h);
     outline: none;
     
-    /* ✅ CHANGED: Allow vertical resizing and set a proper minimum height */
-    resize: vertical;
-    max-height: 50vh; /* Prevents it from growing larger than the screen */
-    
     box-sizing: border-box;
     overflow-y: auto;
     overflow-x: hidden;

@@ -122,6 +122,9 @@ export const MessageBubble = React.memo(function MessageBubble({
     React.useEffect(() => {
         if (isRawEditing && editTextAreaRef.current) {
             editTextAreaRef.current.focus();
+            // ✅ Auto-resize on initial render so it matches the text length immediately
+            editTextAreaRef.current.style.height = 'auto';
+            editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`;
         }
     }, [isRawEditing, editTextAreaRef]);
 
@@ -293,7 +296,14 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             handleExitRawEdit();
                                         }
                                     }}
+                                    // ✅ Auto-grow logic
+                                    onInput={(e) => {
+                                        const target = e.target as HTMLTextAreaElement;
+                                        target.style.height = 'auto';
+                                        target.style.height = `${target.scrollHeight}px`;
+                                    }}
                                     className="edit-textarea"
+                                    style={{ resize: 'none', overflowY: 'hidden' }}
                                 />
                             ) : (
                                 <div
