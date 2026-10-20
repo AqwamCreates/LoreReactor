@@ -772,7 +772,12 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
         return { toolType: 'move', args, textContent: `[Error: Location "${targetLocation.name}" is locked]`, displayReplacement: '[Error: Location locked]' };
     }
 
-    return { toolType: 'move', args, textContent: `Moved to "${targetLocation.name}" (${targetLocation.id}).`, displayReplacement: `[🚶 Moved to "${targetLocation.name}"]` };
+    return { 
+        toolType: 'move', 
+        args, 
+        textContent: `${nextMessage.character.name} left "${currentLocation.name}".`, 
+        displayReplacement: `[🚶 Left "${currentLocation.name}"]` 
+    };
 }
 
 // ─── Duration Parser ────────────────────────────────────────────────
@@ -1648,7 +1653,12 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
         }
     });
 
-    return { toolType: 'kick', args, textContent: `Kicked ${targetChar.name} to "${destLoc.name}".`, displayReplacement: `[👢 Kicked ${targetChar.name} to ${destLoc.name}]` };
+    return { 
+        toolType: 'kick', 
+        args, 
+        textContent: `${targetChar.name} was kicked out of "${currentLocation.name}".`, 
+        displayReplacement: `[👢 Kicked ${targetChar.name} from "${currentLocation.name}"]` 
+    };
 }
 
 // ─── Oracle ───────────────────────────────────────────────────────
@@ -1680,13 +1690,27 @@ function executeOracle(args: string, _nextMessage: BaseMessage, interactionData:
 }
 
 // ─── Teleport ───────────────────────────────────────────────────────
-function executeTeleport(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
+function executeTeleport(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target') || pArgs.positional.join(' ');
     if (!targetQuery) return helpResult('teleport', 'location_id="..."', 'instantly move character to any location');
+
     const targetLocation = resolveLocation(targetQuery, interactionData);
     if (!targetLocation) return { toolType: 'teleport', args, textContent: `[Error: Location "${targetQuery}" not found]`, displayReplacement: '[Error: Not found]' };
-    return { toolType: 'teleport', args, textContent: `Teleported to "${targetLocation.name}".`, displayReplacement: `[⚡ Teleported to "${targetLocation.name}"]` };
+
+    const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
+    if (currentLocation && targetLocation.id === currentLocation.id) {
+        return { toolType: 'teleport', args, textContent: `Already at "${targetLocation.name}".`, displayReplacement: `[⚡ Already at "${targetLocation.name}"]` };
+    }
+
+    const originName = currentLocation ? `"${currentLocation.name}"` : 'the area';
+
+    return { 
+        toolType: 'teleport', 
+        args, 
+        textContent: `${nextMessage.character.name} vanished from ${originName}.`, 
+        displayReplacement: `[⚡ Vanished from ${originName}]` 
+    };
 }
 
 // ─── Key ────────────────────────────────────────────────────────────
