@@ -1628,10 +1628,7 @@ function executeOracle(args: string, _nextMessage: BaseMessage, interactionData:
     }
 
     const remoteMessages = getLocationMessageHistory(interactionData, targetLoc.id, ['chat', 'whisper'], limit);
-    if (remoteMessages.length === 0) {
-        return { toolType: 'oracle', args, textContent: `The scrying vision clears over ${targetLoc.name}, but the area is completely empty and silent right now.`, displayReplacement: `[🔮 Scried: ${targetLoc.name} (Empty)]` };
-    }
-
+    if (remoteMessages.length === 0) return { toolType: 'oracle', args, textContent: `The scrying vision clears over ${targetLoc.name}, but the area is completely empty and silent right now.`, displayReplacement: `[🔮 Scried: ${targetLoc.name} (Empty)]` };
     const visionTranscript = remoteMessages.map(m => `[${m.character.name}]: ${(m as ChatMessage).textContent}`).join('\n');
     return { toolType: 'oracle', args, textContent: `[Scrying Vision of ${targetLoc.name}]:\n${visionTranscript}`, displayReplacement: `[🔮 Scried upon "${targetLoc.name}"]` };
 }
