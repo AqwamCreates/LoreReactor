@@ -220,7 +220,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const getActivePromptBlocks = useCallback((data: InteractionData | null | undefined): PromptBlock[] => {
         const profile = data?.profile;
         return profile?.inputStrategy 
-            ? allPromptBlocksRef.current.filter(pb => profile.inputStrategy!.includes(pb.id))
+            ? allPromptBlocksRef.current.filter(pb => profile.inputStrategy.includes(pb.id))
             : allPromptBlocksRef.current;
     }, []);
 
@@ -422,12 +422,14 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, [addToast, setInteractionData]);
 
-    // ✅ Reactively cancel scheduled responses if their triggering message is deleted, trimmed, or chat resets
+    // ✅ Reactively cancel scheduled responses if their triggering message is deleted, trimmed, or chat resets (using for...of instead of forEach)
     useEffect(() => {
         const timeoutsMap = scheduledTimeoutsRef.current;
         if (!interactionData) {
             for (const timeouts of timeoutsMap.values()) {
-                timeouts.forEach(t => clearTimeout(t));
+                for (const t of timeouts) {
+                    clearTimeout(t);
+                }
             }
             timeoutsMap.clear();
             return;
@@ -436,18 +438,22 @@ export function useChatSession(options: UseChatSessionOptions) {
         const activeMessageIds = new Set(getGlobalMessageHistory(interactionData).map(m => m.id));
         for (const [msgId, timeouts] of timeoutsMap.entries()) {
             if (!activeMessageIds.has(msgId)) {
-                timeouts.forEach(t => clearTimeout(t));
+                for (const t of timeouts) {
+                    clearTimeout(t);
+                }
                 timeoutsMap.delete(msgId);
             }
         }
     }, [interactionData]);
 
-    // ✅ Clear all timeouts on unmount (copied to local variable to satisfy ESLint)
+    // ✅ Clear all timeouts on unmount using for...of instead of forEach
     useEffect(() => {
         const timeoutsMap = scheduledTimeoutsRef.current;
         return () => {
             for (const timeouts of timeoutsMap.values()) {
-                timeouts.forEach(t => clearTimeout(t));
+                for (const t of timeouts) {
+                    clearTimeout(t);
+                }
             }
             timeoutsMap.clear();
         };
@@ -464,6 +470,15 @@ export function useChatSession(options: UseChatSessionOptions) {
     }: GenerationTurnOptions) => {
         if (!lockAlreadyAcquired && !acquireLock()) return;
         if (!data.profile || !data.profile?.enableCharacterExpression) sentimentEngine.unload();
+
+        const profile = data.profile;
+        const narrationBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
+
+        // 🛑 Handle 'interrupt' behavior: cut off active voice narration immediately if requested
+        if (narrationBehaviour === 'interrupt' && currentVoiceTrackerRef.current) {
+            currentVoiceTrackerRef.current.stopImmediate();
+            currentVoiceTrackerRef.current = null;
+        }
 
         const promptBlocks = getActivePromptBlocks(data);
 
@@ -499,7 +514,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         streamingCharacterRef.current = respondingChar ?? null;
         streamingMessageIdRef.current = `gen-${respondingChar?.id || 'ai'}-${Date.now()}`;
 
-        if (currentVoiceTrackerRef.current) {
+        if (currentVoiceTrackerRef.current && narrationBehaviour !== 'interrupt') {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
         }
@@ -677,15 +692,22 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
+            // ⏳ Respect textGenerationBehaviourOnNarration ('wait' vs 'continue')
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
-                tracker.flushAndStop()
-                    .catch(e => console.warn('[useChatSession] VoiceTracker flush error:', e))
-                    .finally(() => {
-                        if (currentVoiceTrackerRef.current === tracker) {
-                            currentVoiceTrackerRef.current = null;
-                        }
-                    });
+                if (narrationBehaviour === 'wait') {
+                    try {
+                        await tracker.waitForPlaybackCompletion();
+                    } catch (e) {
+                        console.warn('[useChatSession] Voice playback wait error:', e);
+                    }
+                } else {
+                    await tracker.flushAndStop().catch(e => console.warn('[useChatSession] VoiceTracker flush error:', e));
+                }
+                tracker.stopImmediate();
+                if (currentVoiceTrackerRef.current === tracker) {
+                    currentVoiceTrackerRef.current = null;
+                }
             }
 
             resetStream();
@@ -885,6 +907,14 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (!currentInteractionData) return;
         if (!currentInteractionData.profile || !currentInteractionData.profile?.enableCharacterExpression) sentimentEngine.unload();
 
+        const profile = currentInteractionData.profile;
+        const narrationBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
+
+        if (narrationBehaviour === 'interrupt' && currentVoiceTrackerRef.current) {
+            currentVoiceTrackerRef.current.stopImmediate();
+            currentVoiceTrackerRef.current = null;
+        }
+
         const history = getGlobalMessageHistory(currentInteractionData);
         const msg = history.find(m => m.id === messageId);
         if (!msg || !hasTextContent(msg)) {
@@ -912,7 +942,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         const rawChar = msg.character;
         const char = allCharactersRef.current.find(c => c.id === rawChar?.id) || rawChar;
 
-        if (currentVoiceTrackerRef.current) {
+        if (currentVoiceTrackerRef.current && narrationBehaviour !== 'interrupt') {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
         }
@@ -1017,13 +1047,19 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
-                tracker.flushAndStop()
-                    .catch(e => console.warn('[useChatSession] VoiceTracker flush error in resume:', e))
-                    .finally(() => {
-                        if (currentVoiceTrackerRef.current === tracker) {
-                            currentVoiceTrackerRef.current = null;
-                        }
-                    });
+                if (narrationBehaviour === 'wait') {
+                    try {
+                        await tracker.waitForPlaybackCompletion();
+                    } catch (e) {
+                        console.warn('[useChatSession] Resume Voice playback wait error:', e);
+                    }
+                } else {
+                    await tracker.flushAndStop().catch(e => console.warn('[useChatSession] VoiceTracker flush error in resume:', e));
+                }
+                tracker.stopImmediate();
+                if (currentVoiceTrackerRef.current === tracker) {
+                    currentVoiceTrackerRef.current = null;
+                }
             }
 
             resetStream();
@@ -1114,10 +1150,12 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline]);
 
     const startNewChat = useCallback((char: Character) => {
-        // ✅ Cancel all pending scheduled follow-ups when creating a fresh chat session
+        // ✅ Cancel all pending scheduled follow-ups when creating a fresh chat session using for...of instead of forEach
         const timeoutsMap = scheduledTimeoutsRef.current;
         for (const timeouts of timeoutsMap.values()) {
-            timeouts.forEach(t => clearTimeout(t));
+            for (const t of timeouts) {
+                clearTimeout(t);
+            }
         }
         timeoutsMap.clear();
 

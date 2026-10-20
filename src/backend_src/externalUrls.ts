@@ -30,6 +30,6 @@ export const DIRECT_DOWNLOADS = {
 
 export const TEXT_TO_SPEECH_MODELS = {
   BASE_URL: 'https://huggingface.co/mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF/resolve/main',
-  MAIN_MODEL_FILE: 'Qwen3-TTS-12Hz-0.6B-Base.Q6_K.gguf',
+  MAIN_MODEL_FILE: 'Qwen3-TTS-12Hz-0.6B-Base.Q8_0.gguf',
   MMPROJ_VOICE_ENCODER_FILE: 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-F16.gguf',
 };

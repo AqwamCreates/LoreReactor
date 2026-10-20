@@ -342,6 +342,38 @@ export class StreamingVoiceTracker {
         this.isFirstChunkSent = false;
     }
 
+    async waitForPlaybackCompletion(): Promise<void> {
+        if (!this.hasVoiceConfigured || !this.isActive) return;
+
+        let remaining = this.sentenceAccumulator;
+        if (this.buffer.length > 0) {
+            remaining = (remaining ? `${remaining} ` : '') + this.buffer;
+        }
+
+        if (remaining.length > 0) {
+            this.queueSentence(remaining, this.pendingSegmentType);
+            this.sentenceAccumulator = '';
+            this.buffer = '';
+        }
+
+        this.processPendingQueue();
+
+        // Await all in-flight TTS synthesis requests
+        while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
+            if (this.isKilled) break;
+            if (this.inFlightPromises.length > 0) {
+                await Promise.allSettled([...this.inFlightPromises]);
+            } else {
+                await new Promise(resolve => setTimeout(resolve, 50));
+            }
+        }
+        
+        this.processPlaybackQueue();
+
+        // Block until Web Audio playback finishes completely
+        await this.player.waitUntilFinished();
+    }
+
     stopImmediate(): void {
         this.isKilled = true;
         this.isActive = false;

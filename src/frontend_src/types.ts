@@ -913,7 +913,9 @@ export interface AutoResumeSignal {
 
 export type deviceType = 'auto' | 'cpu' | 'gpu'
 
-export type entityImageType = 'promptBlock' | 'context' | 'location' | 'character' 
+export type entityImageType = 'promptBlock' | 'context' | 'location' | 'character'
+
+export type textGenerationBehaviourOnNarration = 'wait' | 'continue' | 'interrupt' // Wait (default) -> The text generation waits for the voice narration to complete. Cascade -> Allows the text generation to continue despite the existing voice narration currently running. Interrupt -> Stops previous voice narration and immediately perform the next voice narration upon the next text being generated.
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
@@ -953,6 +955,7 @@ export interface Profile extends ObjectData {
   doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
   narrateTextCharacterIds: Record<textType, string>; // Text type -> character Id that will narrate this text type.
+  textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
@@ -1020,6 +1023,7 @@ export interface RawProfile extends RawData {
   doNotInjectDefaultStopTokens: boolean;
   narrateTexts: Record<textType, boolean>;
   narrateTextCharacterIds: Record<textType, string>; // Text type -> character Id that will narrate this text type.
+  textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];

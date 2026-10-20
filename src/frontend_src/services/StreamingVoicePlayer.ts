@@ -55,6 +55,16 @@ export class StreamingVoicePlayer {
         this.isProcessingQueue = false;
     }
 
+    async waitUntilFinished(): Promise<void> {
+        if (!this.context || !this.isPlaying) return;
+
+        while (this.playbackQueue.length > 0 || (this.context && this.context.currentTime < this.nextStartTime)) {
+            if (!this.isPlaying || !this.context) break;
+            const remainingMs = Math.max(50, (this.nextStartTime - this.context.currentTime) * 1000);
+            await new Promise(resolve => setTimeout(resolve, Math.min(remainingMs, 200)));
+        }
+    }
+
     stop() {
         this.isPlaying = false;
         this.playbackQueue = [];
