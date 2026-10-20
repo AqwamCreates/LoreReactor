@@ -120,6 +120,21 @@ interface V3Asset {
     filename?: string;
 }
 
+// ─── Placeholder Normalization ─────────────────────────────────────
+
+/**
+ * Normalizes character and user name placeholders to a standardized format.
+ * - Converts legacy and modern character placeholders (e.g., {{char}}, <BOT>, <CHAR>) to {{character}}.
+ * - Converts user placeholders (e.g., {{user}}, <USER>, {{persona}}) to {{protagonist}}.
+ * Case-insensitive to handle variations like {{Char}}, <bot>, {{USER}}, etc.
+ */
+function normalizePlaceholders(text: string | undefined): string | undefined {
+    if (typeof text !== 'string') return text;
+    return text
+        .replace(/{{char}}|<bot>|<char>/gi, '{{character}}')
+        .replace(/{{user}}|<user>|{{persona}}/gi, '{{protagonist}}');
+}
+
 // ─── Main Parser ────────────────────────────────────────────────────
 
 /**
@@ -391,13 +406,13 @@ function decodeBase64AsUtf8(base64: string): unknown {
 function normalizeV1(json: RawV1Card): ParsedCharacterCardExtended {
     return {
         name: json.name || '',
-        description: json.description || '',
-        firstMes: json.first_mes || '',
-        personality: json.personality || undefined,
-        scenario: json.scenario || undefined,
-        mesExample: json.mes_example || undefined,
-        systemPrompt: json.system_prompt || undefined,
-        starterPrompt: json.post_history_instructions || undefined,
+        description: normalizePlaceholders(json.description) || '',
+        firstMes: normalizePlaceholders(json.first_mes) || '',
+        personality: normalizePlaceholders(json.personality) || undefined,
+        scenario: normalizePlaceholders(json.scenario) || undefined,
+        mesExample: normalizePlaceholders(json.mes_example) || undefined,
+        systemPrompt: normalizePlaceholders(json.system_prompt) || undefined,
+        starterPrompt: normalizePlaceholders(json.post_history_instructions) || undefined,
         tags: json.tags || undefined,
         creator: json.creator || undefined,
         characterVersion: json.character_version || undefined,
@@ -409,15 +424,17 @@ function normalizeV1(json: RawV1Card): ParsedCharacterCardExtended {
 function normalizeV2(data: RawV2Data): ParsedCharacterCardExtended {
     const result: ParsedCharacterCardExtended = {
         name: data.name || '',
-        description: data.description || '',
-        firstMes: data.first_mes || '',
-        personality: data.personality || undefined,
-        scenario: data.scenario || undefined,
-        mesExample: data.mes_example || undefined,
-        creatorNotes: data.creator_notes || undefined,
-        systemPrompt: data.system_prompt || undefined,
-        starterPrompt: data.post_history_instructions || undefined,
-        alternateGreetings: data.alternate_greetings?.length ? data.alternate_greetings : undefined,
+        description: normalizePlaceholders(data.description) || '',
+        firstMes: normalizePlaceholders(data.first_mes) || '',
+        personality: normalizePlaceholders(data.personality) || undefined,
+        scenario: normalizePlaceholders(data.scenario) || undefined,
+        mesExample: normalizePlaceholders(data.mes_example) || undefined,
+        creatorNotes: normalizePlaceholders(data.creator_notes) || undefined,
+        systemPrompt: normalizePlaceholders(data.system_prompt) || undefined,
+        starterPrompt: normalizePlaceholders(data.post_history_instructions) || undefined,
+        alternateGreetings: data.alternate_greetings?.length 
+            ? data.alternate_greetings.map(g => normalizePlaceholders(g)).filter((g): g is string => typeof g === 'string')
+            : undefined,
         tags: data.tags || undefined,
         creator: (data.extensions as Record<string, unknown>)?.creator as string | undefined || data.creator || undefined,
         characterVersion: data.character_version || undefined,
@@ -444,9 +461,20 @@ function normalizeV3(data: RawV3Data): ParsedCharacterCardExtended {
     const result = normalizeV2(data);
 
     // V3-specific fields
-    if (data.nickname) result.nickname = data.nickname;
-    if (data.group_only_greetings?.length) result.groupOnlyGreetings = data.group_only_greetings;
-    if (data.creator_notes_multilingual) result.creatorNotesMultilingual = data.creator_notes_multilingual;
+    if (data.nickname) result.nickname = normalizePlaceholders(data.nickname);
+    if (data.group_only_greetings?.length) {
+        result.groupOnlyGreetings = data.group_only_greetings
+            .map(g => normalizePlaceholders(g))
+            .filter((g): g is string => typeof g === 'string');
+    }
+    if (data.creator_notes_multilingual) {
+        const normalizedNotes: Record<string, string> = {};
+        for (const [lang, note] of Object.entries(data.creator_notes_multilingual)) {
+            const normalized = normalizePlaceholders(note);
+            if (normalized) normalizedNotes[lang] = normalized;
+        }
+        result.creatorNotesMultilingual = normalizedNotes;
+    }
     if (data.source?.length) result.source = data.source;
     if (data.creation_date) result.creationDate = data.creation_date;
     if (data.modification_date) result.modificationDate = data.modification_date;
@@ -516,7 +544,7 @@ function extractLorebookContexts(book: CharacterBook): Partial<Context>[] {
 
         const context: Partial<Context> = {
             name: entry.name || entry.comment || "Lorebook Entry",
-            text: entry.content,
+            text: normalizePlaceholders(entry.content),
             regularExpressionActivationTriggers: isConstant ? undefined : activationTriggers,
             insertionDepth: entry.insertion_order ?? 0,
             tokenBudget: book.token_budget ? Math.min(book.token_budget, 512) : undefined,
