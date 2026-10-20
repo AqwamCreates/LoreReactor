@@ -566,7 +566,24 @@ export interface SlashAutocompleteComputeResult {
 }
 
 export function computeSlashAutocomplete(
-inputText: string, interactionData: InteractionData | null, allCharacters: Character[] = [], allContexts: Context[] = [], allLocations: Location[] = [], allAudioTracks: AudioTrack[] = [], allWorlds: World[] = [], allProfiles: Profile[] = [], allPromptBlocks: PromptBlock[] = [], allLanguageModels: LanguageModel[] = [], allSamplers: Sampler[] = [], allStopPatterns: StopPattern[] = [], allBudgetStrategies: BudgetStrategy[] = [], allMemories: Memory[] = [], allAccounts: Account[] = [], allMultiplayerData: MultiplayerData[] = [], localProtagonist: Character | null = null): SlashAutocompleteComputeResult {
+    inputText: string, 
+    interactionData: InteractionData | null, 
+    allCharacters: Character[] = [], 
+    allContexts: Context[] = [], 
+    allLocations: Location[] = [], 
+    allAudioTracks: AudioTrack[] = [], 
+    allWorlds: World[] = [], 
+    allProfiles: Profile[] = [], 
+    allPromptBlocks: PromptBlock[] = [], 
+    allLanguageModels: LanguageModel[] = [], 
+    allSamplers: Sampler[] = [], 
+    allStopPatterns: StopPattern[] = [], 
+    allBudgetStrategies: BudgetStrategy[] = [], 
+    allMemories: Memory[] = [], 
+    allAccounts: Account[] = [], 
+    allMultiplayerData: MultiplayerData[] = [], 
+    localProtagonist: Character | null = null
+): SlashAutocompleteComputeResult {
     const raw = inputText.trimStart();
     const isSlash = raw.startsWith('/');
     if (!isSlash) {
@@ -616,7 +633,7 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
                 options: filtered.map(s => ({ type: 'sub' as const, value: s.name, label: s.name, id: '', desc: s.desc })),
                 isComplete: false,
                 isSlash: true,
-                activeIndex,
+                activeIndex: effectiveIndex,
                 currentQuery
             };
         }
@@ -633,7 +650,7 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
                     options: exampleOpts,
                     isComplete: false,
                     isSlash: true,
-                    activeIndex,
+                    activeIndex: effectiveIndex,
                     currentQuery
                 };
             }
@@ -667,19 +684,19 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
                 })),
                 isComplete: false,
                 isSlash: true,
-                activeIndex,
+                activeIndex: effectiveIndex,
                 currentQuery
             };
         }
 
-        return { breadcrumbs: [cmd.name, 'Complete ✓'], options: [], isComplete: true, isSlash: true, activeIndex, currentQuery };
+        return { breadcrumbs: [cmd.name, 'Complete ✓'], options: [], isComplete: true, isSlash: true, activeIndex: effectiveIndex, currentQuery };
     }
 
     const sub = cmd.subs?.find(s => s.name === parts[1]);
     const args = sub ? sub.args : cmd.args;
 
     if (!args || args.length === 0) {
-        return { breadcrumbs: [cmd.name, ...(sub ? [sub.name] : []), 'Complete ✓'], options: [], isComplete: true, isSlash: true, activeIndex, currentQuery };
+        return { breadcrumbs: [cmd.name, ...(sub ? [sub.name] : []), 'Complete ✓'], options: [], isComplete: true, isSlash: true, activeIndex: effectiveIndex, currentQuery };
     }
 
     const argOffset = sub ? 2 : 1;
@@ -699,7 +716,7 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
                 options: exampleOpts,
                 isComplete: false,
                 isSlash: true,
-                activeIndex,
+                activeIndex: effectiveIndex,
                 currentQuery
             };
         }
@@ -733,12 +750,12 @@ inputText: string, interactionData: InteractionData | null, allCharacters: Chara
             })),
             isComplete: false,
             isSlash: true,
-            activeIndex,
+            activeIndex: effectiveIndex,
             currentQuery
         };
     }
 
-    return { breadcrumbs: [cmd.name, ...(sub ? [sub.name] : []), 'Complete ✓'], options: [], isComplete: true, isSlash: true, activeIndex, currentQuery };
+    return { breadcrumbs: [cmd.name, ...(sub ? [sub.name] : []), 'Complete ✓'], options: [], isComplete: true, isSlash: true, activeIndex: effectiveIndex, currentQuery };
 }
 
 export function applySlashSelection(
@@ -756,8 +773,15 @@ export function applySlashSelection(
     let newValue = opt.value;
     let isTargetsArg = false;
 
-    if (!isTypingNewToken && activeIndex < currentParts.length) {
-        const currentPart = currentParts[activeIndex];
+    // SAFEGUARD: If token 0 is already a valid command, an argument must NEVER overwrite index 0
+    const isKnownCommand = currentParts.length > 0 && COMMAND_TREE.some(c => c.name === currentParts[0]);
+    let targetIndex = activeIndex;
+    if (isKnownCommand && targetIndex === 0 && !isTypingNewToken) {
+        targetIndex = 1;
+    }
+
+    if (!isTypingNewToken && targetIndex < currentParts.length) {
+        const currentPart = currentParts[targetIndex];
         const lastComma = currentPart.lastIndexOf(',');
         if (lastComma !== -1) {
             newValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
@@ -766,8 +790,8 @@ export function applySlashSelection(
 
     const cmd = COMMAND_TREE.find(c => c.name === currentParts[0]);
     if (cmd) {
-        const pastCommand = isTypingNewToken || activeIndex > 0;
-        const effectiveIndex = pastCommand ? activeIndex : 1;
+        const pastCommand = isTypingNewToken || targetIndex > 0;
+        const effectiveIndex = pastCommand ? targetIndex : 1;
         const sub = cmd.subs?.find(s => s.name === currentParts[1]);
         const args = sub ? sub.args : cmd.args;
         const argOffset = sub ? 2 : 1;
@@ -781,10 +805,10 @@ export function applySlashSelection(
         newValue += ',';
     }
 
-    if (isTypingNewToken || activeIndex >= currentParts.length) {
+    if (isTypingNewToken || targetIndex >= currentParts.length) {
         currentParts.push(newValue);
     } else {
-        currentParts[activeIndex] = newValue;
+        currentParts[targetIndex] = newValue;
     }
 
     const trailingSpace = isTargetsArg ? '' : ' ';
