@@ -21,30 +21,35 @@ async function getParentMessageIds(chatId: string): Promise<Set<string>> {
  * Finds the most recent message where the character is currently present.
  * Returns both the message and the locationId it belongs to in a single pass.
  */
-export function findLatestMessage(interactionData: InteractionData, character: Character, messageTypes?: messageType[]): { message: HistoryMessage; locationId: string } | undefined {
+export function findLatestMessage(
+    interactionData: InteractionData, 
+    character: Character, 
+    messageTypes?: messageType[]
+): { message: HistoryMessage; locationId: string } | undefined {
     let latestMessage: HistoryMessage | undefined = undefined;
     let latestLocationId: string | undefined = undefined;
+    let maxTime = -1;
 
     for (const [locationId, messages] of Object.entries(interactionData.interactionHistories || {})) {
         for (let i = messages.length - 1; i >= 0; i--) {
             const msg = messages[i];
             if (msg.character.id === character.id) {
-                // Only check isPresent for interaction messages where presence matters
-                if (!msg.isPresent) break;
-                
                 if (messageTypes && messageTypes.length > 0 && !messageTypes.includes(msg.messageType)) {
-                    continue;
+                    continue; 
                 }
                 
-                latestMessage = msg;
-                latestLocationId = locationId;
-                break; 
+                // Compare timestamps across ALL locations to find their true chronological state
+                if (msg.firstCreatedTimestamp > maxTime) {
+                    maxTime = msg.firstCreatedTimestamp;
+                    latestMessage = msg;
+                    latestLocationId = locationId;
+                }
+                break; // Found the newest message for this character IN THIS LOCATION array. Move to next location array.
             }
         }
-        if (latestMessage) break;
     }
 
-    if (latestMessage && latestLocationId) {
+    if (latestMessage && (latestMessage as HistoryMessage).isPresent !== false && latestLocationId) {
         return { message: latestMessage, locationId: latestLocationId };
     }
     

@@ -1054,7 +1054,11 @@ function buildPromptContext(
 function buildCharacterTagsText(ctx: PromptBuildContext): { tags: string[]; tagsWithDescriptions: string[] } {
   const tags: string[] = [];
   const tagsWithDescriptions: string[] = [];
-  for (const participant of ctx.participants) {
+  
+  // Cleanly combine the generating character and everyone in the room with them
+  const actuallyPresentParticipants = [ctx.character, ...ctx.coLocatedParticipants];
+
+  for (const participant of actuallyPresentParticipants) {
     const tag = getParticipantTag(participant, ctx.participants);
     const knownName = getKnownDisplayName(participant, ctx.knownNames);
     const displayName = knownName ? `${tag} (${knownName})` : tag;
@@ -1927,14 +1931,18 @@ export function createChatHistoryArray(
     }
   }
   const outputMessages = processedMessages.filter((p) => {
+    // 1. HARD WALL: If the message has a location and it's NOT the current one, exclude it immediately.
+    if (hasLocationData) {
+      const charLocationId = p.locationId;
+      if (charLocationId !== undefined && charLocationId !== currentLocationId) {
+        return false;
+      }
+    }
+    // 2. Standard visibility rules for messages inside this location
     if (protagonistIds.has(p.msg.character.id)) return true;
     if (p.msg.character.id === ctx.characterId) return true;
     if (recentInteractors.has(p.msg.character.id)) return true;
-    if (hasLocationData) {
-      const charLocationId = p.locationId;
-      if (charLocationId !== undefined && charLocationId === currentLocationId) return true;
-      if (charLocationId === undefined) return true;
-    }
+    if (hasLocationData && p.locationId === undefined) return true;
     if (!hasLocationData) return true;
     return false;
   });
