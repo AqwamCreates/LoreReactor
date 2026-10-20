@@ -474,10 +474,22 @@ export function useChatSession(options: UseChatSessionOptions) {
         const profile = data.profile;
         const narrationBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
 
-        // 🛑 Handle 'interrupt' behavior: cut off active voice narration immediately if requested
+        // 🛑 Handle 'interrupt' vs 'wait' behavior for previous ongoing voice narration BEFORE setting new streaming state / character
         if (narrationBehaviour === 'interrupt' && currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
+        } else if (narrationBehaviour === 'wait' && currentVoiceTrackerRef.current) {
+            // ✅ In 'wait' mode, ensure previous voice narration finishes playing completely BEFORE updating UI state for the next character
+            try {
+                await currentVoiceTrackerRef.current.waitForPlaybackCompletion();
+            } catch (e) {
+                console.warn('[useChatSession] Waiting for previous voice playback failed:', e);
+            } finally {
+                if (currentVoiceTrackerRef.current) {
+                    currentVoiceTrackerRef.current.stopImmediate();
+                    currentVoiceTrackerRef.current = null;
+                }
+            }
         }
 
         const promptBlocks = getActivePromptBlocks(data);
@@ -514,7 +526,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         streamingCharacterRef.current = respondingChar ?? null;
         streamingMessageIdRef.current = `gen-${respondingChar?.id || 'ai'}-${Date.now()}`;
 
-        if (currentVoiceTrackerRef.current && narrationBehaviour !== 'interrupt') {
+        if (currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
         }
@@ -947,6 +959,17 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (narrationBehaviour === 'interrupt' && currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
+        } else if (narrationBehaviour === 'wait' && currentVoiceTrackerRef.current) {
+            try {
+                await currentVoiceTrackerRef.current.waitForPlaybackCompletion();
+            } catch (e) {
+                console.warn('[useChatSession] Waiting for previous voice playback failed in resume:', e);
+            } finally {
+                if (currentVoiceTrackerRef.current) {
+                    currentVoiceTrackerRef.current.stopImmediate();
+                    currentVoiceTrackerRef.current = null;
+                }
+            }
         }
 
         const history = getGlobalMessageHistory(currentInteractionData);
