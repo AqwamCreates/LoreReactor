@@ -477,7 +477,7 @@ export interface BaseMessage {
   characterExpression?: string;
   inventory?: Inventory,
   characterClothingWearingStatuses: Record<string, boolean>
-  characterLockedLocations: Record<string, string[]> // Location Ids -> An array of character Ids.
+  characterLockedLocations: Record<string, boolean> // Location Ids -> If set to true, the character is locked from that location.
   isPresent?: boolean;
   isConverged?: boolean; // Because when traversing the messages in reverse at convergence, it would take the wrong path as it does not see it made that jump.
   activeToolActions?: ActiveToolActions,
@@ -549,6 +549,7 @@ export interface RawBaseMessage {
   isConverged?: boolean; // Because when traversing the messages in reverse at convergence, it would take the wrong path as it does not see it made that jump.
   activeToolActions?: ActiveToolActions,
   pendingToolActions?: PendingToolAction[];
+  characterLockedLocations: Record<string, boolean>
   parentMessageId?: string | null;
   firstCreatedTimestamp: number;
   lastUpdatedTimestamp: number;

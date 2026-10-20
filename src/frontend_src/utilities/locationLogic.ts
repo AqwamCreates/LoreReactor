@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/locationLogic.ts
-import type { Character, InteractionData, Location, HistoryMessage } from '../types';
+import type { Character, InteractionData, Location } from '../types';
 import { initializeClothingWearingStatuses } from './characterLogic';
 import { findLatestMessage } from './messageLogic';
 import { v4 as uuidv4 } from 'uuid';
@@ -42,47 +42,42 @@ export function getCoLocatedParticipantCount(interactionData: InteractionData, c
 /**
  * Scan across all messages in the session to find the most recently established locks.
  */
-export function getLatestLockedLocations(interactionData: InteractionData, characterId?: string): Record<string, string[]> {
-    let latestLocks: Record<string, string[]> | undefined = undefined;
-    let maxTime = -1;
+export function getLatestLockedLocations(interactionData: InteractionData): Record<string, boolean> {
+    // Flatten all messages and sort them strictly chronologically (oldest to newest)
+    const allMessages = Object.values(interactionData.interactionHistories || {})
+        .flat()
+        .sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
 
-    for (const messages of Object.values(interactionData.interactionHistories || {})) {
-        for (let i = messages.length - 1; i >= 0; i--) {
-            const msg = messages[i];
-            if (msg.characterLockedLocations && Object.keys(msg.characterLockedLocations).length > 0) {
-                if (msg.firstCreatedTimestamp > maxTime) {
-                    maxTime = msg.firstCreatedTimestamp;
-                    latestLocks = msg.characterLockedLocations;
+    const locks: Record<string, boolean> = {};
+
+    for (const msg of allMessages) {
+        if (msg.characterLockedLocations) {
+            // Overwrite/apply whatever explicit lock state this message declared
+            for (const [locId, isLocked] of Object.entries(msg.characterLockedLocations)) {
+                if (isLocked) {
+                    locks[locId] = true;
+                } else {
+                    delete locks[locId]; // Fully respect unlocks
                 }
             }
         }
     }
-
-    if (latestLocks) return latestLocks;
-
-    if (characterId) {
-        const latest = findLatestMessage(interactionData, { id: characterId } as Character);
-        return latest?.message?.characterLockedLocations || {};
-    }
-
-    return {};
+    
+    return locks;
 }
 
 /**
  * Check if a character is locked out of a specific location.
  */
-export function isCharacterLockedFromLocation(interactionData: InteractionData, characterId: string, locationId: string): boolean {
-    const locks = getLatestLockedLocations(interactionData, characterId);
-    const lockedChars = locks[locationId];
-    if (!lockedChars || lockedChars.length === 0) return false;
-    return lockedChars.includes(characterId);
+export function isCharacterLockedFromLocation(interactionData: InteractionData, locationId: string): boolean {
+    const locks = getLatestLockedLocations(interactionData);
+    return locks[locationId];
 }
 
 /**
  * Reachability rules:
- * 1. If current location has NO bindings, it can access any other location that has NO bindings.
- * 2. If current location has bindings, it can access target if target is in current location's bindings.
- * 3. If target has bindings, it can be accessed if current location is in target's bindings.
+ * 1. If destination has NO bindings, it is accessible (Open Access).
+ * 2. If destination HAS bindings, current location must be explicitly listed.
  */
 export function getReachableLocations(
     locations: Location[],
@@ -91,38 +86,28 @@ export function getReachableLocations(
 ): Location[] {
     const currentLocation = locations.find(l => l.id === currentLocationId);
 
-    // If character is not in any location yet, return all locations that have no bindings
+    // If character is not in any location, they can only access unbound locations
     if (!currentLocation) {
         return locations.filter(l => !l.locationBindings || l.locationBindings.length === 0);
     }
-
-    const currentHasBindings = !!(currentLocation.locationBindings && currentLocation.locationBindings.length > 0);
 
     return locations.filter(location => {
         if (location.id === currentLocationId) return false;
 
         const targetHasBindings = !!(location.locationBindings && location.locationBindings.length > 0);
 
-        let isAccessible = false;
+        // Rule 1: No bindings means open access
+        if (!targetHasBindings) return true;
 
-        // 1. Both have no bindings -> open access between them
-        if (!currentHasBindings && !targetHasBindings) {
-            isAccessible = true;
-        }
-        // 2. Current location has explicit bindings that include the target
-        else if (currentHasBindings && currentLocation.locationBindings!.includes(location.id)) {
-            isAccessible = true;
-        }
-        // 3. Target location has explicit bindings that include the current location
-        else if (targetHasBindings && location.locationBindings!.includes(currentLocation.id)) {
-            isAccessible = true;
-        }
+        // Rule 2: Bound location, must be linked to current
+        const isBound = location.locationBindings!.includes(currentLocation.id) ||
+                        (currentLocation.locationBindings?.includes(location.id) ?? false);
 
-        if (!isAccessible) return false;
+        if (!isBound) return false;
 
         // Check conditional regex trigger if defined on either side
         const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id] ||
-                                 currentLocation.locationBindingRegularExpressionTriggers?.[location.id];
+                currentLocation.locationBindingRegularExpressionTriggers?.[location.id];
         if (!conditionalRegex) return true;
         if (!messageText) return false;
 
@@ -130,7 +115,6 @@ export function getReachableLocations(
             const regex = new RegExp(conditionalRegex, 'i');
             return regex.test(messageText);
         } catch {
-            console.warn(`Invalid conditional regex between ${currentLocation.id} and ${location.id}: ${conditionalRegex}`);
             return false;
         }
     });
@@ -149,7 +133,7 @@ export function getReachableLocationsByCharacter(
     const locations = interactionData.locations || [];
 
     const structurallyReachable = getReachableLocations(locations, currentLocationId, messageText);
-    const lockedLocations = getLatestLockedLocations(interactionData, character.id);
+    const lockedLocations = getLatestLockedLocations(interactionData);
 
     return structurallyReachable.filter(location => {
         // Enforce characterBindings
@@ -158,9 +142,7 @@ export function getReachableLocationsByCharacter(
         }
 
         // Enforce key lockouts
-        const lockedChars = lockedLocations[location.id];
-        if (!lockedChars || lockedChars.length === 0) return true;
-        return !lockedChars.includes(character.id);
+        return lockedLocations[location.id] !== true;
     });
 }
 
@@ -193,10 +175,6 @@ export function findReachableLocationByRegularExpression(
     if (reachableLocations.length === 0) return undefined;
 
     for (const loc of reachableLocations) {
-        if (loc.characterBindings && loc.characterBindings.length > 0 && !loc.characterBindings.includes(character.id)) {
-            continue;
-        }
-
         const triggers = loc.regularExpressionActivationTriggers;
         if (!triggers || triggers.length === 0) continue;
         for (const trigger of triggers) {

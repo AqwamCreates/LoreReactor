@@ -41,7 +41,7 @@ interface SyncChatMessagePayload {
     characterExpression?: string;
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
-    characterLockedLocations: Record<string, string[]>;
+    characterLockedLocations: Record<string, boolean>;
     parentMessageId?: string | null;
 }
 
@@ -57,7 +57,7 @@ interface SyncInteractionMessagePayload {
     characterExpression?: string;
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
-    characterLockedLocations: Record<string, string[]>;
+    characterLockedLocations: Record<string, boolean>;
     parentMessageId?: string | null;
 }
 
@@ -75,7 +75,7 @@ interface SyncWhisperMessagePayload {
     characterExpression?: string;
     inventory?: Record<string, string | number>;
     characterClothingWearingStatuses: Record<string, boolean>;
-    characterLockedLocations: Record<string, string[]>;
+    characterLockedLocations: Record<string, boolean>;
     parentMessageId?: string | null;
 }
 

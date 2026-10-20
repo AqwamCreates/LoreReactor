@@ -42,7 +42,7 @@ function createSilentInteraction(
     previousChatStamina: number | undefined,
     previousActionStamina: number | undefined,
     clothingWearingStatuses: Record<string, boolean>,
-    lockedLocations: Record<string, string[]>,
+    lockedLocations: Record<string, boolean>,
     parentId: string | null | undefined,
     inventory?: Inventory,
     activeToolActions?: ActiveToolActions,
