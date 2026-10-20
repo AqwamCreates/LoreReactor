@@ -1,6 +1,6 @@
 // src/frontend_src/components/CompanionOverlayProfileEditor.tsx
 import { useState } from 'react';
-import type { Profile, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Character } from '../types';
+import type { Profile, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Character, textGenerationBehaviourOnNarration } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelect } from './EntitySelect';
 import { narrateTextLabels } from '../dictionaries/texts';
@@ -95,6 +95,7 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
     const [toolUsageDisplayMode, setToolUsageDisplayMode] = useState<toolUsageDisplayMode>(ep?.toolUsageDisplayMode ?? 'none');
     const [toolUsageDisplayPlacementMode, setToolUsageDisplayPlacementMode] = useState<toolUsageDisplayPlacementMode>(ep?.toolUsageDisplayPlacementMode ?? 'before paragraph');
     const [enableCharacterExpression, setEnableCharacterExpression] = useState(ep?.enableCharacterExpression ?? false);
+    const [textGenerationBehaviourOnNarration, setTextGenerationBehaviourOnNarration] = useState<textGenerationBehaviourOnNarration>(ep?.textGenerationBehaviourOnNarration ?? 'wait');
     
     const [volume, setVolume] = useState<number>(ep?.volume ?? -1);
     const [stripThinkTokens, setStripThinkTokens] = useState(ep?.stripThinkTokens ?? false);
@@ -125,6 +126,7 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
             speechSilenceThresholdMs,
             voiceActivityProbabilityThreshold,
             forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression,
+            textGenerationBehaviourOnNarration,
             volume, stripThinkTokens, 
             narrateTexts: { ...narrateTexts },
             narrateTextCharacterIds: { ...narrateTextCharacterIds },
@@ -251,6 +253,17 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
 
                     <div className="editor-section">
                         <span className="editor-section-title">Voice Narration</span>
+                        
+                        <div className="editor-field-group" style={{ marginBottom: '12px' }}>
+                            <label className="editor-label editor-label-small">Text Generation Behaviour On Narration</label>
+                            <select value={textGenerationBehaviourOnNarration} onChange={(e) => setTextGenerationBehaviourOnNarration(e.target.value as textGenerationBehaviourOnNarration)} className="editor-select editor-select-full">
+                                <option value="wait">Wait — Text generation waits for voice narration to complete</option>
+                                <option value="continue">Continue — Text generation continues concurrently with voice narration</option>
+                                <option value="interrupt">Interrupt — Stops previous voice narration immediately</option>
+                            </select>
+                            <div className="editor-field-hint">Controls how the next message/turn is generated while voice narration is playing.</div>
+                        </div>
+
                         <div className="voice-narration-grid">
                             {(Object.keys(narrateTextLabels) as textType[]).map(type => (
                                 <label key={type} className="voice-narration-toggle">
