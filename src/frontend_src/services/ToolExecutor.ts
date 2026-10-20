@@ -535,9 +535,9 @@ function executeRandomPick(args: string): ToolResult {
     let options = pArgs.positional;
     const optKwarg = pArgs.get(-1, 'options', 'choices');
     if (optKwarg) {
-        options = optKwarg.split(',').map(s => s.trim()).filter(Boolean);
+        options = optKwarg.split(',').filter(Boolean);
     } else if (options.length === 1 && options[0].includes(',')) {
-        options = options[0].split(',').map(s => s.trim()).filter(Boolean);
+        options = options[0].split(',').filter(Boolean);
     }
 
     if (options.length === 0) {
@@ -716,7 +716,7 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
         return { toolType: 'rng', args, textContent: `[Error: RNG table "${tableId}" not found in contexts]`, displayReplacement: '[Error: Table not found]' };
     }
 
-    const lines = tableContext.text.split('\n').map(l => l.trim()).filter(Boolean);
+    const lines = tableContext.text.split('\n').filter(Boolean);
     const entries: { min: number; max: number; result: string }[] = [];
     let globalMax = 0;
 
@@ -1459,10 +1459,10 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
 // ─── Trade ──────────────────────────────────────────────────────────
 function parseItemList(input: string): Record<string, number> {
     const res: Record<string, number> = {};
-    const tokens = input.split(',').map(s => s.trim()).filter(Boolean);
+    const tokens = input.split(',').filter(Boolean);
     for (const token of tokens) {
         const parts = token.split(':');
-        const name = parts[0]?.trim();
+        const name = parts[0];
         const qty = parts[1] ? Number(parts[1]) : 1;
         if (name) res[name] = Number.isNaN(qty) ? 1 : qty;
     }
