@@ -1506,10 +1506,16 @@ export function CharacterEditorModal({
                                 </div>
 
                                 {!isReadOnly && (
-                                    <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                                        <button type="button" className="toolbar-button" onClick={handleSelectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✓ Select All</button>
-                                        <button type="button" className="toolbar-button" onClick={handleAutoDetectTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }} title="Scan character name, description, and system prompt for tool keywords">🔍 Auto-Detect</button>
-                                        <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} disabled={isUploading} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>✗ Deselect All</button>
+                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                                        <button type="button" className="editor-bulk-action-button" onClick={handleSelectAllTools} disabled={isUploading}>
+                                            <span style={{ fontSize: '0.9rem' }}>✓</span> Select All
+                                        </button>
+                                        <button type="button" className="editor-bulk-action-button" onClick={handleAutoDetectTools} disabled={isUploading} title="Scan character name, description, and system prompt for tool keywords">
+                                            <span style={{ fontSize: '0.9rem' }}>🔍</span> Auto-Detect
+                                        </button>
+                                        <button type="button" className="editor-bulk-action-button" onClick={handleDeselectAllTools} disabled={isUploading}>
+                                            <span style={{ fontSize: '0.9rem' }}>✗</span> Deselect All
+                                        </button>
                                     </div>
                                 )}
 

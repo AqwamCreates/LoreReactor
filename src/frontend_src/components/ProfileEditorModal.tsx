@@ -658,10 +658,16 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                         <div className="editor-section">
                             <span className="editor-section-title">Tools</span>
                             <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '8px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>
-                            <div style={{ display: 'flex', gap: '6px', marginBottom: '12px' }}>
-                                <button type="button" className="toolbar-button" onClick={handleSelectAllTools} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>Force All On</button>
-                                <button type="button" className="toolbar-button" onClick={handleResetToolsToDefaults} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>Reset to Defaults</button>
-                                <button type="button" className="toolbar-button" onClick={handleDeselectAllTools} style={{ flex: 1, fontSize: '0.7rem', padding: '4px 8px' }}>Force All Off</button>
+                            <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                                <button type="button" className="editor-bulk-action-button" onClick={handleSelectAllTools}>
+                                    <span style={{ fontSize: '0.9rem' }}>✓</span> Force All On
+                                </button>
+                                <button type="button" className="editor-bulk-action-button" onClick={handleResetToolsToDefaults}>
+                                    <span style={{ fontSize: '0.9rem' }}>↩️</span> Reset to Defaults
+                                </button>
+                                <button type="button" className="editor-bulk-action-button" onClick={handleDeselectAllTools}>
+                                    <span style={{ fontSize: '0.9rem' }}>✗</span> Force All Off
+                                </button>
                             </div>
                             <input type="text" value={toolSearchQuery} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} />
                             {filteredToolKeys.length === 0 && (<div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>No tools match "{toolSearchQuery}".</div>)}
