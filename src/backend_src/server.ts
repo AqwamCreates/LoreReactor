@@ -23,6 +23,7 @@ import trash from 'trash';
 import robot from '@jitsi/robotjs';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
+import { GITHUB_REPOSITORIES, DOCKER_IMAGES, DIRECT_DOWNLOADS, TEXT_TO_SPEECH_MODELS } from './externalUrls';
 
 // --- Configuration ---
 const app = express();
@@ -592,14 +593,14 @@ async function ensureUv(): Promise<string> {
   let asset = '';
 
   if (IS_WINDOWS) {
-    asset = 'uv-x86_64-pc-windows-msvc.zip';
+    asset = DIRECT_DOWNLOADS.UV.WINDOWS;
   } else if (IS_MACOS) {
-    asset = `uv-${arch}-apple-darwin.tar.gz`;
+    asset = arch === 'aarch64' ? DIRECT_DOWNLOADS.UV.MACOS_ARM : DIRECT_DOWNLOADS.UV.MACOS_X64;
   } else {
-    asset = `uv-${arch}-unknown-linux-gnu.tar.gz`;
+    asset = arch === 'aarch64' ? DIRECT_DOWNLOADS.UV.LINUX_ARM : DIRECT_DOWNLOADS.UV.LINUX_X64;
   }
 
-  const uvUrl = `https://github.com/astral-sh/uv/releases/latest/download/${asset}`;
+  const uvUrl = `${DIRECT_DOWNLOADS.UV.BASE_URL}/${asset}`;
   const tempArchive = path.join(uvDir, `uv_archive${path.extname(asset)}`);
 
   await downloadFileWithProgress(uvUrl, tempArchive, (loaded, total) => {
@@ -643,14 +644,14 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     let release: any = null;
 
     try {
-      release = await fetchGithubRelease('ggml-org/llama.cpp');
+      release = await fetchGithubRelease(GITHUB_REPOSITORIES.LLAMA_CPP);
     } catch (err: any) {
       log.warn(`[AutoInstaller] Latest Llama.cpp release lookup failed: ${err.message}`);
     }
 
     if (!release?.assets?.length) {
       try {
-        release = await fetchGithubRelease('ggml-org/llama.cpp', 'v0.4.1');
+        release = await fetchGithubRelease(GITHUB_REPOSITORIES.LLAMA_CPP, GITHUB_REPOSITORIES.LLAMA_CPP_FALLBACK_TAG);
       } catch (err: any) {
         log.warn(`[AutoInstaller] Fallback Llama.cpp release lookup failed: ${err.message}`);
       }
@@ -718,7 +719,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   else if (backend === 'mistral.rs') {
     if (!IS_WINDOWS) {
       broadcastNotify(backend, 'installing', 10, 'Running official mistral.rs installer...');
-      execSync('curl -fsSL https://mistral.rs.dev/install.sh | sh', {
+      execSync(`curl -fsSL ${DIRECT_DOWNLOADS.MISTRAL_RS_INSTALLER} | sh`, {
         cwd: destDir,
         stdio: 'inherit',
         timeout: 1800000,
@@ -753,7 +754,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       fs.chmodSync(config.binaryPath, 0o755);
     } else {
       broadcastNotify(backend, 'downloading', 5, 'Resolving mistral.rs release assets...');
-      const release = await fetchGithubRelease('EricLBuehler/mistral.rs');
+      const release = await fetchGithubRelease(GITHUB_REPOSITORIES.MISTRAL_RS);
 
       const assetPattern = detectedGpuVendor === 'nvidia'
         ? /windows.*cuda.*\.exe$|cuda.*windows.*\.exe$/i
@@ -778,7 +779,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     ensureDirectory(path.dirname(config.binaryPath));
 
     if (IS_WINDOWS) {
-      const zipUrl = 'https://ollama.com/download/ollama-windows-amd64.zip';
+      const zipUrl = DIRECT_DOWNLOADS.OLLAMA_WINDOWS;
       const tempZip = path.join(destDir, 'ollama.zip');
       await downloadFileWithProgress(zipUrl, tempZip, (loaded, total) => {
         const pct = Math.round((loaded / total) * 100);
@@ -788,7 +789,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       try { fs.unlinkSync(tempZip); } catch {}
       hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
     } else {
-      const release = await fetchGithubRelease('ollama/ollama');
+      const release = await fetchGithubRelease(GITHUB_REPOSITORIES.OLLAMA);
 
       if (IS_MACOS) {
         const archPattern = process.arch === 'arm64'
@@ -874,7 +875,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   // 5. LOCALAI
   else if (backend === 'LocalAI') {
     broadcastNotify(backend, 'downloading', 10, 'Locating prebuilt LocalAI distribution...');
-    const release = await fetchGithubRelease('mudler/LocalAI');
+    const release = await fetchGithubRelease(GITHUB_REPOSITORIES.LOCAL_AI);
 
     let assetPattern: RegExp;
     if (IS_WINDOWS) {
@@ -912,7 +913,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     const uvBin = await ensureUv();
     broadcastNotify(backend, 'downloading', 20, 'Downloading TabbyAPI engine code...');
 
-    const zipUrl = 'https://github.com/theroyallab/tabbyAPI/archive/refs/heads/main.zip';
+    const zipUrl = DIRECT_DOWNLOADS.EXLLAMA_TABBY_API;
     const tempZip = path.join(destDir, 'tabby.zip');
     await downloadFileWithProgress(zipUrl, tempZip, undefined, backend);
     extractArchive(tempZip, destDir);
@@ -1045,8 +1046,8 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     }
 
     const image = backend === 'TensorRT-LLM'
-      ? 'nvcr.io/nvidia/tritonserver:24.05-trtllm-python-backend'
-      : 'ghcr.io/huggingface/text-generation-inference:latest';
+      ? DOCKER_IMAGES.TENSOR_RT_LLM
+      : DOCKER_IMAGES.TRANSFORMERS_TGI;
 
     broadcastNotify(backend, 'downloading', 40, `Pulling container image: ${image}...`);
     execSync(`docker pull ${image}`, { stdio: 'inherit', timeout: 3600000 });
@@ -2870,8 +2871,8 @@ const LLAMA_TTS_BINARY = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama',
 const LLAMA_DIR = path.dirname(LLAMA_TTS_BINARY);
 const TTS_DIR = path.join(ROOT_DIR, 'user_data', 'text_to_speech_models');
 
-const textToSpeechModelFile = 'Qwen3-TTS-12Hz-0.6B-Base.Q6_K.gguf';
-const textToSpeechVocoderFile = 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-F16.gguf';
+const textToSpeechModelFile = TEXT_TO_SPEECH_MODELS.MAIN_MODEL_FILE;
+const textToSpeechVocoderFile = TEXT_TO_SPEECH_MODELS.MMPROJ_VOICE_ENCODER_FILE;
 const TTS_MODEL_PATH = path.join(TTS_DIR, textToSpeechModelFile);
 const TTS_MMPROJ_PATH = path.join(TTS_DIR, textToSpeechVocoderFile);
 
@@ -2941,7 +2942,7 @@ async function ensureFfmpeg() {
     
   let zipUrl;
   if (IS_WINDOWS) {
-    zipUrl = 'https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip';
+    zipUrl = DIRECT_DOWNLOADS.FFMPEG_WINDOWS;
   } else {
     log.warn('[Text To Speech] Non-Windows OS detected. Please ensure ffmpeg and ffprobe are installed in your system PATH.');
     return;
@@ -2966,7 +2967,7 @@ async function ensureFfmpeg() {
 
 async function ensureTtsModelsDownloaded() {
   ensureDirectory(TTS_DIR);
-  const baseUrl = 'https://huggingface.co/mradermacher/Qwen3-TTS-12Hz-0.6B-Base-GGUF/resolve/main';
+  const baseUrl = TEXT_TO_SPEECH_MODELS.BASE_URL;
     
   // 1. Download Main Model
   if (!fs.existsSync(TTS_MODEL_PATH)) {
