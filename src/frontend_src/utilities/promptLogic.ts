@@ -168,6 +168,7 @@ export interface TemplateContext {
   characterTurnStart: string;
   characterTurnEnd: string;
   chatHistory: string[];
+  appearancePrompt: string;
   reachableLocations: string[];
   reachableLocationsWithDescriptions: string[];
   characterTags: string[];
@@ -175,7 +176,6 @@ export interface TemplateContext {
   systemPrompt: string;
   thinkPrompt: string;
   metaThinkInstructions: string;
-  appearancePrompt: string;
   dialoguePrompt: string;
   knowledgePrompt: string;
   memoryPrompt: string;
@@ -218,11 +218,11 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   'Meta Think Instructions': "{{systemBlockStart}}{{metaThinkInstructions}}{{systemBlockEnd}} ",
   'Character Tags': "{{systemBlockStart}}Characters Present:\n{{characterTags}}{{systemBlockEnd}} ",
   'Character Tags With Descriptions': "{{systemBlockStart}}Characters Present With Descriptions:\n{{characterTagsWithDescriptions}}{{systemBlockEnd}} ",
-  'Appearance Prompt': "{{systemBlockStart}}Start Of The Characters' Appearances List.{{systemBlockEnd}}\n{{appearancePrompt}}\n{{systemBlockStart}}End Of The Characters' Appearances List.{{systemBlockEnd}} ",
   'Knowledge Prompt': "{{systemBlockStart}}Start Of This Character's Knowledge Base.{{systemBlockEnd}}\n{{knowledgePrompt}}\n{{systemBlockStart}}End Of This Character's Knowledge Base.{{systemBlockEnd}} ",
   'Dialogue Prompt': "{{systemBlockStart}}Start Of This Character's Sample dialogues.{{systemBlockEnd}}\n{{dialoguePrompt}}\n{{systemBlockStart}}End Of This Character's Sample dialogues.{{systemBlockEnd}} ",
   'Memory Prompt': "{{systemBlockStart}}Start Of This Character's Recalled Memories.{{systemBlockEnd}}\n{{memoryPrompt}}\n{{systemBlockStart}}End Of This Character's Recalled Memories.{{systemBlockEnd}} ",
   'Chat History': "{{systemBlockStart}}Start Of The Memory.{{systemBlockEnd}}\n{{chatHistory}}\n{{systemBlockStart}}End Of The Memory.{{systemBlockEnd}} ",
+  'Appearance Prompt': "{{systemBlockStart}}Start Of The Characters' Appearances List.{{systemBlockEnd}}\n{{appearancePrompt}}\n{{systemBlockStart}}End Of The Characters' Appearances List.{{systemBlockEnd}} ",
   'Context': "{{systemBlockStart}}Start Of The Context.{{systemBlockEnd}}\n{{context}}\n{{systemBlockStart}}End Of The Context.{{systemBlockEnd}} ",
   'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{currentLocation}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}} ",
   'Current Location With Description': "{{systemBlockStart}}Start Of Current Location With Description.{{systemBlockEnd}}\n{{currentLocationWithDescription}}\n{{systemBlockStart}}End Of Current Location With Description.{{systemBlockEnd}} ",
@@ -2098,10 +2098,9 @@ async function buildPromptBlocks(
     if (blockType === 'Meta Think Instructions' && templateContext.metaThinkInstructions.trim().length === 0) continue;
     if (blockType === 'Character Tags' && templateContext.characterTags.length === 0) continue;
     if (blockType === 'Character Tags With Descriptions' && templateContext.characterTagsWithDescriptions.length === 0) continue;
-    if (blockType === 'Appearance Prompt' && templateContext.appearancePrompt.trim().length === 0) continue;
     if (blockType === 'Knowledge Prompt' && templateContext.knowledgePrompt.trim().length === 0) continue;
-    if (blockType === 'Memory Prompt' && templateContext.memoryPrompt.trim().length === 0) continue;
     if (blockType === 'Chat History' && templateContext.chatHistory.length === 0) continue;
+    if (blockType === 'Appearance Prompt' && templateContext.appearancePrompt.trim().length === 0) continue;
     if (blockType === 'Context' && templateContext.context.length === 0) continue;
     if (blockType === 'Current Location' && templateContext.currentLocation.trim().length === 0) continue;
     if (blockType === 'Current Location With Description' && templateContext.currentLocationWithDescription.trim().length === 0) continue;
@@ -2117,6 +2116,7 @@ async function buildPromptBlocks(
     if (blockType === 'Time Elapsed' && templateContext.timeElapsed.trim().length === 0) continue;
     if (blockType === 'Tool Instructions' && templateContext.toolInstructions.trim().length === 0) continue;
     if (blockType === 'Tool Message Instructions' && templateContext.toolMessageInstructions.trim().length === 0) continue;
+    if (blockType === 'Memory Prompt' && templateContext.memoryPrompt.trim().length === 0) continue;
     if (blockType === 'Dialogue Prompt' && templateContext.dialoguePrompt.trim().length === 0) continue;
     if (blockType === 'Dialogue Prompt' && ctx.numberOfMessagesByParticipant >= getEffectiveMessagesToDisableDialoguePrompt(ctx.character, ctx.profile)) continue;
     if (blockType === 'Starter Prompt' && templateContext.starterPrompt.trim().length === 0) continue;
