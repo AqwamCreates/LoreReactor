@@ -270,6 +270,9 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     useEffect(() => {
         if (isRawEditing && editTextAreaRef.current) {
             editTextAreaRef.current.focus();
+            // ✅ Auto-resize on initial render so it matches the text length immediately
+            editTextAreaRef.current.style.height = 'auto';
+            editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`;
         }
     }, [isRawEditing, editTextAreaRef]);
 
@@ -532,10 +535,21 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                         <div className="vn-dialogue-text">
                             {isEditingLastSpeaker ? (
                                 isRawEditing ? (
-                                    <textarea ref={editTextAreaRef} value={rawDraft} onChange={handleRawChange}
+                                    <textarea 
+                                        ref={editTextAreaRef} 
+                                        value={rawDraft} 
+                                        onChange={handleRawChange}
                                         onBlur={handleExitRawEdit}
                                         onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); handleExitRawEdit(); } }}
-                                        className="vn-edit-textarea" />
+                                        // ✅ Auto-grow logic
+                                        onInput={(e) => {
+                                            const target = e.target as HTMLTextAreaElement;
+                                            target.style.height = 'auto';
+                                            target.style.height = `${target.scrollHeight}px`;
+                                        }}
+                                        className="vn-edit-textarea" 
+                                        style={{ resize: 'none', overflowY: 'hidden' }}
+                                    />
                                 ) : (
                                     <div className="vn-edit-preview" onClick={handleEnterRawEdit} title="Click to edit raw text">
                                         <MemoizedMessageText text={displayEditText} />
