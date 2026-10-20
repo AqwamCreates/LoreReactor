@@ -2870,7 +2870,7 @@ const LLAMA_TTS_BINARY = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama',
 const LLAMA_DIR = path.dirname(LLAMA_TTS_BINARY);
 const TTS_DIR = path.join(ROOT_DIR, 'user_data', 'text_to_speech_models');
 
-const textToSpeechModelFile = 'Qwen3-TTS-12Hz-0.6B-Base.Q8_0.gguf';
+const textToSpeechModelFile = 'Qwen3-TTS-12Hz-0.6B-Base.Q6_K.gguf';
 const textToSpeechVocoderFile = 'Qwen3-TTS-12Hz-0.6B-Base.mmproj-F16.gguf';
 const TTS_MODEL_PATH = path.join(TTS_DIR, textToSpeechModelFile);
 const TTS_MMPROJ_PATH = path.join(TTS_DIR, textToSpeechVocoderFile);
