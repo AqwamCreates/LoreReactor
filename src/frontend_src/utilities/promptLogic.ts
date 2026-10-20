@@ -1643,7 +1643,8 @@ function buildInventoryText(ctx: PromptBuildContext): string {
 function buildToolInstructionText(enabledToolNames: string[]): string {
   const lines: string[] = [];
   const toolsPlaceholder = enabledToolNames.length > 0 ? '{{tools}}' : 'tool';
-  lines.push(`${toolUsageInstructions} Available tools: ${toolsPlaceholder}.`);
+  const availableToolString = (enabledToolNames.length > 0) ? `Available tools: ${toolsPlaceholder}` : 'Currently, all of my tools are disabled.'
+  lines.push(`${toolUsageInstructions} ${availableToolString}.`);
   lines.push(`When I use {{toolCallStartString}}tool(){{toolCallEndString}} as my first word, I will activate tool message mode where the whole message text are only visible to me.`);
   return lines.join('\n');
 }
