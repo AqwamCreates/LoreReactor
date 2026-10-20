@@ -546,7 +546,11 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
 
             if (!turnResult) {
-                // 🛠️ FIX: Handle null turnResult (e.g. abort/stop) by preserving and applying pending partial text
+                // 🛠️ BULLETPROOF FIX: Fallback to buffer text if pendingPartialRef wasn't explicitly populated
+                if (!pendingPartialRef.current && streamingTextRef.current && respondingChar) {
+                    pendingPartialRef.current = { text: streamingTextRef.current, character: respondingChar };
+                }
+
                 if (pendingPartialRef.current) {
                     const fd = await applyPendingPartial(data, protagonistId);
                     setInteractionData(fd);
@@ -642,7 +646,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     saveRawInteractionData(sd).catch(e => console.error('Failed to save ambient narration:', e));
                 } else {
                     setInteractionData(ud);
-                    broadcastNewMessages(preTurnCount, ud);
+                    broadcastNewMessages(preTurnCount, sd);
                     saveRawInteractionData(ud).catch(e => console.error('Failed to save data:', e));
                 }
             }
@@ -650,15 +654,21 @@ export function useChatSession(options: UseChatSessionOptions) {
             if ((e as Error).name !== 'AbortError') {
                 console.error(`${errorPrefix}:`, e);
                 addToast(`${errorPrefix}: ${(e as Error).message}`, 'error');
-            } else if (pendingPartialRef.current) {
-                // 🛠️ FIX: Ensure partial text is saved even if an AbortError bubbles up through catch
+            }
+            
+            // 🛠️ BULLETPROOF FIX: Ensure partial text is saved even if errors bubble up through catch
+            if (!pendingPartialRef.current && streamingTextRef.current && respondingChar) {
+                pendingPartialRef.current = { text: streamingTextRef.current, character: respondingChar };
+            }
+
+            if (pendingPartialRef.current) {
                 try {
                     const fd = await applyPendingPartial(data, protagonistId);
                     setInteractionData(fd);
                     broadcastNewMessages(preTurnCount, fd);
-                    saveRawInteractionData(fd).catch(err => console.error('Failed to save partial on AbortError:', err));
+                    saveRawInteractionData(fd).catch(err => console.error('Failed to save partial on error catch:', err));
                 } catch (partialErr) {
-                    console.error('Failed to apply pending partial on abort:', partialErr);
+                    console.error('Failed to apply pending partial on error:', partialErr);
                 }
             }
         } finally {
@@ -795,9 +805,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         const resumeId = resumingMessageIdRef.current;
         const currentData = getState().interactionData;
 
-        // 🛠️ FIX: Capture streaming text BEFORE resetStream() wipes streamingTextRef
+        // 🛠️ BULLETPROOF FIX: Capture streaming text and character BEFORE resetStream() wipes them
         const t = streamingTextRef.current;
-        const c = getState().streamingCharacter;
+        const c = getState().streamingCharacter || streamingCharacterRef.current;
 
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
