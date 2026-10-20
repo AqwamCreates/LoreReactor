@@ -1,109 +1,18 @@
 // src/frontend_src/utilities/interactionDataLogic.ts
 import type { 
     Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, 
-    TextCharacterInjection, TextMessage, ToolExecutionResult, ToolMessage, 
+    TextMessage, ToolExecutionResult, ToolMessage, 
     RawInteractionData, ActiveToolActions, PendingToolAction, Inventory 
 } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { v4 as uuidv4 } from 'uuid';
-import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses } from './characterLogic';
+import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses, generateInitialCharacterText } from './characterLogic';
 import { buildPrompt } from './promptLogic';
 import { findLatestMessage } from './messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from './timelineLogic';
 import { toolCallStartString, toolCallEndString } from '../dictionaries/stringList';
 
 // ─── Core Functions ────────────────────────────────────────────────
-
-function generateInitialCharacterText(character: Character): string {
-    const textCharacterInjections = character.textCharacterInjections;
-    if (!textCharacterInjections || textCharacterInjections.length === 0) return '';
-
-    const injectionMap = new Map<string, TextCharacterInjection>();
-    for (const inj of textCharacterInjections) {
-        injectionMap.set(inj.id, inj);
-    }
-
-    const startPool: { inj: TextCharacterInjection; weight: number }[] = [];
-    let totalStartWeight = 0;
-    for (const inj of textCharacterInjections) {
-        const w = inj.textCharacterInjectionWeight ?? 1;
-        if (w > 0) {
-            startPool.push({ inj, weight: w });
-            totalStartWeight += w;
-        }
-    }
-    if (startPool.length === 0 || totalStartWeight <= 0) return '';
-
-    let result = '';
-    let currentInj: TextCharacterInjection | undefined;
-
-    let roll = Math.random() * totalStartWeight;
-    for (const entry of startPool) {
-        roll -= entry.weight;
-        if (roll <= 0) { currentInj = entry.inj; break; }
-    }
-    if (!currentInj) currentInj = startPool[startPool.length - 1].inj;
-
-    while (currentInj) {
-        const skipProb = currentInj.textCharacterSkipProbability ?? 0;
-        const isSkipped = skipProb > 0 && Math.random() < skipProb;
-
-        if (!isSkipped) {
-            const textPool: { text: string; weight: number }[] = [];
-            let totalTextWeight = 0;
-            for (let i = 0; i < currentInj.textCharacters.length; i++) {
-                const w = currentInj.textCharacterWeights[i] ?? 0;
-                if (w > 0) {
-                    textPool.push({ text: currentInj.textCharacters[i], weight: w });
-                    totalTextWeight += w;
-                }
-            }
-
-            if (textPool.length > 0 && totalTextWeight > 0) {
-                let textRoll = Math.random() * totalTextWeight;
-                let pickedText = '';
-                for (const entry of textPool) {
-                    textRoll -= entry.weight;
-                    if (textRoll <= 0) { pickedText = entry.text; break; }
-                }
-                if (!pickedText) pickedText = textPool[textPool.length - 1].text;
-                result += pickedText;
-            }
-        }
-
-        const breakProb = currentInj.textCharacterBreakProbability ?? 0;
-        if (breakProb > 0 && Math.random() < breakProb) break;
-
-        const bindings = currentInj.textCharacterInjectionBindings;
-        if (!bindings || bindings.length === 0) break;
-
-        const nextPool: { inj: TextCharacterInjection; weight: number }[] = [];
-        let totalNextWeight = 0;
-        for (const bindId of bindings) {
-            const nextInj = injectionMap.get(bindId);
-            if (!nextInj) continue;
-            const w = nextInj.textCharacterInjectionWeight ?? 1;
-            if (w > 0) {
-                nextPool.push({ inj: nextInj, weight: w });
-                totalNextWeight += w;
-            }
-        }
-
-        if (nextPool.length === 0 || totalNextWeight <= 0) break;
-
-        let nextRoll = Math.random() * totalNextWeight;
-        let nextInj: TextCharacterInjection | undefined;
-        for (const entry of nextPool) {
-            nextRoll -= entry.weight;
-            if (nextRoll <= 0) { nextInj = entry.inj; break; }
-        }
-        if (!nextInj) nextInj = nextPool[nextPool.length - 1].inj;
-
-        currentInj = nextInj;
-    }
-
-    return result;
-}
 
 export async function buildRequestBody(
     interactionData: InteractionData,
@@ -149,10 +58,7 @@ export async function buildRequestBody(
     if (profile?.randomizeTextCharacterInjection) {
         const maxRetries = profile.maximumNumberOfTextCharacterRandomizationPerModel ?? 1;
         const injections: string[] = [];
-        for (let i = 0; i < maxRetries; i++) {
-            injections.push(generateInitialCharacterText(character));
-        }
-
+        for (let i = 0; i < maxRetries; i++) injections.push(generateInitialCharacterText(character));
         body._baseMessages = finalMessages.map(m => ({ ...m }));
 
         if (!profile.randomizeTextCharacterInjectionOnRetry && injections.length > 0) {

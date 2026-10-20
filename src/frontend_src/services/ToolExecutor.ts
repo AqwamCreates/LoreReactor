@@ -1315,7 +1315,7 @@ function executeLookup(args: string, _nextMessage: BaseMessage, interactionData:
     return { toolType: 'lookup', args, textContent: matches.join('\n') || `No results for "${query}"`, displayReplacement: `[🔍 ${matches.length} result(s)]` };
 }
 
-// ─── Map ────────────────────────────────────────────────────────────
+// ─── Map ────────────────────────────────────────────────────
 function executeMap(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'target_location_id', 'target', 'to', 'destination');
@@ -1507,12 +1507,18 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         if (!targetChar) return { toolType: 'trade', args, textContent: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
         const targetLatest = findLatestMessage(interactionData, targetChar);
         if (!targetLatest) return { toolType: 'trade', args, textContent: `[Error: Target "${targetChar.name}" has no message history]`, displayReplacement: '[Error: Target missing]' };
+        
         const targetInv: Inventory = targetLatest.message.inventory ? { ...targetLatest.message.inventory } : {};
         const myQty = typeof myInv[item] === 'number' ? (myInv[item] as number) : 0;
         if (myQty < qty) return { toolType: 'trade', args, textContent: `[Error: Not enough "${item}". Have ${myQty}, need ${qty}]`, displayReplacement: '[Error: Lacks items]' };
+        
         if (myQty <= qty) delete myInv[item]; else myInv[item] = myQty - qty;
         targetInv[item] = (typeof targetInv[item] === 'number' ? (targetInv[item] as number) : 0) + qty;
+        
+        // Update both inventories
         nextMessage.inventory = myInv;
+        targetLatest.message.inventory = targetInv;
+        
         return { toolType: 'trade', args, textContent: `Gave ${qty}x "${item}" to ${targetChar.name}.`, displayReplacement: `[🤝 Gave ${qty}x ${item} to ${targetChar.name}]` };
     }
 
@@ -1527,12 +1533,18 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         if (!targetChar) return { toolType: 'trade', args, textContent: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
         const targetLatest = findLatestMessage(interactionData, targetChar);
         if (!targetLatest) return { toolType: 'trade', args, textContent: `[Error: Target "${targetChar.name}" has no message history]`, displayReplacement: '[Error: Target missing]' };
+        
         const targetInv: Inventory = targetLatest.message.inventory ? { ...targetLatest.message.inventory } : {};
         const theirQty = typeof targetInv[item] === 'number' ? (targetInv[item] as number) : 0;
         if (theirQty < qty) return { toolType: 'trade', args, textContent: `[Error: ${targetChar.name} only has ${theirQty}x "${item}"]`, displayReplacement: '[Error: Target lacks items]' };
+        
         if (theirQty <= qty) delete targetInv[item]; else targetInv[item] = theirQty - qty;
         myInv[item] = (typeof myInv[item] === 'number' ? (myInv[item] as number) : 0) + qty;
+        
+        // Update both inventories
         nextMessage.inventory = myInv;
+        targetLatest.message.inventory = targetInv;
+        
         return { toolType: 'trade', args, textContent: `Took ${qty}x "${item}" from ${targetChar.name}.`, displayReplacement: `[🤝 Took ${qty}x ${item} from ${targetChar.name}]` };
     }
 
@@ -2574,7 +2586,7 @@ export function processPendingToolActions(
             sequenceTime++; // Increment timestamp to prevent timeline collisions
 
             switch (action.type) {
-                // ─── 1. MOVE (SEPARATE BLOCK) ──────────────────────────────
+                // ─── 1. MOVE ──────────────────────────────────────────────
                 case 'move': {
                     const destLocId = action.payload.destinationLocationId;
                     if (destLocId) {
@@ -2619,7 +2631,7 @@ export function processPendingToolActions(
                     break;
                 }
 
-                // ─── 2. TELEPORT (SEPARATE BLOCK) ──────────────────────────
+                // ─── 2. TELEPORT ──────────────────────────────────────────
                 case 'teleport': {
                     const destLocId = action.payload.destinationLocationId;
                     if (destLocId) {
