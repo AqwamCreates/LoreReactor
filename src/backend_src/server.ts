@@ -2872,9 +2872,9 @@ const LLAMA_DIR = path.dirname(LLAMA_TTS_BINARY);
 const TTS_DIR = path.join(ROOT_DIR, 'user_data', 'text_to_speech_models');
 
 const textToSpeechModelFile = TEXT_TO_SPEECH_MODELS.MAIN_MODEL_FILE;
-const textToSpeechVocoderFile = TEXT_TO_SPEECH_MODELS.MMPROJ_VOICE_ENCODER_FILE;
+const textToSpeechVoiceEncoderFile = TEXT_TO_SPEECH_MODELS.MMPROJ_VOICE_ENCODER_FILE;
 const TTS_MODEL_PATH = path.join(TTS_DIR, textToSpeechModelFile);
-const TTS_MMPROJ_PATH = path.join(TTS_DIR, textToSpeechVocoderFile);
+const TTS_MMPROJ_PATH = path.join(TTS_DIR, textToSpeechVoiceEncoderFile);
 
 // ✅ System temp directory outside of OneDrive sync to avoid file-locking (EBUSY)
 const TTS_TEMP_DIR = path.join(os.tmpdir(), 'LoreReactor_Text_To_Speech');
@@ -2985,9 +2985,9 @@ async function ensureTtsModelsDownloaded() {
     
   // 2. Download MMProj / Vocoder
   if (!fs.existsSync(TTS_MMPROJ_PATH)) {
-    log.info(`[Text To Speech] Downloading Qwen3-TTS MMProj (${textToSpeechVocoderFile})...`);
+    log.info(`[Text To Speech] Downloading Qwen3-TTS MMProj (${textToSpeechVoiceEncoderFile})...`);
     let lastLoggedPct = -1;
-    await downloadFileWithProgress(`${baseUrl}/${textToSpeechVocoderFile}`, TTS_MMPROJ_PATH, (loaded, total) => {
+    await downloadFileWithProgress(`${baseUrl}/${textToSpeechVoiceEncoderFile}`, TTS_MMPROJ_PATH, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       if (pct % 10 === 0 && pct !== lastLoggedPct) {
         log.info(`[Text To Speech] MMProj: ${pct}%`);
