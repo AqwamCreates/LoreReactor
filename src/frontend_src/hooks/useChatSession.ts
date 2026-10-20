@@ -740,18 +740,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // ⏳ Respect textGenerationBehaviourOnNarration ('wait' vs 'continue')
+            // ✅ Clean up tracker without calling waitForPlaybackCompletion() twice (since handleServerResponse already awaited it)
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
-                if (narrationBehaviour === 'wait') {
-                    try {
-                        await tracker.waitForPlaybackCompletion();
-                    } catch (e) {
-                        console.warn('[useChatSession] Voice playback wait error:', e);
-                    }
-                } else {
-                    await tracker.flushAndStop().catch(e => console.warn('[useChatSession] VoiceTracker flush error:', e));
-                }
                 tracker.stopImmediate();
                 if (currentVoiceTrackerRef.current === tracker) {
                     currentVoiceTrackerRef.current = null;
@@ -1106,17 +1097,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
+            // ✅ Clean up tracker without calling waitForPlaybackCompletion() twice
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
-                if (narrationBehaviour === 'wait') {
-                    try {
-                        await tracker.waitForPlaybackCompletion();
-                    } catch (e) {
-                        console.warn('[useChatSession] Resume Voice playback wait error:', e);
-                    }
-                } else {
-                    await tracker.flushAndStop().catch(e => console.warn('[useChatSession] VoiceTracker flush error in resume:', e));
-                }
                 tracker.stopImmediate();
                 if (currentVoiceTrackerRef.current === tracker) {
                     currentVoiceTrackerRef.current = null;
