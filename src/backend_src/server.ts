@@ -3049,7 +3049,7 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
       else if (audioBuffer.length >= 4 && audioBuffer.toString('ascii', 0, 4) === 'fLaC') ext = '.flac';
 
       const tempRawPath = path.join(TTS_TEMP_DIR, `raw_${requestId}${ext}`);
-      const tempRefWavPath = path.join(TTS_TEMP_DIR, `ref_${requestId}.wav`);
+      const tempReferenceWavPath = path.join(TTS_TEMP_DIR, `reference_${requestId}.wav`);
       const tempOutPath = path.join(TTS_TEMP_DIR, `out_${requestId}.wav`);
 
       try {
@@ -3058,13 +3058,13 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
         // 2. Standardize reference audio to canonical 16-bit 24kHz mono RIFF WAV
         const ffmpegBinToUse = fs.existsSync(FFMPEG_BIN) ? `"${FFMPEG_BIN}"` : 'ffmpeg';
         try {
-          execSync(`${ffmpegBinToUse} -y -i "${tempRawPath}" -ar 24000 -ac 1 -c:a pcm_s16le "${tempRefWavPath}"`, {
+          execSync(`${ffmpegBinToUse} -y -i "${tempRawPath}" -ar 24000 -ac 1 -c:a pcm_s16le "${tempReferenceWavPath}"`, {
             stdio: 'pipe',
             timeout: 10000,
           });
         } catch (convErr: any) {
           log.warn(`[Text To Speech] Reference conversion warning: ${convErr.message}. Fallback to direct raw copy.`);
-          fs.copyFileSync(tempRawPath, tempRefWavPath);
+          fs.copyFileSync(tempRawPath, tempReferenceWavPath);
         }
 
         const langMap: Record<string, string> = {
@@ -3077,7 +3077,7 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
           '-m', TTS_MODEL_PATH,
           '--mmproj', TTS_MMPROJ_PATH, 
           '-p', text,
-          '--tts-speaker-file', tempRefWavPath,
+          '--tts-speaker-file', tempReferenceWavPath,
           '--tts-lang', ttsLang,
           '--output', tempOutPath,
           '-ngl', '99',
@@ -3200,7 +3200,7 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
       } finally {
         // 5. Clean up temporary files safely using retrying safeDelete
         await safeDelete(tempRawPath);
-        await safeDelete(tempRefWavPath);
+        await safeDelete(tempReferenceWavPath);
         await safeDelete(tempOutPath);
       }
     });
