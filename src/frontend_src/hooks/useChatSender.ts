@@ -1,8 +1,8 @@
 // src/frontend_src/hooks/useChatSender.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult, TextMessage } from '../types';
+import type { Character, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult, TextMessage, InteractionMessage } from '../types';
 import { createChatMessage } from '../utilities/interactionDataLogic';
-import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
+import { processPendingToolActions, executeTool, parsePythonArgs, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { detectName } from '../utilities/nameDetection';
@@ -27,6 +27,7 @@ import {
 } from '../utilities/chatSessionLogic';
 import { learnFromUserMessage } from '../services/ActionFormatEngine';
 import { textToSpeechEngine } from '../services/TextToSpeechEngine';
+import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 
 interface UseChatSenderOptions {
     isMultiplayerClient: boolean;
@@ -109,8 +110,11 @@ export function useChatSender(opts: UseChatSenderOptions) {
                     activeProfile?.toolUsageDisplayMode
                 );
 
+                // Convert raw slash command to canonical tool call marker (e.g. ⟪dice(2d6+3)⟫)
+                const canonicalInvocation = `${toolCallStartString}${slashInvocation.toolType}(${slashInvocation.args || ''})${toolCallEndString}`;
+
                 const toolExecutionResult: ToolExecutionResult = {
-                    rawMatch: slashInvocation.rawMatch || `<<tool: ${slashInvocation.toolType} ${slashInvocation.args}>>`,
+                    rawMatch: canonicalInvocation,
                     toolType: slashInvocation.toolType,
                     args: slashInvocation.args,
                     textContent: toolResult.textContent,
@@ -122,8 +126,8 @@ export function useChatSender(opts: UseChatSenderOptions) {
                 }
                 slashMessage.toolExecutionResults.push(toolExecutionResult);
 
-                const rawCmd = text;
-                slashMessage.textContent = rawCmd;
+                // Format with observation delimiters so compileMessageDisplayText and LLM prompt recognize it
+                slashMessage.textContent = `${canonicalInvocation}${toolResultStartString}result: ${toolResult.textContent}${toolResultEndString} `;
 
                 const preSlashData = currentInteractionData;
                 const currentLocId = getCurrentLocationId(currentInteractionData, activeCharacter) || 'global';
@@ -131,14 +135,65 @@ export function useChatSender(opts: UseChatSenderOptions) {
                 const currentLocMessages = newHistories[currentLocId] || [];
                 newHistories[currentLocId] = [...currentLocMessages, slashMessage];
 
+                // Check and handle physical location transitions for /move and /teleport
+                const hasLocations = currentInteractionData.locations && currentInteractionData.locations.length > 0;
+                let finalLocId: string | undefined = undefined;
+
+                if (hasLocations && (slashInvocation.toolType === 'move' || slashInvocation.toolType === 'teleport')) {
+                    if (!toolResult.textContent.startsWith('[Error:') && !toolResult.textContent.startsWith('Already at')) {
+                        const pArgs = parsePythonArgs(slashInvocation.args);
+                        const targetQuery = (pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to') || pArgs.positional.join(' ')).toLowerCase().replace(/^["']|["']$/g, '');
+                        const targetLoc = currentInteractionData.locations.find(l => 
+                            l.id.toLowerCase() === targetQuery || 
+                            l.name.toLowerCase() === targetQuery || 
+                            l.id.toLowerCase().startsWith(targetQuery)
+                        );
+                        if (targetLoc) {
+                            finalLocId = targetLoc.id;
+                        }
+                    }
+                }
+
+                let currentActionStamina = slashMessage.remainingActionStamina;
+
+                if (hasLocations && finalLocId && currentLocId !== finalLocId) {
+                    if (slashInvocation.toolType === 'move') {
+                        const movementCost = computeMovementCost(currentLocId, finalLocId, currentInteractionData.locations);
+                        if (movementCost > 0 && currentActionStamina !== undefined) {
+                            currentActionStamina = Math.max(0, currentActionStamina - movementCost);
+                            slashMessage.remainingActionStamina = currentActionStamina;
+                        }
+                    }
+
+                    const arrivalInteraction: InteractionMessage = {
+                        messageType: 'interaction',
+                        id: uuidv4(),
+                        character: { ...activeCharacter },
+                        isPresent: true,
+                        remainingChatStamina: slashMessage.remainingChatStamina,
+                        remainingActionStamina: currentActionStamina,
+                        characterClothingWearingStatuses: slashMessage.characterClothingWearingStatuses,
+                        characterLockedLocations: slashMessage.characterLockedLocations,
+                        parentMessageId: slashMessage.id,
+                        firstCreatedTimestamp: slashMessage.firstCreatedTimestamp + 1,
+                        lastUpdatedTimestamp: slashMessage.firstCreatedTimestamp + 1,
+                    };
+
+                    onMessageBroadcastRef.current?.(arrivalInteraction);
+
+                    const finalLocMessages = newHistories[finalLocId] || [];
+                    newHistories[finalLocId] = [...finalLocMessages, arrivalInteraction];
+                }
+
                 let updatedData = { ...currentInteractionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
                 updatedData = processPendingToolActions(updatedData, allCharactersRef.current, { onToast: addToast });
 
                 broadcastToolStateChanges(preSlashData, updatedData, onStateBroadcastRef.current);
                 setInteractionData(updatedData);
 
+                onMessageBroadcastRef.current?.(slashMessage);
+
                 if (isMultiplayerClient) {
-                    onMessageBroadcastRef.current?.(slashMessage);
                     releaseLock();
                     return;
                 }
@@ -177,7 +232,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             });
             const encodedFiles = files?.length ? await Promise.all(files.map(f => convertFileToBase64(f))) : undefined;
 
-            // ✅ FIX: Filter history to only include text messages (chat/whisper) to prevent crashes in detectName
+            // Filter history to only include text messages (chat/whisper) to prevent crashes in detectName
             const textMessages = getLocalMessageHistory(currentInteractionData, activeCharacter, ['chat', 'whisper']) as TextMessage[];
             const knownCharacterNames = detectName(activeCharacter, textMessages, text);
 
@@ -231,7 +286,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
                         currentActionStamina = Math.max(0, currentActionStamina - movementCost);
                     }
 
-                    const arrivalInteraction: HistoryMessage = {
+                    const arrivalInteraction: InteractionMessage = {
                         messageType: 'interaction',
                         id: uuidv4(),
                         character: { ...activeCharacter },
@@ -291,7 +346,7 @@ export function useChatSender(opts: UseChatSenderOptions) {
             ? (joinProtagonistRef.current || protagonist)
             : protagonist;
 
-        // ✅ FIX: Filter history to only include text messages (chat/whisper) to prevent crashes in detectName
+        // Filter history to only include text messages (chat/whisper) to prevent crashes in detectName
         const textMessages = getLocalMessageHistory(currentInteractionData, activeProtagonist, ['chat', 'whisper']) as TextMessage[];
         const knownCharacterNames = detectName(activeProtagonist, textMessages);
 

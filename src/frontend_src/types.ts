@@ -457,7 +457,7 @@ export interface ActiveToolActions {
 }
 
 export type PendingToolActionType =
-  | 'summon' | 'kick' | 'invite' | 'whisper' | 'creator' | 'destroyer'
+  'whisper'| 'move' | 'teleport' | 'kick' | 'invite' | 'summon'| 'creator' | 'destroyer'
   | 'administrator_switch_model' | 'administrator_toggle_account' 
   | 'administrator_join_session' | 'administrator_leave_session' 
   | 'administrator_accept_join' | 'administrator_reject_join'

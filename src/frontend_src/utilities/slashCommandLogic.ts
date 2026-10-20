@@ -811,6 +811,7 @@ export function applySlashSelection(
         currentParts[targetIndex] = newValue;
     }
 
-    const trailingSpace = isTargetsArg ? '' : ' ';
-    return `/${currentParts.join(' ')}${trailingSpace}`;
+    // Return the command and values joined cleanly with spaces. 
+    // No forced trailing space at the end of the string.
+    return `/${currentParts.join(' ')}`;
 }
