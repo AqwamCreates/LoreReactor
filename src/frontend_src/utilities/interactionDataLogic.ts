@@ -155,7 +155,7 @@ export function createChatMessage(
         frontCameraImage?: string; 
         knownCharacterNames?: Record<string, Record<string, boolean>>; 
         clothingWearingStatuses?: Record<string, boolean>;
-        characterLockedLocations?: Record<string, string[]>;
+        characterLockedLocations?: Record<string, boolean>;
         pendingToolActions?: PendingToolAction[];
         activeToolActions?: ActiveToolActions;
         inventory?: Inventory;
@@ -234,7 +234,7 @@ export function createToolMessage(
         frontCameraImage?: string; 
         knownCharacterNames?: Record<string, Record<string, boolean>>; 
         clothingWearingStatuses?: Record<string, boolean>; 
-        characterLockedLocations?: Record<string, string[]>;
+        characterLockedLocations?: Record<string, boolean>;
         toolExecutionResults?: ToolExecutionResult[];
         pendingToolActions?: PendingToolAction[];
         activeToolActions?: ActiveToolActions;

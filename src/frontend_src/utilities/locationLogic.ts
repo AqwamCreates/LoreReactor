@@ -41,9 +41,9 @@ export function getCoLocatedParticipantCount(interactionData: InteractionData, c
 
 /**
  * Scan across all messages in the session to find the most recently established locks.
+ * If characterId is provided, it ONLY evaluates locks from that specific character's messages.
  */
-export function getLatestLockedLocations(interactionData: InteractionData): Record<string, boolean> {
-    // Flatten all messages and sort them strictly chronologically (oldest to newest)
+export function getLatestLockedLocations(interactionData: InteractionData, characterId?: string): Record<string, boolean> {
     const allMessages = Object.values(interactionData.interactionHistories || {})
         .flat()
         .sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
@@ -51,13 +51,15 @@ export function getLatestLockedLocations(interactionData: InteractionData): Reco
     const locks: Record<string, boolean> = {};
 
     for (const msg of allMessages) {
+        // Strictly isolate locks to the target character's timeline
+        if (characterId && msg.character.id !== characterId) continue;
+        
         if (msg.characterLockedLocations) {
-            // Overwrite/apply whatever explicit lock state this message declared
             for (const [locId, isLocked] of Object.entries(msg.characterLockedLocations)) {
                 if (isLocked) {
                     locks[locId] = true;
                 } else {
-                    delete locks[locId]; // Fully respect unlocks
+                    delete locks[locId];
                 }
             }
         }
@@ -67,18 +69,13 @@ export function getLatestLockedLocations(interactionData: InteractionData): Reco
 }
 
 /**
- * Check if a character is locked out of a specific location.
+ * Check if a specific character is locked out of a specific location.
  */
-export function isCharacterLockedFromLocation(interactionData: InteractionData, locationId: string): boolean {
-    const locks = getLatestLockedLocations(interactionData);
-    return locks[locationId];
+export function isCharacterLockedFromLocation(interactionData: InteractionData, characterId: string, locationId: string): boolean {
+    const locks = getLatestLockedLocations(interactionData, characterId);
+    return locks[locationId] === true;
 }
 
-/**
- * Reachability rules:
- * 1. If destination has NO bindings, it is accessible (Open Access).
- * 2. If destination HAS bindings, current location must be explicitly listed.
- */
 export function getReachableLocations(
     locations: Location[],
     currentLocationId: string | undefined,
@@ -86,7 +83,6 @@ export function getReachableLocations(
 ): Location[] {
     const currentLocation = locations.find(l => l.id === currentLocationId);
 
-    // If character is not in any location, they can only access unbound locations
     if (!currentLocation) {
         return locations.filter(l => !l.locationBindings || l.locationBindings.length === 0);
     }
@@ -95,17 +91,13 @@ export function getReachableLocations(
         if (location.id === currentLocationId) return false;
 
         const targetHasBindings = !!(location.locationBindings && location.locationBindings.length > 0);
-
-        // Rule 1: No bindings means open access
         if (!targetHasBindings) return true;
 
-        // Rule 2: Bound location, must be linked to current
         const isBound = location.locationBindings!.includes(currentLocation.id) ||
                         (currentLocation.locationBindings?.includes(location.id) ?? false);
 
         if (!isBound) return false;
 
-        // Check conditional regex trigger if defined on either side
         const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id] ||
                 currentLocation.locationBindingRegularExpressionTriggers?.[location.id];
         if (!conditionalRegex) return true;
@@ -120,10 +112,6 @@ export function getReachableLocations(
     });
 }
 
-/**
- * Get reachable locations for a specific character, combining reachability,
- * characterBindings, and key locks.
- */
 export function getReachableLocationsByCharacter(
     interactionData: InteractionData,
     character: Character,
@@ -133,15 +121,13 @@ export function getReachableLocationsByCharacter(
     const locations = interactionData.locations || [];
 
     const structurallyReachable = getReachableLocations(locations, currentLocationId, messageText);
-    const lockedLocations = getLatestLockedLocations(interactionData);
+    // Pass the character ID so we only get locks specific to this character
+    const lockedLocations = getLatestLockedLocations(interactionData, character.id);
 
     return structurallyReachable.filter(location => {
-        // Enforce characterBindings
         if (location.characterBindings && location.characterBindings.length > 0 && !location.characterBindings.includes(character.id)) {
             return false;
         }
-
-        // Enforce key lockouts
         return lockedLocations[location.id] !== true;
     });
 }

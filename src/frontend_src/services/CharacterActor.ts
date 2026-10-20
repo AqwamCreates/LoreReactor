@@ -320,7 +320,7 @@ export class CharacterActor {
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
         let accumulatedActiveToolActions: ActiveToolActions = latestMsg?.activeToolActions ? { ...latestMsg.activeToolActions } : {};
         let accumulatedPendingActions: PendingToolAction[] = [];
-        let accumulatedLockedLocations: Record<string, string[]> = latestMsg?.characterLockedLocations ? { ...latestMsg.characterLockedLocations } : {};
+        let accumulatedLockedLocations: Record<string, boolean> = latestMsg?.characterLockedLocations ? { ...latestMsg.characterLockedLocations } : {};
         let accumulatedInventory: Inventory = latestMsg?.inventory ? { ...latestMsg.inventory } : {};
 
         if (!isResuming) {

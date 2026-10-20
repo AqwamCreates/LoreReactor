@@ -462,7 +462,8 @@ export type PendingToolActionType =
   | 'administrator_join_session' | 'administrator_leave_session' 
   | 'administrator_accept_join' | 'administrator_reject_join'
   | 'administrator_add_to_entity_folder' | 'administrator_remove_from_entity_folder'
-  | 'administrator_edit_entity';
+  | 'administrator_edit_entity'
+  | 'lock_location' | 'unlock_location';
 
 export interface PendingToolAction {
   type: PendingToolActionType;
