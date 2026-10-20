@@ -40,26 +40,34 @@ export function getCoLocatedParticipantCount(interactionData: InteractionData, c
 }
 
 /**
- * Get the latest characterLockedLocations map for a character by scanning
- * their most recent message across all locations.
+ * FIX 1: Scan across all messages in the session to find the most recently established locks.
+ * Locks are established by keyholders, not necessarily by the character being checked.
  */
-export function getLatestLockedLocations(interactionData: InteractionData, characterId: string): Record<string, string[]> {
-    let latestMsg: HistoryMessage | undefined = undefined;
+export function getLatestLockedLocations(interactionData: InteractionData, characterId?: string): Record<string, string[]> {
+    let latestLocks: Record<string, string[]> | undefined = undefined;
     let maxTime = -1;
 
     for (const messages of Object.values(interactionData.interactionHistories || {})) {
         for (let i = messages.length - 1; i >= 0; i--) {
-            if (messages[i].character.id === characterId) {
-                if (messages[i].firstCreatedTimestamp > maxTime) {
-                    maxTime = messages[i].firstCreatedTimestamp;
-                    latestMsg = messages[i];
+            const msg = messages[i];
+            if (msg.characterLockedLocations && Object.keys(msg.characterLockedLocations).length > 0) {
+                if (msg.firstCreatedTimestamp > maxTime) {
+                    maxTime = msg.firstCreatedTimestamp;
+                    latestLocks = msg.characterLockedLocations;
                 }
-                break; // Found the latest in this specific location's array, move to next location
             }
         }
     }
-    
-    return latestMsg?.characterLockedLocations || {};
+
+    if (latestLocks) return latestLocks;
+
+    // Fallback: check character's own latest message
+    if (characterId) {
+        const latest = findLatestMessage(interactionData, { id: characterId } as Character);
+        return latest?.message?.characterLockedLocations || {};
+    }
+
+    return {};
 }
 
 /**
@@ -73,7 +81,7 @@ export function isCharacterLockedFromLocation(interactionData: InteractionData, 
 }
 
 /**
- * Get structurally reachable locations from a given origin.
+ * FIX 2: Check reachability bidirectionally and cleanly validate conditional regex triggers.
  */
 export function getReachableLocations(
     locations: Location[],
@@ -81,28 +89,41 @@ export function getReachableLocations(
     messageText?: string,
 ): Location[] {
     const currentLocation = locations.find(l => l.id === currentLocationId);
+    if (!currentLocation) return locations.filter(l => l.id !== currentLocationId);
+
     return locations.filter(location => {
         if (location.id === currentLocationId) return false;
-        if (!location.locationBindings || location.locationBindings.length === 0) return true;
-        if (!currentLocation) return true;
-        if (!location.locationBindings.includes(currentLocation.id)) return false;
 
-        const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id];
-        if (!conditionalRegex || !conditionalRegex) return true;
+        const hasCurrentBindings = currentLocation.locationBindings && currentLocation.locationBindings.length > 0;
+        const hasTargetBindings = location.locationBindings && location.locationBindings.length > 0;
+
+        // If neither room has restrictions defined, they are freely accessible
+        if (!hasCurrentBindings && !hasTargetBindings) return true;
+
+        // Connected if current location links to target, or target links to current
+        const isBound = (hasCurrentBindings && currentLocation.locationBindings!.includes(location.id)) ||
+                        (hasTargetBindings && location.locationBindings!.includes(currentLocation.id));
+
+        if (!isBound) return false;
+
+        // Check conditional regex triggers if defined on either binding endpoint
+        const conditionalRegex = location.locationBindingRegularExpressionTriggers?.[currentLocation.id] ||
+                                 currentLocation.locationBindingRegularExpressionTriggers?.[location.id];
+        if (!conditionalRegex) return true;
         if (!messageText) return false;
+
         try {
             const regex = new RegExp(conditionalRegex, 'i');
             return regex.test(messageText);
         } catch {
-            console.warn(`Invalid conditional regex on location ${location.id} for binding ${currentLocation.id}: ${conditionalRegex}`);
+            console.warn(`Invalid conditional regex between ${currentLocation.id} and ${location.id}: ${conditionalRegex}`);
             return false;
         }
     });
 }
 
 /**
- * Get reachable locations for a specific character, combining structural
- * reachability with lock state.
+ * FIX 3: Enforce reachability, door locks, AND characterBindings so private rooms are respected.
  */
 export function getReachableLocationsByCharacter(
     interactionData: InteractionData,
@@ -116,6 +137,12 @@ export function getReachableLocationsByCharacter(
     const lockedLocations = getLatestLockedLocations(interactionData, character.id);
 
     return structurallyReachable.filter(location => {
+        // Enforce character bindings (e.g. private bedroom restricted to specific character)
+        if (location.characterBindings && location.characterBindings.length > 0 && !location.characterBindings.includes(character.id)) {
+            return false;
+        }
+
+        // Enforce key lockouts
         const lockedChars = lockedLocations[location.id];
         if (!lockedChars || lockedChars.length === 0) return true;
         return !lockedChars.includes(character.id);
@@ -152,6 +179,11 @@ export function findReachableLocationByRegularExpression(
     if (reachableLocations.length === 0) return undefined;
 
     for (const loc of reachableLocations) {
+        // Check characterBindings
+        if (loc.characterBindings && loc.characterBindings.length > 0 && !loc.characterBindings.includes(character.id)) {
+            continue;
+        }
+
         const triggers = loc.regularExpressionActivationTriggers;
         if (!triggers || triggers.length === 0) continue;
         for (const trigger of triggers) {
@@ -225,8 +257,10 @@ export function sampleInitialLocationForCharacter(locations: Location[], charact
     return pool[pool.length - 1].location;
 }
 
-// src/frontend_src/utilities/locationLogic.ts (inside assignInitialLocationsIfNeeded)
-
+/**
+ * FIX 4: Sequentially increment timestamps when placing multiple initial characters
+ * to avoid identical timestamps and race conditions in timeline sorting.
+ */
 export function assignInitialLocationsIfNeeded(interactionData: InteractionData): InteractionData {
     const locations = interactionData.locations;
     if (!locations || locations.length === 0) return interactionData;
@@ -237,7 +271,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
 
     const updatedHistories = { ...interactionData.interactionHistories };
     let changed = false;
-    const now = Date.now();
+    let sequenceTime = Date.now();
 
     const noHistoryAtAll: Character[] = [];
     for (const id of allParticipantIds) {
@@ -253,6 +287,8 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
     if (noHistoryAtAll.length > 0) {
         const remaining = [...noHistoryAtAll];
         while (remaining.length > 0) {
+            sequenceTime++; // Increment per character to guarantee strict chronological order
+
             const pool: { char: Character; weight: number }[] = [];
             let totalWeight = 0;
             for (const c of remaining) {
@@ -280,7 +316,6 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                     updatedHistories[sampledLocation.id] = [];
                 }
                 
-                // FIX: Get the absolute last message ID in the current interaction histories to chain the parentMessageId properly
                 const allMsgs = Object.values(updatedHistories).flat().sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
                 const lastMessageId = allMsgs.length > 0 ? allMsgs[allMsgs.length - 1].id : null;
 
@@ -291,9 +326,9 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
                     isPresent: true,
                     characterClothingWearingStatuses: initializeClothingWearingStatuses(picked),
                     characterLockedLocations: {},
-                    parentMessageId: lastMessageId, // <--- Chain correctly instead of null!
-                    firstCreatedTimestamp: now,
-                    lastUpdatedTimestamp: now,
+                    parentMessageId: lastMessageId,
+                    firstCreatedTimestamp: sequenceTime,
+                    lastUpdatedTimestamp: sequenceTime,
                 });
                 changed = true;
             }
@@ -301,7 +336,7 @@ export function assignInitialLocationsIfNeeded(interactionData: InteractionData)
     }
 
     if (!changed) return interactionData;
-    return { ...interactionData, interactionHistories: updatedHistories, lastUpdatedTimestamp: now };
+    return { ...interactionData, interactionHistories: updatedHistories, lastUpdatedTimestamp: sequenceTime };
 }
 
 export function isLocationOwner(character: Character, location: Location | undefined): boolean {
