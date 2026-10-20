@@ -164,8 +164,6 @@ function compileRawString(
         const innerString = match[1];
         const startIndex = match.index;
 
-        cleanText += processed.slice(lastIndex, startIndex);
-
         const stored = resultMap.get(rawMatch);
         let display;
         if (stored) {
@@ -174,10 +172,37 @@ function compileRawString(
             display = formatToolDisplay(getFallbackToolResult(innerString), rawMatch, mode);
         }
 
-        extractedTools.push({
-            display,
-            originalIndex: cleanText.length 
-        });
+        // 🛠️ FIX: If the tool display is empty (e.g. tool disabled / mode 'none') 
+        // and it is on its own line, consume the surrounding newlines to prevent ghost paragraphs.
+        if (!display) {
+            const textBefore = processed.slice(lastIndex, startIndex);
+            const textAfter = processed.slice(startIndex + rawMatch.length);
+
+            // Check if this tool call is isolated by line breaks
+            const leadingNewlineMatch = textBefore.match(/(\r?\n[ \t]*){1,}$/);
+            const trailingNewlineMatch = textAfter.match(/^([ \t]*\r?\n){1,}/);
+
+            if (leadingNewlineMatch && trailingNewlineMatch) {
+                // Consume the leading whitespace/newlines up to the previous paragraph, and skip past the trailing newline
+                const trimLength = leadingNewlineMatch[0].length;
+                if (cleanText.endsWith(leadingNewlineMatch[0]) || cleanText.endsWith('\n')) {
+                    cleanText = cleanText.slice(0, cleanText.length - trimLength);
+                } else {
+                    cleanText += textBefore;
+                }
+                lastIndex = startIndex + rawMatch.length + trailingNewlineMatch[0].length;
+                continue;
+            }
+        }
+
+        cleanText += processed.slice(lastIndex, startIndex);
+
+        if (display) {
+            extractedTools.push({
+                display,
+                originalIndex: cleanText.length 
+            });
+        }
 
         lastIndex = startIndex + rawMatch.length;
     }
