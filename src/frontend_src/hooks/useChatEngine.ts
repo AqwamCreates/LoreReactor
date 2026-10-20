@@ -112,6 +112,16 @@ export function useChatEngine(deps: EngineDependencies) {
             return null;
         }
 
+        // ✅ In 'wait' mode, pause turn sequence progression until this character's voice narration finishes playing completely
+        const narrationBehaviour = data.profile?.textGenerationBehaviourOnNarration ?? 'wait';
+        if (voiceTracker && narrationBehaviour === 'wait') {
+            try {
+                await voiceTracker.waitForPlaybackCompletion();
+            } catch (e) {
+                console.warn('[useChatEngine] Voice playback completion error:', e);
+            }
+        }
+
         const { result } = outcome;
         if (result.budgetData) setBudgetData(result.budgetData);
 

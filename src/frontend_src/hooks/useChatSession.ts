@@ -536,7 +536,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             voiceTracker.seed(existingCharacterText);
         }
         currentVoiceTrackerRef.current = voiceTracker;
-        voiceTracker.start().catch(err => console.warn('[useChatSession] VoiceTracker start failed:', err));
+        
+        // ✅ Await voiceTracker.start() so initialization/audio fetching finishes BEFORE tokens start streaming in
+        await voiceTracker.start().catch(err => console.warn('[useChatSession] VoiceTracker start failed:', err));
 
         useSessionStore.setState({
             isLoading: true,
@@ -1009,7 +1011,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             voiceTracker.seed(existingText);
         }
         currentVoiceTrackerRef.current = voiceTracker;
-        voiceTracker.start().catch(err => console.warn('[useChatSession] Resume VoiceTracker start failed:', err));
+        
+        // ✅ Await voiceTracker.start() in resume generation as well
+        await voiceTracker.start().catch(err => console.warn('[useChatSession] Resume VoiceTracker start failed:', err));
 
         resumingMessageIdRef.current = messageId;
         resumingExistingTextRef.current = existingText;
