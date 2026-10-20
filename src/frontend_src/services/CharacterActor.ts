@@ -220,17 +220,12 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
     return { message, type: 'inference' };
 }
 
-// ─── AGGRESSIVE HALLUCINATION NUKER ─────────────────────────────────
-const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-const startEsc = escapeRegex(toolResultStartString);
-const endEsc = escapeRegex(toolResultEndString);
-const hallucinationRegex = new RegExp(`${startEsc}[\\s\\S]*?${endEsc}`, 'g');
+// ─── UNCLOSED HALLUCINATION NUKER ───────────────────────────────────
 
 function nukeHallucinatedResults(text: string): string {
-    // 1. Nuke complete fake observations
-    let clean = text.replace(hallucinationRegex, '');
+    let clean = text;
     
-    // 2. Nuke trailing unclosed fake observations
+    // Only nuke trailing unclosed observations (leaving completed legitimate observations intact)
     const lastOpen = clean.lastIndexOf(toolResultStartString);
     const lastClose = clean.lastIndexOf(toolResultEndString);
     if (lastOpen !== -1 && lastOpen > lastClose) {
@@ -711,6 +706,10 @@ export class CharacterActor {
                     if (targetIdx !== -1) {
                         newHistories[locId] = [...msgs];
                         const targetMsg = { ...msgs[targetIdx] } as ChatMessage;
+                        
+                        // FIX: Explicitly sync textContent with accumulated rawText on resume
+                        targetMsg.textContent = rawText;
+
                         if (allExecutionResults.length > 0) {
                             targetMsg.toolExecutionResults = [
                                 ...(targetMsg.toolExecutionResults || []),
