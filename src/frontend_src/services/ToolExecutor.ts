@@ -327,7 +327,7 @@ function resolveLocation(idOrName: string, interactionData: InteractionData): Lo
     if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
         query = query.slice(1, -1).toLowerCase();
     }
-    const sessionLocs = interactionData.locations;
+    const sessionLocs = interactionData.locations || [];
     return sessionLocs.find(l => l.id.toLowerCase() === query || l.name.toLowerCase() === query || l.id.startsWith(query));
 }
 
@@ -1579,6 +1579,11 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
     const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id');
     if (!targetQuery) return helpResult('kick', 'character_id="...", destination_location_id=None', 'eject character from location');
 
+    const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
+    if (!currentLocation) {
+        return { toolType: 'kick', args, textContent: '[Error: Current character location unknown]', displayReplacement: '[Error: Unknown location]' };
+    }
+
     if (targetQuery.toLowerCase() === 'characters') {
         const list = getCoLocatedParticipants(interactionData, nextMessage.character).map(c => `${c.name} (${c.id})`);
         return { toolType: 'kick', args, textContent: list.join('\n') || 'No co-located characters', displayReplacement: `[👢 ${list.length} character(s)]` };
@@ -1589,20 +1594,61 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
         return { toolType: 'kick', args, textContent: reachable.map(l => `${l.name} (${l.id})`).join('\n') || 'No reachable locations', displayReplacement: `[👢 ${reachable.length} location(s)]` };
     }
 
-    const targetChar = resolveCharacter(targetQuery, interactionData, context.allCharacters || []);
-    if (!targetChar) return { toolType: 'kick', args, textContent: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
+    // 1. Target must actually be in the same location to be kicked
+    const coLocated = getCoLocatedParticipants(interactionData, nextMessage.character);
+    const targetChar = coLocated.find(c => 
+        c.id.toLowerCase() === targetQuery.toLowerCase() || 
+        c.name.toLowerCase() === targetQuery.toLowerCase() || 
+        c.id.startsWith(targetQuery.toLowerCase())
+    );
+    if (!targetChar) {
+        return { toolType: 'kick', args, textContent: `[Error: Character "${targetQuery}" is not in this location to be kicked]`, displayReplacement: '[Error: Target not here]' };
+    }
+
+    // 2. Fetch all structurally valid and unlocked exits from the current room
+    const reachable = getReachableLocationsByCharacter(interactionData, nextMessage.character);
+    if (reachable.length === 0) {
+        return { toolType: 'kick', args, textContent: `[Error: Cannot kick ${targetChar.name} — there are no accessible exits from ${currentLocation.name}]`, displayReplacement: '[Error: No exits]' };
+    }
 
     const destLocQuery = pArgs.get(1, 'destination_location_id', 'destination', 'location_id', 'to');
-    const destLoc = destLocQuery ? resolveLocation(destLocQuery, interactionData) : undefined;
+    let destLoc: Location | undefined;
+
+    if (destLocQuery) {
+        destLoc = resolveLocation(destLocQuery, interactionData);
+        if (!destLoc) {
+            return { toolType: 'kick', args, textContent: `[Error: Destination location "${destLocQuery}" not found in current session]`, displayReplacement: '[Error: Location not found]' };
+        }
+
+        // 3. MOVEMENT RESTRICTION: Destination MUST be adjacent/reachable
+        const isReachable = reachable.some(l => l.id === destLoc!.id);
+        if (!isReachable) {
+            return { toolType: 'kick', args, textContent: `[Error: Cannot kick to "${destLoc.name}" — it is not adjacent/reachable from ${currentLocation.name}]`, displayReplacement: '[Error: Not reachable]' };
+        }
+
+        // 4. LOCK RESTRICTION: Target cannot be kicked into a room locked for them
+        if (isCharacterLockedFromLocation(interactionData, targetChar.id, destLoc.id)) {
+            return { toolType: 'kick', args, textContent: `[Error: Destination "${destLoc.name}" is locked for ${targetChar.name}]`, displayReplacement: '[Error: Destination locked]' };
+        }
+    } else {
+        // Fall back to the first unlocked reachable adjacent room
+        destLoc = reachable.find(l => !isCharacterLockedFromLocation(interactionData, targetChar.id, l.id));
+        if (!destLoc) {
+            return { toolType: 'kick', args, textContent: `[Error: All adjacent exits are locked for ${targetChar.name}]`, displayReplacement: '[Error: Exits locked]' };
+        }
+    }
 
     appendPendingAction(nextMessage, {
         type: 'kick',
         payload: {
-            characterId: targetChar.id, characterName: targetChar.name,
-            destinationLocationId: destLoc?.id || '', destinationLocationName: destLoc?.name || ''
+            characterId: targetChar.id, 
+            characterName: targetChar.name,
+            destinationLocationId: destLoc.id, 
+            destinationLocationName: destLoc.name
         }
     });
-    return { toolType: 'kick', args, textContent: `Kicked ${targetChar.name}.`, displayReplacement: `[👢 Kicked ${targetChar.name}]` };
+
+    return { toolType: 'kick', args, textContent: `Kicked ${targetChar.name} to "${destLoc.name}".`, displayReplacement: `[👢 Kicked ${targetChar.name} to ${destLoc.name}]` };
 }
 
 // ─── Oracle ───────────────────────────────────────────────────────

@@ -1,16 +1,17 @@
 // src/frontend_src/utilities/slashCommandLogic.ts
 import type { Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel } from '../types';
 import { getLocalMessageHistory } from './timelineLogic';
+import { getReachableLocationsByCharacter, getCoLocatedParticipants } from './locationLogic';
 
 // ─── Tree Data Structures ─────────────────────────────────────────
 export type ArgType = 
-    | 'text' | 'session_location' | 'global_location' 
-    | 'session_character' | 'global_character' 
+    | 'text' | 'session_location' | 'global_location' | 'reachable_location'
+    | 'session_character' | 'global_character' | 'colocated_character'
     | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' 
     | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' 
     | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' 
     | 'world' | 'account' | 'multiplayer_session' 
-    | 'language_model' | 'budget_strategy'; // ADDED
+    | 'language_model' | 'budget_strategy';
 
 export interface SlashArg { name: string; type: ArgType; desc: string; optional?: boolean; example?: string; }
 export interface SlashSub { name: string; desc: string; args?: SlashArg[]; }
@@ -45,7 +46,7 @@ export const COMMAND_TREE: SlashCmd[] = [
     { name: 'dice', desc: 'Roll dice', args: [{ name: 'notation', type: 'text', desc: 'Dice notation', example: '2d6+3' }] },
     { name: 'random', desc: 'Random integer', args: [{ name: 'range', type: 'text', desc: 'Min-Max or just Max', example: '1-100' }] },
     { name: 'rng', desc: 'Roll on RNG table', args: [{ name: 'table', type: 'rng_table', desc: 'RNG table from context' }] },
-    { name: 'move', desc: 'Move to adjacent location', args: [{ name: 'location', type: 'session_location', desc: 'Destination location' }] },
+    { name: 'move', desc: 'Move to adjacent location', args: [{ name: 'location', type: 'reachable_location', desc: 'Destination (adjacent/unlocked)' }] },
     { name: 'timer', desc: 'Countdown timers', subs: [
         { name: 'set', desc: 'Set timer', args: [
             { name: 'name', type: 'text', desc: 'Timer name', example: 'Bomb' },
@@ -154,8 +155,8 @@ export const COMMAND_TREE: SlashCmd[] = [
     ]},
     { name: 'invite', desc: 'Bring to current location', args: [{ name: 'character', type: 'session_character', desc: 'Character to invite' }] },
     { name: 'kick', desc: 'Kick to location', args: [
-        { name: 'character', type: 'session_character', desc: 'Character to kick' },
-        { name: 'location', type: 'session_location', desc: 'Destination (optional)', optional: true }
+        { name: 'character', type: 'colocated_character', desc: 'Character in current room to kick' },
+        { name: 'location', type: 'reachable_location', desc: 'Destination exit (optional)', optional: true }
     ]},
     { name: 'oracle', desc: 'Scry remote locations', args: [{ name: 'location', type: 'session_location', desc: 'Target location to peer into' }] },
     { name: 'teleport', desc: 'Instant movement', args: [{ name: 'location', type: 'session_location', desc: 'Any session location' }] },
@@ -311,6 +312,19 @@ export function getEntityOptions(
         return VALID_ENTITY_TYPES.map(t => ({ value: t, label: t, id: '', extra: '' }));
     }
 
+    const activeChar = localCharacter || (data?.protagonistIds?.[0] ? data.participants.find(p => p.id === data.protagonistIds[0]) : null);
+
+    if (type === 'colocated_character') {
+        if (!data || !activeChar) return [];
+        const colocated = getCoLocatedParticipants(data, activeChar);
+        return colocated.map(c => ({
+            value: c.id,
+            label: c.name,
+            id: c.id.substring(0, 8),
+            extra: getEntityDescription(c)
+        }));
+    }
+
     if (type === 'session_character') {
         const participants = data?.participants || [];
         return participants.map(c => ({
@@ -334,6 +348,25 @@ export function getEntityOptions(
     }
 
     if (!data && type !== 'account' && type !== 'multiplayer_session' && type !== 'language_model' && type !== 'budget_strategy') return [];
+
+    if (type === 'reachable_location') {
+        if (!data || !activeChar) {
+            const sessionLocs = data?.locations || [];
+            return sessionLocs.map(l => ({
+                value: l.id,
+                label: l.name,
+                id: l.id.substring(0, 8),
+                extra: getEntityDescription(l)
+            }));
+        }
+        const reachable = getReachableLocationsByCharacter(data, activeChar);
+        return reachable.map(l => ({
+            value: l.id,
+            label: l.name,
+            id: l.id.substring(0, 8),
+            extra: getEntityDescription(l)
+        }));
+    }
 
     if (type === 'session_location') {
         const sessionLocs = data?.locations || [];

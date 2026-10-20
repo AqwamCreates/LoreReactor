@@ -23,7 +23,7 @@ export interface TurnSequenceOptions {
 }
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
-    return msg.messageType === 'chat';
+    return msg.messageType === 'chat' || msg.messageType == 'whisper';
 }
 
 function createSilentInteraction(
