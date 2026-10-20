@@ -302,6 +302,7 @@ ${characterToolsSchema}
     "speechToTextDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "voiceActivityDetectionDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "embeddingDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
+    "textGenerationBehaviourOnNarration": "'wait' | 'continue' | 'interrupt' (default 'wait')"
     "narrateTexts": {
 ${narrateTextsSchema}
     },

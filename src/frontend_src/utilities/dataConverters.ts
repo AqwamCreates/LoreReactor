@@ -11,7 +11,8 @@ import type {
     StarterPrompt,
     entityImageType,
     RetrievalConfiguration,
-    SummarizationStrategyType
+    SummarizationStrategyType,
+    textGenerationBehaviourOnNarration
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
@@ -626,6 +627,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             minimumLength: (a.minimumLength as string) || '0',
             maximumNumberOfAutoResumes: (a.maximumNumberOfAutoResumes as number) ?? 10,
         }) as AutoResumeSignal) : [],
+        textGenerationBehaviourOnNarration: (p.textGenerationBehaviourOnNarration as textGenerationBehaviourOnNarration),
         narrateTexts: {
             normal: (rawNarrateTexts.normal as boolean) ?? defaultNarrateTexts.normal,
             quote: (rawNarrateTexts.quote as boolean) ?? defaultNarrateTexts.quote,

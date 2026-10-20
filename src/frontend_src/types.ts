@@ -953,9 +953,9 @@ export interface Profile extends ObjectData {
   cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
+  textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
   narrateTexts: Record<textType, boolean>;
   narrateTextCharacterIds: Record<textType, string>; // Text type -> character Id that will narrate this text type.
-  textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
@@ -1021,9 +1021,9 @@ export interface RawProfile extends RawData {
   cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
+  textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
   narrateTexts: Record<textType, boolean>;
   narrateTextCharacterIds: Record<textType, string>; // Text type -> character Id that will narrate this text type.
-  textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
