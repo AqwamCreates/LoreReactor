@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ── Navigate to project root (handles root or scripts/ folder) ─
+# ── Navigate to project root ─
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -f "$SCRIPT_DIR/package.json" ]; then
     cd "$SCRIPT_DIR"
@@ -10,18 +10,17 @@ else
 fi
 ROOT="$PWD"
 
-# ── Detect OS & Architecture ──────────────────────────────────
 OS="Linux"
 [[ "$OSTYPE" == "darwin"* ]] && OS="macOS"
 
 echo ""
 echo "  ========================================"
-echo "          LoreReactor Build Script ($OS)"
+echo "          LoreReactor Full Build ($OS)"
 echo "  ========================================"
 echo ""
 
-# ── [1/4] Check Node.js ──────────────────────────────────────
-echo "  [1/4] Checking Node.js ..."
+# ── [1/3] Check Node.js ──────────────────────────────────────
+echo "  [1/3] Checking Node.js ..."
 if ! command -v node &>/dev/null; then
     echo ""
     echo "  [ERROR] Node.js is NOT installed."
@@ -37,8 +36,8 @@ if [ "$NODE_MAJOR" -lt 18 ]; then
     exit 1
 fi
 
-# ── [2/4] Verify Project Files & Dependencies ────────────────
-echo "  [2/4] Verifying dependencies ..."
+# ── [2/3] Verify Project Files & Dependencies ────────────────
+echo "  [2/3] Verifying dependencies ..."
 if [ ! -f "package.json" ]; then
     echo "  [ERROR] package.json not found in $ROOT."
     exit 1
@@ -63,32 +62,13 @@ else
     echo "  Dependencies up to date."
 fi
 
-# ── [3/4 & 4/4] Build Execution ───────────────────────────────
-MODE="${1:-build}"
-
-if [ "$MODE" = "release" ]; then
-    echo ""
-    echo "  [3/4] Building Sidecars ..."
-    if command -v pwsh &>/dev/null; then
-        pwsh -ExecutionPolicy Bypass -File build-all-sidecars.ps1
-    elif command -v powershell &>/dev/null; then
-        powershell -ExecutionPolicy Bypass -File build-all-sidecars.ps1
-    else
-        npm run sidecars
-    fi
-
-    echo ""
-    echo "  [4/4] Building Tauri Release package ..."
-    npm run release
-else
-    echo ""
-    echo "  [3/4] Skipping sidecars for standard build..."
-    echo "  [4/4] Running application build (tsc + vite) ..."
-    npm run build
-fi
+# ── [3/3] Run Full Release / Build Pipeline ─────────────────
+echo ""
+echo "  [3/3] Running full build and release pipeline ..."
+npm run release
 
 echo ""
 echo "  ========================================"
-echo "    LoreReactor Build Successful!"
+echo "    LoreReactor Full Build Successful!"
 echo "  ========================================"
 echo ""

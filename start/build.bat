@@ -2,7 +2,7 @@
 setlocal EnableDelayedExpansion
 title LoreReactor Builder
 
-:: ── Navigate to project root (handles root or scripts/ folder) ─
+:: ── Navigate to project root ─
 if exist "%~dp0package.json" (
     cd /d "%~dp0"
 ) else (
@@ -12,12 +12,12 @@ set "ROOT=%CD%"
 
 echo.
 echo   ========================================
-echo           LoreReactor Build Script
+echo           LoreReactor Full Build
 echo   ========================================
 echo.
 
-:: ── [1/4] Check Node.js ─────────────────────────────────────
-echo   [1/4] Checking Node.js ...
+:: ── [1/3] Check Node.js ─────────────────────────────────────
+echo   [1/3] Checking Node.js ...
 where node >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
@@ -39,8 +39,8 @@ if !NODE_MAJOR! LSS 18 (
     exit /b 1
 )
 
-:: ── [2/4] Verify Project Files & Dependencies ───────────────
-echo   [2/4] Verifying dependencies ...
+:: ── [2/3] Verify Project Files & Dependencies ───────────────
+echo   [2/3] Verifying dependencies ...
 if not exist "package.json" (
     echo   [ERROR] package.json not found in !ROOT!.
     pause
@@ -76,34 +76,14 @@ if "!NEED_INSTALL!"=="1" (
     echo   Dependencies up to date.
 )
 
-:: ── [3/4 & 4/4] Build Execution ─────────────────────────────
-set "MODE=%~1"
-if "%MODE%"=="" set "MODE=build"
+:: ── [3/3] Run Full Release / Build Pipeline ─────────────────
+echo.
+echo   [3/3] Running full build and release pipeline ...
+call npm run release
 
-if /i "%MODE%"=="release" (
+if %errorlevel% neq 0 (
     echo.
-    echo   [3/4] Building Sidecars ...
-    call npm run sidecars
-    if !errorlevel! neq 0 (
-        echo.
-        echo   [ERROR] Sidecar build failed.
-        pause
-        exit /b 1
-    )
-
-    echo.
-    echo   [4/4] Building Tauri Release package ...
-    call npm run release
-) else (
-    echo.
-    echo   [3/4] Skipping sidecars for standard build...
-    echo   [4/4] Running application build ^(tsc + vite^) ...
-    call npm run build
-)
-
-if !errorlevel! neq 0 (
-    echo.
-    echo   [ERROR] Build process failed!
+    echo   [ERROR] Build/Release failed!
     echo.
     pause
     exit /b 1
@@ -111,7 +91,7 @@ if !errorlevel! neq 0 (
 
 echo.
 echo   ========================================
-echo     LoreReactor Build Successful!
+echo     LoreReactor Full Build Successful!
 echo   ========================================
 echo.
 
