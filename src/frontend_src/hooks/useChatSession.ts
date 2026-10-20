@@ -646,7 +646,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     saveRawInteractionData(sd).catch(e => console.error('Failed to save ambient narration:', e));
                 } else {
                     setInteractionData(ud);
-                    broadcastNewMessages(preTurnCount, sd);
+                    broadcastNewMessages(preTurnCount, ud);
                     saveRawInteractionData(ud).catch(e => console.error('Failed to save data:', e));
                 }
             }
