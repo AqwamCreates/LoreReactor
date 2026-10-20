@@ -74,9 +74,6 @@ export const VALID_ENTITY_TYPES: entityType[] = [
     'multiplayerData', 'entityFolder'
 ];
 
-/**
- * Maps the AI's underscore / snake_case forms to canonical entityType from types.ts
- */
 export function normalizeEntityType(raw: string): entityType | null {
     if (!raw) return null;
     const cleaned = raw.toLowerCase().replace(/[-_\s]/g, '');
@@ -554,8 +551,8 @@ function executeSkyView(args: string, nextMessage: BaseMessage, interactionData:
     if (!location || !location?.hasSkyView) {
         return { toolType: 'sky_view', args, textContent: 'You cannot see the sky from here.', displayReplacement: '[🔭 No sky view]' };
     }
-    const timeData = getCharacterTimeData(interactionData, nextMessage.character);
-    const skyDescription = generateSkyViewText(timeData.rawTimestamp, location?.latitude, location?.longitude);
+    const timeData = getCharacterTimeData(interactionData, nextMessage.character).luxonTimestamp;
+    const skyDescription = generateSkyViewText(timeData.toMillis(), location?.latitude, location?.longitude);
     return { toolType: 'sky_view', args, textContent: skyDescription, displayReplacement: `[🔭 ${skyDescription}]` };
 }
 
@@ -763,16 +760,17 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
         return { toolType: 'move', args, textContent: `Already at "${targetLocation.name}".`, displayReplacement: `[🚶 Already at "${targetLocation.name}"]` };
     }
 
-    const isAdjacent = currentLocation.locationBindings?.includes(targetLocation.id) || targetLocation.locationBindings?.includes(currentLocation.id);
+    // FIX: Use getReachableLocationsByCharacter so that unbound locations can freely access each other
+    const reachable = getReachableLocationsByCharacter(interactionData, nextMessage.character);
+    const isAdjacent = reachable.some(l => l.id === targetLocation.id);
+
     if (!isAdjacent) {
+        if (isCharacterLockedFromLocation(interactionData, nextMessage.character.id, targetLocation.id)) {
+            return { toolType: 'move', args, textContent: `[Error: Location "${targetLocation.name}" is locked]`, displayReplacement: '[Error: Location locked]' };
+        }
         return { toolType: 'move', args, textContent: `[Error: Location "${targetLocation.name}" is not adjacent]`, displayReplacement: '[Error: Not adjacent]' };
     }
 
-    if (isCharacterLockedFromLocation(interactionData, nextMessage.character.id, targetLocation.id)) {
-        return { toolType: 'move', args, textContent: `[Error: Location "${targetLocation.name}" is locked]`, displayReplacement: '[Error: Location locked]' };
-    }
-
-    // Add this dispatcher:
     appendPendingAction(nextMessage, {
         type: 'move',
         payload: {
@@ -1515,7 +1513,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         if (myQty <= qty) delete myInv[item]; else myInv[item] = myQty - qty;
         targetInv[item] = (typeof targetInv[item] === 'number' ? (targetInv[item] as number) : 0) + qty;
         
-        // Update both inventories
         nextMessage.inventory = myInv;
         targetLatest.message.inventory = targetInv;
         
@@ -1541,7 +1538,6 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         if (theirQty <= qty) delete targetInv[item]; else targetInv[item] = theirQty - qty;
         myInv[item] = (typeof myInv[item] === 'number' ? (myInv[item] as number) : 0) + qty;
         
-        // Update both inventories
         nextMessage.inventory = myInv;
         targetLatest.message.inventory = targetInv;
         
@@ -1646,18 +1642,15 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
             return { toolType: 'kick', args, textContent: `[Error: Destination location "${destLocQuery}" not found in current session]`, displayReplacement: '[Error: Location not found]' };
         }
 
-        // 3. MOVEMENT RESTRICTION: Destination MUST be adjacent/reachable
         const isReachable = reachable.some(l => l.id === destLoc!.id);
         if (!isReachable) {
             return { toolType: 'kick', args, textContent: `[Error: Cannot kick to "${destLoc.name}" — it is not adjacent/reachable from ${currentLocation.name}]`, displayReplacement: '[Error: Not reachable]' };
         }
 
-        // 4. LOCK RESTRICTION: Target cannot be kicked into a room locked for them
         if (isCharacterLockedFromLocation(interactionData, targetChar.id, destLoc.id)) {
             return { toolType: 'kick', args, textContent: `[Error: Destination "${destLoc.name}" is locked for ${targetChar.name}]`, displayReplacement: '[Error: Destination locked]' };
         }
     } else {
-        // Fall back to the first unlocked reachable adjacent room
         destLoc = reachable.find(l => !isCharacterLockedFromLocation(interactionData, targetChar.id, l.id));
         if (!destLoc) {
             return { toolType: 'kick', args, textContent: `[Error: All adjacent exits are locked for ${targetChar.name}]`, displayReplacement: '[Error: Exits locked]' };
@@ -1726,7 +1719,6 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
 
     const originName = currentLocation ? `"${currentLocation.name}"` : 'the area';
 
-    // Add this dispatcher:
     appendPendingAction(nextMessage, {
         type: 'teleport',
         payload: {
