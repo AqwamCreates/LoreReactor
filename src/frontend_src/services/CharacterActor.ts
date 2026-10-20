@@ -3,7 +3,10 @@ import type {
     Character, InteractionData, BudgetStrategy, BudgetData, 
     PromptBlock, tool, ChatMessage, LanguageModel, Profile, 
     ToolExecutionResult, toolUsageDisplayMode, toolUsageDisplayPlacementMode,
-    ActiveToolActions, PendingToolAction, Inventory
+    ActiveToolActions, PendingToolAction, Inventory,
+    WhisperMessage,
+    NarrationMessage,
+    ToolMessage
 } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildRequestBody, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/interactionDataLogic';
@@ -705,12 +708,15 @@ export class CharacterActor {
                         : msgs.findIndex(m => m.character.id === character.id && (m.messageType === 'chat' || m.messageType === 'whisper'));
                     if (targetIdx !== -1) {
                         newHistories[locId] = [...msgs];
-                        const targetMsg = { ...msgs[targetIdx] } as ChatMessage;
+                        
+                        // Cast to a union of all message types that possess textContent and tool execution results
+                        const targetMsg = { ...msgs[targetIdx] } as ChatMessage | WhisperMessage | ToolMessage | NarrationMessage;
                         
                         // FIX: Explicitly sync textContent with accumulated rawText on resume
                         targetMsg.textContent = rawText;
 
-                        if (allExecutionResults.length > 0) {
+                        // Narrow the type to exclude NarrationMessage, which lacks toolExecutionResults
+                        if (allExecutionResults.length > 0 && targetMsg.messageType !== 'narration') {
                             targetMsg.toolExecutionResults = [
                                 ...(targetMsg.toolExecutionResults || []),
                                 ...allExecutionResults,
@@ -767,9 +773,8 @@ export class CharacterActor {
                     msg.toolExecutionResults = allExecutionResults;
                 }
 
-                if (!isTool) {
-                    (msg as ChatMessage).characterExpression = latestExpression ?? undefined;
-                }
+                // Both ChatMessage and ToolMessage inherit characterExpression from BaseMessage
+                msg.characterExpression = latestExpression ?? undefined;
 
                 const speakerLocationId = getCurrentLocationId(data, character) || 'global';
                 updatedData = addMessageToInteractionData(data, msg, speakerLocationId);
