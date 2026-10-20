@@ -503,15 +503,18 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     font-family: inherit;
     font-size: clamp(0.75rem, 1.8vw, 0.875rem);
     line-height: 1.6;
-    padding: 4px;
+    padding: 8px 12px; /* Slightly increased padding for better typing experience */
     margin: 0;
-    border: none;
-    background: transparent;
+    border: 1px solid var(--border); /* Added a subtle border so it stands out from the bubble */
+    background: var(--bg); /* Solid background so text doesn't overlap bubble elements */
     color: var(--text-h);
     outline: none;
-    resize: none;
+    
+    /* ✅ CHANGED: Allow vertical resizing and set a proper minimum height */
+    resize: vertical;
+    max-height: 50vh; /* Prevents it from growing larger than the screen */
+    
     box-sizing: border-box;
-    min-height: 1.6em;
     overflow-y: auto;
     overflow-x: hidden;
     white-space: pre-wrap;
@@ -519,6 +522,7 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     word-wrap: break-word;
     align-self: stretch;
     border-radius: 8px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .edit-textarea:focus {
