@@ -560,7 +560,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                 <div style={{ marginBottom: '16px' }}>
                                     <label className="editor-label editor-label-small">Text Generation Behaviour On Narration</label>
                                     <select value={textGenerationBehaviourOnNarration} onChange={(e) => setTextGenerationBehaviourOnNarration(e.target.value as textGenerationBehaviourOnNarration)} className="editor-select" style={{ width: '100%' }}>
-                                        <option value="wait">Wait (Default) — Text generation waits for voice narration to complete</option>
+                                        <option value="wait">Wait — Text generation waits for voice narration to complete</option>
                                         <option value="continue">Continue — Text generation continues concurrently with voice narration</option>
                                         <option value="interrupt">Interrupt — Stops previous voice narration immediately</option>
                                     </select>
