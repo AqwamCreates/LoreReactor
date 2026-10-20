@@ -1472,9 +1472,7 @@ function parseItemList(input: string): Record<string, number> {
 function executeTrade(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    if (!action) {
-        return helpResult('trade', 'action="give|take|offer|accept|decline|list_offers", ...', 'transfer items or manage trade offers');
-    }
+    if (!action) return helpResult('trade', 'action="give|take|offer|accept|decline|list_offers", ...', 'transfer items or manage trade offers');
 
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const myInv: Inventory = nextMessage.inventory 
