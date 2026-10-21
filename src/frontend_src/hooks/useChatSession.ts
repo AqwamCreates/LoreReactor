@@ -186,7 +186,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     const lastTurnContextRef = useRef<{ modelId: string; prompt: string; metadata: RequestMetadata } | null>(null);
     const requestTimestampsRef = useRef<number[]>([]);
 
-    // ✅ Track active scheduled timeouts mapped by messageId so they can be canceled if deleted
     const scheduledTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>[]>>(new Map());
 
     const getRequestsLastHour = useCallback(() => {
@@ -216,7 +215,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const { captureFrontCameraImage } = useFrontCamera(addToast);
 
-    // ✅ Filters global prompt blocks down to the active profile's inputStrategy
     const getActivePromptBlocks = useCallback((data: InteractionData | null | undefined): PromptBlock[] => {
         const profile = data?.profile;
         return profile?.inputStrategy 
@@ -359,7 +357,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     const triggerDelayedResponseRef = useRef<(characterId: string, thought?: string) => Promise<void>>(null);
 
-    // ✅ Cleanly schedules follow-ups from activeToolActions and tracks timeouts by messageId
     const extractAndScheduleResponses = useCallback((data: InteractionData) => {
         const history = getGlobalMessageHistory(data);
         const protagonistIds = new Set(data.protagonistIds || []);
@@ -393,7 +390,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const existingList = scheduledTimeoutsRef.current.get(chatMsg.id) || [];
                     scheduledTimeoutsRef.current.set(chatMsg.id, [...existingList, ...timeouts]);
 
-                    // Cleanly remove scheduledResponses from activeToolActions so it doesn't reschedule
                     const updatedHistories = { ...data.interactionHistories };
                     for (const [locId, msgs] of Object.entries(updatedHistories) as [string, HistoryMessage[]][]) {
                         const idx = msgs.findIndex(m => m.id === chatMsg.id);
@@ -422,7 +418,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, [addToast, setInteractionData]);
 
-    // ✅ Reactively cancel scheduled responses if their triggering message is deleted, trimmed, or chat resets (using for...of instead of forEach)
     useEffect(() => {
         const timeoutsMap = scheduledTimeoutsRef.current;
         if (!interactionData) {
@@ -446,7 +441,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
     }, [interactionData]);
 
-    // ✅ Clear all timeouts on unmount using for...of instead of forEach
     useEffect(() => {
         const timeoutsMap = scheduledTimeoutsRef.current;
         return () => {
@@ -475,12 +469,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         const profile = data.profile;
         const narrationBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
 
-        // 🛑 Handle 'interrupt' vs 'wait' behavior for previous ongoing voice narration BEFORE setting new streaming state / character
         if (narrationBehaviour === 'interrupt' && currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
         } else if (narrationBehaviour === 'wait' && currentVoiceTrackerRef.current) {
-            // ✅ In 'wait' mode, ensure previous voice narration finishes playing completely BEFORE updating UI state for the next character
             try {
                 await currentVoiceTrackerRef.current.waitForPlaybackCompletion();
             } catch (e) {
@@ -536,12 +528,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (existingCharacterText) {
             voiceTracker.seed(existingCharacterText);
         } else if (prefillText) {
-            // ✅ Seed tracker with prefill so it doesn't double-read if model echoes it
             voiceTracker.seed(prefillText);
         }
         currentVoiceTrackerRef.current = voiceTracker;
         
-        // ✅ Await voiceTracker.start() so initialization/audio fetching finishes BEFORE tokens start streaming in
         await voiceTracker.start().catch(err => console.warn('[useChatSession] VoiceTracker start failed:', err));
 
         useSessionStore.setState({
@@ -569,7 +559,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             let turnResult: Awaited<ReturnType<typeof chatEngine.runTurn>> | null = null;
             try {
-                // ✅ Pass prefillText down to the engine
                 turnResult = await chatEngine.runTurn(data, ctrl, promptBlocks, metadata, existingCharacterText, voiceTracker, prefillText);
             } catch (e) {
                 if ((e as Error).name === 'AbortError') {
@@ -580,9 +569,10 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
 
             if (!turnResult) {
-                // 🛠️ BULLETPROOF FIX: Fallback to buffer text if pendingPartialRef wasn't explicitly populated
-                if (!pendingPartialRef.current && streamingTextRef.current && respondingChar) {
-                    pendingPartialRef.current = { text: streamingTextRef.current, character: respondingChar };
+                // 🛠️ BULLETPROOF FIX: Fallback to Zustand store if streamingTextRef wasn't populated by the orchestrator
+                const liveText = streamingTextRef.current || getState().streamingText;
+                if (!pendingPartialRef.current && liveText && respondingChar) {
+                    pendingPartialRef.current = { text: liveText, character: respondingChar };
                 }
 
                 if (pendingPartialRef.current) {
@@ -624,7 +614,8 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
 
             if (getGlobalMessageHistory(ud).length <= preTurnCount) {
-                const liveText = streamingTextRef.current;
+                // 🛠️ BULLETPROOF FIX: Fallback to Zustand store if streamingTextRef wasn't populated
+                const liveText = streamingTextRef.current || getState().streamingText;
                 if (liveText && respondingChar) {
                     const currentLocId = getCurrentLocationId(ud, respondingChar) || 'global';
                     const fallbackMsg = createChatMessage(ud, respondingChar, liveText);
@@ -677,7 +668,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     const sd = ad || ud;
                     setInteractionData(sd);
 
-                    // ✅ Scope ambient narration voice retrieval to the specific location where it was added
                     const currentLocId = getCurrentLocationId(sd, respondingChar) || 'global';
                     const locationMessages = sd.interactionHistories[currentLocId] || [];
                     const lastMsg = locationMessages[locationMessages.length - 1];
@@ -685,7 +675,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                     broadcastNewMessages(preTurnCount, sd);
                     saveRawInteractionData(sd).catch(e => console.error('Failed to save ambient narration:', e));
 
-                    // ✅ Allow location-scoped ambient narration text to use character voice narration overrides & behavior ('wait' / 'continue' / 'interrupt')
                     if (lastMsg && 'textContent' in lastMsg && lastMsg.textContent) {
                         if (narrationBehaviour === 'interrupt' && currentVoiceTrackerRef.current) {
                             currentVoiceTrackerRef.current.stopImmediate();
@@ -725,8 +714,9 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
             
             // 🛠️ BULLETPROOF FIX: Ensure partial text is saved even if errors bubble up through catch
-            if (!pendingPartialRef.current && streamingTextRef.current && respondingChar) {
-                pendingPartialRef.current = { text: streamingTextRef.current, character: respondingChar };
+            const liveText = streamingTextRef.current || getState().streamingText;
+            if (!pendingPartialRef.current && liveText && respondingChar) {
+                pendingPartialRef.current = { text: liveText, character: respondingChar };
             }
 
             if (pendingPartialRef.current) {
@@ -745,7 +735,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // ✅ Clean up tracker without calling waitForPlaybackCompletion() twice (since handleServerResponse already awaited it)
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
                 tracker.stopImmediate();
@@ -783,7 +772,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         getActivePromptBlocks
     ]);
 
-    // ✅ Rewritten to use executeTurnPipeline for proper UI state, voice tracking, and lock management
     const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
         const currentState = getState();
         const currentData = currentState.interactionData;
@@ -867,8 +855,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         const resumeId = resumingMessageIdRef.current;
         const currentData = getState().interactionData;
 
-        // 🛠️ BULLETPROOF FIX: Capture streaming text and character BEFORE resetStream() wipes them
-        const t = streamingTextRef.current;
+        // 🛠️ BULLETPROOF FIX: Capture streaming text and character BEFORE resetStream() wipes them.
+        // Fallback to Zustand store because the onToken pipeline is not fully wired through the orchestrator.
+        const t = streamingTextRef.current || getState().streamingText;
         const c = getState().streamingCharacter || streamingCharacterRef.current;
 
         abortControllerRef.current?.abort();
@@ -1004,7 +993,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         }
         currentVoiceTrackerRef.current = voiceTracker;
         
-        // ✅ Await voiceTracker.start() in resume generation as well
         await voiceTracker.start().catch(err => console.warn('[useChatSession] Resume VoiceTracker start failed:', err));
 
         resumingMessageIdRef.current = messageId;
@@ -1098,7 +1086,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // ✅ Clean up tracker without calling waitForPlaybackCompletion() twice
             if (currentVoiceTrackerRef.current) {
                 const tracker = currentVoiceTrackerRef.current;
                 tracker.stopImmediate();
@@ -1195,7 +1182,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline]);
 
     const startNewChat = useCallback((char: Character) => {
-        // ✅ Cancel all pending scheduled follow-ups when creating a fresh chat session using for...of instead of forEach
         const timeoutsMap = scheduledTimeoutsRef.current;
         for (const timeouts of timeoutsMap.values()) {
             for (const t of timeouts) {
