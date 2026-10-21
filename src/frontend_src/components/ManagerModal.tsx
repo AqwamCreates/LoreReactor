@@ -583,9 +583,9 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                             title={showIds ? "Showing IDs (Click to show descriptions)" : "Showing Descriptions (Click to show IDs)"}
                             style={{ fontSize: '0.75rem', padding: '6px 12px', opacity: showIds ? 1 : 0.7 }}
                         >
-                            {showIds ? '🔢 IDs' : '📝 Desc'}
+                            {showIds ? '🔢 IDs' : '📝 Descriptions'}
                         </button>
-                        {showCreateNew && <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); onCreateNew!(); }}>➕ New {singularTitle}</button>}
+                        {showCreateNew && <button type="button" className="create-new-button" onClick={e => { e.stopPropagation(); onCreateNew!(); }}>➕</button>}
                         <button type="button" className="close-button close-button-spaced" onClick={onClose}>×</button>
                     </div>
                 </div>
