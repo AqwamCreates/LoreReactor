@@ -25,7 +25,7 @@ interface ChatState {
     selectedProfileId: string | null;
     activeExtensionIds: string[];
     allEntityFolders: EntityFolder[];
-    saveEntityFolder: ((folder: EntityFolder) => Promise<boolean> | void) | null;
+    saveEntityFolder: ((folder: EntityFolder) => Promise<boolean>) | null;
     sessionLoaded: boolean;
 
     setInteractionData: (data: InteractionData | null | ((prev: InteractionData | null) => InteractionData | null)) => void;
@@ -37,7 +37,7 @@ interface ChatState {
     setLastSelectedModelId: (id: string | null) => void;
     setNumberOfTokens: (count: number) => void;
     setAllEntityFolders: (folders: EntityFolder[]) => void;
-    setSaveEntityFolder: (fn: ((folder: EntityFolder) => Promise<boolean> | void) | null) => void;
+    setSaveEntityFolder: (fn: ((folder: EntityFolder) => Promise<boolean>) | null) => void;
     setSelectedCharacterId: (id: string | null) => void;
     setSelectedModelId: (id: string | null) => void;
     setSelectedProfileId: (id: string | null) => void;

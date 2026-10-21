@@ -348,14 +348,12 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 return;
             }
 
-            // Text generation is complete. Clear streaming text to hide the streaming bubble.
-            // Keep isLoading: true and streamingCharacter set so the "Stop" button remains active during audio playback.
             useGenerationStore.setState({ streamingText: '' });
             
-            // Release the pipeline lock so a new user message can interrupt the audio if needed.
             releaseLock();
 
-            if (voiceTracker && narrationBehaviour === 'wait') {
+            // ✅ FIX: Always await playback completion to keep isLoading: true and the Stop button active.
+            if (voiceTracker) {
                 try {
                     await voiceTracker.waitForPlaybackCompletion();
                 } catch (e) {
@@ -444,8 +442,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
                             const started = await ambientTracker.start().catch(() => false);
                             if (started) {
                                 ambientTracker.feed(lastMsg.textContent);
-                                if (narrationBehaviour === 'wait') await ambientTracker.waitForPlaybackCompletion();
-                                else await ambientTracker.flushAndStop();
+                                // ✅ FIX: Always await ambient playback to keep the Stop button active
+                                await ambientTracker.waitForPlaybackCompletion();
                                 ambientTracker.stopImmediate();
                                 if (currentVoiceTrackerRef.current === ambientTracker) currentVoiceTrackerRef.current = null;
                             }
@@ -487,7 +485,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
 
             resetStream();
-            // Clean up UI state once audio is fully finished or stopped
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
             releaseLock();
 
@@ -544,8 +541,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
             
-            const narrationBehaviour = currentData.profile?.textGenerationBehaviourOnNarration ?? 'wait';
-            if (voiceTracker && narrationBehaviour === 'wait') {
+            // ✅ FIX: Always await playback completion
+            if (voiceTracker) {
                 await voiceTracker.waitForPlaybackCompletion();
             }
         } catch (e) {
@@ -599,7 +596,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
 
-        // Immediately kill audio playback
         if (currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
@@ -722,7 +718,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
 
-            if (voiceTracker && narrationBehaviour === 'wait') {
+            // ✅ FIX: Always await playback completion
+            if (voiceTracker) {
                 try {
                     await voiceTracker.waitForPlaybackCompletion();
                 } catch (e) {
