@@ -1,6 +1,6 @@
 // src/frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
-import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import type { 
     Character, Sampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
@@ -245,30 +245,30 @@ export function CharacterEditorModal({
     const voiceInputRef = useRef<HTMLInputElement>(null);
     const tokenCountTimeoutsRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
-    const handleToolToggle = useCallback((toolName: tool) => {
+    const handleToolToggle = (toolName: tool) => {
         if (isReadOnly) return;
         setTools(prev => ({ ...prev, [toolName]: !prev[toolName] }));
-    }, [isReadOnly]);
+    };
 
-    const handleSelectAllTools = useCallback(() => {
+    const handleSelectAllTools = () => {
         if (isReadOnly) return;
         setTools(prev => {
             const next = { ...prev };
             for (const key of Object.keys(next) as tool[]) next[key] = true;
             return next;
         });
-    }, [isReadOnly]);
+    };
 
-    const handleDeselectAllTools = useCallback(() => {
+    const handleDeselectAllTools = () => {
         if (isReadOnly) return;
         setTools(prev => {
             const next = { ...prev };
             for (const key of Object.keys(next) as tool[]) next[key] = false;
             return next;
         });
-    }, [isReadOnly]);
+    };
 
-    const handleAutoDetectTools = useCallback(() => {
+    const handleAutoDetectTools = () => {
         if (isReadOnly) return;
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const detected = detectToolsFromText(combinedText);
@@ -286,7 +286,7 @@ export function CharacterEditorModal({
 
         setDetectedToolsForModal(detected);
         setShowToolPermissionModal(true);
-    }, [name, description, systemPrompt, isReadOnly]);
+    };
 
     const effectiveCharacterIdForConfig = existingCharacter?.id || pendingCharacterId || '';
 
@@ -295,7 +295,7 @@ export function CharacterEditorModal({
         addedNames: { charName: string; names: string[] }[];
     } | null>(null);
 
-    const mergeKnownNames = useCallback((targets: Character[]) => {
+    const mergeKnownNames = (targets: Character[]) => {
         if (isReadOnly) return;
         setKnownCharacterNames(prev => {
             const next = { ...prev };
@@ -329,52 +329,52 @@ export function CharacterEditorModal({
 
             return changed ? next : prev;
         });
-    }, [effectiveCharacterIdForConfig, isReadOnly]);
+    };
 
-    const handleKnowCurrentProtagonist = useCallback(() => {
+    const handleKnowCurrentProtagonist = () => {
         if (!localProtagonistId) return;
         const protagChar = allCharacters.find(c => c.id === localProtagonistId) 
             || interactionData?.participants.find(p => p.id === localProtagonistId);
         if (protagChar) mergeKnownNames([protagChar]);
-    }, [localProtagonistId, allCharacters, interactionData, mergeKnownNames]);
+    };
 
-    const handleKnowCoLocatedProtagonists = useCallback(() => {
+    const handleKnowCoLocatedProtagonists = () => {
         if (!interactionData || !existingCharacter) return;
         const coLocated = getCoLocatedProtagonists(interactionData, existingCharacter);
         if (coLocated.length > 0) mergeKnownNames(coLocated);
-    }, [interactionData, existingCharacter, mergeKnownNames]);
+    };
 
-    const handleKnowAllProtagonists = useCallback(() => {
+    const handleKnowAllProtagonists = () => {
         if (!interactionData?.protagonistIds?.length) return;
         const protagChars = interactionData.protagonistIds
             .map(id => interactionData.participants.find(p => p.id === id))
             .filter((c): c is Character => !!c);
         if (protagChars.length > 0) mergeKnownNames(protagChars);
-    }, [interactionData, mergeKnownNames]);
+    };
 
-    const handleKnowCoLocatedParticipants = useCallback(() => {
+    const handleKnowCoLocatedParticipants = () => {
         if (!interactionData || !existingCharacter) return;
         const coLocated = getCoLocatedParticipants(interactionData, existingCharacter);
         if (coLocated.length > 0) mergeKnownNames(coLocated);
-    }, [interactionData, existingCharacter, mergeKnownNames]);
+    };
 
-    const handleKnowAllParticipants = useCallback(() => {
+    const handleKnowAllParticipants = () => {
         if (!interactionData?.participants?.length) return;
         mergeKnownNames(interactionData.participants);
-    }, [interactionData, mergeKnownNames]);
+    };
 
-    const handleKnowAllCharacters = useCallback(() => {
+    const handleKnowAllCharacters = () => {
         if (allCharacters.length === 0) return;
         mergeKnownNames(allCharacters);
-    }, [allCharacters, mergeKnownNames]);
+    };
 
-    const handleRevertKnownNames = useCallback(() => {
+    const handleRevertKnownNames = () => {
         if (isReadOnly) return;
         setKnownCharacterNames(initialKnownCharacterNamesRef.current);
         setQuickConfigFeedback({ label: 'Reverted to Original', addedNames: [] });
-    }, [isReadOnly]);
+    };
 
-    const handleAutoDetectStats = useCallback(() => {
+    const handleAutoDetectStats = () => {
         if (isReadOnly) return;
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
@@ -404,9 +404,9 @@ export function CharacterEditorModal({
         setActionStaminaRegenerationRateStr(String(asrr));
 
         setAutoDetected(newDetected);
-    }, [name, description, systemPrompt, autoDetected, isReadOnly]);
+    };
 
-    const handleResetStatsToDefaults = useCallback(() => {
+    const handleResetStatsToDefaults = () => {
         if (isReadOnly) return;
         setInitiativeWeightStr(String(DEFAULT_INITIATIVE_WEIGHT));
         setChatProbabilityStr(String(DEFAULT_CHAT_PROBABILITY));
@@ -420,7 +420,7 @@ export function CharacterEditorModal({
         setMaximumActionStaminaStr(String(DEFAULT_MAXIMUM_ACTION_STAMINA));
         setActionStaminaRegenerationRateStr(String(DEFAULT_ACTION_STAMINA_REGENERATION_RATE));
         setAutoDetected({ iw: null, cp: null, ms: null });
-    }, [isReadOnly]);
+    };
 
     const hasSession = !!interactionData;
     const hasLocalProtagonist = !!localProtagonistId;
@@ -437,7 +437,7 @@ export function CharacterEditorModal({
         return getCoLocatedParticipants(interactionData, existingCharacter).length;
     }, [interactionData, existingCharacter]);
 
-    const countFieldTokens = useCallback(async (field: keyof TokenCounts, text: string) => {
+    const countFieldTokens = async (field: keyof TokenCounts, text: string) => {
         if (!text) { setTokenCounts(prev => ({ ...prev, [field]: 0 })); return; }
         const timeouts = tokenCountTimeoutsRef.current;
         if (timeouts[field]) clearTimeout(timeouts[field]);
@@ -447,7 +447,7 @@ export function CharacterEditorModal({
             setTokenCounts(prev => ({ ...prev, [field]: count }));
             setCountingField(prev => prev === field ? null : prev);
         }, 500);
-    }, []);
+    };
 
     useEffect(() => {
         const timeouts = tokenCountTimeoutsRef.current;
@@ -663,20 +663,20 @@ export function CharacterEditorModal({
         setSelectedStopPatternIds(prev => prev.includes(id) ? prev.filter(sid => sid !== id) : [...prev, id]);
     };
 
-    const handleAddAlias = useCallback(() => {
+    const handleAddAlias = () => {
         if (isReadOnly) return;
         const val = newAliasInput;
         if (!val || aliases.includes(val)) return;
         setAliases(prev => [...prev, val]);
         setNewAliasInput('');
-    }, [newAliasInput, aliases, isReadOnly]);
+    };
 
-    const handleRemoveAlias = useCallback((alias: string) => {
+    const handleRemoveAlias = (alias: string) => {
         if (isReadOnly) return;
         setAliases(prev => prev.filter(a => a !== alias));
-    }, [isReadOnly]);
+    };
 
-    const handleAddKnownName = useCallback((targetCharId: string, nameVariant: string) => {
+    const handleAddKnownName = (targetCharId: string, nameVariant: string) => {
         if (isReadOnly) return;
         if (!nameVariant) return;
         setKnownCharacterNames(prev => {
@@ -684,9 +684,9 @@ export function CharacterEditorModal({
             if (existing.includes(nameVariant)) return prev;
             return { ...prev, [targetCharId]: [...existing, nameVariant] };
         });
-    }, [isReadOnly]);
+    };
 
-    const handleRemoveKnownName = useCallback((targetCharId: string, nameVariant: string) => {
+    const handleRemoveKnownName = (targetCharId: string, nameVariant: string) => {
         if (isReadOnly) return;
         setKnownCharacterNames(prev => {
             const existing = prev[targetCharId];
@@ -699,30 +699,30 @@ export function CharacterEditorModal({
             }
             return { ...prev, [targetCharId]: filtered };
         });
-    }, [isReadOnly]);
+    };
 
-    const handleRemoveAllKnownName = useCallback((targetCharId: string) => {
+    const handleRemoveAllKnownName = (targetCharId: string) => {
         if (isReadOnly) return;
         setKnownCharacterNames(prev => {
             const next = { ...prev };
             delete next[targetCharId];
             return next;
         });
-    }, [isReadOnly]);
+    };
 
-    const handleCharacterSelectForKnownName = useCallback((charId: string) => {
+    const handleCharacterSelectForKnownName = (charId: string) => {
         if (isReadOnly) return;
         setSelectedCharForKnownName(charId);
         setSelectedAliasForKnownName('');
-    }, [isReadOnly]);
+    };
 
-    const handleAliasSelectForKnownName = useCallback((alias: string) => {
+    const handleAliasSelectForKnownName = (alias: string) => {
         if (isReadOnly) return;
         if (alias && selectedCharForKnownName) {
             handleAddKnownName(selectedCharForKnownName, alias);
         }
         setSelectedAliasForKnownName('');
-    }, [selectedCharForKnownName, handleAddKnownName, isReadOnly]);
+    };
 
     const buildCharacterFromForm = async (isNewClone: boolean): Promise<Character | null> => {
         setSubmitError(null);
@@ -995,7 +995,7 @@ export function CharacterEditorModal({
         return emotions.filter(label => !used.has(label));
     }, [memoryPrompts]);
 
-    const handleAddMemoryPrompt = useCallback(() => {
+    const handleAddMemoryPrompt = () => {
         if (isReadOnly) return;
         const expr = newMemoryPromptExpression;
         const tmpl = newMemoryPromptTemplate;
@@ -1005,16 +1005,16 @@ export function CharacterEditorModal({
         const usedAfter = new Set([...Object.keys(memoryPrompts), expr]);
         const nextAvailable = emotions.find(l => !usedAfter.has(l));
         setNewMemoryPromptExpression(nextAvailable ?? emotions[0]);
-    }, [newMemoryPromptExpression, newMemoryPromptTemplate, memoryPrompts, isReadOnly]);
+    };
 
-    const handleRemoveMemoryPrompt = useCallback((expr: string) => {
+    const handleRemoveMemoryPrompt = (expr: string) => {
         if (isReadOnly) return;
         setMemoryPrompts(prev => {
             const next = { ...prev };
             delete next[expr];
             return next;
         });
-    }, [isReadOnly]);
+    };
 
     const getStopPatternById = (id: string) => {
         for (const s of allSamplers) {
