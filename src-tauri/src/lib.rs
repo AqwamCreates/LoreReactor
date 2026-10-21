@@ -9,7 +9,6 @@ pub fn run() {
     .plugin(tauri_plugin_shell::init())
     .setup(|app| {
       if cfg!(debug_assertions) {
-        // ✅ FIX: Added `let _ = ` to explicitly ignore the Result and silence the warning
         let _ = app.handle().plugin(
           tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
@@ -21,6 +20,8 @@ pub fn run() {
       let sidecar_command = app.handle().shell().sidecar("server")
           .expect("Failed to initialize sidecar command. Is 'server' defined in tauri.conf.json externalBin?");
           
+      // ✅ FIX: Removed the `?` operator. 
+      // `sidecar_command` is already a `Command` object, not a `Result`.
       let (_rx, _child) = sidecar_command
           .spawn()
           .expect("Failed to spawn Express backend sidecar");
