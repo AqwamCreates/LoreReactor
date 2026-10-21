@@ -95,11 +95,11 @@ export class ToolInvocationParser {
 
         // Absorb orphan closing brackets echoed by the model at prompt boundaries
         while (this.buffer.length > 0) {
-            const trimmedStart = this.buffer.trimStart();
-            if (trimmedStart.startsWith(toolResultEndString)) {
-                this.buffer = trimmedStart.slice(toolResultEndString.length);
-            } else if (trimmedStart.startsWith(toolCallEndString)) {
-                this.buffer = trimmedStart.slice(toolCallEndString.length);
+            const buffer = this.buffer;
+            if (buffer.startsWith(toolResultEndString)) {
+                this.buffer = buffer.slice(toolResultEndString.length);
+            } else if (buffer.startsWith(toolCallEndString)) {
+                this.buffer = buffer.slice(toolCallEndString.length);
             } else {
                 break;
             }

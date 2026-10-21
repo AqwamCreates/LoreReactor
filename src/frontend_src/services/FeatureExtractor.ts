@@ -258,7 +258,7 @@ export class FeatureExtractor {
         }
         
         const isFullyClosedResult = lastResultStart !== -1 && lastResultEnd !== -1 && lastResultEnd > lastResultStart;
-        if (isFullyClosedResult && prompt.trimEnd().endsWith(toolResultEndString)) {
+        if (isFullyClosedResult && prompt.endsWith(toolResultEndString)) {
             features.endsOnToolResult = 1;
         }
 

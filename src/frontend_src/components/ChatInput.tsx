@@ -116,7 +116,7 @@ export function ChatInput({
             }
             if (e.key === 'Escape') {
                 e.preventDefault();
-                setInputText(inputText.trimEnd());
+                setInputText(inputText);
                 return;
             }
             if (e.key === 'Backspace' && currentQuery === '' && activeIndex > 0) {

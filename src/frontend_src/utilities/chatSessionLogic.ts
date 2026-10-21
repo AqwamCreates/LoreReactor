@@ -162,7 +162,6 @@ export function evaluateAutoResumeSignals(
         }
 
         let isDeactivated = false;
-        const trimmedText = text.trimEnd();
 
         if (deactivationTrigger) {
             const textAfterActivation = text.slice(activationIndex);
@@ -170,17 +169,17 @@ export function evaluateAutoResumeSignals(
             if (textAfterActivation.length >= minLen) {
                 try {
                     const endsWithRegex = new RegExp(`${deactivationTrigger}$`);
-                    if (endsWithRegex.test(trimmedText) || trimmedText.endsWith(deactivationTrigger)) {
+                    if (endsWithRegex.test(text) || text.endsWith(deactivationTrigger)) {
                         isDeactivated = true;
                     }
                 } catch {
-                    if (trimmedText.endsWith(deactivationTrigger)) {
+                    if (text.endsWith(deactivationTrigger)) {
                         isDeactivated = true;
                     }
                 }
             }
         } else if (stopPattern) {
-            if (trimmedText.endsWith(stopPattern)) {
+            if (text.endsWith(stopPattern)) {
                 isDeactivated = true;
             }
         }

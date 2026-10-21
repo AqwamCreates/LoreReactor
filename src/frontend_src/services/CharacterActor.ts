@@ -182,8 +182,7 @@ function applyToolReplacements(
         if (currentRaw.includes(rawMatch)) {
             currentRaw = currentRaw.replace(rawMatch, rawReplacement);
         } else {
-            const trimmedRaw = currentRaw.trimEnd();
-            currentRaw = (trimmedRaw ? `${trimmedRaw} ` : '') + rawReplacement;
+            currentRaw = currentRaw + rawReplacement;
         }
     }
 

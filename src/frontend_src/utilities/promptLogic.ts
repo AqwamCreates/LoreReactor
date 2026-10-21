@@ -136,7 +136,7 @@ export function sanitizeToolSyntax(
     const callRegex = new RegExp(`${callStart}[\\s\\S]*?${callEnd}`, 'g');
     sanitized = sanitized.replace(callRegex, '');
     
-    return sanitized.replace(/\s{2,}/g, ' ').trim();
+    return sanitized.replace(/\s{2,}/g, ' ');
 }
 
 const GLOBAL_STRINGS: Record<string, string> = {

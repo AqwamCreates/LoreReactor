@@ -415,7 +415,7 @@ export function CompanionOverlay() {
                 else handleSend();
                 return;
             }
-            if (e.key === 'Escape') { e.preventDefault(); setInputText(inputText.trimEnd()); return; }
+            if (e.key === 'Escape') { e.preventDefault(); setInputText(inputText); return; }
             if (e.key === 'Backspace' && currentQuery === '' && activeIndex > 0) {
                 e.preventDefault();
                 const currentParts = inputText.split(/\s+/).filter(p => p.length > 0);

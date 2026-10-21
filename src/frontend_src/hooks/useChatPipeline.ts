@@ -347,10 +347,12 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 return;
             }
 
-            // ✅ PHASE 4: Clear streaming UI overlay immediately after text generation completes
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            
+            // ✅ FIX: Release the generation lock immediately after text generation completes.
+            // Audio playback should not block the user from sending a new message.
+            releaseLock();
 
-            // ✅ PHASE 4: Wait for voice playback in the Pipeline, not the Engine
             if (voiceTracker && narrationBehaviour === 'wait') {
                 try {
                     await voiceTracker.waitForPlaybackCompletion();
@@ -435,15 +437,15 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
                         const baseChar = allCharactersRef.current[0] || sd.participants[0];
                         if (baseChar) {
-                            const voiceTracker = new StreamingVoiceTracker(baseChar, allCharactersRef.current);
-                            currentVoiceTrackerRef.current = voiceTracker;
-                            const started = await voiceTracker.start().catch(() => false);
+                            const ambientTracker = new StreamingVoiceTracker(baseChar, allCharactersRef.current);
+                            currentVoiceTrackerRef.current = ambientTracker;
+                            const started = await ambientTracker.start().catch(() => false);
                             if (started) {
-                                voiceTracker.feed(lastMsg.textContent);
-                                if (narrationBehaviour === 'wait') await voiceTracker.waitForPlaybackCompletion();
-                                else await voiceTracker.flushAndStop();
-                                voiceTracker.stopImmediate();
-                                if (currentVoiceTrackerRef.current === voiceTracker) currentVoiceTrackerRef.current = null;
+                                ambientTracker.feed(lastMsg.textContent);
+                                if (narrationBehaviour === 'wait') await ambientTracker.waitForPlaybackCompletion();
+                                else await ambientTracker.flushAndStop();
+                                ambientTracker.stopImmediate();
+                                if (currentVoiceTrackerRef.current === ambientTracker) currentVoiceTrackerRef.current = null;
                             }
                         }
                     }
@@ -477,14 +479,17 @@ export function useChatPipeline(deps: PipelineDependencies) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            if (currentVoiceTrackerRef.current) {
-                const tracker = currentVoiceTrackerRef.current;
-                tracker.stopImmediate();
-                if (currentVoiceTrackerRef.current === tracker) currentVoiceTrackerRef.current = null;
+            // ✅ FIX: Only stop the tracker if it's still the one this pipeline instance created.
+            // This prevents a slow audio playback from killing a new generation's audio if the user sends a message.
+            if (currentVoiceTrackerRef.current === voiceTracker) {
+                voiceTracker.stopImmediate();
+                currentVoiceTrackerRef.current = null;
             }
 
             resetStream();
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            
+            // Safe to call multiple times; ensures lock is released if an error happened before the early release.
             releaseLock();
 
             if (pendingResumeRef.current) {
@@ -505,7 +510,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
         extractAndScheduleResponses, getActivePromptBlocks, onStateBroadcastRef, allCharactersRef, isAtBottomRef
     ]);
 
-    // ✅ PHASE 4: Fixed scheduled responses to properly manage UI state and voice tracking
     const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
         const currentState = getState();
         const currentData = currentState.interactionData;
@@ -539,6 +543,9 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
             
+            // ✅ FIX: Release lock before waiting for audio
+            releaseLock();
+            
             const narrationBehaviour = currentData.profile?.textGenerationBehaviourOnNarration ?? 'wait';
             if (voiceTracker && narrationBehaviour === 'wait') {
                 await voiceTracker.waitForPlaybackCompletion();
@@ -547,7 +554,10 @@ export function useChatPipeline(deps: PipelineDependencies) {
             console.error('Delayed response error:', e);
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
         } finally {
-            voiceTracker.stopImmediate();
+            if (currentVoiceTrackerRef.current === voiceTracker) {
+                voiceTracker.stopImmediate();
+                currentVoiceTrackerRef.current = null;
+            }
             releaseLock();
         }
     }, [getState, acquireLock, releaseLock, chatEngine, isLoadingRef, getActivePromptBlocks, allCharactersRef]);
@@ -710,8 +720,10 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, undefined, voiceTracker
             );
 
-            // ✅ PHASE 4: Clear UI and wait for voice in Pipeline
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            
+            // ✅ FIX: Release lock before waiting for audio
+            releaseLock();
 
             if (voiceTracker && narrationBehaviour === 'wait') {
                 try {
@@ -765,10 +777,9 @@ export function useChatPipeline(deps: PipelineDependencies) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            if (currentVoiceTrackerRef.current) {
-                const tracker = currentVoiceTrackerRef.current;
-                tracker.stopImmediate();
-                if (currentVoiceTrackerRef.current === tracker) currentVoiceTrackerRef.current = null;
+            if (currentVoiceTrackerRef.current === voiceTracker) {
+                voiceTracker.stopImmediate();
+                currentVoiceTrackerRef.current = null;
             }
 
             resetStream();
