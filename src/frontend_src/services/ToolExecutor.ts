@@ -587,7 +587,7 @@ function executeCalendar(args: string, nextMessage: BaseMessage, interactionData
 
 function executeCoinFlip(args: string): ToolResult {
     const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
-    return { toolType: 'coin', args, textContent: result, displayReplacement: `[🪙 Coin flip: ${result}]` };
+    return { toolType: 'coin', args, textContent: `The coin shows ${result.toLowerCase()}`, displayReplacement: `[🪙 Coin flip: ${result}]` };
 }
 
 // ─── Roll Dice ──────────────────────────────────────────────────────
