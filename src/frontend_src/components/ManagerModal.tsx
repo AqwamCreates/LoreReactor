@@ -33,12 +33,6 @@ interface ManagerModalProps<T> {
     addToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-function getSingularNoun(plural: string): string {
-    if (plural.endsWith('ies')) return `${plural.slice(0, -3)}y`;
-    if (plural.endsWith('s')) return plural.slice(0, -1);
-    return plural;
-}
-
 function extractTextContent(node: React.ReactNode): string {
     if (node == null || typeof node === 'boolean') return '';
     if (typeof node === 'string' || typeof node === 'number') return String(node);
