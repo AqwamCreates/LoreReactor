@@ -165,7 +165,6 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
     })();
 
     const showCreateNew = !!onCreateNew && !isHosterOwnedTab;
-    const singularTitle = useMemo(() => getSingularNoun(title), [title]);
 
     const typeFolders = useMemo(() => {
         return allEntityFolders
