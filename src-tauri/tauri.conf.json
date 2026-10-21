@@ -16,7 +16,8 @@
         "title": "LoreReactor",
         "width": 1200,
         "height": 800,
-        "resizable": true
+        "resizable": true,
+        "dragDropEnabled": false
       },
       {
         "label": "companion-overlay",
@@ -29,7 +30,8 @@
         "alwaysOnTop": true,
         "shadow": false,
         "skipTaskbar": true,
-        "visible": false
+        "visible": false,
+        "dragDropEnabled": false
       }
     ],
     "security": {

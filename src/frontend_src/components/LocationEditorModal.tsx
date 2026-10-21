@@ -1,5 +1,4 @@
 // src/frontend_src/components/LocationEditorModal.tsx
-import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { Location, Character, AudioTrack, RegularExpressionTrigger } from '../types';
 import { uploadLocationImage, cloneLocationImage } from '../storages/serverStorage';
@@ -7,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useChatStore } from '../hooks/useChatStore';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
+import { ImageList, type ImageEntry } from './ImageList';
 import '../main.css';
 
 const tokenEngine = getLanguageModelEngine();
@@ -22,10 +22,6 @@ interface LocationEditorModalProps {
 }
 
 type LocationTabId = 'general' | 'movement' | 'filter' | 'bindings';
-
-type ImageEntry = 
-    | { type: 'existing'; filename: string; previewUrl: string }
-    | { type: 'staged'; file: File; previewUrl: string };
 
 export function LocationEditorModal({
     isReadOnly = false,
@@ -113,7 +109,6 @@ function LocationEditorModalInner({
     const [bgImageTestResults, setBgImageTestResults] = useState<Record<number, boolean | null>>({});
 
     const [errors, setErrors] = useState<Record<string, any>>({});
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [textNumberOfTokens, setTextNumberOfTokens] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -222,18 +217,14 @@ function LocationEditorModalInner({
         }
     };
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files?.[0]) {
-            const files = Array.from(e.target.files);
-            const newEntries: ImageEntry[] = files.map(file => ({
-                type: 'staged',
-                file,
-                previewUrl: URL.createObjectURL(file),
-            }));
-            setImages(prev => [...prev, ...newEntries]);
-            if (errors.images) setErrors(prev => ({ ...prev, images: undefined }));
-        }
-        e.target.value = '';
+    const handleImageFilesAdded = (files: File[]) => {
+        const newEntries: ImageEntry[] = files.map(file => ({
+            type: 'staged',
+            file,
+            previewUrl: URL.createObjectURL(file),
+        }));
+        setImages(prev => [...prev, ...newEntries]);
+        if (errors.images) setErrors(prev => ({ ...prev, images: undefined }));
     };
 
     const handleRemoveImage = (index: number) => {
@@ -245,45 +236,49 @@ function LocationEditorModalInner({
             return prev.filter((_, i) => i !== index);
         });
 
-        setBgImageRegexTriggers(prev => {
-            const next: Record<number, string> = {};
-            for (const [k, v] of Object.entries(prev)) {
+        const shiftDict = <T,>(dict: Record<number, T>) => {
+            const next: Record<number, T> = {};
+            for (const [k, v] of Object.entries(dict)) {
                 const ki = Number(k);
                 if (ki < index) next[ki] = v;
                 else if (ki > index) next[ki - 1] = v;
             }
+            return next;
+        };
+
+        setBgImageRegexTriggers(prev => shiftDict(prev));
+        setBgImageWeights(prev => shiftDict(prev));
+        setBgImageTestTexts(prev => shiftDict(prev));
+        setBgImageTestResults(prev => shiftDict(prev));
+    };
+
+    const handleReorderImages = (fromIndex: number, toIndex: number) => {
+        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= images.length || toIndex >= images.length) return;
+        
+        setImages(prev => {
+            const next = [...prev];
+            const [movedItem] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, movedItem);
             return next;
         });
 
-        setBgImageWeights(prev => {
-            const next: Record<number, number> = {};
-            for (const [k, v] of Object.entries(prev)) {
-                const ki = Number(k);
-                if (ki < index) next[ki] = v;
-                else if (ki > index) next[ki - 1] = v;
+        const shiftDict = <T,>(dict: Record<number, T>) => {
+            const next: Record<number, T> = {};
+            for (let i = 0; i < images.length; i++) {
+                let oldPos = i;
+                if (i === toIndex) oldPos = fromIndex;
+                else if (fromIndex < toIndex && i >= fromIndex && i < toIndex) oldPos = i + 1;
+                else if (fromIndex > toIndex && i > toIndex && i <= fromIndex) oldPos = i - 1;
+                
+                if (oldPos in dict) next[i] = dict[oldPos];
             }
             return next;
-        });
+        };
 
-        setBgImageTestTexts(prev => {
-            const next: Record<number, string> = {};
-            for (const [k, v] of Object.entries(prev)) {
-                const ki = Number(k);
-                if (ki < index) next[ki] = v;
-                else if (ki > index) next[ki - 1] = v;
-            }
-            return next;
-        });
-
-        setBgImageTestResults(prev => {
-            const next: Record<number, boolean | null> = {};
-            for (const [k, v] of Object.entries(prev)) {
-                const ki = Number(k);
-                if (ki < index) next[ki] = v;
-                else if (ki > index) next[ki - 1] = v;
-            }
-            return next;
-        });
+        setBgImageRegexTriggers(prev => shiftDict(prev));
+        setBgImageWeights(prev => shiftDict(prev));
+        setBgImageTestTexts(prev => shiftDict(prev));
+        setBgImageTestResults(prev => shiftDict(prev));
     };
 
     const buildLocationFromForm = async (isNewClone: boolean): Promise<Location | null> => {
@@ -450,21 +445,14 @@ function LocationEditorModalInner({
 
                             <div className="context-field-group">
                                 <label className="editor-label">Images {imagesRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
-                                <div className="editor-image-grid">
-                                    {images.map((entry, index) => (
-                                        <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
-                                            <img src={entry.previewUrl} alt={`Location image ${index + 1}`} />
-                                            {!isReadOnly && <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button">×</button>}
-                                        </div>
-                                    ))}
-                                    <div className={`editor-image-square editor-upload-square ${(isUploading || isReadOnly) ? 'disabled' : ''}`} onClick={() => !(isUploading || isReadOnly) && fileInputRef.current?.click()}>
-                                        <div className="context-image-placeholder">
-                                            <div className="context-image-placeholder-icon">{isUploading ? '⏳' : '📷'}</div>
-                                            <div className="context-image-placeholder-text">{isUploading ? 'Uploading...' : 'Upload'}</div>
-                                        </div>
-                                    </div>
-                                </div>
-                                <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleImageChange} disabled={isUploading || isReadOnly} />
+                                <ImageList 
+                                    images={images}
+                                    isUploading={isUploading}
+                                    isReadOnly={isReadOnly}
+                                    onRemoveImage={handleRemoveImage}
+                                    onReorderImages={handleReorderImages}
+                                    onFilesAdded={handleImageFilesAdded}
+                                />
                                 {errors.images && <div className="editor-error-message">{errors.images}</div>}
                             </div>
 

@@ -40,6 +40,7 @@ import { CharacterTextCharacterInjectionEditorModal } from './CharacterTextChara
 import { CharacterDialoguePromptEditorModal } from './CharacterDialoguePromptEditorModal';
 import { CharacterKnowledgePromptEditorModal } from './CharacterKnowledgePromptEditorModal';
 import { CharacterStarterPromptEditorModal } from './CharacterStarterPromptEditorModal';
+import { FileDropArea } from './FileDropArea';
 import { getCoLocatedParticipants, getCoLocatedProtagonists } from '../utilities/locationLogic';
 import '../main.css';
 import { defaultCharacterTools } from '../dictionaries/defaults';
@@ -1065,653 +1066,675 @@ export function CharacterEditorModal({
         <>
             <div className="modal-overlay" onClick={onClose}>
                 <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
-                    <div className="modal-header">
-                        <h2>{(existingCharacter ? `${(isReadOnly) ? 'View' : 'Edit'} Character` : 'Create New Character')}</h2>
-                        <div className="editor-modal-actions">
-                            <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>
-                                {isReadOnly ? 'Close' : 'Cancel'}
-                            </button>
-                            {!isReadOnly && existingCharacter && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                            {!isReadOnly && !existingCharacter && (<>
-                                <button type="button" className="editor-button editor-button-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>Import</button>
-                                <input ref={cardImportRef} type="file" accept=".png,.charx,.json,image/png,application/zip,application/json" hidden onChange={handleCardImport} disabled={isUploading} />
-                            </>)}
-                            {!isReadOnly && <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Uploading...' : 'Save'}</button>}
-                        </div>
-                    </div>
-
-                    <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
-                        {editorTabs.map(tab => (
-                            <button
-                                key={tab.id}
-                                type="button"
-                                onClick={() => setActiveTab(tab.id)}
-                                className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
-                            >
-                                {tab.icon} {tab.label}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="modal-body editor-modal-body">
-                        {submitError && <div className="editor-error-message editor-error-centered">{submitError}</div>}
-
-                        {activeTab === 'general' && (
-                            <div className="editor-modal-columns">
-                                <div className="editor-left-column">
-                                    <div className="editor-image-upload-container">
-                                        <div className={`editor-image-square editor-image-portrait ${imagePreview ? 'active solid' : 'dashed'}`}
-                                            style={{ cursor: (isUploading || isReadOnly) ? 'default' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
-                                            onClick={() => !(isUploading || isReadOnly) && fileInputRef.current?.click()}>
-                                            {imagePreview ? (<><img src={imagePreview} alt="Character" />{!(isUploading || isReadOnly) && <div className="editor-image-hover-overlay"><button type="button" onClick={handleRemoveImage} className="editor-image-remove-button-large" title="Remove Picture">🗑️</button></div>}</>) : (<div className="editor-image-placeholder">{isUploading ? '⏳' : '📷'}</div>)}
-                                        </div>
-                                        <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading || isReadOnly} />
-                                    </div>
-
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowImageEditor(true)} disabled={isUploading || isReadOnly} style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}>
-                                        More Images ({Object.keys(emotionImages).length})
-                                    </button>
-
-                                    <div className="editor-section" style={{ marginTop: '8px' }}>
-                                        <label className="editor-checkbox-label">
-                                            <input type="checkbox" checked={useFrontCameraImage} onChange={(e) => setUseFrontCameraImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
-                                            <span>Use Front Camera Image</span>
-                                        </label>
-                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
-                                            Replace stored image with live front camera snapshot when profile allows per-character control.
-                                        </div>
-                                        <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
-                                            <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
-                                            <span>Do Not Inject Character Image</span>
-                                        </label>
-                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
-                                            Prevent this character's image from being sent to the model.
-                                        </div>
-                                    </div>
-
-                                    <div className="editor-section editor-voice-section">
-                                        <span className="editor-section-title">Voice</span>
-                                        <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
-                                        
-                                        <select 
-                                            value={voiceLanguage} 
-                                            onChange={(e) => setVoiceLanguage(e.target.value)} 
-                                            className="editor-select" 
-                                            style={{ marginBottom: '6px', fontSize: '0.7rem', padding: '4px 6px', width: '100%' }}
-                                            disabled={isUploading || isReadOnly}
-                                        >
-                                            <option value="">Select audio language...</option>
-                                            <option value="ja">Japanese (ja)</option>
-                                            <option value="en">English (en)</option>
-                                            <option value="zh">Chinese (zh)</option>
-                                            <option value="ko">Korean (ko)</option>
-                                            <option value="es">Spanish (es)</option>
-                                            <option value="fr">French (fr)</option>
-                                            <option value="de">German (de)</option>
-                                            <option value="ru">Russian (ru)</option>
-                                        </select>
-
-                                        {hasVoice ? (
-                                            <div className="editor-voice-chip">
-                                                <span className="editor-voice-chip-name">
-                                                    🎙️ {voiceFile ? voiceFile.name : (existingCharacter?.voice?.voiceFilename || 'audio')}
-                                                </span>
-                                                {!isReadOnly && <button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button>}
-                                            </div>
-                                        ) : (
-                                            !isReadOnly && (
-                                                <button 
-                                                    type="button" 
-                                                    onClick={() => !isUploading && voiceInputRef.current?.click()} 
-                                                    disabled={isUploading || !voiceLanguage} 
-                                                    className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}
-                                                    style={{ opacity: !voiceLanguage ? 0.5 : 1, cursor: !voiceLanguage ? 'not-allowed' : 'pointer' }}
-                                                >
-                                                    {isUploading ? '⏳ Uploading...' : '🎙️ Upload Voice Sample'}
-                                                </button>
-                                            )
-                                        )}
-                                        
-                                        {!hasVoice && !isReadOnly && !voiceLanguage && (
-                                            <div style={{ fontSize: '0.6rem', opacity: 0.6, marginTop: '4px', fontStyle: 'italic' }}>
-                                                Select a language above to enable upload.
-                                            </div>
-                                        )}
-
-                                        <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading || isReadOnly || !voiceLanguage} />
-                                    </div>
-                                </div>
-
-                                <div className="editor-right-column">
-                                    <textarea value={name} readOnly={isReadOnly} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading || isReadOnly} />
-                                    <textarea value={description} readOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading || isReadOnly} />
-                                    <textarea value={firstMessage} readOnly={isReadOnly} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading || isReadOnly} />
-
-                                    <div className="editor-field-wrapper-full">
-                                        <textarea value={systemPrompt} readOnly={isReadOnly} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading || isReadOnly} />
-                                        {renderTokenCount('systemPrompt')}
-                                    </div>
-                                    <div className="editor-field-wrapper"><textarea value={thinkPrompt} readOnly={isReadOnly} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading || isReadOnly} />{renderTokenCount('thinkPrompt')}</div>
-                                    <div className="editor-field-wrapper"><textarea value={appearancePrompt} readOnly={isReadOnly} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading || isReadOnly} />{renderTokenCount('appearancePrompt')}</div>
-                                </div>
+                    <FileDropArea
+                        acceptedTypes={['image', 'audio']}
+                        disabled={isUploading || isReadOnly}
+                        onDropImage={(file) => {
+                            setImageFile(file);
+                            setImagePreview(URL.createObjectURL(file));
+                            setActiveTab('general');
+                        }}
+                        onDropAudio={(file) => {
+                            if (file.size > MAX_VOICE_FILE_SIZE) { 
+                                setSubmitError(`Voice file too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB.`); 
+                                return; 
+                            }
+                            setVoiceFile(file); 
+                            setIsVoiceRemoved(false);
+                            setSubmitError(null);
+                            setActiveTab('general');
+                        }}
+                        overlayTitle="Drop Character Asset"
+                        overlaySubtitle="Images set neutral avatar • Audio sets voice file"
+                    >
+                        <div className="modal-header">
+                            <h2>{(existingCharacter ? `${(isReadOnly) ? 'View' : 'Edit'} Character` : 'Create New Character')}</h2>
+                            <div className="editor-modal-actions">
+                                <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>
+                                    {isReadOnly ? 'Close' : 'Cancel'}
+                                </button>
+                                {!isReadOnly && existingCharacter && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                                {!isReadOnly && !existingCharacter && (<>
+                                    <button type="button" className="editor-button editor-button-import" onClick={() => cardImportRef.current?.click()} disabled={isUploading}>Import</button>
+                                    <input ref={cardImportRef} type="file" accept=".png,.charx,.json,image/png,application/zip,application/json" hidden onChange={handleCardImport} disabled={isUploading} />
+                                </>)}
+                                {!isReadOnly && <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Uploading...' : 'Save'}</button>}
                             </div>
-                        )}
+                        </div>
 
-                        {activeTab === 'behaviour' && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                {/* ✅ Updated Starter Prompts Section */}
-                                <div className="editor-section" style={{ margin: 0 }}>
-                                    <div className="editor-section-title">Starter Prompts ({starterPrompts.length})</div>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowStarterPromptEditor(true)} disabled={isUploading || isReadOnly} style={{ width: '100%' }}>
-                                        Edit Starter Prompts ({starterPrompts.length})
-                                    </button>
+                        <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                            {editorTabs.map(tab => (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    onClick={() => setActiveTab(tab.id)}
+                                    className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
+                                >
+                                    {tab.icon} {tab.label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="modal-body editor-modal-body">
+                            {submitError && <div className="editor-error-message editor-error-centered">{submitError}</div>}
+
+                            {activeTab === 'general' && (
+                                <div className="editor-modal-columns">
+                                    <div className="editor-left-column">
+                                        <div className="editor-image-upload-container">
+                                            <div className={`editor-image-square editor-image-portrait ${imagePreview ? 'active solid' : 'dashed'}`}
+                                                style={{ cursor: (isUploading || isReadOnly) ? 'default' : 'pointer', opacity: isUploading ? 0.7 : 1 }}
+                                                onClick={() => !(isUploading || isReadOnly) && fileInputRef.current?.click()}>
+                                                {imagePreview ? (<><img src={imagePreview} alt="Character" />{!(isUploading || isReadOnly) && <div className="editor-image-hover-overlay"><button type="button" onClick={handleRemoveImage} className="editor-image-remove-button-large" title="Remove Picture">🗑️</button></div>}</>) : (<div className="editor-image-placeholder">{isUploading ? '⏳' : '📷'}</div>)}
+                                            </div>
+                                            <input ref={fileInputRef} type="file" accept="image/*" hidden onChange={handleImageChange} disabled={isUploading || isReadOnly} />
+                                        </div>
+
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowImageEditor(true)} disabled={isUploading || isReadOnly} style={{ width: '100%', marginTop: '6px', fontSize: '0.75rem' }}>
+                                            More Images ({Object.keys(emotionImages).length})
+                                        </button>
+
+                                        <div className="editor-section" style={{ marginTop: '8px' }}>
+                                            <label className="editor-checkbox-label">
+                                                <input type="checkbox" checked={useFrontCameraImage} onChange={(e) => setUseFrontCameraImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                                <span>Use Front Camera Image</span>
+                                            </label>
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
+                                                Replace stored image with live front camera snapshot when profile allows per-character control.
+                                            </div>
+                                            <label className="editor-checkbox-label" style={{ marginTop: '8px' }}>
+                                                <input type="checkbox" checked={doNotInjectCharacterImage} onChange={(e) => setDoNotInjectCharacterImage(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                                <span>Do Not Inject Character Image</span>
+                                            </label>
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px', marginLeft: '26px' }}>
+                                                Prevent this character's image from being sent to the model.
+                                            </div>
+                                        </div>
+
+                                        <div className="editor-section editor-voice-section">
+                                            <span className="editor-section-title">Voice</span>
+                                            <div className="editor-voice-hint">Used for reading character's text. Maximum 5MB.</div>
+                                            
+                                            <select 
+                                                value={voiceLanguage} 
+                                                onChange={(e) => setVoiceLanguage(e.target.value)} 
+                                                className="editor-select" 
+                                                style={{ marginBottom: '6px', fontSize: '0.7rem', padding: '4px 6px', width: '100%' }}
+                                                disabled={isUploading || isReadOnly}
+                                            >
+                                                <option value="">Select audio language...</option>
+                                                <option value="ja">Japanese (ja)</option>
+                                                <option value="en">English (en)</option>
+                                                <option value="zh">Chinese (zh)</option>
+                                                <option value="ko">Korean (ko)</option>
+                                                <option value="es">Spanish (es)</option>
+                                                <option value="fr">French (fr)</option>
+                                                <option value="de">German (de)</option>
+                                                <option value="ru">Russian (ru)</option>
+                                            </select>
+
+                                            {hasVoice ? (
+                                                <div className="editor-voice-chip">
+                                                    <span className="editor-voice-chip-name">
+                                                        🎙️ {voiceFile ? voiceFile.name : (existingCharacter?.voice?.voiceFilename || 'audio')}
+                                                    </span>
+                                                    {!isReadOnly && <button type="button" onClick={handleRemoveVoice} disabled={isUploading} className="editor-voice-remove-button" title="Remove voice">×</button>}
+                                                </div>
+                                            ) : (
+                                                !isReadOnly && (
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => !isUploading && voiceInputRef.current?.click()} 
+                                                        disabled={isUploading || !voiceLanguage} 
+                                                        className={`toolbar-button editor-voice-upload-button ${isUploading ? 'uploading' : ''}`}
+                                                        style={{ opacity: !voiceLanguage ? 0.5 : 1, cursor: !voiceLanguage ? 'not-allowed' : 'pointer' }}
+                                                    >
+                                                        {isUploading ? '⏳ Uploading...' : '🎙️ Upload Voice Sample'}
+                                                    </button>
+                                                )
+                                            )}
+                                            
+                                            {!hasVoice && !isReadOnly && !voiceLanguage && (
+                                                <div style={{ fontSize: '0.6rem', opacity: 0.6, marginTop: '4px', fontStyle: 'italic' }}>
+                                                    Select a language above to enable upload.
+                                                </div>
+                                            )}
+
+                                            <input ref={voiceInputRef} type="file" accept="audio/*,.wav,.mp3,.flac,.ogg" hidden onChange={handleVoiceChange} disabled={isUploading || isReadOnly || !voiceLanguage} />
+                                        </div>
+                                    </div>
+
+                                    <div className="editor-right-column">
+                                        <textarea value={name} readOnly={isReadOnly} onChange={(e) => setName(e.target.value)} className="editor-textarea editor-textarea-name" placeholder="Name *" disabled={isUploading || isReadOnly} />
+                                        <textarea value={description} readOnly={isReadOnly} onChange={(e) => setDescription(e.target.value)} className="editor-textarea editor-textarea-description" placeholder="Description" disabled={isUploading || isReadOnly} />
+                                        <textarea value={firstMessage} readOnly={isReadOnly} onChange={(e) => setFirstMessage(e.target.value)} className="editor-textarea editor-textarea-first-message" placeholder="First message" disabled={isUploading || isReadOnly} />
+
+                                        <div className="editor-field-wrapper-full">
+                                            <textarea value={systemPrompt} readOnly={isReadOnly} onChange={(e) => { setSystemPrompt(e.target.value); countFieldTokens('systemPrompt', e.target.value); }} onBlur={handleSystemPromptBlur} className="editor-textarea editor-textarea-system" placeholder="System prompt" disabled={isUploading || isReadOnly} />
+                                            {renderTokenCount('systemPrompt')}
+                                        </div>
+                                        <div className="editor-field-wrapper"><textarea value={thinkPrompt} readOnly={isReadOnly} onChange={(e) => { setThinkPrompt(e.target.value); countFieldTokens('thinkPrompt', e.target.value); }} className="editor-textarea editor-textarea-think" placeholder="Think Prompt" disabled={isUploading || isReadOnly} />{renderTokenCount('thinkPrompt')}</div>
+                                        <div className="editor-field-wrapper"><textarea value={appearancePrompt} readOnly={isReadOnly} onChange={(e) => { setAppearancePrompt(e.target.value); countFieldTokens('appearancePrompt', e.target.value); }} className="editor-textarea editor-textarea-appearance" placeholder="Appearance Prompt" disabled={isUploading || isReadOnly} />{renderTokenCount('appearancePrompt')}</div>
+                                    </div>
                                 </div>
+                            )}
 
-                                <div className="editor-section" style={{ margin: 0 }}>
-                                    <div className="editor-section-title">Memory Prompts ({Object.keys(memoryPrompts).length})</div>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Expression to memory template mapping. If the expression is not found, falls back to neutral, then system default.</div>
-                                    {!isReadOnly && (
-                                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px', flexDirection: 'column' }}>
-                                            <div style={{ display: 'flex', gap: '4px' }}>
+                            {activeTab === 'behaviour' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    {/* ✅ Updated Starter Prompts Section */}
+                                    <div className="editor-section" style={{ margin: 0 }}>
+                                        <div className="editor-section-title">Starter Prompts ({starterPrompts.length})</div>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowStarterPromptEditor(true)} disabled={isUploading || isReadOnly} style={{ width: '100%' }}>
+                                            Edit Starter Prompts ({starterPrompts.length})
+                                        </button>
+                                    </div>
+
+                                    <div className="editor-section" style={{ margin: 0 }}>
+                                        <div className="editor-section-title">Memory Prompts ({Object.keys(memoryPrompts).length})</div>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Expression to memory template mapping. If the expression is not found, falls back to neutral, then system default.</div>
+                                        {!isReadOnly && (
+                                            <div style={{ display: 'flex', gap: '4px', marginBottom: '6px', flexDirection: 'column' }}>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <select
+                                                        className="editor-select"
+                                                        value={newMemoryPromptExpression}
+                                                        onChange={e => setNewMemoryPromptExpression(e.target.value)}
+                                                        disabled={isUploading || availableEmotions.length === 0}
+                                                        style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
+                                                    >
+                                                        {availableEmotions.length === 0 && <option value="" disabled>All emotions assigned</option>}
+                                                        {availableEmotions.map(label => (
+                                                            <option key={label} value={label}>{label}</option>
+                                                        ))}
+                                                    </select>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '4px' }}>
+                                                    <input type="text" value={newMemoryPromptTemplate} onChange={e => setNewMemoryPromptTemplate(e.target.value)} className="editor-input" placeholder="Memory template string..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
+                                                    <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || availableEmotions.length === 0}>+</button>
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '150px', overflowY: 'auto' }}>
+                                            {Object.entries(memoryPrompts).map(([expression, template]) => (
+                                                <div key={expression} style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '4px 6px', borderRadius: '4px' }}>
+                                                    <span style={{ fontWeight: 'bold', fontSize: '0.65rem', color: 'var(--accent)', minWidth: '80px', textTransform: 'capitalize' }}>{expression}</span>
+                                                    <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, opacity: 0.8 }}>{template}</span>
+                                                    {!isReadOnly && <button type="button" onClick={() => handleRemoveMemoryPrompt(expression)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }}>×</button>}
+                                                </div>
+                                            ))}
+                                            {Object.keys(memoryPrompts).length === 0 && (
+                                                <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No memory prompts.{!isReadOnly && ' Add above.'}</div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="editor-section" style={{ margin: 0 }}>
+                                        <div className="editor-section-title">Aliases ({aliases.length})</div>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Alternative names this character is also known by.</div>
+                                        {!isReadOnly && (
+                                            <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+                                                <input type="text" value={newAliasInput} onChange={e => setNewAliasInput(e.target.value)} className="editor-input" placeholder="Add alias..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} onKeyDown={e => { if (e.key === 'Enter') handleAddAlias(); }} />
+                                                <button type="button" onClick={handleAddAlias} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
+                                            </div>
+                                        )}
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
+                                            {aliases.map(alias => (
+                                                <span key={alias} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent)', fontSize: '0.65rem', fontWeight: 'bold' }}>
+                                                    {alias}
+                                                    {!isReadOnly && <button type="button" onClick={() => handleRemoveAlias(alias)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: 0, lineHeight: 1, opacity: 0.6 }} onMouseEnter={e => (e.currentTarget.style.opacity = '1')} onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>×</button>}
+                                                </span>
+                                            ))}
+                                            {aliases.length === 0 && (
+                                                <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic' }}>No aliases.</div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="editor-section" style={{ margin: 0 }}>
+                                        <div className="editor-section-title">Known Character Names ({Object.keys(knownCharacterNames).length})</div>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows.{!isReadOnly && ' Select a character, then choose the name variant they know.'}</div>
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginBottom: '8px' }}>
+                                            {Object.entries(knownCharacterNames).map(([charId, nameVariants]) => {
+                                                const targetChar = allCharacters.find(c => c.id === charId);
+                                                const displayName = targetChar?.name || charId.substring(0, 8);
+                                                return (
+                                                    <div key={charId} style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
+                                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                                                            <span style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>{displayName}</span>
+                                                            {!isReadOnly && <button type="button" onClick={() => handleRemoveAllKnownName(charId)} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: '#ff4444' }} title="Remove all">×</button>}
+                                                        </div>
+                                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
+                                                            {nameVariants.map(variant => (
+                                                                <span key={variant} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', fontSize: '0.6rem' }}>
+                                                                    {variant}
+                                                                    {!isReadOnly && <button type="button" onClick={() => handleRemoveKnownName(charId, variant)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }}>×</button>}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })}
+                                            {Object.keys(knownCharacterNames).length === 0 && (
+                                                <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic' }}>No known names configured.</div>
+                                            )}
+                                        </div>
+
+                                        {!isReadOnly && (
+                                            <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                                                 <select
                                                     className="editor-select"
-                                                    value={newMemoryPromptExpression}
-                                                    onChange={e => setNewMemoryPromptExpression(e.target.value)}
-                                                    disabled={isUploading || availableEmotions.length === 0}
-                                                    style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }}
+                                                    value={selectedCharForKnownName}
+                                                    onChange={e => handleCharacterSelectForKnownName(e.target.value)}
+                                                    disabled={isUploading || otherCharacters.length === 0}
+                                                    style={{ flex: 1, fontSize: '0.7rem' }}
                                                 >
-                                                    {availableEmotions.length === 0 && <option value="" disabled>All emotions assigned</option>}
-                                                    {availableEmotions.map(label => (
-                                                        <option key={label} value={label}>{label}</option>
+                                                    <option value="">Select character...</option>
+                                                    {otherCharacters.map(c => (
+                                                        <option key={c.id} value={c.id}>{c.name}</option>
+                                                    ))}
+                                                </select>
+                                                <select
+                                                    className="editor-select"
+                                                    value={selectedAliasForKnownName}
+                                                    onChange={e => handleAliasSelectForKnownName(e.target.value)}
+                                                    disabled={isUploading || !selectedCharForKnownName || selectedCharAliases.length === 0}
+                                                    style={{ flex: 1, fontSize: '0.7rem' }}
+                                                >
+                                                    <option value="">Select name/alias...</option>
+                                                    {selectedCharAliases.map(alias => (
+                                                        <option key={alias} value={alias}>{alias}</option>
                                                     ))}
                                                 </select>
                                             </div>
-                                            <div style={{ display: 'flex', gap: '4px' }}>
-                                                <input type="text" value={newMemoryPromptTemplate} onChange={e => setNewMemoryPromptTemplate(e.target.value)} className="editor-input" placeholder="Memory template string..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} />
-                                                <button type="button" onClick={handleAddMemoryPrompt} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading || availableEmotions.length === 0}>+</button>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '150px', overflowY: 'auto' }}>
-                                        {Object.entries(memoryPrompts).map(([expression, template]) => (
-                                            <div key={expression} style={{ display: 'flex', gap: '4px', alignItems: 'center', background: 'rgba(255,255,255,0.03)', padding: '4px 6px', borderRadius: '4px' }}>
-                                                <span style={{ fontWeight: 'bold', fontSize: '0.65rem', color: 'var(--accent)', minWidth: '80px', textTransform: 'capitalize' }}>{expression}</span>
-                                                <span style={{ flex: 1, fontSize: '0.65rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, opacity: 0.8 }}>{template}</span>
-                                                {!isReadOnly && <button type="button" onClick={() => handleRemoveMemoryPrompt(expression)} className="toolbar-button" title="Remove" style={{ width: '18px', height: '18px', fontSize: '0.6rem', color: '#ff4444', padding: 0 }}>×</button>}
-                                            </div>
-                                        ))}
-                                        {Object.keys(memoryPrompts).length === 0 && (
-                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', padding: '4px 0' }}>No memory prompts.{!isReadOnly && ' Add above.'}</div>
+                                        )}
+
+                                        {otherCharacters.length === 0 && (
+                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', marginTop: '4px' }}>No other characters available.</div>
                                         )}
                                     </div>
-                                </div>
 
-                                <div className="editor-section" style={{ margin: 0 }}>
-                                    <div className="editor-section-title">Aliases ({aliases.length})</div>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Alternative names this character is also known by.</div>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Dialogue ({dialoguePrompts.length})</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowKnowledgePromptEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Knowledge ({knowledgePrompts.length})</button>
+                                    </div>
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
+                                    </div>
+
+                                    <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                        <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Memory ({memoryCount})</button>
+                                    </div>
+
+                                    <div className="editor-section" style={{ margin: 0 }}>
+                                        <span className="editor-section-title">Prompt Decay</span>
+                                        <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
+                                            Prompts are automatically removed from context after the character has sent this many messages.{!isReadOnly && ' Set to 0 to disable immediately, or leave high to keep them active longer.'}
+                                        </div>
+                                        <div className="editor-stats-grid">
+                                            <div>
+                                                <label className="editor-label editor-label-small">Think Prompt</label>
+                                                <input type="number" step="1" min="0" value={numberOfMessagesToDisableThinkPromptStr} onChange={(e) => setNumberOfMessagesToDisableThinkPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Meta-Think Instructions</label>
+                                                <input type="number" step="1" min="0" value={numberOfMessagesToDisableMetaThinkInstructionsStr} onChange={(e) => setNumberOfMessagesToDisableMetaThinkInstructionsStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Dialogue Prompt</label>
+                                                <input type="number" step="1" min="0" value={numberOfMessagesToDisableDialoguePromptStr} onChange={(e) => setNumberOfMessagesToDisableDialoguePromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Starter Prompt</label>
+                                                <input type="number" step="1" min="0" value={numberOfMessagesToDisableStarterPromptStr} onChange={(e) => setNumberOfMessagesToDisableStarterPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* ✅ Added Semantic Memory & Search Section */}
+                                    <div className="editor-section" style={{ margin: 0 }}>
+                                        <span className="editor-section-title">Semantic Memory & Search (Embeddings)</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
+                                            Use the local embedding model for smart context retrieval.
+                                        </div>
+                                        <label className="editor-checkbox-label">
+                                            <input type="checkbox" checked={useEmbeddingModelForDialoguePrompts} onChange={(e) => setUseEmbeddingModelForDialoguePrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                            <span>Use Embeddings for Dialogue Prompts</span>
+                                        </label>
+                                        <label className="editor-checkbox-label">
+                                            <input type="checkbox" checked={useEmbeddingModelForStarterPrompts} onChange={(e) => setUseEmbeddingModelForStarterPrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                            <span>Use Embeddings for Starter Prompts</span>
+                                        </label>
+                                        <label className="editor-checkbox-label">
+                                            <input type="checkbox" checked={useEmbeddingModelForKnowledgePrompts} onChange={(e) => setUseEmbeddingModelForKnowledgePrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                            <span>Use Embeddings for Knowledge Prompts</span>
+                                        </label>
+                                        <label className="editor-checkbox-label">
+                                            <input type="checkbox" checked={useEmbeddingModelForMemories} onChange={(e) => setUseEmbeddingModelForMemories(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                            <span>Use Embeddings for Memories</span>
+                                        </label>
+
+                                        {/* ✅ Added Memory Search Spaces */}
+                                        <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
+                                            <span style={{ fontWeight: 'bold', fontSize: '0.7rem' }}>Memory Search Spaces</span>
+                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>
+                                                Which entities' memories to recall when the character searches their memory.
+                                            </div>
+                                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                                {([
+                                                    'self',
+                                                    'listener',
+                                                    'co-located protagonists',
+                                                    'non-co-located protagonists',
+                                                    'co-located non-protagonists',
+                                                    'non-co-located non-protagonists'
+                                                ] as memorySearchSpace[]).map(space => (
+                                                    <label key={space} className="editor-checkbox-label">
+                                                        <input 
+                                                            type="checkbox" 
+                                                            checked={memorySearchSpaces.includes(space)} 
+                                                            onChange={(e) => {
+                                                                if (e.target.checked) {
+                                                                    setMemorySearchSpaces(prev => [...prev, space]);
+                                                                } else {
+                                                                    setMemorySearchSpaces(prev => prev.filter(s => s !== space));
+                                                                }
+                                                            }} 
+                                                            className="editor-checkbox-input" 
+                                                            disabled={isUploading || isReadOnly} 
+                                                        />
+                                                        <span style={{ textTransform: 'capitalize' }}>{space}</span>
+                                                    </label>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+
+                            {activeTab === 'stats' && (
+                                <>
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Turn Order & Output</span>
+                                        <div className="editor-stats-grid">
+                                            <div>
+                                                <label className="editor-label editor-label-small">Initiative Weight</label>
+                                                <input type="number" step="0.1" value={initiativeWeightStr} onChange={(e) => setInitiativeWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the character's initiative when determining turn order. Range: 0 - ∞.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Chat Probability</label>
+                                                <input type="number" step="0.05" value={chatProbabilityStr} onChange={(e) => setChatProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
+                                                <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => setMaximumChatStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Chat Stamina Regen</label>
+                                                <input type="number" step="0.01" min="0" value={chatStaminaRegenerationRateStr} onChange={(e) => setChatStaminaRegenerationRateStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Stamina regenerated per second. Default is 0.3.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Responsiveness</span>
+                                        <div className="editor-stats-grid">
+                                            <div>
+                                                <label className="editor-label editor-label-small">Name Sensitivity</label>
+                                                <input type="number" step="0.5" min="0" value={nameSensitivityStr} onChange={(e) => setNameSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Chat Impatience</label>
+                                                <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => setChatImpatienceSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Skip Probability</label>
+                                                <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => setSkipProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Probability of skipping an action. Range: 0 - 1.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Awareness & Actions</span>
+                                        <div className="editor-stats-grid">
+                                            <div>
+                                                <label className="editor-label editor-label-small">Memory Retention</label>
+                                                <input type="number" step="0.1" min="0" value={memoryRetentionWeightStr} onChange={(e) => setMemoryRetentionWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how much of the character's memory is retained. Range: 0 - 1.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Context Sensitivity</label>
+                                                <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => setContextSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Maximum Action Stamina</label>
+                                                <input type="number" step="1" min="0" value={maximumActionStaminaStr} onChange={(e) => setMaximumActionStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how many silent actions, movement, or non-chat interactions the character can perform before needing to rest. Range: 0 - ∞.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Action Stamina Regen</label>
+                                                <input type="number" step="0.01" min="0" value={actionStaminaRegenerationRateStr} onChange={(e) => setActionStaminaRegenerationRateStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Stamina regenerated per second. Default is 0.03.</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
+
+                            {activeTab === 'tools' && (
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Character Tools</span>
+                                    <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
+                                        Enable runtime tool use during generation for this character. Can be overridden by profile settings.
+                                    </div>
+
                                     {!isReadOnly && (
-                                        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-                                            <input type="text" value={newAliasInput} onChange={e => setNewAliasInput(e.target.value)} className="editor-input" placeholder="Add alias..." style={{ flex: 1, fontSize: '0.7rem', padding: '4px 6px' }} disabled={isUploading} onKeyDown={e => { if (e.key === 'Enter') handleAddAlias(); }} />
-                                            <button type="button" onClick={handleAddAlias} className="toolbar-button" title="Add" style={{ fontSize: '0.7rem', padding: '2px 8px' }} disabled={isUploading}>+</button>
+                                        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                                            <button type="button" className="editor-bulk-action-button" onClick={handleSelectAllTools} disabled={isUploading}>
+                                                <span style={{ fontSize: '0.9rem' }}>✓</span> Select All
+                                            </button>
+                                            <button type="button" className="editor-bulk-action-button" onClick={handleAutoDetectTools} disabled={isUploading} title="Scan character name, description, and system prompt for tool keywords">
+                                                <span style={{ fontSize: '0.9rem' }}>🔍</span> Auto-Detect
+                                            </button>
+                                            <button type="button" className="editor-bulk-action-button" onClick={handleDeselectAllTools} disabled={isUploading}>
+                                                <span style={{ fontSize: '0.9rem' }}>✗</span> Deselect All
+                                            </button>
                                         </div>
                                     )}
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
-                                        {aliases.map(alias => (
-                                            <span key={alias} style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', padding: '2px 8px', borderRadius: '12px', background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent)', fontSize: '0.65rem', fontWeight: 'bold' }}>
-                                                {alias}
-                                                {!isReadOnly && <button type="button" onClick={() => handleRemoveAlias(alias)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--accent)', fontSize: '0.7rem', padding: 0, lineHeight: 1, opacity: 0.6 }} onMouseEnter={e => (e.currentTarget.style.opacity = '1')} onMouseLeave={e => (e.currentTarget.style.opacity = '0.6')}>×</button>}
-                                            </span>
-                                        ))}
-                                        {aliases.length === 0 && (
-                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic' }}>No aliases.</div>
+
+                                    <input type="text" value={toolSearchQuery} readOnly={isReadOnly} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} disabled={isUploading || isReadOnly} />
+
+                                    {filteredToolNames.length === 0 && (
+                                        <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>No tools match "{toolSearchQuery}".</div>
+                                    )}
+
+                                    {filteredToolNames.map(toolName => (
+                                        <div key={toolName} style={{ marginBottom: '8px' }}>
+                                            <label className="editor-checkbox-label">
+                                                <input type="checkbox" checked={tools[toolName]} onChange={() => handleToolToggle(toolName)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
+                                                <span>{toolLabels[toolName] ?? toolName}</span>
+                                            </label>
+                                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
+                                                {characterToolDescriptions[toolName] ?? 'Allow this character to use this tool.'}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
+                            {/* ✅ Dual Samplers, Retrieval Configurations & Stop Patterns */}
+                            {activeTab === 'model' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Language Model Sampler (Text Generation)</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls the psychological profile, vocabulary choice, and text generation logic.</div>
+                                        <select value={selectedLanguageModelSamplerId} onChange={(e) => setSelectedLanguageModelSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
+                                            {isLoadingSamplers && <option>Loading samplers...</option>}
+                                            {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
+                                            {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                                        </select>
+                                    </div>
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Text-to-Speech Model Sampler (Voice Generation)</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls the vocal cords, prosody, pitch, and acoustic expressiveness of the character's voice.</div>
+                                        <select value={selectedTextToSpeechModelSamplerId} onChange={(e) => setSelectedTextToSpeechModelSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
+                                            {isLoadingSamplers && <option>Loading samplers...</option>}
+                                            {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
+                                            {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                                        </select>
+                                    </div>
+
+                                    {/* ✅ ADDED RETRIEVAL CONFIGURATIONS */}
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Dialogue Retrieval Configuration</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters (Top-K, Threshold, Token Budget) for dialogue prompts.</div>
+                                        <select value={selectedDialogueRetrievalConfigurationId} onChange={(e) => setSelectedDialogueRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
+                                            <option value="">None</option>
+                                            {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        </select>
+                                    </div>
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Starter Prompt Retrieval Configuration</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for starter prompts.</div>
+                                        <select value={selectedStarterPromptRetrievalConfigurationId} onChange={(e) => setSelectedStarterPromptRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
+                                            <option value="">None</option>
+                                            {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        </select>
+                                    </div>
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Knowledge Retrieval Configuration</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for knowledge prompts.</div>
+                                        <select value={selectedKnowledgeRetrievalConfigurationId} onChange={(e) => setSelectedKnowledgeRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
+                                            <option value="">None</option>
+                                            {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        </select>
+                                    </div>
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Memory Retrieval Configuration</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for memories.</div>
+                                        <select value={selectedMemoryRetrievalConfigurationId} onChange={(e) => setSelectedMemoryRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
+                                            <option value="">None</option>
+                                            {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        </select>
+                                    </div>
+
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Character Stop Patterns</span>
+                                        <div className="editor-stop-patterns-hint">Specific stop sequences for this character, overrides or augments sampler defaults.</div>
+
+                                        <div className="sampler-stop-patterns-list">
+                                            {selectedStopPatternIds.length === 0 && (
+                                                <div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>
+                                            )}
+
+                                            {selectedStopPatternIds.map(id => {
+                                                const sp = getStopPatternById(id);
+                                                if (!sp) return null;
+                                                return (
+                                                    <div key={id} className="sampler-stop-item">
+                                                        <div className="sampler-stop-info">
+                                                            <span className="sampler-stop-name">{sp.name}</span>
+                                                            <span className="sampler-stop-pattern">{sp.pattern}</span>
+                                                        </div>
+                                                        {!isReadOnly && <button type="button" onClick={() => handleStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern">×</button>}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {!isReadOnly && (
+                                            <select onChange={(e) => { const val = e.target.value; if (val) handleStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                                <option value="" disabled>+ Add a stop pattern</option>
+                                                {allSamplers
+                                                    .flatMap(s => s.stopPatterns)
+                                                    .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
+                                                    .filter(sp => !selectedStopPatternIds.includes(sp.id))
+                                                    .map(sp => (<option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>))}
+                                            </select>
                                         )}
                                     </div>
                                 </div>
+                            )}
 
-                                <div className="editor-section" style={{ margin: 0 }}>
-                                    <div className="editor-section-title">Known Character Names ({Object.keys(knownCharacterNames).length})</div>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Which other characters' names/aliases this character knows.{!isReadOnly && ' Select a character, then choose the name variant they know.'}</div>
+                            {activeTab === 'quick-config' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                    <div className="editor-section" style={{ margin: 0 }}>
+                                        <span className="editor-section-title">{isReadOnly ? 'Known Names' : 'Knowledge Shortcuts'}</span>
+                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
+                                            {isReadOnly ? 'Known names/aliases' : 'Batch-add known names/aliases'} for this character's knowledge.{!isReadOnly && ' Merges with existing entries; never overwrites.'}
+                                        </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '150px', overflowY: 'auto', marginBottom: '8px' }}>
-                                        {Object.entries(knownCharacterNames).map(([charId, nameVariants]) => {
-                                            const targetChar = allCharacters.find(c => c.id === charId);
-                                            const displayName = targetChar?.name || charId.substring(0, 8);
-                                            return (
-                                                <div key={charId} style={{ padding: '6px 8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
-                                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-                                                        <span style={{ fontSize: '0.7rem', fontWeight: 'bold' }}>{displayName}</span>
-                                                        {!isReadOnly && <button type="button" onClick={() => handleRemoveAllKnownName(charId)} className="toolbar-button" style={{ fontSize: '0.55rem', padding: '1px 5px', color: '#ff4444' }} title="Remove all">×</button>}
-                                                    </div>
-                                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '3px' }}>
-                                                        {nameVariants.map(variant => (
-                                                            <span key={variant} style={{ display: 'inline-flex', alignItems: 'center', gap: '3px', padding: '1px 6px', background: 'rgba(255,255,255,0.06)', borderRadius: '3px', fontSize: '0.6rem' }}>
-                                                                {variant}
-                                                                {!isReadOnly && <button type="button" onClick={() => handleRemoveKnownName(charId, variant)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ff4444', fontSize: '0.6rem', padding: 0, lineHeight: 1 }}>×</button>}
-                                                            </span>
+                                        {!hasSession && (
+                                            <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,205,0.08)' }}>
+                                                ℹ️ Start a chat session to enable protagonist and participant shortcuts.
+                                            </div>
+                                        )}
+                                        {hasSession && !hasParticipants && (
+                                            <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                                ℹ️ No other characters in the current session.{!isReadOnly && ' Add participants to the chat to enable those shortcuts.'}
+                                            </div>
+                                        )}
+                                        {allCharacters.length === 0 && (
+                                            <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                                                ℹ️ No characters available in the global registry.
+                                            </div>
+                                        )}
+
+                                        {quickConfigFeedback && (
+                                            <div style={{ padding: '8px 10px', background: quickConfigFeedback.addedNames.length > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${quickConfigFeedback.addedNames.length > 0 ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`, borderRadius: '6px', marginBottom: '8px' }}>
+                                                <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px', color: quickConfigFeedback.addedNames.length > 0 ? '#22c55e' : 'var(--text-h)' }}>
+                                                    {quickConfigFeedback.addedNames.length > 0 ? `✓ ${quickConfigFeedback.label}` : `ℹ️ ${quickConfigFeedback.label}`}
+                                                </div>
+                                                {quickConfigFeedback.addedNames.length > 0 && (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
+                                                        {quickConfigFeedback.addedNames.map(entry => (
+                                                            <div key={entry.charName} style={{ fontSize: '0.6rem', opacity: 0.8 }}>
+                                                                <span style={{ fontWeight: 'bold', opacity: 1 }}>{entry.charName}:</span>{' '}
+                                                                <span style={{ opacity: 0.7 }}>{entry.names.join(', ')}</span>
+                                                            </div>
                                                         ))}
                                                     </div>
-                                                </div>
-                                            );
-                                        })}
-                                        {Object.keys(knownCharacterNames).length === 0 && (
-                                            <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic' }}>No known names configured.</div>
-                                        )}
-                                    </div>
-
-                                    {!isReadOnly && (
-                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                                            <select
-                                                className="editor-select"
-                                                value={selectedCharForKnownName}
-                                                onChange={e => handleCharacterSelectForKnownName(e.target.value)}
-                                                disabled={isUploading || otherCharacters.length === 0}
-                                                style={{ flex: 1, fontSize: '0.7rem' }}
-                                            >
-                                                <option value="">Select character...</option>
-                                                {otherCharacters.map(c => (
-                                                    <option key={c.id} value={c.id}>{c.name}</option>
-                                                ))}
-                                            </select>
-                                            <select
-                                                className="editor-select"
-                                                value={selectedAliasForKnownName}
-                                                onChange={e => handleAliasSelectForKnownName(e.target.value)}
-                                                disabled={isUploading || !selectedCharForKnownName || selectedCharAliases.length === 0}
-                                                style={{ flex: 1, fontSize: '0.7rem' }}
-                                            >
-                                                <option value="">Select name/alias...</option>
-                                                {selectedCharAliases.map(alias => (
-                                                    <option key={alias} value={alias}>{alias}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    )}
-
-                                    {otherCharacters.length === 0 && (
-                                        <div style={{ fontSize: '0.6rem', opacity: 0.4, fontStyle: 'italic', marginTop: '4px' }}>No other characters available.</div>
-                                    )}
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowDialoguePromptEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Dialogue ({dialoguePrompts.length})</button>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowKnowledgePromptEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Knowledge ({knowledgePrompts.length})</button>
-                                </div>
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowClothingEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Clothing ({clothings.length})</button>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowTextInjectionEditor(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Text Injection ({textCharacterInjections.length})</button>
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-                                    <button type="button" className="editor-button editor-button-cancel" onClick={() => setShowMemoryManager(true)} disabled={isUploading || isReadOnly} style={{ flex: 1 }}>Memory ({memoryCount})</button>
-                                </div>
-
-                                <div className="editor-section" style={{ margin: 0 }}>
-                                    <span className="editor-section-title">Prompt Decay</span>
-                                    <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>
-                                        Prompts are automatically removed from context after the character has sent this many messages.{!isReadOnly && ' Set to 0 to disable immediately, or leave high to keep them active longer.'}
-                                    </div>
-                                    <div className="editor-stats-grid">
-                                        <div>
-                                            <label className="editor-label editor-label-small">Think Prompt</label>
-                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableThinkPromptStr} onChange={(e) => setNumberOfMessagesToDisableThinkPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Meta-Think Instructions</label>
-                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableMetaThinkInstructionsStr} onChange={(e) => setNumberOfMessagesToDisableMetaThinkInstructionsStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Dialogue Prompt</label>
-                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableDialoguePromptStr} onChange={(e) => setNumberOfMessagesToDisableDialoguePromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Starter Prompt</label>
-                                            <input type="number" step="1" min="0" value={numberOfMessagesToDisableStarterPromptStr} onChange={(e) => setNumberOfMessagesToDisableStarterPromptStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* ✅ Added Semantic Memory & Search Section */}
-                                <div className="editor-section" style={{ margin: 0 }}>
-                                    <span className="editor-section-title">Semantic Memory & Search (Embeddings)</span>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
-                                        Use the local embedding model for smart context retrieval.
-                                    </div>
-                                    <label className="editor-checkbox-label">
-                                        <input type="checkbox" checked={useEmbeddingModelForDialoguePrompts} onChange={(e) => setUseEmbeddingModelForDialoguePrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
-                                        <span>Use Embeddings for Dialogue Prompts</span>
-                                    </label>
-                                    <label className="editor-checkbox-label">
-                                        <input type="checkbox" checked={useEmbeddingModelForStarterPrompts} onChange={(e) => setUseEmbeddingModelForStarterPrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
-                                        <span>Use Embeddings for Starter Prompts</span>
-                                    </label>
-                                    <label className="editor-checkbox-label">
-                                        <input type="checkbox" checked={useEmbeddingModelForKnowledgePrompts} onChange={(e) => setUseEmbeddingModelForKnowledgePrompts(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
-                                        <span>Use Embeddings for Knowledge Prompts</span>
-                                    </label>
-                                    <label className="editor-checkbox-label">
-                                        <input type="checkbox" checked={useEmbeddingModelForMemories} onChange={(e) => setUseEmbeddingModelForMemories(e.target.checked)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
-                                        <span>Use Embeddings for Memories</span>
-                                    </label>
-
-                                    {/* ✅ Added Memory Search Spaces */}
-                                    <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
-                                        <span style={{ fontWeight: 'bold', fontSize: '0.7rem' }}>Memory Search Spaces</span>
-                                        <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>
-                                            Which entities' memories to recall when the character searches their memory.
-                                        </div>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                            {([
-                                                'self',
-                                                'listener',
-                                                'co-located protagonists',
-                                                'non-co-located protagonists',
-                                                'co-located non-protagonists',
-                                                'non-co-located non-protagonists'
-                                            ] as memorySearchSpace[]).map(space => (
-                                                <label key={space} className="editor-checkbox-label">
-                                                    <input 
-                                                        type="checkbox" 
-                                                        checked={memorySearchSpaces.includes(space)} 
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setMemorySearchSpaces(prev => [...prev, space]);
-                                                            } else {
-                                                                setMemorySearchSpaces(prev => prev.filter(s => s !== space));
-                                                            }
-                                                        }} 
-                                                        className="editor-checkbox-input" 
-                                                        disabled={isUploading || isReadOnly} 
-                                                    />
-                                                    <span style={{ textTransform: 'capitalize' }}>{space}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'stats' && (
-                            <>
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Turn Order & Output</span>
-                                    <div className="editor-stats-grid">
-                                        <div>
-                                            <label className="editor-label editor-label-small">Initiative Weight</label>
-                                            <input type="number" step="0.1" value={initiativeWeightStr} onChange={(e) => setInitiativeWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the character's initiative when determining turn order. Range: 0 - ∞.</div>
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Chat Probability</label>
-                                            <input type="number" step="0.05" value={chatProbabilityStr} onChange={(e) => setChatProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the probability of the character initiating a chat message when selected. Range: 0 - 1.</div>
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Maximum Chat Stamina</label>
-                                            <input type="number" step="1" min="0" value={maximumChatStaminaStr} onChange={(e) => setMaximumChatStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls the number of maximum paragraphs that the character could produce. Range: 0 - ∞.</div>
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Chat Stamina Regen</label>
-                                            <input type="number" step="0.01" min="0" value={chatStaminaRegenerationRateStr} onChange={(e) => setChatStaminaRegenerationRateStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Stamina regenerated per second. Default is 0.3.</div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Responsiveness</span>
-                                    <div className="editor-stats-grid">
-                                        <div>
-                                            <label className="editor-label editor-label-small">Name Sensitivity</label>
-                                            <input type="number" step="0.5" min="0" value={nameSensitivityStr} onChange={(e) => setNameSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Chat Impatience</label>
-                                            <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => setChatImpatienceSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.</div>
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Skip Probability</label>
-                                            <input type="number" step="0.05" min="0" max="1" value={skipProbabilityStr} onChange={(e) => setSkipProbabilityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Probability of skipping an action. Range: 0 - 1.</div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Awareness & Actions</span>
-                                    <div className="editor-stats-grid">
-                                        <div>
-                                            <label className="editor-label editor-label-small">Memory Retention</label>
-                                            <input type="number" step="0.1" min="0" value={memoryRetentionWeightStr} onChange={(e) => setMemoryRetentionWeightStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how much of the character's memory is retained. Range: 0 - 1.</div>
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Context Sensitivity</label>
-                                            <input type="number" step="0.1" min="0" value={contextSensitivityStr} onChange={(e) => setContextSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to contextual cues. Range: 0 - 1.</div>
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Maximum Action Stamina</label>
-                                            <input type="number" step="1" min="0" value={maximumActionStaminaStr} onChange={(e) => setMaximumActionStaminaStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how many silent actions, movement, or non-chat interactions the character can perform before needing to rest. Range: 0 - ∞.</div>
-                                        </div>
-                                        <div>
-                                            <label className="editor-label editor-label-small">Action Stamina Regen</label>
-                                            <input type="number" step="0.01" min="0" value={actionStaminaRegenerationRateStr} onChange={(e) => setActionStaminaRegenerationRateStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                            <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Stamina regenerated per second. Default is 0.03.</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            </>
-                        )}
-
-                        {activeTab === 'tools' && (
-                            <div className="editor-section">
-                                <span className="editor-section-title">Character Tools</span>
-                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '8px' }}>
-                                    Enable runtime tool use during generation for this character. Can be overridden by profile settings.
-                                </div>
-
-                                {!isReadOnly && (
-                                    <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                                        <button type="button" className="editor-bulk-action-button" onClick={handleSelectAllTools} disabled={isUploading}>
-                                            <span style={{ fontSize: '0.9rem' }}>✓</span> Select All
-                                        </button>
-                                        <button type="button" className="editor-bulk-action-button" onClick={handleAutoDetectTools} disabled={isUploading} title="Scan character name, description, and system prompt for tool keywords">
-                                            <span style={{ fontSize: '0.9rem' }}>🔍</span> Auto-Detect
-                                        </button>
-                                        <button type="button" className="editor-bulk-action-button" onClick={handleDeselectAllTools} disabled={isUploading}>
-                                            <span style={{ fontSize: '0.9rem' }}>✗</span> Deselect All
-                                        </button>
-                                    </div>
-                                )}
-
-                                <input type="text" value={toolSearchQuery} readOnly={isReadOnly} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} disabled={isUploading || isReadOnly} />
-
-                                {filteredToolNames.length === 0 && (
-                                    <div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>No tools match "{toolSearchQuery}".</div>
-                                )}
-
-                                {filteredToolNames.map(toolName => (
-                                    <div key={toolName} style={{ marginBottom: '8px' }}>
-                                        <label className="editor-checkbox-label">
-                                            <input type="checkbox" checked={tools[toolName]} onChange={() => handleToolToggle(toolName)} className="editor-checkbox-input" disabled={isUploading || isReadOnly} />
-                                            <span>{toolLabels[toolName] ?? toolName}</span>
-                                        </label>
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' }}>
-                                            {characterToolDescriptions[toolName] ?? 'Allow this character to use this tool.'}
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* ✅ Dual Samplers, Retrieval Configurations & Stop Patterns */}
-                        {activeTab === 'model' && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Language Model Sampler (Text Generation)</span>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls the psychological profile, vocabulary choice, and text generation logic.</div>
-                                    <select value={selectedLanguageModelSamplerId} onChange={(e) => setSelectedLanguageModelSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
-                                        {isLoadingSamplers && <option>Loading samplers...</option>}
-                                        {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
-                                        {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
-                                    </select>
-                                </div>
-
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Text-to-Speech Model Sampler (Voice Generation)</span>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls the vocal cords, prosody, pitch, and acoustic expressiveness of the character's voice.</div>
-                                    <select value={selectedTextToSpeechModelSamplerId} onChange={(e) => setSelectedTextToSpeechModelSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
-                                        {isLoadingSamplers && <option>Loading samplers...</option>}
-                                        {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
-                                        {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
-                                    </select>
-                                </div>
-
-                                {/* ✅ ADDED RETRIEVAL CONFIGURATIONS */}
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Dialogue Retrieval Configuration</span>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters (Top-K, Threshold, Token Budget) for dialogue prompts.</div>
-                                    <select value={selectedDialogueRetrievalConfigurationId} onChange={(e) => setSelectedDialogueRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
-                                        <option value="">None</option>
-                                        {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                    </select>
-                                </div>
-
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Starter Prompt Retrieval Configuration</span>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for starter prompts.</div>
-                                    <select value={selectedStarterPromptRetrievalConfigurationId} onChange={(e) => setSelectedStarterPromptRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
-                                        <option value="">None</option>
-                                        {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                    </select>
-                                </div>
-
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Knowledge Retrieval Configuration</span>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for knowledge prompts.</div>
-                                    <select value={selectedKnowledgeRetrievalConfigurationId} onChange={(e) => setSelectedKnowledgeRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
-                                        <option value="">None</option>
-                                        {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                    </select>
-                                </div>
-
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Memory Retrieval Configuration</span>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters for memories.</div>
-                                    <select value={selectedMemoryRetrievalConfigurationId} onChange={(e) => setSelectedMemoryRetrievalConfigurationId(e.target.value)} className="editor-select" disabled={isUploading || isReadOnly}>
-                                        <option value="">None</option>
-                                        {allRetrievalConfigurations.map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                    </select>
-                                </div>
-
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Character Stop Patterns</span>
-                                    <div className="editor-stop-patterns-hint">Specific stop sequences for this character, overrides or augments sampler defaults.</div>
-
-                                    <div className="sampler-stop-patterns-list">
-                                        {selectedStopPatternIds.length === 0 && (
-                                            <div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>
-                                        )}
-
-                                        {selectedStopPatternIds.map(id => {
-                                            const sp = getStopPatternById(id);
-                                            if (!sp) return null;
-                                            return (
-                                                <div key={id} className="sampler-stop-item">
-                                                    <div className="sampler-stop-info">
-                                                        <span className="sampler-stop-name">{sp.name}</span>
-                                                        <span className="sampler-stop-pattern">{sp.pattern}</span>
-                                                    </div>
-                                                    {!isReadOnly && <button type="button" onClick={() => handleStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern">×</button>}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-
-                                    {!isReadOnly && (
-                                        <select onChange={(e) => { const val = e.target.value; if (val) handleStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                            <option value="" disabled>+ Add a stop pattern</option>
-                                            {allSamplers
-                                                .flatMap(s => s.stopPatterns)
-                                                .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
-                                                .filter(sp => !selectedStopPatternIds.includes(sp.id))
-                                                .map(sp => (<option key={sp.id} value={sp.id}>{sp.name} — {sp.pattern}</option>))}
-                                        </select>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'quick-config' && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                <div className="editor-section" style={{ margin: 0 }}>
-                                    <span className="editor-section-title">{isReadOnly ? 'Known Names' : 'Knowledge Shortcuts'}</span>
-                                    <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
-                                        {isReadOnly ? 'Known names/aliases' : 'Batch-add known names/aliases'} for this character's knowledge.{!isReadOnly && ' Merges with existing entries; never overwrites.'}
-                                    </div>
-
-                                    {!hasSession && (
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,205,0.08)' }}>
-                                            ℹ️ Start a chat session to enable protagonist and participant shortcuts.
-                                        </div>
-                                    )}
-                                    {hasSession && !hasParticipants && (
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                                            ℹ️ No other characters in the current session.{!isReadOnly && ' Add participants to the chat to enable those shortcuts.'}
-                                        </div>
-                                    )}
-                                    {allCharacters.length === 0 && (
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.8, fontStyle: 'italic', padding: '8px 10px', background: 'rgba(255, 255, 255, 0.04)', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
-                                            ℹ️ No characters available in the global registry.
-                                        </div>
-                                    )}
-
-                                    {quickConfigFeedback && (
-                                        <div style={{ padding: '8px 10px', background: quickConfigFeedback.addedNames.length > 0 ? 'rgba(34, 197, 94, 0.1)' : 'rgba(255, 255, 255, 0.05)', border: `1px solid ${quickConfigFeedback.addedNames.length > 0 ? 'rgba(34, 197, 94, 0.3)' : 'rgba(255, 255, 255, 0.1)'}`, borderRadius: '6px', marginBottom: '8px' }}>
-                                            <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px', color: quickConfigFeedback.addedNames.length > 0 ? '#22c55e' : 'var(--text-h)' }}>
-                                                {quickConfigFeedback.addedNames.length > 0 ? `✓ ${quickConfigFeedback.label}` : `ℹ️ ${quickConfigFeedback.label}`}
+                                                )}
                                             </div>
-                                            {quickConfigFeedback.addedNames.length > 0 && (
-                                                <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', maxHeight: '120px', overflowY: 'auto' }}>
-                                                    {quickConfigFeedback.addedNames.map(entry => (
-                                                        <div key={entry.charName} style={{ fontSize: '0.6rem', opacity: 0.8 }}>
-                                                            <span style={{ fontWeight: 'bold', opacity: 1 }}>{entry.charName}:</span>{' '}
-                                                            <span style={{ opacity: 0.7 }}>{entry.names.join(', ')}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
+                                        )}
+
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            {!isReadOnly && <button type="button" className="editor-button editor-button-cancel" onClick={handleRevertKnownNames} disabled={isUploading} title="Revert known names to their state before opening this editor" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Revert Known Names to Original</button>}
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCurrentProtagonist} disabled={isUploading || isReadOnly || !hasLocalProtagonist} title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎯 Know Current Protagonist's Names</button>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedProtagonists} disabled={isUploading || isReadOnly || !hasSession || coLocatedProtagonistCount === 0} title={!hasSession ? 'No active session' : coLocatedProtagonistCount === 0 ? 'No co-located protagonists' : `Add ${coLocatedProtagonistCount} co-located protagonist(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}</button>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllProtagonists} disabled={isUploading || isReadOnly || !hasSession || !hasProtagonists} title={!hasSession ? 'No active session' : 'Add all protagonists names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>👥 Know All The Protagonists' Names</button>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedParticipants} disabled={isUploading || isReadOnly || !hasSession || coLocatedParticipantCount === 0} title={!hasSession ? 'No active session' : coLocatedParticipantCount === 0 ? 'No co-located participants' : `Add ${coLocatedParticipantCount} co-located participant(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}</button>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllParticipants} disabled={isUploading || isReadOnly || !hasSession || !hasParticipants} title={!hasSession ? 'No active session' : 'Add all session participants names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎭 Know All Participants' Names</button>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllCharacters} disabled={isUploading || isReadOnly || allCharacters.length === 0} title="Add every character in the global registry" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🌐 Know All Characters' Names</button>
                                         </div>
-                                    )}
+                                    </div>
 
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        {!isReadOnly && <button type="button" className="editor-button editor-button-cancel" onClick={handleRevertKnownNames} disabled={isUploading} title="Revert known names to their state before opening this editor" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Revert Known Names to Original</button>}
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCurrentProtagonist} disabled={isUploading || isReadOnly || !hasLocalProtagonist} title={!hasLocalProtagonist ? 'No active local protagonist' : 'Add current protagonist name + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎯 Know Current Protagonist's Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedProtagonists} disabled={isUploading || isReadOnly || !hasSession || coLocatedProtagonistCount === 0} title={!hasSession ? 'No active session' : coLocatedProtagonistCount === 0 ? 'No co-located protagonists' : `Add ${coLocatedProtagonistCount} co-located protagonist(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Protagonists' Names {coLocatedProtagonistCount > 0 && `(${coLocatedProtagonistCount})`}</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllProtagonists} disabled={isUploading || isReadOnly || !hasSession || !hasProtagonists} title={!hasSession ? 'No active session' : 'Add all protagonists names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>👥 Know All The Protagonists' Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedParticipants} disabled={isUploading || isReadOnly || !hasSession || coLocatedParticipantCount === 0} title={!hasSession ? 'No active session' : coLocatedParticipantCount === 0 ? 'No co-located participants' : `Add ${coLocatedParticipantCount} co-located participant(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllParticipants} disabled={isUploading || isReadOnly || !hasSession || !hasParticipants} title={!hasSession ? 'No active session' : 'Add all session participants names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎭 Know All Participants' Names</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllCharacters} disabled={isUploading || isReadOnly || allCharacters.length === 0} title="Add every character in the global registry" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🌐 Know All Characters' Names</button>
+                                    <div className="editor-section" style={{ margin: 0 }}>
+                                        <span className="editor-section-title">Automated Utilities</span>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectStats} disabled={isUploading || isReadOnly} title="Re-run auto-detection on name + description + system prompt" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🔍 Auto-Detect Stats from Prompts</button>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectTools} disabled={isUploading || isReadOnly} title="Auto-detect tools and configure permissions based on character prompts" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🛡️ Auto-Detect Tools & Permissions</button>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleResetStatsToDefaults} disabled={isUploading || isReadOnly} title="Reset all stats to their default values" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Reset Stats to Defaults</button>
+                                        </div>
                                     </div>
                                 </div>
-
-                                <div className="editor-section" style={{ margin: 0 }}>
-                                    <span className="editor-section-title">Automated Utilities</span>
-                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectStats} disabled={isUploading || isReadOnly} title="Re-run auto-detection on name + description + system prompt" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🔍 Auto-Detect Stats from Prompts</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectTools} disabled={isUploading || isReadOnly} title="Auto-detect tools and configure permissions based on character prompts" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🛡️ Auto-Detect Tools & Permissions</button>
-                                        <button type="button" className="editor-button editor-button-cancel" onClick={handleResetStatsToDefaults} disabled={isUploading || isReadOnly} title="Reset all stats to their default values" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Reset Stats to Defaults</button>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                            )}
+                        </div>
+                    </FileDropArea>
                 </div>
             </div>
 

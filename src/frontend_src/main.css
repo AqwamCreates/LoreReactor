@@ -3266,7 +3266,10 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
 
 /* --- Editor Image Upload --- */
 .editor-image-upload-container { flex-shrink: 0; }
-.editor-image-portrait { aspect-ratio: 9/16; }
+.editor-image-portrait { 
+    aspect-ratio: 9/16; 
+    box-sizing: border-box; /* Ensures portrait borders never bleed past containers */
+}
 .editor-image-portrait.dashed { border-style: dashed; }
 .editor-image-portrait.solid { border-style: solid; }
 .editor-image-portrait img { width: 100%; height: 100%; object-fit: cover; object-position: top; }

@@ -1,5 +1,4 @@
 // src/frontend_src/components/PromptBlockEditorModal.tsx
-import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { PromptBlock, Character, Context, Location, RegularExpressionTrigger } from '../types';
 import { uploadPromptBlockImage, clonePromptBlockImage } from '../storages/serverStorage';
@@ -7,6 +6,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useChatStore } from '../hooks/useChatStore';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
+import { FileDropArea } from './FileDropArea';
+import { ImageList, type ImageEntry } from './ImageList';
 import '../main.css';
 
 const tokenEngine = getLanguageModelEngine();
@@ -21,10 +22,6 @@ interface PromptBlockEditorModalProps {
 }
 
 type PromptBlockTabId = 'general' | 'detection' | 'filter' | 'bindings';
-
-type ImageEntry = 
-    | { type: 'existing'; filename: string; previewUrl: string }
-    | { type: 'staged'; file: File; previewUrl: string };
 
 export function PromptBlockEditorModal({
     onClose,
@@ -89,7 +86,6 @@ function PromptBlockEditorModalInner({
     const [locationBindings, setLocationBindings] = useState<string[]>(existingBlock?.locationBindings ?? []);
 
     const [errors, setErrors] = useState<Record<string, string | undefined>>({});
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     const [textTokenCount, setTextTokenCount] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -159,18 +155,14 @@ function PromptBlockEditorModalInner({
         return Object.keys(newErrors).length === 0 && valid;
     };
 
-    const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (e.target.files?.length) {
-            const files = Array.from(e.target.files);
-            const newEntries: ImageEntry[] = files.map(file => ({
-                type: 'staged',
-                file,
-                previewUrl: URL.createObjectURL(file),
-            }));
-            setImages(prev => [...prev, ...newEntries]);
-            if (errors.images) setErrors(prev => ({ ...prev, images: undefined }));
-        }
-        e.target.value = '';
+    const handleImageFilesAdded = (files: File[]) => {
+        const newEntries: ImageEntry[] = files.map(file => ({
+            type: 'staged',
+            file,
+            previewUrl: URL.createObjectURL(file),
+        }));
+        setImages(prev => [...prev, ...newEntries]);
+        if (errors.images) setErrors(prev => ({ ...prev, images: undefined }));
     };
 
     const handleRemoveImage = (index: number) => {
@@ -180,6 +172,16 @@ function PromptBlockEditorModalInner({
                 URL.revokeObjectURL(item.previewUrl);
             }
             return prev.filter((_, i) => i !== index);
+        });
+    };
+
+    const handleReorderImages = (fromIndex: number, toIndex: number) => {
+        if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= images.length || toIndex >= images.length) return;
+        setImages(prev => {
+            const next = [...prev];
+            const [movedItem] = next.splice(fromIndex, 1);
+            next.splice(toIndex, 0, movedItem);
+            return next;
         });
     };
 
@@ -278,219 +280,220 @@ function PromptBlockEditorModalInner({
     return (
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h2>{existingBlock ? 'Edit Prompt Block' : 'Create New Prompt Block'}</h2>
-                    <div className="editor-modal-actions">
-                        <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
-                        {existingBlock && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
-                        <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
+                <FileDropArea
+                    acceptedTypes={['image']}
+                    disabled={isUploading}
+                    onDropImages={handleImageFilesAdded}
+                    overlayTitle="Drop Prompt Block Images"
+                    overlaySubtitle="Drop image files here to attach to this prompt block"
+                >
+                    <div className="modal-header">
+                        <h2>{existingBlock ? 'Edit Prompt Block' : 'Create New Prompt Block'}</h2>
+                        <div className="editor-modal-actions">
+                            <button type="button" className="editor-button editor-button-cancel" onClick={onClose} disabled={isUploading}>Cancel</button>
+                            {existingBlock && <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={isUploading}>Clone</button>}
+                            <button type="button" className="editor-button editor-button-save" onClick={handleSubmit} disabled={isUploading}>{isUploading ? 'Saving...' : 'Save'}</button>
+                        </div>
                     </div>
-                </div>
 
-                {/* Tab Bar */}
-                <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
-                    {promptBlockTabs.map(tab => (
-                        <button
-                            key={tab.id}
-                            type="button"
-                            onClick={() => setActiveTab(tab.id)}
-                            className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
-                        >
-                            {tab.icon} {tab.label}
-                        </button>
-                    ))}
-                </div>
+                    {/* Tab Bar */}
+                    <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                        {promptBlockTabs.map(tab => (
+                            <button
+                                key={tab.id}
+                                type="button"
+                                onClick={() => setActiveTab(tab.id)}
+                                className={`entity-tab-button ${activeTab === tab.id ? 'entity-tab-button-active' : ''}`}
+                            >
+                                {tab.icon} {tab.label}
+                            </button>
+                        ))}
+                    </div>
 
-                <div className="modal-body editor-modal-body">
-                    {/* ─── GENERAL TAB ─── */}
-                    {activeTab === 'general' && (
-                        <>
-                            <div className="context-field-group">
-                                <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
-                                <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Combat Rules, Magic System" disabled={isUploading} />
-                                {errors.name && <div className="editor-error-message">{errors.name}</div>}
+                    <div className="modal-body editor-modal-body">
+                        {/* ─── GENERAL TAB ─── */}
+                        {activeTab === 'general' && (
+                            <>
+                                <div className="context-field-group">
+                                    <label className="editor-label">Name <span className="context-required-asterisk">*</span></label>
+                                    <input type="text" value={name} onChange={(e) => { setName(e.target.value); if (errors.name) setErrors({ ...errors, name: undefined }); }} className={`editor-input ${errors.name ? 'error' : ''}`} placeholder="e.g., Combat Rules, Magic System" disabled={isUploading} />
+                                    {errors.name && <div className="editor-error-message">{errors.name}</div>}
+                                </div>
+
+                                <div className="context-field-group">
+                                    <label className="editor-label">Description</label>
+                                    <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description (display only)" rows={2} disabled={isUploading} />
+                                </div>
+
+                                <div className="context-field-group">
+                                    <label className="editor-label">Text Content {textRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
+                                    <textarea value={textContent} onChange={(e) => { setTextContent(e.target.value); if (errors.textContent) setErrors({ ...errors, textContent: undefined }); }} className={`editor-textarea ${errors.textContent ? 'error' : ''}`} placeholder="Prompt block text content (optional if using images)" rows={6} disabled={isUploading} />
+                                    <div className="context-token-count">~{textTokenCount} token(s)</div>
+                                    {errors.textContent && <div className="editor-error-message">{errors.textContent}</div>}
+                                </div>
+
+                                <div className="context-field-group">
+                                    <label className="editor-label">Images {imagesRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
+                                    <ImageList 
+                                        images={images}
+                                        isUploading={isUploading}
+                                        isReadOnly={false}
+                                        onRemoveImage={handleRemoveImage}
+                                        onReorderImages={handleReorderImages}
+                                        onFilesAdded={handleImageFilesAdded}
+                                    />
+                                    {errors.images && <div className="editor-error-message">{errors.images}</div>}
+                                </div>
+                            </>
+                        )}
+
+                        {/* ─── DETECTION TAB ─── */}
+                        {activeTab === 'detection' && (
+                            <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                                <RegularExpressionTriggerEditor
+                                    label="Activation"
+                                    description="Block activates when any trigger matches."
+                                    triggers={regexActivationTriggers}
+                                    onChange={setRegexActivationTriggers}
+                                    error={errors.regex}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Deactivation"
+                                    description="Deactivates block when any trigger matches."
+                                    triggers={regexDeactivationTriggers}
+                                    onChange={setRegexDeactivationTriggers}
+                                    error={errors.deactivationRegex}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Exclusion Activation"
+                                    description="Overrides activation when matched."
+                                    triggers={regexExclusionActivationTriggers}
+                                    onChange={setRegexExclusionActivationTriggers}
+                                    error={errors.exclusionRegex}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Exclusion Deactivation"
+                                    description="When exclusion stops being active."
+                                    triggers={regexExclusionDeactivationTriggers}
+                                    onChange={setRegexExclusionDeactivationTriggers}
+                                    error={errors.exclusionDeactivationRegex}
+                                />
                             </div>
+                        )}
 
-                            <div className="context-field-group">
-                                <label className="editor-label">Description</label>
-                                <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="editor-textarea" placeholder="Brief description (display only)" rows={2} disabled={isUploading} />
+                        {/* ─── FILTER TAB ─── */}
+                        {activeTab === 'filter' && (
+                            <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
+                                <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px', textAlign: 'center' }}>
+                                    Chat history messages matching activation triggers are excluded from the AI prompt.
+                                </div>
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Activation"
+                                    description="Messages matching any trigger are hidden from AI."
+                                    triggers={messageFilterActivationTriggers}
+                                    onChange={setMessageFilterActivationTriggers}
+                                    error={errors.messageFilterRegex}
+                                    placeholder="^\/ooc\s+|^\[.*\]$"
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Deactivation"
+                                    description="Stops filtering when any trigger matches."
+                                    triggers={messageFilterDeactivationTriggers}
+                                    onChange={setMessageFilterDeactivationTriggers}
+                                    error={errors.messageFilterDeactivationRegex}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Exclusion Activation"
+                                    description="Overrides filter — keeps message visible."
+                                    triggers={messageFilterExclusionActivationTriggers}
+                                    onChange={setMessageFilterExclusionActivationTriggers}
+                                    error={errors.messageFilterExclusionRegex}
+                                />
+                                <RegularExpressionTriggerEditor
+                                    label="Filter Exclusion Deactivation"
+                                    description="When filter exclusion stops being active."
+                                    triggers={messageFilterExclusionDeactivationTriggers}
+                                    onChange={setMessageFilterExclusionDeactivationTriggers}
+                                    error={errors.messageFilterExclusionDeactivationRegex}
+                                />
                             </div>
+                        )}
 
-                            <div className="context-field-group">
-                                <label className="editor-label">Text Content {textRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
-                                <textarea value={textContent} onChange={(e) => { setTextContent(e.target.value); if (errors.textContent) setErrors({ ...errors, textContent: undefined }); }} className={`editor-textarea ${errors.textContent ? 'error' : ''}`} placeholder="Prompt block text content (optional if using images)" rows={6} disabled={isUploading} />
-                                <div className="context-token-count">~{textTokenCount} token(s)</div>
-                                {errors.textContent && <div className="editor-error-message">{errors.textContent}</div>}
-                            </div>
-
-                            <div className="context-field-group">
-                                <label className="editor-label">Images {imagesRequiresAsterisk && <span className="context-required-asterisk">*</span>}</label>
-                                <div className="editor-image-grid">
-                                    {images.map((entry, index) => (
-                                        <div key={`${entry.previewUrl}-${index}`} className="editor-image-square active">
-                                            <img src={entry.previewUrl} alt={`Block image ${index + 1}`} />
-                                            <button type="button" onClick={() => handleRemoveImage(index)} className="editor-image-remove-button" disabled={isUploading}>×</button>
+                        {/* ─── BINDINGS TAB ─── */}
+                        {activeTab === 'bindings' && (
+                            <>
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Character Bindings</span>
+                                    <div className="context-field-group">
+                                        <div className="context-binding-hint">Only inject when these characters are present. Empty = all characters.</div>
+                                        <div className="context-character-binding-list">
+                                            {characterBindings.map(id => {
+                                                const char = getCharacterById(id);
+                                                if (!char) return null;
+                                                return (
+                                                    <div key={id} className="context-character-binding-chip">
+                                                        <span className="context-character-binding-name">{char.name}</span>
+                                                        <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
-                                    ))}
-                                    <div className={`editor-image-square editor-upload-square ${isUploading ? 'disabled' : ''}`} onClick={() => !isUploading && fileInputRef.current?.click()}>
-                                        <div className="context-image-placeholder">
-                                            <div className="context-image-placeholder-icon">{isUploading ? '⏳' : '📷'}</div>
-                                            <div className="context-image-placeholder-text">{isUploading ? 'Uploading...' : 'Upload'}</div>
+                                        <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                            <option value="" disabled>+ Bind to a character</option>
+                                            {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Context Bindings</span>
+                                    <div className="context-field-group">
+                                        <div className="context-binding-hint">Only inject when these contexts are active. Empty = always.</div>
+                                        <div className="context-character-binding-list">
+                                            {contextBindings.map(id => {
+                                                const context = getContextById(id);
+                                                if (!context) return null;
+                                                return (
+                                                    <div key={id} className="context-character-binding-chip">
+                                                        <span className="context-character-binding-name">{context.name}</span>
+                                                        <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
+                                                    </div>
+                                                );
+                                            })}
                                         </div>
+                                        <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                            <option value="" disabled>+ Bind to a context</option>
+                                            {allContexts.filter(c => !contextBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
+                                        </select>
                                     </div>
                                 </div>
-                                <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={handleImageChange} disabled={isUploading} />
-                                {errors.images && <div className="editor-error-message">{errors.images}</div>}
-                            </div>
-                        </>
-                    )}
 
-                    {/* ─── DETECTION TAB ─── */}
-                    {activeTab === 'detection' && (
-                        <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
-                            <RegularExpressionTriggerEditor
-                                label="Activation"
-                                description="Block activates when any trigger matches."
-                                triggers={regexActivationTriggers}
-                                onChange={setRegexActivationTriggers}
-                                error={errors.regex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Deactivation"
-                                description="Deactivates block when any trigger matches."
-                                triggers={regexDeactivationTriggers}
-                                onChange={setRegexDeactivationTriggers}
-                                error={errors.deactivationRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Exclusion Activation"
-                                description="Overrides activation when matched."
-                                triggers={regexExclusionActivationTriggers}
-                                onChange={setRegexExclusionActivationTriggers}
-                                error={errors.exclusionRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Exclusion Deactivation"
-                                description="When exclusion stops being active."
-                                triggers={regexExclusionDeactivationTriggers}
-                                onChange={setRegexExclusionDeactivationTriggers}
-                                error={errors.exclusionDeactivationRegex}
-                            />
-                        </div>
-                    )}
-
-                    {/* ─── FILTER TAB ─── */}
-                    {activeTab === 'filter' && (
-                        <div className="editor-section" style={{ margin: 0, border: 'none', background: 'transparent', padding: 0 }}>
-                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginBottom: '12px', textAlign: 'center' }}>
-                                Chat history messages matching activation triggers are excluded from the AI prompt.
-                            </div>
-                            <RegularExpressionTriggerEditor
-                                label="Filter Activation"
-                                description="Messages matching any trigger are hidden from AI."
-                                triggers={messageFilterActivationTriggers}
-                                onChange={setMessageFilterActivationTriggers}
-                                error={errors.messageFilterRegex}
-                                placeholder="^\/ooc\s+|^\[.*\]$"
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Deactivation"
-                                description="Stops filtering when any trigger matches."
-                                triggers={messageFilterDeactivationTriggers}
-                                onChange={setMessageFilterDeactivationTriggers}
-                                error={errors.messageFilterDeactivationRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Exclusion Activation"
-                                description="Overrides filter — keeps message visible."
-                                triggers={messageFilterExclusionActivationTriggers}
-                                onChange={setMessageFilterExclusionActivationTriggers}
-                                error={errors.messageFilterExclusionRegex}
-                            />
-                            <RegularExpressionTriggerEditor
-                                label="Filter Exclusion Deactivation"
-                                description="When filter exclusion stops being active."
-                                triggers={messageFilterExclusionDeactivationTriggers}
-                                onChange={setMessageFilterExclusionDeactivationTriggers}
-                                error={errors.messageFilterExclusionDeactivationRegex}
-                            />
-                        </div>
-                    )}
-
-                    {/* ─── BINDINGS TAB ─── */}
-                    {activeTab === 'bindings' && (
-                        <>
-                            <div className="editor-section">
-                                <span className="editor-section-title">Character Bindings</span>
-                                <div className="context-field-group">
-                                    <div className="context-binding-hint">Only inject when these characters are present. Empty = all characters.</div>
-                                    <div className="context-character-binding-list">
-                                        {characterBindings.map(id => {
-                                            const char = getCharacterById(id);
-                                            if (!char) return null;
-                                            return (
-                                                <div key={id} className="context-character-binding-chip">
-                                                    <span className="context-character-binding-name">{char.name}</span>
-                                                    <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
-                                                </div>
-                                            );
-                                        })}
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Location Bindings</span>
+                                    <div className="context-field-group">
+                                        <div className="context-binding-hint">Only inject at these locations. Empty = all locations.</div>
+                                        <div className="context-character-binding-list">
+                                            {locationBindings.map(id => {
+                                                const loc = getLocationById(id);
+                                                if (!loc) return null;
+                                                return (
+                                                    <div key={id} className="context-character-binding-chip">
+                                                        <span className="context-character-binding-name">{loc.name}</span>
+                                                        <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                        <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
+                                            <option value="" disabled>+ Bind to a location</option>
+                                            {allLocations.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
+                                        </select>
                                     </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                        <option value="" disabled>+ Bind to a character</option>
-                                        {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                    </select>
                                 </div>
-                            </div>
-
-                            <div className="editor-section">
-                                <span className="editor-section-title">Context Bindings</span>
-                                <div className="context-field-group">
-                                    <div className="context-binding-hint">Only inject when these contexts are active. Empty = always.</div>
-                                    <div className="context-character-binding-list">
-                                        {contextBindings.map(id => {
-                                            const context = getContextById(id);
-                                            if (!context) return null;
-                                            return (
-                                                <div key={id} className="context-character-binding-chip">
-                                                    <span className="context-character-binding-name">{context.name}</span>
-                                                    <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                        <option value="" disabled>+ Bind to a context</option>
-                                        {allContexts.filter(c => !contextBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                    </select>
-                                </div>
-                            </div>
-
-                            <div className="editor-section">
-                                <span className="editor-section-title">Location Bindings</span>
-                                <div className="context-field-group">
-                                    <div className="context-binding-hint">Only inject at these locations. Empty = all locations.</div>
-                                    <div className="context-character-binding-list">
-                                        {locationBindings.map(id => {
-                                            const loc = getLocationById(id);
-                                            if (!loc) return null;
-                                            return (
-                                                <div key={id} className="context-character-binding-chip">
-                                                    <span className="context-character-binding-name">{loc.name}</span>
-                                                    <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                        <option value="" disabled>+ Bind to a location</option>
-                                        {allLocations.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                                    </select>
-                                </div>
-                            </div>
-                        </>
-                    )}
-                </div>
+                            </>
+                        )}
+                    </div>
+                </FileDropArea>
             </div>
         </div>
     );
