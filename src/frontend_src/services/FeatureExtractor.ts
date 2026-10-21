@@ -298,9 +298,7 @@ export class FeatureExtractor {
                 }
             }
 
-            if (minLogDist !== Number.POSITIVE_INFINITY) {
-                features[`content:${category}`] = minLogDist;
-            }
+            if (minLogDist !== Number.POSITIVE_INFINITY) features[`content:${category}`] = minLogDist;
         }
 
         return features;
