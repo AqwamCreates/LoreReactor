@@ -519,10 +519,9 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
         if (!acquireLock()) return;
         
-        const prefillText = thought 
-            ? `${toolResultStartString}System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.${toolResultEndString}\n\n` 
-            : '';
-
+        const internalThoughtString = thought ? ` Your internal thought was: "${thought}".` : '';
+        const prefillText = `${toolResultStartString}System Note: You scheduled this follow-up earlier.${internalThoughtString}${toolResultEndString} `
+        
         const voiceTracker = new StreamingVoiceTracker(rawCharacter, allCharactersRef.current);
         if (prefillText) voiceTracker.seed(prefillText);
         await voiceTracker.start().catch(() => {});
