@@ -220,7 +220,9 @@ function compileRawString(
         const toolDisplays = extractedTools.map(t => t.display).filter(Boolean);
         
         if (toolDisplays.length > 0) {
-            const joinedTools = toolDisplays.join('\n\n');
+            // ✅ FIX: Join with a space so they accumulate inline on the same line.
+            const joinedTools = toolDisplays.join(' ');
+            
             if (placementMode === 'top') {
                 const separator = finalText.startsWith('\n\n') ? '' : finalText.startsWith('\n') ? '\n' : '\n\n';
                 finalText = joinedTools + separator + finalText;
