@@ -4,6 +4,7 @@ import type { Character } from '../types';
 
 interface GenerationState {
     isLoading: boolean;
+    isNarrating: boolean;
     streamingText: string;
     streamingCharacter: Character | null;
     currentCharacterExpression: string;
@@ -21,6 +22,7 @@ interface GenerationState {
     setStreamingText: (text: string) => void;
     setStreamingCharacter: (character: Character | null) => void;
     setIsLoading: (isLoading: boolean) => void;
+    setIsNarrating: (isNarrating: boolean) => void;
     resetStreaming: () => void;
     setAbortController: (ctrl: AbortController | null) => void;
     stopGeneration: () => void;
@@ -30,6 +32,7 @@ interface GenerationState {
 
 export const useGenerationStore = create<GenerationState>()((set, get) => ({
     isLoading: false,
+    isNarrating: false,
     streamingText: '',
     streamingCharacter: null,
     currentCharacterExpression: 'neutral',
@@ -46,7 +49,8 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
     setStreamingText: (text) => set({ streamingText: text }),
     setStreamingCharacter: (character) => set({ streamingCharacter: character }),
     setIsLoading: (isLoading) => set({ isLoading }),
-    resetStreaming: () => set({ streamingText: '', streamingCharacter: null, isLoading: false }),
+    setIsNarrating: (isNarrating) => set({ isNarrating }),
+    resetStreaming: () => set({ streamingText: '', streamingCharacter: null, isLoading: false, isNarrating: false }),
     setAbortController: (ctrl) => set({ abortController: ctrl }),
     setSelectedCharacterExpression: (expr) => set({ currentCharacterExpression: expr }),
     
@@ -67,6 +71,6 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
     stopGeneration: () => {
         const { abortController } = get();
         if (abortController) abortController.abort();
-        set({ streamingText: '', streamingCharacter: null, isLoading: false, abortController: null });
+        set({ streamingText: '', streamingCharacter: null, isLoading: false, isNarrating: false, abortController: null });
     },
 }));

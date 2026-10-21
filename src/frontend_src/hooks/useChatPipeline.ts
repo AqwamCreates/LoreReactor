@@ -288,7 +288,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         streamingCharacterRef.current = respondingChar ?? null;
         streamingMessageIdRef.current = `gen-${respondingChar?.id || 'ai'}-${Date.now()}`;
 
-        if (currentVoiceTrackerRef.current) {
+        if (currentVoiceTrackerRef.current && narrationBehaviour !== 'continue') {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
         }
@@ -349,17 +349,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
 
             useGenerationStore.setState({ streamingText: '' });
-            
             releaseLock();
-
-            // ✅ FIX: Always await playback completion to keep isLoading: true and the Stop button active.
-            if (voiceTracker) {
-                try {
-                    await voiceTracker.waitForPlaybackCompletion();
-                } catch (e) {
-                    console.warn('[useChatPipeline] Voice playback completion error:', e);
-                }
-            }
 
             let ud = turnResult.interactionData;
             if (ud === data) ud = { ...ud, interactionHistories: { ...ud.interactionHistories }, lastUpdatedTimestamp: Date.now() };
@@ -442,10 +432,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
                             const started = await ambientTracker.start().catch(() => false);
                             if (started) {
                                 ambientTracker.feed(lastMsg.textContent);
-                                // ✅ FIX: Always await ambient playback to keep the Stop button active
-                                await ambientTracker.waitForPlaybackCompletion();
-                                ambientTracker.stopImmediate();
-                                if (currentVoiceTrackerRef.current === ambientTracker) currentVoiceTrackerRef.current = null;
+                                // Do not await. Let it play in background.
                             }
                         }
                     }
@@ -479,10 +466,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            if (currentVoiceTrackerRef.current === voiceTracker) {
-                voiceTracker.stopImmediate();
-                currentVoiceTrackerRef.current = null;
-            }
+            // Do not stop the voice tracker here. Let it finish playing.
+            // It will be stopped if the user presses Stop or if a new generation interrupts it.
 
             resetStream();
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
@@ -541,17 +526,10 @@ export function useChatPipeline(deps: PipelineDependencies) {
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
             
-            // ✅ FIX: Always await playback completion
-            if (voiceTracker) {
-                await voiceTracker.waitForPlaybackCompletion();
-            }
+            // Do not await. Let it play in background.
         } catch (e) {
             console.error('Delayed response error:', e);
         } finally {
-            if (currentVoiceTrackerRef.current === voiceTracker) {
-                voiceTracker.stopImmediate();
-                currentVoiceTrackerRef.current = null;
-            }
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
             releaseLock();
         }
@@ -680,7 +658,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         const rawChar = msg.character;
         const char = allCharactersRef.current.find(c => c.id === rawChar?.id) || rawChar;
 
-        if (currentVoiceTrackerRef.current && narrationBehaviour !== 'interrupt') {
+        if (currentVoiceTrackerRef.current && narrationBehaviour !== 'continue') {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
         }
@@ -718,14 +696,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
 
-            // ✅ FIX: Always await playback completion
-            if (voiceTracker) {
-                try {
-                    await voiceTracker.waitForPlaybackCompletion();
-                } catch (e) {
-                    console.warn('[useChatPipeline] Resume voice playback completion error:', e);
-                }
-            }
+            // Do not await. Let it play in background.
 
             const liveStreamedText = streamingTextRef.current || existingText;
             const dataToFinalize = result?.interactionData || currentInteractionData;
@@ -770,11 +741,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             resumingExistingTextRef.current = '';
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
-
-            if (currentVoiceTrackerRef.current === voiceTracker) {
-                voiceTracker.stopImmediate();
-                currentVoiceTrackerRef.current = null;
-            }
 
             resetStream();
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });

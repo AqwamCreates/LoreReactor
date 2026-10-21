@@ -3,6 +3,7 @@ import type React from 'react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, LanguageModel } from '../types';
 import { computeSlashAutocomplete, applySlashSelection } from '../utilities/slashCommandLogic';
+import { useGenerationStore } from '../hooks/useGenerationStore';
 
 interface ChatInputProps {
     inputText: string;
@@ -53,6 +54,9 @@ export function ChatInput({
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [lastResetKey, setLastResetKey] = useState('');
     const autocompleteRef = useRef<HTMLDivElement>(null);
+    
+    const isNarrating = useGenerationStore(s => s.isNarrating);
+    const showStopButton = isLoading || isNarrating;
 
     const { breadcrumbs, options, isComplete, isSlash, activeIndex, currentQuery } = useMemo(() => {
         return computeSlashAutocomplete(
@@ -211,10 +215,10 @@ export function ChatInput({
                 />
                 <button
                     type="button"
-                    onClick={isLoading ? onStopGeneration : onSend}
-                    disabled={!isLoading && (!inputText && !pendingFiles.length) || (!isLoading && !isModelReady) || (!isLoading && !localProtagonist)}
-                    className={`send-button ${!isLoading && !isModelReady ? 'send-button-disabled' : ''}`}
-                >{isLoading ? '⏹' : !isModelReady ? '⏳' : '↑'}</button>
+                    onClick={showStopButton ? onStopGeneration : onSend}
+                    disabled={!showStopButton && (!inputText && !pendingFiles.length) || (!showStopButton && !isModelReady) || (!showStopButton && !localProtagonist)}
+                    className={`send-button ${!showStopButton && !isModelReady ? 'send-button-disabled' : ''}`}
+                >{showStopButton ? '⏹' : !isModelReady ? '⏳' : '↑'}</button>
             </div>
         </div>
     );

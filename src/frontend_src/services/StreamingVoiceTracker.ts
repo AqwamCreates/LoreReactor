@@ -3,6 +3,7 @@ import { StreamingVoicePlayer } from './StreamingVoicePlayer';
 import { textToSpeechEngine, fetchVoiceReference } from './TextToSpeechEngine';
 import { extractNarratableText, type NarratableSegment } from '../utilities/voiceTextExtractor';
 import { useChatStore } from '../hooks/useChatStore';
+import { useGenerationStore } from '../hooks/useGenerationStore';
 import type { Character, Sampler, deviceType, textType } from '../types';
 
 interface PendingJob {
@@ -29,21 +30,14 @@ export class StreamingVoiceTracker {
     
     private voiceReferences: Map<string, string> = new Map();
     
-    // Strict sequence tracking for in-order playback
     private nextSequenceId = 0;
     private nextPlaySequenceId = 0;
     
-    // Storage for completed audio buffers (handles out-of-order network responses)
     private completedAudioBuffers: Map<number, ArrayBuffer> = new Map();
     private inFlightPromises: Promise<void>[] = [];
 
-    // Concurrency control to avoid GPU/VRAM thrashing
     private readonly MAX_CONCURRENT_REQUESTS = 2;
-
-    // ─── Asymmetric Pipelining Thresholds (Worst-case 15 frames/s guarantee) ───
-    // Chunk 1: Pacesetter (~50 chars / ~55 frames) -> ~2.3s TTFA, generates ~4.0s of audio buffer
     private readonly INITIAL_CHUNK_MIN_CHARS = 50;
-    // Chunk 2+: Runway Builder (~75 chars / ~70 frames) -> generates ~5.6s audio, builds surplus cushion
     private readonly STEADY_CHUNK_MIN_CHARS = 75;
 
     private isFirstChunkSent = false;
@@ -89,6 +83,7 @@ export class StreamingVoiceTracker {
 
                 await this.player.init();
                 this.isActive = true;
+                useGenerationStore.setState({ isNarrating: true });
                 this.processPendingQueue();
                 return true;
             } catch (e) {
@@ -163,15 +158,11 @@ export class StreamingVoiceTracker {
 
     private processSegmentDelta(delta: string, type: textType): void {
         if (type !== this.pendingSegmentType) {
-            // Flush any accumulated sentence first
             if (this.sentenceAccumulator.length > 0) {
                 this.queueSentence(this.sentenceAccumulator, this.pendingSegmentType);
                 this.sentenceAccumulator = '';
             }
             
-            // CRITICAL FIX: Flush the buffer using the OLD type before switching.
-            // This prevents text from leaking into the new type's queue if a sentence 
-            // boundary was missed (e.g., period followed by a closing markdown tag like `.*`).
             if (this.buffer.length > 0) {
                 this.sentenceAccumulator += this.buffer;
                 this.queueSentence(this.sentenceAccumulator, this.pendingSegmentType);
@@ -183,10 +174,6 @@ export class StreamingVoiceTracker {
         this.pendingSegmentType = type;
         this.buffer += delta;
         
-        // Context-aware boundary matcher:
-        // 1. Single period (ignores ..., .., and spaced . . .)
-        // 2. [!?！？]+ and Asian full stop 。
-        // 3. Ellipses (… / ‥ / ... / . . .) ONLY when followed by a capital letter
         const boundaryRegex = /(?:((?<!\.\s*)\.(?!\s*\.)|[!?！？]+|。)|([…‥]|(?:\.\s*){2,})\s+(?=[A-ZÀ-ÖØ-ßА-Я]))(?:\s+|$)/gu;
         let match: RegExpExecArray | null;
 
@@ -199,14 +186,12 @@ export class StreamingVoiceTracker {
 
             if (!rawSentence) continue;
 
-            // Micro-sentence consolidation: combine short phrases
             if (this.sentenceAccumulator) {
                 this.sentenceAccumulator += ` ${rawSentence}`;
             } else {
                 this.sentenceAccumulator = rawSentence;
             }
 
-            // Asymmetric dynamic threshold: fast start for Chunk 1, deep buffer for Chunk 2+
             const targetMinLength = this.isFirstChunkSent
                 ? this.STEADY_CHUNK_MIN_CHARS
                 : this.INITIAL_CHUNK_MIN_CHARS;
@@ -306,10 +291,6 @@ export class StreamingVoiceTracker {
         }
     }
 
-    /**
-     * Called when text generation completes.
-     * Flushes remaining buffered fragments into the queue and drains in background without cutoff.
-     */
     async flushAndStop(): Promise<void> {
         this.isFlushing = true;
 
@@ -326,7 +307,6 @@ export class StreamingVoiceTracker {
             return;
         }
 
-        // Flush any remaining text (including trailing phrases and ending ellipses of any style)
         let remaining = this.sentenceAccumulator;
         if (this.buffer.length > 0) {
             remaining = (remaining ? remaining + ' ' : '') + this.buffer;
@@ -340,7 +320,6 @@ export class StreamingVoiceTracker {
 
         this.processPendingQueue();
 
-        // Drain in background until completely finished (no premature cutoff)
         while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
             if (this.isKilled) break;
             if (this.inFlightPromises.length > 0) {
@@ -353,6 +332,7 @@ export class StreamingVoiceTracker {
         this.processPlaybackQueue();
         this.isActive = false;
         this.isFirstChunkSent = false;
+        if (!this.isKilled) useGenerationStore.setState({ isNarrating: false });
     }
 
     async waitForPlaybackCompletion(): Promise<void> {
@@ -371,7 +351,6 @@ export class StreamingVoiceTracker {
 
         this.processPendingQueue();
 
-        // Await all in-flight TTS synthesis requests
         while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
             if (this.isKilled) break;
             if (this.inFlightPromises.length > 0) {
@@ -382,9 +361,8 @@ export class StreamingVoiceTracker {
         }
         
         this.processPlaybackQueue();
-
-        // Block until Web Audio playback finishes completely
         await this.player.waitUntilFinished();
+        if (!this.isKilled) useGenerationStore.setState({ isNarrating: false });
     }
 
     stopImmediate(): void {
@@ -400,5 +378,6 @@ export class StreamingVoiceTracker {
         this.buffer = '';
         this.sentenceAccumulator = '';
         this.processedSegments = [];
+        useGenerationStore.setState({ isNarrating: false });
     }
 }
