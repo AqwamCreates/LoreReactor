@@ -38,15 +38,27 @@ export function extractNarratableText(
     let bracketDepth = 0;
     let braceDepth = 0;
 
+    // Stack to track the chronological opening of formats.
+    // Index 0 is always the "top level" (outermost) format.
+    const activeFormats: textType[] = [];
+
+    const pushFormat = (type: textType) => {
+        if (!activeFormats.includes(type)) {
+            activeFormats.push(type);
+        }
+    };
+
+    const popFormat = (type: textType) => {
+        const idx = activeFormats.indexOf(type);
+        if (idx !== -1) {
+            activeFormats.splice(idx, 1);
+        }
+    };
+
     const getCurrentType = (): textType => {
-        if (insideBold) return 'bold';
-        if (insideItalic) return 'italic';
-        if (insideStrikethrough) return 'strikethrough';
-        if (insideUnderline) return 'underline';
-        if (insideQuote) return 'quote';
-        if (parenthesisDepth > 0) return 'parenthesis';
-        if (bracketDepth > 0) return 'bracket';
-        if (braceDepth > 0) return 'brace';
+        if (activeFormats.length > 0) {
+            return activeFormats[0]; // Locks strictly to the outermost format
+        }
         return 'normal';
     };
 
@@ -104,6 +116,7 @@ export function extractNarratableText(
                 parenthesisDepth = 0;
                 bracketDepth = 0;
                 braceDepth = 0;
+                activeFormats.length = 0;
                 checkTypeChange();
             }
         }
@@ -112,8 +125,16 @@ export function extractNarratableText(
             const canOpen = !insideBold && nextNextCharacter !== undefined && !/\s/.test(nextNextCharacter);
             const canClose = insideBold && previousCharacter !== undefined && !/\s/.test(previousCharacter);
 
-            if (canOpen || canClose) {
-                insideBold = !insideBold;
+            if (canOpen) {
+                insideBold = true;
+                pushFormat('bold');
+                checkTypeChange();
+                i += 2;
+                continue;
+            }
+            if (canClose) {
+                insideBold = false;
+                popFormat('bold');
                 checkTypeChange();
                 i += 2;
                 continue;
@@ -124,8 +145,16 @@ export function extractNarratableText(
             const canOpen = !insideStrikethrough && nextNextCharacter !== undefined && !/\s/.test(nextNextCharacter);
             const canClose = insideStrikethrough && previousCharacter !== undefined && !/\s/.test(previousCharacter);
 
-            if (canOpen || canClose) {
-                insideStrikethrough = !insideStrikethrough;
+            if (canOpen) {
+                insideStrikethrough = true;
+                pushFormat('strikethrough');
+                checkTypeChange();
+                i += 2;
+                continue;
+            }
+            if (canClose) {
+                insideStrikethrough = false;
+                popFormat('strikethrough');
                 checkTypeChange();
                 i += 2;
                 continue;
@@ -138,16 +167,17 @@ export function extractNarratableText(
 
             if (insideItalic && canClose) {
                 insideItalic = false;
+                popFormat('italic');
                 checkTypeChange();
                 i += 1;
                 continue;
             } else if (!insideItalic && canOpen) {
                 insideItalic = true;
+                pushFormat('italic');
                 checkTypeChange();
                 i += 1;
                 continue;
             } else if (insideItalic && !canClose && canOpen) {
-                insideItalic = true;
                 checkTypeChange();
                 i += 1;
                 continue;
@@ -164,16 +194,17 @@ export function extractNarratableText(
 
                 if (insideUnderline && canClose) {
                     insideUnderline = false;
+                    popFormat('underline');
                     checkTypeChange();
                     i += 1;
                     continue;
                 } else if (!insideUnderline && canOpen) {
                     insideUnderline = true;
+                    pushFormat('underline');
                     checkTypeChange();
                     i += 1;
                     continue;
                 } else if (insideUnderline && !canClose && canOpen) {
-                    insideUnderline = true;
                     checkTypeChange();
                     i += 1;
                     continue;
@@ -184,6 +215,7 @@ export function extractNarratableText(
         if (currentCharacter === '\u201C') {
             if (!insideQuote) {
                 insideQuote = true;
+                pushFormat('quote');
                 checkTypeChange();
             }
             i += 1;
@@ -193,6 +225,7 @@ export function extractNarratableText(
         if (currentCharacter === '\u201D') {
             if (insideQuote) {
                 insideQuote = false;
+                popFormat('quote');
                 checkTypeChange();
             }
             i += 1;
@@ -205,29 +238,33 @@ export function extractNarratableText(
 
             if (insideQuote && canClose) {
                 insideQuote = false;
+                popFormat('quote');
                 checkTypeChange();
                 i += 1;
                 continue;
             }
             if (!insideQuote && canOpen) {
                 insideQuote = true;
+                pushFormat('quote');
                 checkTypeChange();
                 i += 1;
                 continue;
             } 
             if (insideQuote && !canClose && canOpen) {
-                insideQuote = true;
                 checkTypeChange();
                 i += 1;
                 continue;
             }
             insideQuote = !insideQuote;
+            if (insideQuote) pushFormat('quote');
+            else popFormat('quote');
             checkTypeChange();
             i += 1;
             continue;
         }
 
         if (currentCharacter === '(') {
+            if (parenthesisDepth === 0) pushFormat('parenthesis');
             parenthesisDepth++;
             checkTypeChange();
             i += 1;
@@ -236,6 +273,7 @@ export function extractNarratableText(
         if (currentCharacter === ')') {
             if (parenthesisDepth > 0) {
                 parenthesisDepth--;
+                if (parenthesisDepth === 0) popFormat('parenthesis');
                 checkTypeChange();
             }
             i += 1;
@@ -243,6 +281,7 @@ export function extractNarratableText(
         }
 
         if (currentCharacter === '[') {
+            if (bracketDepth === 0) pushFormat('bracket');
             bracketDepth++;
             checkTypeChange();
             i += 1;
@@ -251,6 +290,7 @@ export function extractNarratableText(
         if (currentCharacter === ']') {
             if (bracketDepth > 0) {
                 bracketDepth--;
+                if (bracketDepth === 0) popFormat('bracket');
                 checkTypeChange();
             }
             i += 1;
@@ -258,6 +298,7 @@ export function extractNarratableText(
         }
 
         if (currentCharacter === '{') {
+            if (braceDepth === 0) pushFormat('brace');
             braceDepth++;
             checkTypeChange();
             i += 1;
@@ -266,31 +307,25 @@ export function extractNarratableText(
         if (currentCharacter === '}') {
             if (braceDepth > 0) {
                 braceDepth--;
+                if (braceDepth === 0) popFormat('brace');
                 checkTypeChange();
             }
             i += 1;
             continue;
         }
 
-        const isInsideParenthesis = parenthesisDepth > 0;
-        const isInsideBracket = bracketDepth > 0;
-        const isInsideBrace = braceDepth > 0;
-
+        const currentType = getCurrentType();
         let shouldIncludeCharacter = false;
         
-        if (insideItalic && narrateTexts.italic) shouldIncludeCharacter = true;
-        else if (insideBold && narrateTexts.bold) shouldIncludeCharacter = true;
-        else if (insideStrikethrough && narrateTexts.strikethrough) shouldIncludeCharacter = true;
-        else if (insideUnderline && narrateTexts.underline) shouldIncludeCharacter = true;
-        else if (insideQuote && narrateTexts.quote) shouldIncludeCharacter = true;
-        else if (isInsideParenthesis && narrateTexts.parenthesis) shouldIncludeCharacter = true;
-        else if (isInsideBracket && narrateTexts.bracket) shouldIncludeCharacter = true;
-        else if (isInsideBrace && narrateTexts.brace) shouldIncludeCharacter = true;
-        else if (
-            !insideItalic && !insideBold && !insideStrikethrough && !insideUnderline && !insideQuote && 
-            !isInsideParenthesis && !isInsideBracket && !isInsideBrace && 
-            narrateTexts.normal
-        ) shouldIncludeCharacter = true;
+        if (currentType === 'italic' && narrateTexts.italic) shouldIncludeCharacter = true;
+        else if (currentType === 'bold' && narrateTexts.bold) shouldIncludeCharacter = true;
+        else if (currentType === 'strikethrough' && narrateTexts.strikethrough) shouldIncludeCharacter = true;
+        else if (currentType === 'underline' && narrateTexts.underline) shouldIncludeCharacter = true;
+        else if (currentType === 'quote' && narrateTexts.quote) shouldIncludeCharacter = true;
+        else if (currentType === 'parenthesis' && narrateTexts.parenthesis) shouldIncludeCharacter = true;
+        else if (currentType === 'bracket' && narrateTexts.bracket) shouldIncludeCharacter = true;
+        else if (currentType === 'brace' && narrateTexts.brace) shouldIncludeCharacter = true;
+        else if (currentType === 'normal' && narrateTexts.normal) shouldIncludeCharacter = true;
 
         if (shouldIncludeCharacter) {
             currentSegmentText += currentCharacter;

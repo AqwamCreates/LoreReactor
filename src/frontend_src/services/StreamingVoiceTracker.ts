@@ -162,12 +162,25 @@ export class StreamingVoiceTracker {
     }
 
     private processSegmentDelta(delta: string, type: textType): void {
-        if (type !== this.pendingSegmentType && this.sentenceAccumulator.length > 0) {
-            this.queueSentence(this.sentenceAccumulator, this.pendingSegmentType);
-            this.sentenceAccumulator = '';
+        if (type !== this.pendingSegmentType) {
+            // Flush any accumulated sentence first
+            if (this.sentenceAccumulator.length > 0) {
+                this.queueSentence(this.sentenceAccumulator, this.pendingSegmentType);
+                this.sentenceAccumulator = '';
+            }
+            
+            // CRITICAL FIX: Flush the buffer using the OLD type before switching.
+            // This prevents text from leaking into the new type's queue if a sentence 
+            // boundary was missed (e.g., period followed by a closing markdown tag like `.*`).
+            if (this.buffer.length > 0) {
+                this.sentenceAccumulator += this.buffer;
+                this.queueSentence(this.sentenceAccumulator, this.pendingSegmentType);
+                this.sentenceAccumulator = '';
+                this.buffer = '';
+            }
         }
+        
         this.pendingSegmentType = type;
-
         this.buffer += delta;
         
         // Context-aware boundary matcher:
