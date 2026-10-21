@@ -21,6 +21,18 @@ export interface HandleServerResponseResult {
     displayText?: string;
 }
 
+// ✅ PHASE 1: Unified Context Object for the Generation Pipeline
+export interface TurnContext {
+    promptBlocks: PromptBlock[];
+    metadata?: RequestMetadata;
+    existingText?: string;
+    prefillText?: string;
+    voiceTracker?: StreamingVoiceTracker;
+    forcedSpeakerId?: string;
+    toolContext: ToolExecutionContext;
+    strategyOverride?: BudgetStrategy | null;
+}
+
 interface EngineDependencies {
     getState: () => any;
     setInteractionData: (d: InteractionData) => void;
@@ -31,7 +43,6 @@ interface EngineDependencies {
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
-    getToolContext: () => ToolExecutionContext;
     acquireLock?: () => boolean;
     releaseLock?: () => void;
 }
@@ -47,20 +58,15 @@ export function useChatEngine(deps: EngineDependencies) {
     const handleServerResponse = useCallback(async (
         data: InteractionData, 
         character: Character,
-        allPromptBlocks: PromptBlock[], 
         signal: AbortSignal,
+        context: TurnContext,
         onToken?: (text: string) => void,
-        strategyOverride?: BudgetStrategy | null,
-        existingCharacterText?: string,
-        metadata?: RequestMetadata,
-        voiceTracker?: StreamingVoiceTracker,
-        prefillText?: string,
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
         const activeStrategy = getState().activeStrategy;
 
-        const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
+        const isResuming = !!context.existingText && context.existingText.length > 0;
 
         let borrowedModel: LanguageModel | null = null;
         if (requestBorrowedModel) {
@@ -94,15 +100,23 @@ export function useChatEngine(deps: EngineDependencies) {
             onExpression: (expr: string) => setSelectedCharacterExpression(expr),
         };
 
+        // Map the unified TurnContext to the Actor's specific execution params
         const outcome = await characterActor.executeTurn({
-            data, character, signal, selectedModel, runningModels, activeStrategy,
-            strategyOverride, existingCharacterText, allPromptBlocks, 
+            data, 
+            character, 
+            signal, 
+            selectedModel, 
+            runningModels, 
+            activeStrategy,
+            strategyOverride: context.strategyOverride, 
+            existingCharacterText: context.existingText, 
+            prefillText: context.prefillText,
+            allPromptBlocks: context.promptBlocks, 
             callbacks,
             borrowedModel,
-            metadata,
-            toolContext: deps.getToolContext(),
-            voiceTracker,
-            prefillText,
+            metadata: context.metadata,
+            toolContext: context.toolContext,
+            voiceTracker: context.voiceTracker,
         });
 
         if ('error' in outcome) {
@@ -134,7 +148,6 @@ export function useChatEngine(deps: EngineDependencies) {
             costWithoutCacheMisses: prev.costWithoutCacheMisses + result.statsDelta.costWithoutCacheMisses,
         }));
 
-        // PRESERVE LIVE PROFILE: Keep the current live profile from state (e.g. if autonomousMode was toggled off)
         const liveProfile = getState().interactionData?.profile;
         const baseUpdated = isResuming
             ? (getState().interactionData ?? result.updatedData)
@@ -145,22 +158,18 @@ export function useChatEngine(deps: EngineDependencies) {
             profile: liveProfile ?? baseUpdated.profile,
         };
         
-        // ✅ 1. Commit the generated message to the UI state immediately
         setInteractionData(effectiveData);
 
-        // ✅ 2. Clear the streaming overlay AND isLoading so the "Thinking..." indicator doesn't show up while audio plays.
-        // The actual message is now in the chat history, and the response lock (isLoadingRef) still prevents concurrent generations.
         useSessionStore.setState({
             isLoading: false,
             streamingCharacter: null,
             streamingText: '',
         });
 
-        // ✅ 3. In 'wait' mode, pause turn sequence progression until this character's voice narration finishes playing completely
         const narrationBehaviour = data.profile?.textGenerationBehaviourOnNarration ?? 'wait';
-        if (voiceTracker && narrationBehaviour === 'wait') {
+        if (context.voiceTracker && narrationBehaviour === 'wait') {
             try {
-                await voiceTracker.waitForPlaybackCompletion();
+                await context.voiceTracker.waitForPlaybackCompletion();
             } catch (e) {
                 console.warn('[useChatEngine] Voice playback completion error:', e);
             }
@@ -173,22 +182,18 @@ export function useChatEngine(deps: EngineDependencies) {
             rawText: result.rawText,
             displayText: result.displayText,
         };
-    }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel, deps.getToolContext]);
+    }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel]);
 
     const runTurn = useCallback(async (
         initialData: InteractionData,
         signal: AbortController,
-        promptBlocks: PromptBlock[],
-        metadata?: RequestMetadata,
-        existingCharacterText?: string,
-        voiceTracker?: StreamingVoiceTracker,
-        prefillText?: string,
+        context: TurnContext,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            const result = await handleServerResponse(d, c, promptBlocks, s, onToken, undefined, existingCharacterText || '', metadata, voiceTracker, prefillText);
+            const result = await handleServerResponse(d, c, s, context, onToken);
             
             if (result?.promptText) {
                 lastPromptText = result.promptText;
@@ -201,8 +206,10 @@ export function useChatEngine(deps: EngineDependencies) {
             initialData,
             executor,
             signal, 
+            context, // ✅ Pass context to orchestrator
             (character) => setStreamingState(character ?? null, ''),
-            (data) => setInteractionData(data)
+            (data) => setInteractionData(data),
+            { forcedSpeakerId: context.forcedSpeakerId }
         );
 
         if (result) {
@@ -220,19 +227,27 @@ export function useChatEngine(deps: EngineDependencies) {
         checkCanAct: () => boolean,
         getData: () => InteractionData | null,
         setData: (data: InteractionData) => void,
-        resetStream: () => void
+        resetStream: () => void,
+        toolContext: ToolExecutionContext
     ) => {
-        const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
+        const executor = async (d: InteractionData, c: Character, s: AbortSignal, ctx: TurnContext) => {
             resetStream();
             setStreamingState(c, '');
-            return handleServerResponse(d, c, [], s, undefined, undefined, '', undefined);
+            return handleServerResponse(d, c, s, ctx);
         };
         
+        // Create a base context for autonomous mode
+        const autoContext: TurnContext = {
+            promptBlocks: [],
+            toolContext,
+        };
+
         characterSoul.start(
             executor, 
             checkCanAct, 
             getData, 
             setData,
+            autoContext,
             (character) => setStreamingState(character ?? null, ''),
             acquireLock,
             releaseLock

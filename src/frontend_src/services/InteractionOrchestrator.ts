@@ -1,17 +1,17 @@
 // src/frontend_src/services/InteractionOrchestrator.ts
-import type { 
-    Character, InteractionData, HistoryMessage, InteractionMessage, 
-    ChatMessage, Location, Inventory, ActiveToolActions 
+import type {
+    Character, InteractionData, HistoryMessage, InteractionMessage,
+    ChatMessage, Location, Inventory, ActiveToolActions
 } from '../types';
-import { 
-    getEffectiveChatProbability, consumeChatStaminaForMessage, 
-    consumeActionStaminaForMessage, generateActionStaminaForInteractionData, 
-    generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity 
+import {
+    getEffectiveChatProbability, consumeChatStaminaForMessage,
+    consumeActionStaminaForMessage, generateActionStaminaForInteractionData,
+    generateChatStaminaForInteractionData, getEffectiveChatImpatienceSensitivity
 } from '../utilities/characterLogic';
-import { 
-    getCurrentLocationId, findReachableLocationByRegularExpression, 
-    getReachableLocationsByCharacter, sampleReachableLocationByWeight, 
-    assignInitialLocationsIfNeeded 
+import {
+    getCurrentLocationId, findReachableLocationByRegularExpression,
+    getReachableLocationsByCharacter, sampleReachableLocationByWeight,
+    assignInitialLocationsIfNeeded
 } from '../utilities/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
 import {
@@ -25,12 +25,14 @@ import {
     computeChatStaminaConsumptionCost,
     computeMovementCost,
 } from '../utilities/dynamicCharacterLogic';
-import type { HandleServerResponseResult } from '../hooks/useChatEngine';
+import type { HandleServerResponseResult, TurnContext } from '../hooks/useChatEngine';
 
-type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>;
+// ✅ PHASE 1: Executor now accepts the unified TurnContext
+type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, context: TurnContext) => Promise<HandleServerResponseResult | null>;
 
 export interface TurnSequenceOptions {
-    singleTurn?: boolean; // True in Autonomous mode, false in manual chat
+    singleTurn?: boolean; 
+    forcedSpeakerId?: string; 
 }
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
@@ -79,6 +81,7 @@ export async function runTurnSequence(
     currentInteractionData: InteractionData,
     executor: TurnExecutor,
     abortController: AbortController,
+    context: TurnContext, // ✅ Added Context parameter
     onSpeakerChange?: (char: Character | null) => void,
     onIntermediateData?: (data: InteractionData) => void,
     options?: TurnSequenceOptions
@@ -138,7 +141,6 @@ export async function runTurnSequence(
 
         const chatRefusedThisIteration = new Set<string>();
 
-        // Passive movement stamina recharge
         for (const char of remaining) {
             const { chatRegen, actionRegen } = computeModulatedStaminaRegenationAmounts(char, workingData);
             if (chatRegen > 0) generateChatStaminaForInteractionData(workingData, chatRegen, char);
@@ -153,26 +155,36 @@ export async function runTurnSequence(
         }
 
         const globalWinner = weightedSample(globalPool);
-        if (!globalWinner) break;
+        
+        let effectiveWinner = globalWinner;
+        if (options?.forcedSpeakerId) {
+            const forcedChar = remaining.find(c => c.id === options.forcedSpeakerId);
+            if (forcedChar) {
+                effectiveWinner = { item: forcedChar, weight: 1 };
+            }
+        }
 
-        const effectiveSkip = computeEffectiveSkip(globalWinner, workingData, triggeringMessageText);
-        if (Math.random() < effectiveSkip) {
-            actedThisSequence.add(globalWinner.id);
+        if (!effectiveWinner) break;
+
+        const effectiveSkip = computeEffectiveSkip(effectiveWinner, workingData, triggeringMessageText);
+        if (Math.random() < effectiveSkip && !options?.forcedSpeakerId) {
+            actedThisSequence.add(effectiveWinner.id);
             if (options?.singleTurn) break;
             continue;
         }
 
-        const winnerCoLocated = isCoLocatedWithAnyProtagonist(workingData, globalWinner.id, protagonistLocIds, !!hasLocations);
+        const winnerCoLocated = isCoLocatedWithAnyProtagonist(workingData, effectiveWinner.id, protagonistLocIds, !!hasLocations);
 
-        if (winnerCoLocated) {
+        if (winnerCoLocated || options?.forcedSpeakerId) {
             const chatEligible = remaining.filter(p => {
                 if (spokenThisSequence.has(p.id)) return false;
                 if (chatRefusedThisIteration.has(p.id)) return false;
+                if (options?.forcedSpeakerId && p.id === options.forcedSpeakerId) return true;
                 return isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIds, !!hasLocations);
             });
 
             if (chatEligible.length === 0) {
-                actedThisSequence.add(globalWinner.id);
+                actedThisSequence.add(effectiveWinner.id);
                 if (options?.singleTurn) break;
                 continue;
             }
@@ -180,18 +192,26 @@ export async function runTurnSequence(
             const chatPool: { item: Character; weight: number }[] = [];
             for (const char of chatEligible) {
                 const score = computeChatScore(char, workingData);
-                if (score > 0) chatPool.push({ item: char, weight: score });
+                if (score > 0 || (options?.forcedSpeakerId && char.id === options.forcedSpeakerId)) {
+                    chatPool.push({ item: char, weight: score > 0 ? score : 1 });
+                }
             }
 
-            const speaker = weightedSample(chatPool);
+            let speaker = weightedSample(chatPool);
+            
+            if (options?.forcedSpeakerId) {
+                const forcedChar = chatEligible.find(c => c.id === options.forcedSpeakerId);
+                if (forcedChar) speaker = { item: forcedChar, weight: 1 };
+            }
+
             if (!speaker) {
-                actedThisSequence.add(globalWinner.id);
+                actedThisSequence.add(effectiveWinner.id);
                 if (options?.singleTurn) break;
                 continue;
             }
 
             const chatProb = getEffectiveChatProbability(speaker, profile);
-            if (chatProb < 1 && Math.random() >= chatProb) {
+            if (chatProb < 1 && Math.random() >= chatProb && !options?.forcedSpeakerId) {
                 chatRefusedThisIteration.add(speaker.id);
                 if (options?.singleTurn) break;
                 continue;
@@ -199,7 +219,8 @@ export async function runTurnSequence(
 
             if (onSpeakerChange) onSpeakerChange(speaker);
 
-            const result = await executor(workingData, speaker, abortController.signal);
+            // ✅ Pass the context down to the executor
+            const result = await executor(workingData, speaker, abortController.signal, context);
 
             if (!result) {
                 sequenceCompleted = false;
@@ -215,7 +236,6 @@ export async function runTurnSequence(
             const newLastEntry = allResultMessages.length > 0 ? allResultMessages[allResultMessages.length - 1] : undefined;
             
             if (newLastEntry && newLastEntry.character.id === speaker.id && hasTextContent(newLastEntry)) {
-                // 1. Consume speaker's chat stamina
                 const paragraphs = countParagraphs((newLastEntry as ChatMessage).textContent);
                 const chatCost = computeChatStaminaConsumptionCost(speaker, resultData, paragraphs);
                 
@@ -229,10 +249,8 @@ export async function runTurnSequence(
                     }
                 }
 
-                // 2. Validate and handle spatial movement via regex
                 if (hasLocations) {
                     const currentLocId = getCurrentLocationId(resultData, speaker);
-                    // FIX: Must check reachability and locks, not bypass with global regex
                     const regexLoc = findReachableLocationByRegularExpression(resultData, (newLastEntry as ChatMessage).textContent, speaker);
 
                     if (regexLoc && currentLocId && regexLoc.id !== currentLocId) {
@@ -248,7 +266,6 @@ export async function runTurnSequence(
                             }
                         }
 
-                        // FIX: Dialogue stays in origin location; an arrival interaction is created in destination
                         const arrivalInteraction: InteractionMessage = {
                             messageType: 'interaction',
                             id: uuidv4(),
@@ -283,7 +300,6 @@ export async function runTurnSequence(
 
             if (!sequenceCompleted) break;
         } else {
-            // Action/Movement branch (Non-colocated autonomous movement)
             const actionEligible = remaining.filter(p => {
                 if (actedThisSequence.has(p.id)) return false;
                 return !isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIds, !!hasLocations);
@@ -297,7 +313,7 @@ export async function runTurnSequence(
 
             const mover = weightedSample(actionPool);
             if (!mover) {
-                actedThisSequence.add(globalWinner.id);
+                actedThisSequence.add(effectiveWinner.id);
                 if (options?.singleTurn) break;
                 continue;
             }
@@ -377,7 +393,6 @@ export async function runTurnSequence(
                 const flatSortedMsgs = Object.values(workingData.interactionHistories || {}).flat().sort((a, b) => a.firstCreatedTimestamp - b.firstCreatedTimestamp);
                 const lastParentId = flatSortedMsgs.length > 0 ? flatSortedMsgs[flatSortedMsgs.length - 1].id : null;
 
-                // FIX: Inherit inventory and activeToolActions during autonomous movement
                 const silent = createSilentInteraction(
                     mover,
                     prevChatStamina,

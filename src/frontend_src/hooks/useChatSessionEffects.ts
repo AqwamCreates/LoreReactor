@@ -7,6 +7,7 @@ import { loadRawBudgetData } from '../storages/serverStorage';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { hasTextContent } from '../utilities/chatSessionLogic';
 import { localURL } from '../../configurations';
+import type { ToolExecutionContext } from '../services/ToolExecutor';
 
 interface ChatSessionEffectsParams {
     interactionData: InteractionData | null;
@@ -24,6 +25,7 @@ interface ChatSessionEffectsParams {
     resetStream: () => void;
     chatEngine: any;
     addToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
+    buildToolContext: () => ToolExecutionContext; // ✅ Added for Phase 1 TurnContext
 }
 
 export function useChatSessionEffects({
@@ -42,6 +44,7 @@ export function useChatSessionEffects({
     resetStream,
     chatEngine,
     addToast,
+    buildToolContext, // ✅ Destructured
 }: ChatSessionEffectsParams) {
     const engine = getLanguageModelEngine();
 
@@ -142,13 +145,14 @@ export function useChatSessionEffects({
                 checkCanAct,
                 () => getState().interactionData,
                 (data: InteractionData) => { setState({ interactionData: data }); },
-                resetStream
+                resetStream,
+                buildToolContext() // ✅ Pass the toolContext here for the autonomous TurnContext
             );
         } else {
             stopAutonomousMode();
         }
         return () => { stopAutonomousMode(); };
-    }, [autonomousMode, activeChatId, isMultiplayerClient, startAutonomousMode, stopAutonomousMode, isLoadingRef, abortControllerRef, resetStream, getState, setState]);
+    }, [autonomousMode, activeChatId, isMultiplayerClient, startAutonomousMode, stopAutonomousMode, isLoadingRef, abortControllerRef, resetStream, getState, setState, buildToolContext]);
 
     // 7. Persist Factorization Machine Weights on Window Unload
     useEffect(() => {

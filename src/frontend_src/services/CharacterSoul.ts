@@ -2,7 +2,7 @@
 import type { InteractionData, Character } from '../types';
 import { runTurnSequence } from './InteractionOrchestrator';
 import { computeGlobalScore, computeAutonomousTickDelay } from '../utilities/dynamicCharacterLogic';
-import type { HandleServerResponseResult } from '../hooks/useChatEngine';
+import type { HandleServerResponseResult, TurnContext } from '../hooks/useChatEngine';
 import { processPendingToolActions } from './ToolExecutor';
 
 export class CharacterSoul {
@@ -15,10 +15,11 @@ export class CharacterSoul {
     private getAllCharacters: (() => Character[]) | null = null;
 
     start(
-        executor: (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>,
+        executor: (data: InteractionData, character: Character, signal: AbortSignal, context: TurnContext) => Promise<HandleServerResponseResult | null>,
         checkCanAct: () => boolean,
         getData: () => InteractionData | null,
         setData: (data: InteractionData) => void,
+        context: TurnContext, // ✅ Added TurnContext parameter
         onSpeakerChange?: (char: Character | null) => void,
         acquireLock?: () => boolean,
         releaseLock?: () => void,
@@ -40,14 +41,15 @@ export class CharacterSoul {
         this.getAllCharacters = getAllCharacters ?? null;
 
         const initialDelay = initialData.profile.autonomousInteractionIntervalMs || 1000;
-        this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, initialDelay);
+        this.scheduleNextTick(executor, checkCanAct, getData, setData, context, onSpeakerChange, initialDelay);
     }
 
     private scheduleNextTick(
-        executor: (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>,
+        executor: (data: InteractionData, character: Character, signal: AbortSignal, context: TurnContext) => Promise<HandleServerResponseResult | null>,
         checkCanAct: () => boolean,
         getData: () => InteractionData | null,
         setData: (data: InteractionData) => void,
+        context: TurnContext, // ✅ Added TurnContext parameter
         onSpeakerChange?: (char: Character | null) => void,
         delay = 1000
     ): void {
@@ -74,12 +76,12 @@ export class CharacterSoul {
             const baseInterval = data.profile.autonomousInteractionIntervalMs || 1000;
 
             if (!checkCanAct()) {
-                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, baseInterval);
+                this.scheduleNextTick(executor, checkCanAct, getData, setData, context, onSpeakerChange, baseInterval);
                 return;
             }
 
             if (this.acquireLock && !this.acquireLock()) {
-                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, baseInterval);
+                this.scheduleNextTick(executor, checkCanAct, getData, setData, context, onSpeakerChange, baseInterval);
                 return;
             }
 
@@ -98,10 +100,12 @@ export class CharacterSoul {
                     this.abortController = new AbortController();
                 }
 
+                // ✅ Pass context as the 4th argument to align with the updated runTurnSequence signature
                 const result = await runTurnSequence(
                     data,
                     executor,
                     this.abortController,
+                    context, 
                     onSpeakerChange,
                     setData,
                     { singleTurn: true }
@@ -157,7 +161,7 @@ export class CharacterSoul {
                 }
 
                 const dynamicDelay = computeAutonomousTickDelay(mostUrgentChar, finalData);
-                this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, dynamicDelay);
+                this.scheduleNextTick(executor, checkCanAct, getData, setData, context, onSpeakerChange, dynamicDelay);
 
             } catch (e) {
                 if ((e as Error).name !== 'AbortError') {
@@ -166,7 +170,7 @@ export class CharacterSoul {
                 const freshData = getData();
                 if (this.isRunning && !this.abortController?.signal.aborted && freshData?.profile?.autonomousMode) {
                     const fallbackDelay = freshData.profile.autonomousInteractionIntervalMs || 1500;
-                    this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, fallbackDelay);
+                    this.scheduleNextTick(executor, checkCanAct, getData, setData, context, onSpeakerChange, fallbackDelay);
                 } else {
                     this.stop();
                 }

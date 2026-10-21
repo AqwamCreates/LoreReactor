@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useChatSession.ts
 import { useRef, useCallback, useEffect } from 'react';
-import { useChatEngine } from './useChatEngine';
+import { useChatEngine, type TurnContext } from './useChatEngine'; // ✅ Import TurnContext
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
 import { createChatMessage, convertIdsToDisplayNames, createNewInteractionData } from '../utilities/interactionDataLogic';
@@ -255,7 +255,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         setLastSelectedModelId,
         addToast,
         requestBorrowedModel,
-        getToolContext: buildToolContext,
         acquireLock,
         releaseLock,
     });
@@ -276,6 +275,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         resetStream,
         chatEngine,
         addToast,
+        buildToolContext, // ✅ Pass toolContext to effects for autonomous mode
     });
 
     const isModelReadyForGeneration = useCallback((): boolean => {
@@ -462,7 +462,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         errorPrefix = 'Generation failed',
         lockAlreadyAcquired = false,
         prefillText = '',
-    }: GenerationTurnOptions & { prefillText?: string }) => {
+        forcedSpeakerId,
+    }: GenerationTurnOptions & { prefillText?: string; forcedSpeakerId?: string }) => {
         if (!lockAlreadyAcquired && !acquireLock()) return;
         if (!data.profile || !data.profile?.enableCharacterExpression) sentimentEngine.unload();
 
@@ -484,8 +485,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 }
             }
         }
-
-        const promptBlocks = getActivePromptBlocks(data);
 
         const currentState = getState();
         if (!currentState.activeStrategy && !isModelReadyForGeneration()) {
@@ -534,6 +533,20 @@ export function useChatSession(options: UseChatSessionOptions) {
         
         await voiceTracker.start().catch(err => console.warn('[useChatSession] VoiceTracker start failed:', err));
 
+        // ✅ PHASE 1: Construct the unified TurnContext
+        const turnContext: TurnContext = {
+            promptBlocks: getActivePromptBlocks(data),
+            metadata: {
+                numberOfMessages: getGlobalMessageHistory(data).length,
+                numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
+            },
+            existingText: existingCharacterText,
+            prefillText,
+            voiceTracker,
+            forcedSpeakerId,
+            toolContext: buildToolContext(),
+        };
+
         useSessionStore.setState({
             isLoading: true,
             streamingCharacter: respondingChar ?? null,
@@ -542,10 +555,6 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         try {
             requestTimestampsRef.current.push(Date.now());
-            const metadata: RequestMetadata = {
-                numberOfMessages: getGlobalMessageHistory(data).length,
-                numberOfRequestsDuringTheLastHour: getRequestsLastHour(),
-            };
 
             const interactionDataId = data.id || 'unknown';
             for (const participant of data.participants) {
@@ -559,7 +568,8 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             let turnResult: Awaited<ReturnType<typeof chatEngine.runTurn>> | null = null;
             try {
-                turnResult = await chatEngine.runTurn(data, ctrl, promptBlocks, metadata, existingCharacterText, voiceTracker, prefillText);
+                // ✅ Pass the unified context
+                turnResult = await chatEngine.runTurn(data, ctrl, turnContext);
             } catch (e) {
                 if ((e as Error).name === 'AbortError') {
                     turnResult = { interactionData: data, isCompleted: false };
@@ -569,7 +579,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
 
             if (!turnResult) {
-                // 🛠️ BULLETPROOF FIX: Fallback to Zustand store if streamingTextRef wasn't populated by the orchestrator
                 const liveText = streamingTextRef.current || getState().streamingText;
                 if (!pendingPartialRef.current && liveText && respondingChar) {
                     pendingPartialRef.current = { text: liveText, character: respondingChar };
@@ -600,7 +609,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                     lastTurnContextRef.current = {
                         modelId: currentModelId,
                         prompt: turnResult.promptText,
-                        metadata,
+                        metadata: turnContext.metadata!,
                     };
                 }
             }
@@ -614,7 +623,6 @@ export function useChatSession(options: UseChatSessionOptions) {
             }
 
             if (getGlobalMessageHistory(ud).length <= preTurnCount) {
-                // 🛠️ BULLETPROOF FIX: Fallback to Zustand store if streamingTextRef wasn't populated
                 const liveText = streamingTextRef.current || getState().streamingText;
                 if (liveText && respondingChar) {
                     const currentLocId = getCurrentLocationId(ud, respondingChar) || 'global';
@@ -657,14 +665,14 @@ export function useChatSession(options: UseChatSessionOptions) {
                 runSummarization({
                     data: ud,
                     character: respondingChar,
-                    promptBlocks: promptBlocks,
+                    promptBlocks: turnContext.promptBlocks,
                     setInteractionData,
                     addToast,
                 });
             } else {
                 const enableAmbientNarration = ud?.profile?.enableAmbientNarration ?? false;
                 if (enableAmbientNarration) {
-                    const ad = await generateAmbientNarration(ud, ctrl.signal, promptBlocks, protagonistId);
+                    const ad = await generateAmbientNarration(ud, ctrl.signal, turnContext.promptBlocks, protagonistId);
                     const sd = ad || ud;
                     setInteractionData(sd);
 
@@ -713,7 +721,6 @@ export function useChatSession(options: UseChatSessionOptions) {
                 addToast(`${errorPrefix}: ${(e as Error).message}`, 'error');
             }
             
-            // 🛠️ BULLETPROOF FIX: Ensure partial text is saved even if errors bubble up through catch
             const liveText = streamingTextRef.current || getState().streamingText;
             if (!pendingPartialRef.current && liveText && respondingChar) {
                 pendingPartialRef.current = { text: liveText, character: respondingChar };
@@ -769,7 +776,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         resetStream, setStreamingState, setStats, getRequestsLastHour, chatEngine,
         applyPendingPartial, setInteractionData, broadcastNewMessages,
         autoResumeOnCutoff, generateAmbientNarration, isMultiplayerClient, isSpeculatingRef, streamingTextRef, extractAndScheduleResponses,
-        getActivePromptBlocks
+        getActivePromptBlocks, buildToolContext
     ]);
 
     const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
@@ -792,6 +799,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             isProtagonistCharId: isProtagonist,
             errorPrefix: 'Delayed response failed',
             prefillText,
+            forcedSpeakerId: rawCharacter.id,
         });
     }, [getState, executeTurnPipeline, isLoadingRef]);
 
@@ -855,8 +863,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         const resumeId = resumingMessageIdRef.current;
         const currentData = getState().interactionData;
 
-        // 🛠️ BULLETPROOF FIX: Capture streaming text and character BEFORE resetStream() wipes them.
-        // Fallback to Zustand store because the onToken pipeline is not fully wired through the orchestrator.
         const t = streamingTextRef.current || getState().streamingText;
         const c = getState().streamingCharacter || streamingCharacterRef.current;
 
@@ -1018,12 +1024,16 @@ export function useChatSession(options: UseChatSessionOptions) {
         isAtBottomRef.current = true;
 
         try {
-            const promptBlocks = getActivePromptBlocks(currentInteractionData);
-            
+            // ✅ PHASE 1: Construct TurnContext for Resume
+            const resumeContext: TurnContext = {
+                promptBlocks: getActivePromptBlocks(currentInteractionData),
+                existingText,
+                voiceTracker,
+                toolContext: buildToolContext(),
+            };
+
             const result = await chatEngine.handleServerResponse(
-                currentInteractionData, char, promptBlocks, ctrl.signal,
-                throttledSetStreamingTextWithBroadcast, undefined, existingText,
-                undefined, voiceTracker
+                currentInteractionData, char, ctrl.signal, resumeContext, throttledSetStreamingTextWithBroadcast
             );
 
             const liveStreamedText = streamingTextRef.current || existingText;
@@ -1108,7 +1118,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration,
         setStreamingText, streamingTextRef, addToast, releaseLock, chatEngine,
         throttledSetStreamingTextWithBroadcast, setStreamingState, setStats, isMultiplayerClient, isSpeculatingRef, resetStream,
-        getActivePromptBlocks
+        getActivePromptBlocks, buildToolContext
     ]);
 
     useEffect(() => {
