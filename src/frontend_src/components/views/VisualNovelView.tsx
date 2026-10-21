@@ -5,7 +5,9 @@ import type { Character, HistoryMessage, textType, TextMessage, NarrationMessage
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { useVisualNovelSpriteStates } from '../../hooks/useVisualNovelSpriteStates';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
-import { useSessionStore } from '../../hooks/useSessionStore';
+import { useChatStore } from '../../hooks/useChatStore';
+import { useGenerationStore } from '../../hooks/useGenerationStore';
+import { useUIStore } from '../../hooks/useUIStore';
 import { useCompiledMessageText } from '../../hooks/useMessageDisplay';
 import {
     detectFormatSegments,
@@ -23,7 +25,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const {
         displayMessages,
         portraitUrlCache,
-        streamingText, // ✅ Centralized from App.tsx
+        streamingText,
         centerAvatar, displayNameCache,
         messageEndRef, editTextAreaRef,
         onSaveEdit,
@@ -37,25 +39,24 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         canDelete,
     } = props;
 
-    // Read directly from Zustand store
-    const interactionData = useSessionStore(s => s.interactionData);
-    const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
-    const isLoading = useSessionStore(s => s.isLoading);
-    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
+    const interactionData = useChatStore(s => s.interactionData);
+    const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const isLoading = useGenerationStore(s => s.isLoading);
+    const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
 
-    const editingId = useSessionStore(s => s.editingId);
-    const editDraft = useSessionStore(s => s.editDraft);
-    const setEditDraft = useSessionStore(s => s.setEditDraft);
-    const setEditingState = useSessionStore(s => s.setEditingState);
+    const editingId = useUIStore(s => s.editingId);
+    const editDraft = useUIStore(s => s.editDraft);
+    const setEditDraft = useUIStore(s => s.setEditDraft);
+    const setEditingState = useUIStore(s => s.setEditingState);
 
-    const massDeleteId = useSessionStore(s => s.massDeleteId);
-    const setMassDeleteId = useSessionStore(s => s.setMassDeleteId);
+    const massDeleteId = useUIStore(s => s.massDeleteId);
+    const setMassDeleteId = useUIStore(s => s.setMassDeleteId);
 
-    const copyToClipboard = useSessionStore(s => s.copyToClipboard);
-    const deleteMessage = useSessionStore(s => s.deleteMessage);
-    const branchChat = useSessionStore(s => s.branchChat);
-    const cloneChat = useSessionStore(s => s.cloneChat);
-    const stopGeneration = useSessionStore(s => s.stopGeneration);
+    const copyToClipboard = useChatStore(s => s.copyToClipboard);
+    const deleteMessage = useChatStore(s => s.deleteMessage);
+    const branchChat = useChatStore(s => s.branchChat);
+    const cloneChat = useChatStore(s => s.cloneChat);
+    const stopGeneration = useGenerationStore(s => s.stopGeneration);
 
     // Derived state & Local wrappers for Zustand actions
     const isMassActive = massDeleteId !== null;
@@ -106,22 +107,16 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         if (viewIndex !== null && viewIndex >= 0 && viewIndex < chatMessages.length) {
             return chatMessages[viewIndex];
         }
-        // ✅ Fallback to the actual last message (which could be a NarrationMessage) instead of just the last chat speaker
         return lastMsg; 
     }, [viewIndex, chatMessages, lastMsg]);
 
-    // ✅ Unconditionally call the hook to satisfy React's Rules of Hooks.
-    // Pass null when it's a narration message to satisfy TypeScript's strict parameter check.
     const isNarration = displayedMessage?.messageType === 'narration';
     const compiledText = useCompiledMessageText(isNarration ? null : (displayedMessage as TextMessage | undefined));
     
-    // Bypass compilation for narration and use the raw text directly
     const displayedTextContent = isNarration && displayedMessage ? (displayedMessage as NarrationMessage).textContent : compiledText;
 
-    // isStreamingInList already guarantees lastMsg is not a narration message, so the cast is safe.
     const streamingCompiledText = useCompiledMessageText(isStreamingInList ? (lastMsg as TextMessage) : null);
 
-    // ✅ Use the centralized compiled string directly from props
     const activeStreamingText: string | null = useMemo(() => {
         if (isStreamingInList && lastMsg) {
             return streamingCompiledText;
@@ -133,13 +128,10 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return interactionData?.participants || [];
     }, [interactionData]);
 
-    // ✅ Check messageType instead of magic string ID. Also catches streaming ambient narration.
     const isAmbientSpeaker = displayedMessage?.messageType === 'narration' || (isLoading && !streamingCharacter && viewIndex === null);
 
     const activeSpeaker = useMemo(() => {
         if (isAmbientSpeaker) return null;
-        // ✅ Removed redundant !== 'narration' checks. 
-        // Because of the early return above, TypeScript correctly narrows these to TextMessage.
         if (viewIndex !== null && displayedMessage) return displayedMessage.character;
         if (isLoading && streamingCharacter) return streamingCharacter;
         if (isStreamingInList && lastMsg?.character) return lastMsg.character;
@@ -197,7 +189,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [setFocusedMessageId]);
 
     const spriteCharacterIds = useMemo(() => {
-        // ✅ Removed AMBIENT_NARRATOR_ID check as the narrator is no longer a participant
         return visibleCharacters
             .filter((c: Character) => c.id !== localProtagonistId)
             .map((c: Character) => c.id);
@@ -270,7 +261,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     useEffect(() => {
         if (isRawEditing && editTextAreaRef.current) {
             editTextAreaRef.current.focus();
-            // ✅ Auto-resize on initial render so it matches the text length immediately
             editTextAreaRef.current.style.height = 'auto';
             editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`;
         }
@@ -340,7 +330,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return null;
     }, [isEditingLastSpeaker, viewIndex, displayedTextContent, activeStreamingText]);
 
-    // Hydration guard to prevent flash
     const hasMessages = useMemo(() => {
         if (!interactionData?.interactionHistories) return false;
         return Object.values(interactionData.interactionHistories as Record<string, HistoryMessage[]>).some(arr => arr && arr.length > 0);
@@ -354,7 +343,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         <div className="vn-stage-container" style={bgStyle}>
             <div className="vn-sprites-layer">
                 {spriteCharacterIds.map((characterId: string) => {
-                    const portraitUrl = portraitUrlCache.get(`character:${characterId}`) ?? null;
+                    const portraitUrl = portraitUrlCache.get(`${characterId}`) ?? null;
                     if (!portraitUrl) return null;
 
                     const state = spriteStates.get(characterId);
@@ -541,7 +530,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                         onChange={handleRawChange}
                                         onBlur={handleExitRawEdit}
                                         onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); handleExitRawEdit(); } }}
-                                        // ✅ Auto-grow logic
                                         onInput={(e) => {
                                             const target = e.target as HTMLTextAreaElement;
                                             target.style.height = 'auto';

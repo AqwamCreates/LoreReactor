@@ -6,13 +6,15 @@ import { useToast } from '../context/ToastContext';
 import { useThrottledStream } from './useThrottledStream';
 import { useCharacterResponseLock } from './useCharacterResponseLock';
 import { useAmbientNarration } from './useAmbientNarration';
-import { useSessionStore } from './useSessionStore';
 import { useSpeculativeStreamHandler } from './useSpeculativeStreamHandler';
 import { useChatSessionEffects } from './useChatSessionEffects';
 import { useChatSender } from './useChatSender';
 import { useChatPipeline } from './useChatPipeline';
 import { useFrontCamera } from './useFrontCamera';
 import type { ToolExecutionContext } from '../services/ToolExecutor';
+
+import { useChatStore } from './useChatStore';
+import { useGenerationStore } from './useGenerationStore';
 
 import type {
     Character, PromptBlock, Profile, InteractionData, Context, Location, AudioTrack,
@@ -102,32 +104,35 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => { allEntityFoldersRef.current = options?.allEntityFolders ?? []; }, [options?.allEntityFolders]);
     useEffect(() => { allActionsRef.current = options?.allActions ?? []; }, [options?.allActions]);
 
-    // ─── Zustand Selectors ───────────────────────────────────────────
-    const interactionData = useSessionStore(s => s.interactionData);
-    const localProtagonist = useSessionStore(s => s.localProtagonist);
-    const activeStrategy = useSessionStore(s => s.activeStrategy);
-    const selectedModel = useSessionStore(s => s.selectedModel);
-    const runningModels = useSessionStore(s => s.runningModels);
-    const budgetData = useSessionStore(s => s.budgetData);
-    const selectedModelId = useSessionStore(s => s.selectedModelId);
-    const isLoading = useSessionStore(s => s.isLoading);
-    const currentCharacterExpression = useSessionStore(s => s.currentCharacterExpression);
-    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
+    // Domain & Config (useChatStore)
+    const interactionData = useChatStore(s => s.interactionData);
+    const localProtagonist = useChatStore(s => s.localProtagonist);
+    const activeStrategy = useChatStore(s => s.activeStrategy);
+    const selectedModel = useChatStore(s => s.selectedModel);
+    const runningModels = useChatStore(s => s.runningModels);
+    const budgetData = useChatStore(s => s.budgetData);
+    const selectedModelId = useChatStore(s => s.selectedModelId);
 
-    const setInteractionData = useSessionStore(s => s.setInteractionData);
-    const setStreamingState = useSessionStore(s => s.setStreamingState);
-    const setStats = useSessionStore(s => s.setStats);
-    const setSelectedCharacterExpression = useSessionStore(s => s.setSelectedCharacterExpression);
-    const setLastSelectedModelId = useSessionStore(s => s.setLastSelectedModelId);
-    const setActiveStrategy = useSessionStore(s => s.setActiveStrategy);
-    const setSelectedModel = useSessionStore(s => s.setSelectedModel);
-    const setSelectedCharacter = useSessionStore(s => s.setLocalProtagonist);
-    const setBudgetData = useSessionStore(s => s.setBudgetData);
-    const updateRunningModels = useSessionStore(s => s.updateRunningModels);
-    const setNumberOfTokens = useSessionStore(s => s.setNumberOfTokens);
+    // Ephemeral Streaming State (useGenerationStore)
+    const isLoading = useGenerationStore(s => s.isLoading);
+    const currentCharacterExpression = useGenerationStore(s => s.currentCharacterExpression);
+    const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
 
-    const getState = useSessionStore.getState;
-    const setState = useSessionStore.setState;
+    // Actions
+    const setInteractionData = useChatStore(s => s.setInteractionData);
+    const setStreamingState = useGenerationStore(s => s.setStreamingState);
+    const setStats = useGenerationStore(s => s.setStats);
+    const setSelectedCharacterExpression = useGenerationStore(s => s.setSelectedCharacterExpression);
+    const setLastSelectedModelId = useChatStore(s => s.setLastSelectedModelId);
+    const setActiveStrategy = useChatStore(s => s.setActiveStrategy);
+    const setSelectedModel = useChatStore(s => s.setSelectedModel);
+    const setSelectedCharacter = useChatStore(s => s.setLocalProtagonist);
+    const setBudgetData = useChatStore(s => s.setBudgetData);
+    const updateRunningModels = useChatStore(s => s.updateRunningModels);
+    const setNumberOfTokens = useChatStore(s => s.setNumberOfTokens);
+
+    const getState = useChatStore.getState;
+    const setState = useChatStore.setState;
 
     const autonomousMode = interactionData?.profile?.autonomousMode ?? false;
     const isAtBottomRef = useRef(true);

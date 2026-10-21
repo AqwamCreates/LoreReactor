@@ -2,7 +2,8 @@
 import { useEffect } from 'react';
 import { clientId, localURL } from '../../configurations';
 import { loadRawInteractionData } from '../storages/serverStorage';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
+import { useGenerationStore } from './useGenerationStore';
 
 type Refreshers = Record<string, (() => void) | undefined>;
 
@@ -27,21 +28,19 @@ export function useServerSync({ refreshers }: SyncProps) {
             changedChatId = path.split('/')[1].replace('.json', '');
           }
 
-          const currentInteractionData = useSessionStore.getState().interactionData;
+          const currentInteractionData = useChatStore.getState().interactionData;
           const activeChatId = currentInteractionData?.id ?? null;
 
           if (changedChatId && changedChatId === activeChatId) {
-            // ✅ CRITICAL GUARD 1: Never overwrite active generation or resume in progress
-            const isGenerating = useSessionStore.getState().isLoading;
+            const isGenerating = useGenerationStore.getState().isLoading;
             if (isGenerating) {
               return;
             }
 
             try {
               const freshChat = await loadRawInteractionData(changedChatId);
-              const currentChat = useSessionStore.getState().interactionData;
+              const currentChat = useChatStore.getState().interactionData;
 
-              // ✅ CRITICAL GUARD 2: Never overwrite local state if local is newer than server
               if (
                 freshChat && 
                 currentChat && 
@@ -51,7 +50,7 @@ export function useServerSync({ refreshers }: SyncProps) {
               }
 
               if (freshChat) {
-                useSessionStore.getState().setInteractionData(freshChat);
+                useChatStore.getState().setInteractionData(freshChat);
               }
             } catch (e) {
               console.error('Failed to hot-reload active chat from server sync:', e);

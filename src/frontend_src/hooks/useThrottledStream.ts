@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useThrottledStream.ts
 import { useRef, useCallback } from 'react';
-import { useSessionStore } from './useSessionStore';
+import { useGenerationStore } from './useGenerationStore';
 
 const THROTTLE_MS = 60;
 
@@ -27,11 +27,11 @@ export function useThrottledStream() {
         if (elapsed >= THROTTLE_MS) {
             clearPendingFlush();
             lastFlushRef.current = now;
-            useSessionStore.setState({ streamingText: text });
+            useGenerationStore.setState({ streamingText: text });
         } else if (!pendingFlushRef.current) {
             pendingFlushRef.current = setTimeout(() => {
                 lastFlushRef.current = performance.now();
-                useSessionStore.setState({ streamingText: pendingStreamingTextRef.current });
+                useGenerationStore.setState({ streamingText: pendingStreamingTextRef.current });
                 pendingFlushRef.current = null;
             }, THROTTLE_MS - elapsed);
         }
@@ -42,7 +42,7 @@ export function useThrottledStream() {
         streamingTextRef.current = text;
         pendingStreamingTextRef.current = text;
         lastFlushRef.current = performance.now();
-        useSessionStore.setState({ streamingText: text });
+        useGenerationStore.setState({ streamingText: text });
     }, [clearPendingFlush]);
 
     const resetStream = useCallback(() => {
@@ -50,7 +50,7 @@ export function useThrottledStream() {
         streamingTextRef.current = '';
         pendingStreamingTextRef.current = '';
         lastFlushRef.current = 0;
-        useSessionStore.setState({ streamingText: '' });
+        useGenerationStore.setState({ streamingText: '' });
     }, [clearPendingFlush]);
 
     return {

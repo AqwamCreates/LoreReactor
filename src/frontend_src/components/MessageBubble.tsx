@@ -3,7 +3,8 @@ import React from 'react';
 import type { Character, NarrationMessage, TextMessage, textType } from '../types';
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { useSessionStore } from '../hooks/useSessionStore';
+import { useChatStore } from '../hooks/useChatStore';
+import { useGenerationStore } from '../hooks/useGenerationStore';
 import { useCompiledMessageText } from '../hooks/useMessageDisplay';
 import {
     detectFormatSegments,
@@ -68,7 +69,7 @@ export const MessageBubble = React.memo(function MessageBubble({
     onNavigateToBranchSource,
     canDelete,
 }: MessageBubbleProps) {
-    const isModelReady = useSessionStore(s => {
+    const isModelReady = useChatStore(s => {
         if (s.activeStrategy) return true;
         const m = s.selectedModel;
         if (!m) return false;
@@ -77,21 +78,17 @@ export const MessageBubble = React.memo(function MessageBubble({
         return status?.isRunning && status?.isIdle;
     });
 
-    const isLoading = useSessionStore(s => s.isLoading);
+    const isLoading = useGenerationStore(s => s.isLoading);
     
-    // Pulled directly from Zustand
-    const copyToClipboard = useSessionStore(s => s.copyToClipboard);
-    const deleteMessage = useSessionStore(s => s.deleteMessage);
-    const branchChat = useSessionStore(s => s.branchChat);
-    const cloneChat = useSessionStore(s => s.cloneChat);
+    const copyToClipboard = useChatStore(s => s.copyToClipboard);
+    const deleteMessage = useChatStore(s => s.deleteMessage);
+    const branchChat = useChatStore(s => s.branchChat);
+    const cloneChat = useChatStore(s => s.cloneChat);
 
     const isNarration = message.messageType === 'narration';
 
-    // ✅ Call the hook unconditionally to satisfy React Rules of Hooks.
-    // Pass null if it's a narration message to satisfy TypeScript.
     const compiledText = useCompiledMessageText(isNarration ? null : (message as TextMessage));
 
-    // Use the raw text for narration, otherwise use the compiled text.
     const displayedTextContent = isNarration ? message.textContent : compiledText;
 
     const [conversions, setConversions] = React.useState<CategoryConversion[]>([]);
@@ -122,7 +119,6 @@ export const MessageBubble = React.memo(function MessageBubble({
     React.useEffect(() => {
         if (isRawEditing && editTextAreaRef.current) {
             editTextAreaRef.current.focus();
-            // ✅ Auto-resize on initial render so it matches the text length immediately
             editTextAreaRef.current.style.height = 'auto';
             editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`;
         }
@@ -296,7 +292,6 @@ export const MessageBubble = React.memo(function MessageBubble({
                                             handleExitRawEdit();
                                         }
                                     }}
-                                    // ✅ Auto-grow logic
                                     onInput={(e) => {
                                         const target = e.target as HTMLTextAreaElement;
                                         target.style.height = 'auto';

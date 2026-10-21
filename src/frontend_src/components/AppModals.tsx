@@ -18,7 +18,8 @@ import {
     renderInteractionDataSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext
 } from './renderHelpers';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
-import { useSessionStore } from '../hooks/useSessionStore';
+
+import { useChatStore } from '../hooks/useChatStore';
 
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { ModelEditorModal } from './ModelEditorModal';
@@ -244,12 +245,12 @@ export function AppModals({
     onAcceptJoinRequest,
     onRejectJoinRequest,
 }: ApplicationModalsProperties) {
-    const interactionData = useSessionStore(state => state.interactionData);
-    const activeStrategy = useSessionStore(state => state.activeStrategy);
-    const selectedModelId = useSessionStore(state => state.selectedModel?.id ?? null);
-    const selectedBudgetStrategyId = useSessionStore(state => state.activeStrategy?.id ?? null);
-    const currentAccountId = useSessionStore(state => state.currentAccountId);
-    const multiplayerData = useSessionStore(state => state.multiplayerData);
+    const interactionData = useChatStore(state => state.interactionData);
+    const activeStrategy = useChatStore(state => state.activeStrategy);
+    const selectedModelId = useChatStore(state => state.selectedModel?.id ?? null);
+    const selectedBudgetStrategyId = useChatStore(state => state.activeStrategy?.id ?? null);
+    const currentAccountId = useChatStore(state => state.currentAccountId);
+    const multiplayerData = useChatStore(state => state.multiplayerData);
 
     const characterModalProperties = entityModals.getModalProperties('character');
     const contextModalProperties = entityModals.getModalProperties('context');

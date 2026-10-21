@@ -2,7 +2,7 @@
 import { useCallback } from 'react';
 import type { InteractionData } from '../types';
 import { editChatMessage as editMessage, massDeleteMessages } from '../utilities/messageLogic';
-import { useSessionStore } from './useSessionStore';
+import { useUIStore } from './useUIStore'; // ✅ Updated Import
 import { learnFromManualEdits } from '../utilities/textDisplayReformatter';
 
 interface UseMessageActionsOptions {
@@ -21,7 +21,8 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     } = options;
 
     const handleSaveEdit = useCallback(async () => {
-        const { editingId, editDraft, setEditingState } = useSessionStore.getState();
+        // ✅ Reaches into UI Store
+        const { editingId, editDraft, setEditingState } = useUIStore.getState();
         if (!interactionData || !editingId) return;
         
         try {
@@ -47,7 +48,7 @@ export function useMessageActions(options: UseMessageActionsOptions) {
     }, [interactionData, setInteractionData, addToast]);
 
     const handleRegenerateFromEdit = useCallback(async () => {
-        const { editingId, editDraft, setEditingState } = useSessionStore.getState();
+        const { editingId, editDraft, setEditingState } = useUIStore.getState();
         if (!interactionData || !editingId) return;
         if (!isModelReady || isLoading) return;
         
@@ -63,9 +64,8 @@ export function useMessageActions(options: UseMessageActionsOptions) {
         }
     }, [interactionData, isModelReady, isLoading, setInteractionData, regenerateFromMessage, addToast]);
 
-    // ✅ ADDED: Executes mass deletion from the target message onwards
     const handleConfirmMassDelete = useCallback(async () => {
-        const { massDeleteId, setMassDeleteId } = useSessionStore.getState();
+        const { massDeleteId, setMassDeleteId } = useUIStore.getState();
         if (!interactionData || !massDeleteId) return;
 
         try {

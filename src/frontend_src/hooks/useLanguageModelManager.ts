@@ -6,7 +6,7 @@ import { useToast } from '../context/ToastContext';
 import { localAddress, localURL } from '../../configurations';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 
 interface LanguageModelState {
     isRunning: boolean;
@@ -30,10 +30,10 @@ export function useLanguageModelManager() {
     const [selectedLanguageModelId, setSelectedLanguageModelId] = useState<string | null>(null);
 
     const sessionLoadedRef = useRef(false);
-    const runningLanguageModels = useSessionStore(s => s.runningModels) as Record<string, LanguageModelState>;
+    const runningLanguageModels = useChatStore(s => s.runningModels) as Record<string, LanguageModelState>;
 
     const setRunningLanguageModels = useCallback((update: Record<string, LanguageModelState> | ((prev: Record<string, LanguageModelState>) => Record<string, LanguageModelState>)) => {
-        useSessionStore.setState(prev => ({
+        useChatStore.setState(prev => ({
             runningModels: typeof update === 'function'
                 ? update(prev.runningModels as Record<string, LanguageModelState>)
                 : update,
@@ -83,9 +83,9 @@ export function useLanguageModelManager() {
     useEffect(() => {
         if (selectedLanguageModelId) {
             const languageModel = languageModels.find(m => m.id === selectedLanguageModelId);
-            useSessionStore.setState({ selectedModel: languageModel ?? null });
+            useChatStore.setState({ selectedModel: languageModel ?? null });
         } else {
-            useSessionStore.setState({ selectedModel: null });
+            useChatStore.setState({ selectedModel: null });
         }
     }, [selectedLanguageModelId, languageModels]);
 
@@ -220,7 +220,6 @@ export function useLanguageModelManager() {
         }
     }, [unloadLanguageModel]);
 
-    // ✅ Bulk unload for Budget Strategy activation
     const unloadAllRunningLanguageModels = useCallback(async () => {
         const runningIds = Object.entries(runningLanguageModelsRef.current)
             .filter(([, st]) => st.isRunning)
@@ -233,9 +232,8 @@ export function useLanguageModelManager() {
         }
     }, [unloadLanguageModel]);
 
-    // ─── MUTUALLY EXCLUSIVE: Selecting a Language Model deactivates any active Budget Strategy ───
     const deactivateActiveBudgetStrategy = useCallback(() => {
-        useSessionStore.setState({ activeStrategy: null, selectedBudgetStrategyId: null });
+        useChatStore.setState({ activeStrategy: null, selectedBudgetStrategyId: null });
         saveRawSessionData({ selectedBudgetStrategyId: null }).catch(e =>
             console.warn('[useLanguageModelManager] Failed to deactivate budget strategy:', e)
         );

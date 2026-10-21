@@ -20,7 +20,7 @@ import {
     type MediaResponsePayload,
     type StateSyncPayload,
 } from './useMultiplayerConnection';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 import { saveRawMultiplayerCharacter } from '../storages/serverStorage';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
 import { localURL } from '../../configurations';
@@ -847,7 +847,7 @@ export function useMultiplayerSync({
                     if (!currentMultiplayerData.pendingAccountIds.includes(requestingAccountId)) {
                         const updatedMultiplayerData = { ...currentMultiplayerData, pendingAccountIds: [...currentMultiplayerData.pendingAccountIds, requestingAccountId] };
                         multiplayerDataRef.current = updatedMultiplayerData;
-                        useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                        useChatStore.setState({ multiplayerData: updatedMultiplayerData });
                         onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
                     }
                     sendToRef.current(requestingAccountId, { type: 'join_pending', payload: { message: 'Waiting for host approval' } });
@@ -919,7 +919,7 @@ export function useMultiplayerSync({
                     lastUpdatedTimestamp: Date.now(),
                 };
                 multiplayerDataRef.current = updatedMultiplayerData;
-                useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                useChatStore.setState({ multiplayerData: updatedMultiplayerData });
                 onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
 
                 const initialState = currentData ? {
@@ -1080,7 +1080,7 @@ export function useMultiplayerSync({
                         multiplayerDataRef.current = updatedMultiplayerData;
                         
                         setTimeout(() => {
-                            useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                            useChatStore.setState({ multiplayerData: updatedMultiplayerData });
                             onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
                         }, 0);
                     }
@@ -1339,7 +1339,7 @@ export function useMultiplayerSync({
                     lastUpdatedTimestamp: Date.now(),
                 };
                 multiplayerDataRef.current = updatedMultiplayerData;
-                useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                useChatStore.setState({ multiplayerData: updatedMultiplayerData });
                 onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
 
                 const initialState = currentData ? {
@@ -1392,7 +1392,7 @@ export function useMultiplayerSync({
                     lastUpdatedTimestamp: Date.now(),
                 };
                 multiplayerDataRef.current = updatedMultiplayerData;
-                useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+                useChatStore.setState({ multiplayerData: updatedMultiplayerData });
                 onSaveMultiplayerDataRef.current?.(updatedMultiplayerData);
             }
             sendToRef.current(accountId, {

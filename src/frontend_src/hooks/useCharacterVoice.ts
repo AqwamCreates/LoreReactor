@@ -2,12 +2,12 @@
 import { useCallback } from 'react';
 import type { Character, Sampler, deviceType } from '../types';
 import { textToSpeechEngine, fetchVoiceReference } from '../services/TextToSpeechEngine';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 import { extractNarratableText } from '../utilities/voiceTextExtractor';
 
 export function useCharacterVoice(allCharacters: Character[] = []) {
     const speakMessage = useCallback((text: string, character: Character) => {
-        const state = useSessionStore.getState();
+        const state = useChatStore.getState();
         const profile = state.interactionData?.profile;
         const narrateTexts = profile?.narrateTexts;
         const narrateTextCharacterIds = profile?.narrateTextCharacterIds;

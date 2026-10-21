@@ -4,7 +4,7 @@ import type { Character, InteractionData, ChatMessage, NarrationMessage, PromptB
 import { addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 import { getCoLocatedParticipants, getCurrentLocationId } from '../utilities/locationLogic';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
@@ -25,16 +25,12 @@ export function useAmbientNarration(
         promptBlocks: PromptBlock[],
         localProtagonistId?: string | null
     ): Promise<InteractionData | null> => {
-        // ✅ Use the explicitly passed ID, or fallback to the first protagonistId in the session
         const protagonistId = localProtagonistId ?? data.protagonistIds?.[0];
-        
-        // The underlying location logic only needs the `.id` property, so we pass a lightweight stub
         const protagonistStub = protagonistId ? { id: protagonistId } as Character : null;
 
         const coLocatedCount = protagonistStub ? getCoLocatedParticipants(data, protagonistStub).length : 0;
         const messageWindow = coLocatedCount + 1;
 
-        // ✅ Fetch both chat and narration messages to properly filter and avoid repeating recent narrations
         const allRelevantMessages = getGlobalMessageHistory(data, ['chat', 'narration']) as HistoryMessage[];
 
         const filterFlags = getUniversalMessageFilterFlags(
@@ -46,7 +42,6 @@ export function useAmbientNarration(
         
         const visibleMessages = allRelevantMessages.filter((_, i) => !filterFlags[i]);
 
-        // ✅ Filter by messageType instead of magic string character ID
         const recentChatMessages = visibleMessages
             .filter(m => m.messageType === 'chat')
             .slice(-messageWindow) as ChatMessage[];
@@ -72,7 +67,7 @@ export function useAmbientNarration(
         };
 
         try {
-            const activeStrategy = useSessionStore.getState().activeStrategy;
+            const activeStrategy = useChatStore.getState().activeStrategy;
 
             if (activeStrategy) {
                 const bse = getBudgetStrategyEngine();
@@ -83,8 +78,8 @@ export function useAmbientNarration(
                     selected = sentences ? sentences.slice(0, 2).join(' ') : cleaned;
                 }
             } else {
-                const model = useSessionStore.getState().selectedModel;
-                const runningModels = useSessionStore.getState().runningModels;
+                const model = useChatStore.getState().selectedModel;
+                const runningModels = useChatStore.getState().runningModels;
 
                 if (model) {
                     engine.setRunningModels(runningModels);
@@ -104,7 +99,6 @@ export function useAmbientNarration(
 
         if (!selected) selected = composeFallbackSentence(tags, dominantMood, recentAmbient);
 
-        // ✅ Pass null for character since this is a system-level narration event
         setStreamingState(null, '');
         streamingTextRef.current = '';
 
@@ -116,13 +110,10 @@ export function useAmbientNarration(
             await new Promise(r => setTimeout(r, 20));
         }
 
-        // ✅ Create a standalone NarrationMessage instead of a ChatMessage with a dummy character
         const narrationMessage: NarrationMessage = {
             id: `nar-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
             messageType: 'narration',
             textContent: selected,
-            // Note: BaseMessage strictly requires `character: Character` in your current types.ts. 
-            // We cast null to satisfy the compiler without injecting a fake character object at runtime.
             character: null as unknown as Character, 
             firstCreatedTimestamp: Date.now(),
             lastUpdatedTimestamp: Date.now(),
@@ -130,7 +121,6 @@ export function useAmbientNarration(
             characterLockedLocations: {},
         };
         
-        // ✅ Anchor to the local protagonist's actual location using the stub
         const currentLocId = protagonistStub ? getCurrentLocationId(data, protagonistStub) : 'global';
         
         return addMessageToInteractionData(data, narrationMessage, currentLocId || 'global');

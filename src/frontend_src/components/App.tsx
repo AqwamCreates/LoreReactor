@@ -8,7 +8,7 @@ import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
-import { embeddingEngine } from '../services/EmbeddingEngine'; // ✅ ADDED
+import { embeddingEngine } from '../services/EmbeddingEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { localURL } from '../../configurations';
@@ -16,7 +16,10 @@ import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Account, MultiplayerData, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, RawInteractionData, cloudBackend, TextMessage } from '../types';
-import { useSessionStore } from '../hooks/useSessionStore';
+
+import { useChatStore } from '../hooks/useChatStore';
+import { useGenerationStore } from '../hooks/useGenerationStore';
+import { useUIStore } from '../hooks/useUIStore';
 
 // ─── Manager Hooks ──────────────────────────────────────────────────
 import { useInteractionDataManager } from '../hooks/useInteractionDataManager';
@@ -144,14 +147,14 @@ function App() {
         entityFolder: undefined,
     });
 
-    // ─── Session Store Selectors & Actions ───────────────────────────
-    const sessionLoaded = useSessionStore((s: any) => s.sessionLoaded);
-    const selectedCharacterId = useSessionStore((s: any) => s.selectedCharacterId);
-    const selectedBudgetStrategyId = useSessionStore((s: any) => s.selectedBudgetStrategyId);
-    const streamingText = useSessionStore((s: any) => s.streamingText);
-    const storeSetCurrentAccountId = useSessionStore((s: any) => s.setCurrentAccountId);
-    const storeSetSelectedCharacterId = useSessionStore((s: any) => s.setSelectedCharacterId);
-    const storeSetSelectedBudgetStrategyId = useSessionStore((s: any) => s.setSelectedBudgetStrategyId);
+    // ─── Split Store Selectors & Actions ───────────────────────────
+    const sessionLoaded = useChatStore((s: any) => s.sessionLoaded);
+    const selectedCharacterId = useChatStore((s: any) => s.selectedCharacterId);
+    const selectedBudgetStrategyId = useChatStore((s: any) => s.selectedBudgetStrategyId);
+    const streamingText = useGenerationStore((s: any) => s.streamingText);
+    const storeSetCurrentAccountId = useChatStore((s: any) => s.setCurrentAccountId);
+    const storeSetSelectedCharacterId = useChatStore((s: any) => s.setSelectedCharacterId);
+    const storeSetSelectedBudgetStrategyId = useChatStore((s: any) => s.setSelectedBudgetStrategyId);
 
     // ─── Multiplayer Session ─────────────────────────────────────────
     const mp = useMultiplayerSession({
@@ -227,7 +230,7 @@ function App() {
     // Restore join protagonist after chat restoration
     useEffect(() => {
         if (!activeChatRestored || !mp.isMultiplayerClient || !mp.joinProtagonist) return;
-        const stored = useSessionStore.getState().localProtagonist;
+        const stored = useChatStore.getState().localProtagonist;
         if (!stored || stored.id !== mp.joinProtagonist.id) setSelectedCharacter(mp.joinProtagonist);
     }, [activeChatRestored, mp.isMultiplayerClient, mp.joinProtagonist, setSelectedCharacter]);
 
@@ -247,13 +250,13 @@ function App() {
     useEffect(() => {
         if (!interactionData?.id || mp.joinSessionId) return;
 
-        const currentStoreMpData = useSessionStore.getState().multiplayerData;
+        const currentStoreMpData = useChatStore.getState().multiplayerData;
         const match = multiplayerDatas.multiplayerData.find(
             (m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!)
         ) ?? null;
 
         if (currentStoreMpData?.id !== match?.id) {
-            useSessionStore.setState({ multiplayerData: match });
+            useChatStore.setState({ multiplayerData: match });
         }
     }, [interactionData?.id, multiplayerDatas.multiplayerData, mp.joinSessionId]);
 
@@ -369,8 +372,8 @@ function App() {
 
     // ─── Sync Folders to Zustand for Branch/Clone Inheritance ─────────
     useEffect(() => {
-        useSessionStore.getState().setAllEntityFolders(entityFolders.entityFolders);
-        useSessionStore.getState().setSaveEntityFolder(entityFolders.saveFolder);
+        useChatStore.getState().setAllEntityFolders(entityFolders.entityFolders);
+        useChatStore.getState().setSaveEntityFolder(entityFolders.saveFolder);
     }, [entityFolders.entityFolders, entityFolders.saveFolder]);
 
     // ─── Server Sync (Multi-Device State Updates) ────────────────────
@@ -481,8 +484,8 @@ function App() {
     });
 
     // ─── Local UI State ──────────────────────────────────────────────
-    const editingId = useSessionStore(s => s.editingId);
-    const editDraft = useSessionStore(s => s.editDraft);
+    const editingId = useUIStore(s => s.editingId);
+    const editDraft = useUIStore(s => s.editDraft); // ✅ Updated to useUIStore
 
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [isOverlayOpen, setIsOverlayOpen] = useState(false);
@@ -886,7 +889,7 @@ function App() {
     }, [interactionDataOperations]);
 
     const handleRenameInteractionData = useCallback(async (id: string, name: string) => {
-        const currentInteractionData = useSessionStore.getState().interactionData;
+        const currentInteractionData = useChatStore.getState().interactionData;
         
         const loaded = (currentInteractionData?.id === id)
             ? currentInteractionData
@@ -897,7 +900,7 @@ function App() {
         await saveRawInteractionData(updated);
         interactionDatas.refresh();
         if (currentInteractionData?.id === id) {
-            useSessionStore.getState().setInteractionData(updated);
+            useChatStore.getState().setInteractionData(updated);
         }
         addToast(`Renamed to "${name}"`, 'success');
     }, [interactionDatas, addToast]);
@@ -1087,8 +1090,8 @@ function App() {
             const cache = viewAssets.portraitUrlCache;
             if (activeMsgId && !isUser && cache.get(activeMsgId)) {
                 avatarUrl = cache.get(activeMsgId) ?? null;
-            } else if (cache.get(`character:${avatarChar.id}`)) {
-                avatarUrl = cache.get(`character:${avatarChar.id}`) ?? null;
+            } else if (cache.get(`${avatarChar.id}`)) {
+                avatarUrl = cache.get(`${avatarChar.id}`) ?? null;
             } else if (avatarChar.images) {
                 const expr = (avatarChar.id === session.streamingCharacter?.id ? currentCharacterExpression : undefined) || 'neutral';
                 const filename = avatarChar.images[expr] || avatarChar.images['neutral'] || Object.values(avatarChar.images)[0];
@@ -1218,7 +1221,7 @@ function App() {
             } else if (e.data?.type === 'STOP_GENERATION') {
                 stopGeneration();
             } else if (e.data?.type === 'SAVE_EDIT' && e.data?.messageId && e.data?.text !== undefined) {
-                useSessionStore.getState().setEditingState(e.data.messageId, e.data.text);
+                useUIStore.getState().setEditingState(e.data.messageId, e.data.text);
                 wrappedSaveEdit();
             }
         };
@@ -1230,7 +1233,7 @@ function App() {
             companionChannelRef.current = null;
         };
     }, [
-        sendMessage, promptBlocks.promptBlocks, actionMenu, actions, localProtagonist, 
+        sendMessage, actionMenu, actions, localProtagonist, 
         interactionData, currentCharacter, setGlobalModelId, toggleLanguageModelLoad, 
         handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, 
         profiles.profiles, resumeGeneration, regenerateFromMessage, stopGeneration, 

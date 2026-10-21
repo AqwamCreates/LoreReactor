@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useVisualNovelSpriteStates.ts
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import type { TextMessage } from '../types';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 
 export type BreathingPattern = 'calm' | 'fast' | 'heavy' | 'subtle' | 'tremble' | 'none';
 
@@ -592,7 +592,7 @@ function computeStatesAtHistoryIndex(
 
 export function useVisualNovelSpriteStates(options: UseVisualNovelSpriteStatesOptions) {
     const { chatMessages, visibleCharacterIds, viewedMessageIndex } = options;
-    const interactionData = useSessionStore(s => s.interactionData);
+    const interactionData = useChatStore(s => s.interactionData);
 
     const hasHistory = useMemo(() => {
         if (!interactionData?.interactionHistories) return false;

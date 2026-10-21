@@ -6,7 +6,7 @@ import { uploadContextImage, cloneContextImage } from '../storages/serverStorage
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { parseCharacterCard, type ParsedCharacterCardExtended } from '../utilities/characterCardParser';
-import { useSessionStore } from '../hooks/useSessionStore';
+import { useChatStore } from '../hooks/useChatStore';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import '../main.css';
 
@@ -109,7 +109,7 @@ function ContextEditorModalInner({
     const [limitLinksToSubdirectory, setLimitLinksToSubdirectory] = useState<boolean>(existingContext?.limitLinksToSubdirectory ?? false);
 
     useEffect(() => {
-        const state = useSessionStore.getState() as any;
+        const state = useChatStore.getState();
         const selectedModel = state.selectedModel;
         const runningModels = state.runningModels;
         if (selectedModel) {

@@ -2,7 +2,8 @@
 import { useMemo } from 'react';
 import type { ViewModeProps, viewMode } from './types';
 import type { ChatMessage, NarrationMessage, TextMessage, WhisperMessage } from '../../types';
-import { useSessionStore } from '../../hooks/useSessionStore';
+import { useChatStore } from '../../hooks/useChatStore';
+import { useGenerationStore } from '../../hooks/useGenerationStore';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 import { LadderView } from './LadderView';
 import { CinematicView } from './CinematicView';
@@ -23,10 +24,10 @@ export function ChatViewArea({
     displayNameCache,
     isMultiplayerChat,
 }: ChatViewAreaProps) {
-    const localProtagonistId = useSessionStore((s) => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
-    const streamingText = useSessionStore((s) => s.streamingText);
-    const streamingCharacter = useSessionStore((s) => s.streamingCharacter);
-    const isLoading = useSessionStore((s) => s.isLoading);
+    const localProtagonistId = useChatStore((s) => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const streamingText = useGenerationStore((s) => s.streamingText);
+    const streamingCharacter = useGenerationStore((s) => s.streamingCharacter);
+    const isLoading = useGenerationStore((s) => s.isLoading);
 
     const displayMessages = useMemo(() => {
         let base = [...safeMessages];

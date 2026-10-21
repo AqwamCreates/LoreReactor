@@ -1,10 +1,10 @@
 // src/frontend_src/hooks/useActiveExtensions.ts
 import { useCallback, useEffect, useRef } from 'react';
 import type { Extension } from '../types';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 
 export function useActiveExtensions(allExtensions: Extension[]) {
-    const activeIds = useSessionStore(s => s.activeExtensionIds);
+    const activeIds = useChatStore(s => s.activeExtensionIds);
     const prevExtensionsRef = useRef<string>('');
 
     // Sync when extensions list changes (e.g., after import/delete)
@@ -16,12 +16,12 @@ export function useActiveExtensions(allExtensions: Extension[]) {
         const validIds = new Set(allExtensions.map(e => e.id));
         const filtered = activeIds.filter(id => validIds.has(id));
         if (filtered.length !== activeIds.length) {
-            useSessionStore.setState({ activeExtensionIds: filtered });
+            useChatStore.setState({ activeExtensionIds: filtered });
         }
     }, [allExtensions, activeIds]);
 
     const setActiveIds = useCallback((ids: string[]) => {
-        useSessionStore.setState({ activeExtensionIds: ids });
+        useChatStore.setState({ activeExtensionIds: ids });
     }, []);
 
     const activeExtensions = allExtensions.filter(e => activeIds.includes(e.id));

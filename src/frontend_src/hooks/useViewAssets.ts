@@ -145,25 +145,25 @@ export function useViewAssets(options: UseViewAssetsOptions) {
         if (interactionData) {
             for (const participant of interactionData.participants) {
                 const url = resolvePortrait(participant.id, participant.images, 'neutral', isMultiplayerChat);
-                cache.set(`character:${participant.id}`, url);
+                cache.set(`${participant.id}`, url);
             }
         }
 
         for (const msg of chatMessages) {
             if (!msg.character) continue;
             const url = resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression, isMultiplayerChat);
-            cache.set(`character:${msg.character.id}`, url);
+            cache.set(`${msg.character.id}`, url);
             cache.set(msg.id, url);
         }
 
         if (centerAvatar) {
             const url = resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral', isMultiplayerChat);
-            cache.set(`character:${centerAvatar.id}`, url);
+            cache.set(`${centerAvatar.id}`, url);
         }
 
         if (streamingCharacter) {
             const url = resolvePortrait(streamingCharacter.id, streamingCharacter.images, currentCharacterExpression, isMultiplayerChat);
-            cache.set(`character:${streamingCharacter.id}`, url);
+            cache.set(`${streamingCharacter.id}`, url);
         }
 
         return cache;
@@ -171,7 +171,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
     const streamingPortraitUrl = useMemo(() => {
         if (!streamingCharacter) return null;
-        return portraitUrlCache.get(`character:${streamingCharacter.id}`) || null;
+        return portraitUrlCache.get(`${streamingCharacter.id}`) || null;
     }, [streamingCharacter, portraitUrlCache]);
 
     const locationBackgroundUrl = interactionData && localProtagonist

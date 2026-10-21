@@ -2,7 +2,7 @@
 import { StreamingVoicePlayer } from './StreamingVoicePlayer';
 import { textToSpeechEngine, fetchVoiceReference } from './TextToSpeechEngine';
 import { extractNarratableText, type NarratableSegment } from '../utilities/voiceTextExtractor';
-import { useSessionStore } from '../hooks/useSessionStore';
+import { useChatStore } from '../hooks/useChatStore';
 import type { Character, Sampler, deviceType, textType } from '../types';
 
 interface PendingJob {
@@ -74,7 +74,7 @@ export class StreamingVoiceTracker {
                 }
                 this.voiceReferences.set(this.character.id, mainBase64);
 
-                const profile = useSessionStore.getState().interactionData?.profile;
+                const profile = useChatStore.getState().interactionData?.profile;
                 const narrateTextCharacterIds = profile?.narrateTextCharacterIds;
                 if (narrateTextCharacterIds) {
                     const idsToFetch = new Set(Object.values(narrateTextCharacterIds).filter(id => id && id !== this.character.id));
@@ -112,7 +112,7 @@ export class StreamingVoiceTracker {
 
     seed(text: string): void {
         if (!text) return;
-        const profile = useSessionStore.getState().interactionData?.profile;
+        const profile = useChatStore.getState().interactionData?.profile;
         const narrateTexts = profile?.narrateTexts;
 
         const segments = extractNarratableText(text, narrateTexts);
@@ -126,7 +126,7 @@ export class StreamingVoiceTracker {
     feed(text: string): void {
         if (this.isKilled || this.isFlushing || !this.hasVoiceConfigured) return;
 
-        const profile = useSessionStore.getState().interactionData?.profile;
+        const profile = useChatStore.getState().interactionData?.profile;
         const narrateTexts = profile?.narrateTexts;
 
         const newSegments = extractNarratableText(text, narrateTexts);
@@ -232,7 +232,7 @@ export class StreamingVoiceTracker {
     }
 
     private async executeSynthesis(sequenceId: number, sentence: string, textType: textType): Promise<void> {
-        const profile = useSessionStore.getState().interactionData?.profile;
+        const profile = useChatStore.getState().interactionData?.profile;
         const narrateTextCharacterIds = profile?.narrateTextCharacterIds;
         
         let targetChar = this.character;

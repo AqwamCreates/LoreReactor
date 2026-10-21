@@ -4,7 +4,7 @@ import type { MultiplayerData, Character, RawInteractionData, MultiplayerDataAcc
 import type { PendingJoinRequest } from '../hooks/useMultiplayerSync';
 import { v4 as uuidv4 } from 'uuid';
 import { EntitySelectList } from './EntitySelectList';
-import { useSessionStore } from '../hooks/useSessionStore';
+import { useChatStore } from '../hooks/useChatStore';
 import '../main.css';
 
 type MultiplayerTabId = 'general' | 'accounts';
@@ -81,7 +81,7 @@ function MultiplayerEditorModalInner({
     onAcceptJoinRequest,
     onRejectJoinRequest,
 }: Omit<MultiplayerEditorModalProps, 'isOpen'>) {
-    const interactionData = useSessionStore(state => state.interactionData);
+    const interactionData = useChatStore(state => state.interactionData);
     const [activeTab, setActiveTab] = useState<MultiplayerTabId>('general');
 
     const [name, setName] = useState(existingMultiplayerData?.name || '');
@@ -120,7 +120,7 @@ function MultiplayerEditorModalInner({
         if (!validate()) return null;
         const now = Date.now();
 
-        const liveMultiplayerData = useSessionStore.getState().multiplayerData;
+        const liveMultiplayerData = useChatStore.getState().multiplayerData;
         const currentPendingList = (liveMultiplayerData && liveMultiplayerData.id === existingMultiplayerData?.id)
             ? liveMultiplayerData.pendingAccountIds
             : (existingMultiplayerData?.pendingAccountIds || []);

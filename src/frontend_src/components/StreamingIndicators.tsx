@@ -2,7 +2,8 @@
 import type React from 'react';
 import type { Character } from '../types';
 import { getDelayedDisplayName } from '../utilities/immersionLogic';
-import { useSessionStore } from '../hooks/useSessionStore';
+import { useChatStore } from '../hooks/useChatStore';
+import { useGenerationStore } from '../hooks/useGenerationStore';
 import { MemoizedMessageText } from './MemoizedMessageText';
 
 interface StreamingIndicatorsProps {
@@ -19,12 +20,12 @@ export function StreamingIndicators({
     viewMode, streamingPortraitUrl,
     messagesLength, onAvatarClick,
 }: StreamingIndicatorsProps) {
-    const isLoading = useSessionStore(s => s.isLoading);
-    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
-    const interactionData = useSessionStore(s => s.interactionData);
+    const isLoading = useGenerationStore(s => s.isLoading);
+    const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
+    const interactionData = useChatStore(s => s.interactionData);
 
-    const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
-    const protagonistIds = useSessionStore(s => s.interactionData?.protagonistIds || []);
+    const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const protagonistIds = useChatStore(s => s.interactionData?.protagonistIds || []);
 
     if (!isLoading) return null;
 

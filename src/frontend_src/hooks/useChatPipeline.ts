@@ -7,7 +7,8 @@ import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
 import { deleteRawMessage, saveRawInteractionData } from '../storages/serverStorage';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
+import { useGenerationStore } from './useGenerationStore';
 import type { RequestMetadata } from '../services/BudgetStrategyEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -62,9 +63,10 @@ export function useChatPipeline(deps: PipelineDependencies) {
         isAtBottomRef
     } = deps;
 
-    const getState = useSessionStore.getState;
-    const setState = useSessionStore.setState;
-    const setSelectedCharacter = useSessionStore(s => s.setLocalProtagonist);
+    const getState = useChatStore.getState;
+    const setChatState = useChatStore.setState;
+    const setGenerationState = useGenerationStore.setState;
+    const setSelectedCharacter = useChatStore(s => s.setLocalProtagonist);
 
     const abortControllerRef = useRef<AbortController | null>(null);
     const pendingPartialRef = useRef<{ text: string; character: Character } | null>(null);
@@ -297,7 +299,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         
         await voiceTracker.start().catch(err => console.warn('[useChatPipeline] VoiceTracker start failed:', err));
 
-        useSessionStore.setState({ isLoading: true, streamingCharacter: respondingChar ?? null, streamingText: '' });
+        useGenerationStore.setState({ isLoading: true, streamingCharacter: respondingChar ?? null, streamingText: '' });
 
         try {
             requestTimestampsRef.current.push(Date.now());
@@ -346,7 +348,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
 
             // ✅ PHASE 4: Clear streaming UI overlay immediately after text generation completes
-            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
 
             // ✅ PHASE 4: Wait for voice playback in the Pipeline, not the Engine
             if (voiceTracker && narrationBehaviour === 'wait') {
@@ -361,7 +363,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             if (ud === data) ud = { ...ud, interactionHistories: { ...ud.interactionHistories }, lastUpdatedTimestamp: Date.now() };
 
             if (turnResult.promptText) {
-                const currentModelId = useSessionStore.getState().selectedModelId;
+                const currentModelId = useChatStore.getState().selectedModelId;
                 if (currentModelId) lastTurnContextRef.current = { modelId: currentModelId, prompt: turnResult.promptText, metadata };
             }
 
@@ -482,7 +484,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
 
             resetStream();
-            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
             releaseLock();
 
             if (pendingResumeRef.current) {
@@ -520,7 +522,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         if (prefillText) voiceTracker.seed(prefillText);
         await voiceTracker.start().catch(() => {});
 
-        useSessionStore.setState({ isLoading: true, streamingCharacter: rawCharacter, streamingText: '' });
+        useGenerationStore.setState({ isLoading: true, streamingCharacter: rawCharacter, streamingText: '' });
 
         try {
             const promptBlocks = getActivePromptBlocks(currentData);
@@ -535,7 +537,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 prefillText
             );
 
-            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
             
             const narrationBehaviour = currentData.profile?.textGenerationBehaviourOnNarration ?? 'wait';
             if (voiceTracker && narrationBehaviour === 'wait') {
@@ -543,7 +545,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
         } catch (e) {
             console.error('Delayed response error:', e);
-            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
         } finally {
             voiceTracker.stopImmediate();
             releaseLock();
@@ -584,7 +586,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         const currentData = getState().interactionData;
 
         const t = streamingTextRef.current;
-        const c = getState().streamingCharacter || streamingCharacterRef.current;
+        const c = useGenerationStore.getState().streamingCharacter || streamingCharacterRef.current;
 
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
@@ -613,22 +615,23 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
 
             const updatedData = { ...currentData, interactionHistories: updatedHistories, lastUpdatedTimestamp: Date.now() };
-            setState({ interactionData: updatedData, streamingCharacter: null, streamingText: '', isLoading: false, latency: 0, timeToFirstToken: 0 });
+            setChatState({ interactionData: updatedData });
+            setGenerationState({ streamingCharacter: null, streamingText: '', isLoading: false, latency: 0, timeToFirstToken: 0 });
             saveRawInteractionData(updatedData).catch(e => console.error('Failed to save on stop:', e));
             resumingMessageIdRef.current = null;
             resumingExistingTextRef.current = '';
             pendingPartialRef.current = null;
         } else {
             pendingPartialRef.current = (t && c) ? { text: t, character: c } : null;
-            setState({ streamingCharacter: null, streamingText: '', isLoading: false, latency: 0, timeToFirstToken: 0 });
+            setGenerationState({ streamingCharacter: null, streamingText: '', isLoading: false, latency: 0, timeToFirstToken: 0 });
         }
 
-        useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+        useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
         isLoadingRef.current = false;
         resetStream();
         streamingCharacterRef.current = null;
         streamingMessageIdRef.current = null;
-    }, [resetStream, getState, setState, streamingTextRef, isLoadingRef, isSpeculatingRef]);
+    }, [resetStream, getState, setChatState, setGenerationState, streamingTextRef, isLoadingRef, isSpeculatingRef]);
 
     const resumeGeneration = useCallback(async (messageId: string) => {
         if (isMultiplayerClient) { addToast('Generation is handled by the host.', 'info'); return; }
@@ -694,7 +697,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         streamingMessageIdRef.current = messageId;
         streamingTextRef.current = existingText;
 
-        useSessionStore.setState({ isLoading: true, streamingCharacter: char, streamingText: existingText });
+        useGenerationStore.setState({ isLoading: true, streamingCharacter: char, streamingText: existingText });
         setStreamingText(existingText);
         setStreamingState(char, existingText);
         setStats({ latency: 0, timeToFirstToken: 0 });
@@ -708,7 +711,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             );
 
             // ✅ PHASE 4: Clear UI and wait for voice in Pipeline
-            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
 
             if (voiceTracker && narrationBehaviour === 'wait') {
                 try {
@@ -734,7 +737,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
             if (evaluation.shouldResume && !wasStoppedRef.current) {
                 autoResumeCountRef.current += 1;
                 dataToSave = injectStopSignals(finalized, evaluation.patternsToInject);
-                setState({ interactionData: dataToSave, streamingCharacter: null, streamingText: '' });
+                setChatState({ interactionData: dataToSave });
+                setGenerationState({ streamingCharacter: null, streamingText: '' });
                 saveRawInteractionData(dataToSave).catch(e => console.error('Failed to save on resume stop signals:', e));
                 setTimeout(() => {
                     const allProtagonistIds = new Set(dataToSave.protagonistIds || [char.id]);
@@ -744,7 +748,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 return;
             }
 
-            setState({ interactionData: dataToSave, streamingCharacter: null, streamingText: '' });
+            setChatState({ interactionData: dataToSave });
+            setGenerationState({ streamingCharacter: null, streamingText: '' });
             saveRawInteractionData(dataToSave).catch(e => console.error('Failed to save on resume completion:', e));
         } catch (e) {
             if ((e as Error).name !== 'AbortError') {
@@ -767,11 +772,11 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
 
             resetStream();
-            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
             releaseLock();
         }
     }, [
-        getState, setState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, 
+        getState, setChatState, setGenerationState, isLoadingRef, acquireLock, isModelReadyForGeneration, setStreamingText, streamingTextRef, 
         addToast, releaseLock, chatEngine, throttledSetStreamingTextWithBroadcast, setStreamingState, setStats, 
         isMultiplayerClient, isSpeculatingRef, resetStream, getActivePromptBlocks, onMessageBroadcastRef, allCharactersRef, isAtBottomRef
     ]);
@@ -835,9 +840,9 @@ export function useChatPipeline(deps: PipelineDependencies) {
         setInteractionData(c);
         setSelectedCharacter(char);
         isAtBottomRef.current = true;
-        setState({ sessionStartTimestamp: Date.now() });
+        setChatState({ sessionStartTimestamp: Date.now() } as any);
         speculativeMarkovEngine.clearSession(c.id);
-    }, [setInteractionData, setSelectedCharacter, setState, isAtBottomRef]);
+    }, [setInteractionData, setSelectedCharacter, setChatState, isAtBottomRef]);
 
     return {
         executeTurnPipeline,

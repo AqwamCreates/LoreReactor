@@ -3,7 +3,7 @@ import { useCallback } from 'react';
 import type { Character, Context, Location, AudioTrack, Profile, BudgetStrategy, InteractionData, MultiplayerData, HistoryMessage } from '../types';
 import { loadRawContext, loadRawLocation, loadRawAudioTrack, saveRawMultiplayerData, saveRawSessionData } from '../storages/serverStorage';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 import { createDefaultMultiplayerData } from '../dictionaries/defaults';
 
 interface UseEntityTogglesOptions {
@@ -38,8 +38,8 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         loadFullCharacter, addToast,
     } = options;
 
-    const currentAccountId = useSessionStore(s => s.currentAccountId);
-    const multiplayerData = useSessionStore(s => s.multiplayerData);
+    const currentAccountId = useChatStore(s => s.currentAccountId);
+    const multiplayerData = useChatStore(s => s.multiplayerData);
 
     const checkAndCleanHistories = (histories: Record<string, HistoryMessage[]> | undefined, id: string) => {
         let hasChatMessages = false;
@@ -269,7 +269,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
                 lastUpdatedTimestamp: Date.now(),
             };
 
-            useSessionStore.setState({ multiplayerData: updatedMultiplayerData });
+            useChatStore.setState({ multiplayerData: updatedMultiplayerData });
             saveRawMultiplayerData(updatedMultiplayerData).catch((e: unknown) => {
                 console.error('[useEntityToggles] Failed to save multiplayer data:', e);
             });
@@ -315,7 +315,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
             // Deselect any active model from session state
             setSelectedModelId?.(null);
-            useSessionStore.setState({ selectedModel: null, selectedModelId: null });
+            useChatStore.setState({ selectedModel: null, selectedModelId: null });
             saveRawSessionData({ selectedModelId: null });
 
             // ✅ CRITICAL FIX: Unload all currently running local models from VRAM

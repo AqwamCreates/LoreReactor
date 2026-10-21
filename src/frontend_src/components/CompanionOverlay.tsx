@@ -129,14 +129,22 @@ export function CompanionOverlay() {
     }, [state.allProfiles, state.activeProfileId, state.interactionData?.profile]);
 
     const displayMode = activeProfile?.toolUsageDisplayMode ?? 'simple';
-    // ✅ FIX 1: Extract placementMode from profile to satisfy compileMessageDisplayText signature
     const placementMode = activeProfile?.toolUsageDisplayPlacementMode ?? 'inline';
     const participants = state.interactionData?.participants || state.allCharacters || [];
 
     const compiledDialogueText = useMemo(() => {
         if (!currentMessage) return '';
-        // ✅ FIX 1: Pass placementMode as the 3rd argument, participants as the 4th
-        return compileMessageDisplayText(currentMessage, displayMode, placementMode, participants);
+        // ✅ FIX: compileMessageDisplayText expects the raw text string as the first argument, 
+        // followed by displayMode, placementMode, participants, character, and executionResults.
+        const rawText = 'textContent' in currentMessage ? currentMessage.textContent : '';
+        return compileMessageDisplayText(
+            rawText, 
+            displayMode, 
+            placementMode, 
+            participants, 
+            currentMessage.character, 
+            (currentMessage as any).toolExecutionResults || []
+        );
     }, [currentMessage, displayMode, placementMode, participants]);
 
     const targetMessageId = currentMessage?.id || state.lastMessageId || null;
@@ -148,7 +156,6 @@ export function CompanionOverlay() {
 
     const handleStartEdit = useCallback(() => {
         if (!currentMessage) return;
-        // ✅ FIX 2: processedTextContent was eradicated from types. Just read textContent directly.
         const textToEdit = 'textContent' in currentMessage ? currentMessage.textContent : '';
         setEditDraft(textToEdit);
         setIsEditing(true);

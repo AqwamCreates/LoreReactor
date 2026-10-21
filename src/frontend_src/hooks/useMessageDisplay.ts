@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useMessageDisplay.ts
 import { useMemo } from 'react';
 import type { Character, TextMessage } from '../types';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
 
 /**
@@ -12,8 +12,8 @@ export function useCompiledMessageText(
     target: TextMessage | string | null | undefined,
     characterOverride?: Character
 ): string {
-    const participants = useSessionStore(s => s.interactionData?.participants || []);
-    const profile = useSessionStore(s => s.interactionData?.profile);
+    const participants = useChatStore(s => s.interactionData?.participants || []);
+    const profile = useChatStore(s => s.interactionData?.profile);
     const toolUsageDisplayMode = profile?.toolUsageDisplayMode;
     const placementMode = profile?.toolUsageDisplayPlacementMode;
 

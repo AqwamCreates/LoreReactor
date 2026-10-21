@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useMessageToolbar.ts
 import { useRef, useCallback, useEffect } from 'react';
-import { useSessionStore } from './useSessionStore';
+import { useUIStore } from './useUIStore';
 
 interface UseMessageToolbarOptions {
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
@@ -12,15 +12,10 @@ export function useMessageToolbar(options: UseMessageToolbarOptions) {
     const { chatHistoryRef } = options;
 
     // Read and write directly to Zustand so LadderView and all views stay in sync
-    const activeToolbarId = useSessionStore((s: any) => s.activeToolbarId ?? null);
+    const activeToolbarId = useUIStore((s) => s.activeToolbarId ?? null);
     
     const setActiveToolbarId = useCallback((id: string | null) => {
-        const store = useSessionStore.getState() as any;
-        if (typeof store.setActiveToolbarId === 'function') {
-            store.setActiveToolbarId(id);
-        } else {
-            useSessionStore.setState({ activeToolbarId: id });
-        }
+        useUIStore.getState().setActiveToolbarId(id);
     }, []);
 
     const activeToolbarIdRef = useRef<string | null>(null);
@@ -49,7 +44,7 @@ export function useMessageToolbar(options: UseMessageToolbarOptions) {
         }
         setActiveToolbarId(mid);
         toolbarAutoHideRef.current = setTimeout(() => {
-            const current = (useSessionStore.getState() as any).activeToolbarId;
+            const current = useUIStore.getState().activeToolbarId;
             if (current === mid) {
                 setActiveToolbarId(null);
             }

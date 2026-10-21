@@ -2,7 +2,7 @@
 import { useState, useCallback } from 'react';
 import type { Account } from '../types';
 import { loadAllRawAccounts, saveRawAccount, deleteRawAccount } from '../storages/serverStorage';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 
 export function useAccountManager() {
     const [accounts, setAccounts] = useState<Account[]>([]);
@@ -34,9 +34,9 @@ export function useAccountManager() {
     const remove = useCallback(async (id: string) => {
         try {
             await deleteRawAccount(id);
-            const currentAccountId = useSessionStore.getState().currentAccountId;
+            const currentAccountId = useChatStore.getState().currentAccountId;
             if (currentAccountId === id) {
-                useSessionStore.setState({ currentAccountId: null });
+                useChatStore.setState({ currentAccountId: null });
             }
             await loadAll();
             return true;

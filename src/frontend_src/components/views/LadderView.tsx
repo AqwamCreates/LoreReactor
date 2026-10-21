@@ -5,13 +5,15 @@ import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
 import { ChatScrollButtons } from '../ChatScrollButtons';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
-import { useSessionStore } from '../../hooks/useSessionStore';
+import { useChatStore } from '../../hooks/useChatStore';
+import { useGenerationStore } from '../../hooks/useGenerationStore';
+import { useUIStore } from '../../hooks/useUIStore';
 
 export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const {
         displayMessages,
         portraitUrlCache, displayNameCache,
-        streamingText, // ✅ UPDATED: Replaced formattedStreamingText
+        streamingText,
         chatHistoryRef, messageEndRef, editTextAreaRef,
         parentMessageId, parentInteractionDataName,
         focusedMessageId, setFocusedMessageId,
@@ -23,22 +25,21 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         canDelete,
     } = props;
 
-    // ✅ Read directly from Zustand!
-    const interactionData = useSessionStore(s => s.interactionData);
-    const localProtagonistId = useSessionStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
-    const selectedCharacterId = useSessionStore(s => s.selectedCharacterId);
-    const isLoading = useSessionStore(s => s.isLoading);
-    const streamingCharacter = useSessionStore(s => s.streamingCharacter);
-    const streamingPortraitUrl = useSessionStore(s => s.streamingCharacter ? portraitUrlCache.get(`character:${s.streamingCharacter.id}`) ?? null : null);
+    const interactionData = useChatStore(s => s.interactionData);
+    const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const selectedCharacterId = useChatStore(s => s.selectedCharacterId);
+    const isLoading = useGenerationStore(s => s.isLoading);
+    const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
+    const streamingPortraitUrl = useGenerationStore(s => s.streamingCharacter ? portraitUrlCache.get(`${s.streamingCharacter.id}`) ?? null : null);
 
-    const editingId = useSessionStore(s => s.editingId);
-    const editDraft = useSessionStore(s => s.editDraft);
-    const setEditDraft = useSessionStore(s => s.setEditDraft);
-    const setEditingState = useSessionStore(s => s.setEditingState);
+    const editingId = useUIStore(s => s.editingId);
+    const editDraft = useUIStore(s => s.editDraft);
+    const setEditDraft = useUIStore(s => s.setEditDraft);
+    const setEditingState = useUIStore(s => s.setEditingState);
 
-    const massDeleteId = useSessionStore(s => s.massDeleteId);
-    const setMassDeleteId = useSessionStore(s => s.setMassDeleteId);
-    const activeToolbarId = useSessionStore(s => s.activeToolbarId);
+    const massDeleteId = useUIStore(s => s.massDeleteId);
+    const setMassDeleteId = useUIStore(s => s.setMassDeleteId);
+    const activeToolbarId = useUIStore(s => s.activeToolbarId);
 
     // Derived state
     const isMassActive = massDeleteId !== null;
@@ -150,7 +151,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                 const beforeBranch = !!(parentMessageId && index === branchOffIndex);
                 
                 const messagePortraitUrl = portraitUrlCache.get(message.id)
-                    ?? portraitUrlCache.get(`character:${message.character.id}`)
+                    ?? portraitUrlCache.get(`${message.character.id}`)
                     ?? null;
 
                 return (
@@ -197,7 +198,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
 
             {!isStreamingInList && (
                 <StreamingIndicators
-                    streamingText={streamingText} // ✅ UPDATED: Pass raw compiled string
+                    streamingText={streamingText}
                     viewMode="ladder"
                     selectedCharacterId={selectedCharacterId ?? undefined}
                     streamingPortraitUrl={streamingPortraitUrl}

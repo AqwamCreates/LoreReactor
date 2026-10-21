@@ -1,7 +1,8 @@
 // src/frontend_src/components/ChatStatisticsBar.tsx
 import type React from 'react';
 import { useState, useEffect } from 'react';
-import { useSessionStore } from '../hooks/useSessionStore';
+import { useChatStore } from '../hooks/useChatStore';
+import { useGenerationStore } from '../hooks/useGenerationStore';
 import { defaultContextLength } from '../dictionaries/defaults';
 
 interface ChatStatisticsBarProps {
@@ -56,14 +57,14 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
 }) => {
     const [showDetails, setShowDetails] = useState(false);
 
-    const latency = useSessionStore(s => s.latency);
-    const timeToFirstToken = useSessionStore(s => s.timeToFirstToken);
-    const numberOfTokens = useSessionStore(s => s.numberOfTokens);
-    const numberOfCacheInvalidations = useSessionStore(s => s.numberOfCacheInvalidations);
-    const numberOfRequests = useSessionStore(s => s.numberOfRequests);
-    const totalCost = useSessionStore(s => s.totalCost);
-    const costWithoutCacheMisses = useSessionStore(s => s.costWithoutCacheMisses);
-    const sessionStartTimestamp = useSessionStore(s => s.sessionStartTimestamp);
+    const latency = useGenerationStore(s => s.latency);
+    const timeToFirstToken = useGenerationStore(s => s.timeToFirstToken);
+    const numberOfTokens = useChatStore(s => s.numberOfTokens);
+    const numberOfCacheInvalidations = useGenerationStore(s => s.numberOfCacheInvalidations);
+    const numberOfRequests = useGenerationStore(s => s.numberOfRequests);
+    const totalCost = useGenerationStore(s => s.totalCost);
+    const costWithoutCacheMisses = useGenerationStore(s => s.costWithoutCacheMisses);
+    const sessionStartTimestamp = useChatStore(s => s.sessionStartTimestamp);
 
     const safeMax = maximumNumberOfTokens > 0 ? maximumNumberOfTokens : 1;
     const percentage = Math.min(100, Math.round((numberOfTokens / safeMax) * 100));

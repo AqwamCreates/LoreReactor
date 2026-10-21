@@ -2,7 +2,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { MultiplayerData } from '../types';
 import { loadAllRawMultiplayerData, saveRawMultiplayerData, deleteRawMultiplayerData } from '../storages/serverStorage';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 
 export function useMultiplayerDataManager() {
     const [multiplayerData, setMultiplayerData] = useState<MultiplayerData[]>([]);
@@ -57,7 +57,7 @@ export function useMultiplayerDataManager() {
     const saveMultiplayerData = useCallback(async (data: MultiplayerData): Promise<boolean> => {
         try {
             await saveRawMultiplayerData(data);
-            useSessionStore.setState({ multiplayerData: data });
+            useChatStore.setState({ multiplayerData: data });
             await loadAll();
             return true;
         } catch (error) {
@@ -69,9 +69,9 @@ export function useMultiplayerDataManager() {
     const deleteMultiplayerData = useCallback(async (id: string): Promise<boolean> => {
         try {
             await deleteRawMultiplayerData(id);
-            const current = useSessionStore.getState().multiplayerData;
+            const current = useChatStore.getState().multiplayerData;
             if (current?.id === id) {
-                useSessionStore.setState({ multiplayerData: null });
+                useChatStore.setState({ multiplayerData: null });
             }
             await loadAll();
             return true;
@@ -89,13 +89,13 @@ export function useMultiplayerDataManager() {
     /** Load multiplayer data for a specific chat into the store */
     const loadForChat = useCallback(async (chatId: string): Promise<MultiplayerData | null> => {
         // Check if already loaded in store
-        const current = useSessionStore.getState().multiplayerData;
+        const current = useChatStore.getState().multiplayerData;
         if (current?.interactionDataIds?.includes(chatId)) return current;
 
         // Search already-loaded list first
         const found = findByChatId(chatId);
         if (found) {
-            useSessionStore.setState({ multiplayerData: found });
+            useChatStore.setState({ multiplayerData: found });
             return found;
         }
 
@@ -103,7 +103,7 @@ export function useMultiplayerDataManager() {
         const freshData = await loadAll();
         const reloaded = freshData.find(md => md.interactionDataIds.includes(chatId)) ?? null;
         if (reloaded) {
-            useSessionStore.setState({ multiplayerData: reloaded });
+            useChatStore.setState({ multiplayerData: reloaded });
         }
         return reloaded;
     }, [findByChatId, loadAll]);

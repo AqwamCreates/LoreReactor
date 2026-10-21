@@ -8,7 +8,7 @@ import {
     saveRawInteractionData
 } from '../storages/serverStorage';
 import { useMultiplayerSync } from './useMultiplayerSync';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 import type { HostMigrationPayload } from './useMultiplayerConnection';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -21,11 +21,11 @@ interface UseMultiplayerSessionOptions {
 export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
     const { allCharacters, saveMultiplayerData, addToast } = options;
 
-    const interactionData = useSessionStore((state) => state.interactionData);
-    const setInteractionData = useSessionStore((state) => state.setInteractionData);
-    const setLocalProtagonist = useSessionStore((state) => state.setLocalProtagonist); // ✅ RENAMED
-    const currentAccountId = useSessionStore((state) => state.currentAccountId);
-    const multiplayerData = useSessionStore((state) => state.multiplayerData);
+    const interactionData = useChatStore((state) => state.interactionData);
+    const setInteractionData = useChatStore((state) => state.setInteractionData);
+    const setLocalProtagonist = useChatStore((state) => state.setLocalProtagonist);
+    const currentAccountId = useChatStore((state) => state.currentAccountId);
+    const multiplayerData = useChatStore((state) => state.multiplayerData);
 
     const [joinSessionId, setJoinSessionId] = useState<string | null>(null);
     const [joinPassword, setJoinPassword] = useState('');
@@ -76,9 +76,9 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             joinProtagonist: assignedCharacter,
         }).catch((error: unknown) => console.warn('Failed to save join data:', error));
         setJoinProtagonist(assignedCharacter);
-        setLocalProtagonist(assignedCharacter); // ✅ RENAMED
+        setLocalProtagonist(assignedCharacter);
         setNeedsCharacterSelection(false);
-    }, [addToast, joinSessionId, joinPassword, setLocalProtagonist]); // ✅ RENAMED
+    }, [addToast, joinSessionId, joinPassword, setLocalProtagonist]);
 
     const handleCharacterSelectionRequired = useCallback((_initialState: any, _sessionRules: any) => {
         setNeedsCharacterSelection(true);
@@ -170,11 +170,11 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
             };
 
             await saveMultiplayerDataVoid(newMultiplayerData);
-            useSessionStore.setState({ multiplayerData: newMultiplayerData });
+            useChatStore.setState({ multiplayerData: newMultiplayerData });
 
             clearJoinState();
             if (joinProtagonist) {
-                setLocalProtagonist(joinProtagonist); // ✅ RENAMED
+                setLocalProtagonist(joinProtagonist);
             }
         } else {
             addToast("Host migration in progress. Re-anchoring to new host...", 'info');
@@ -196,7 +196,7 @@ export function useMultiplayerSession(options: UseMultiplayerSessionOptions) {
         }
     }, [
         currentAccountId, addToast, setInteractionData, saveMultiplayerDataVoid,
-        clearJoinState, joinProtagonist, setLocalProtagonist, joinSessionId, // ✅ RENAMED
+        clearJoinState, joinProtagonist, setLocalProtagonist, joinSessionId,
         joinPassword, joinRequestedCharacterId, joinRequestedCharacterData
     ]);
 

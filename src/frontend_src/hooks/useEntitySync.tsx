@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useEntitySync.tsx
 import { useEffect, useRef } from 'react';
 import type { Character, Context, Profile, InteractionData } from '../types';
-import { useSessionStore } from './useSessionStore';
+import { useChatStore } from './useChatStore';
 
 interface UseEntitySyncOptions {
     activeChatRestored: boolean;
@@ -27,7 +27,7 @@ export function useEntitySync(options: UseEntitySyncOptions) {
         if (!activeChatRestored) return;
         if (!initialSyncSkippedRef.current) { initialSyncSkippedRef.current = true; return; }
 
-        const currentChat = useSessionStore.getState().interactionData;
+        const currentChat = useChatStore.getState().interactionData;
         if (!currentChat) return;
 
         // Seed known participants on first real sync

@@ -5,7 +5,7 @@ import type { PromptBlock, Character, Context, Location, RegularExpressionTrigge
 import { uploadPromptBlockImage, clonePromptBlockImage } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
-import { useSessionStore } from '../hooks/useSessionStore';
+import { useChatStore } from '../hooks/useChatStore';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import '../main.css';
 
@@ -95,7 +95,7 @@ function PromptBlockEditorModalInner({
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     useEffect(() => {
-        const state = useSessionStore.getState() as any;
+        const state = useChatStore.getState() as any;
         const selectedModel = state.selectedModel;
         const runningModels = state.runningModels;
         if (selectedModel) {
