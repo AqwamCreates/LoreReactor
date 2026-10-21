@@ -748,8 +748,11 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to') || pArgs.positional.join(' ');
 
+    const quietLeave = pArgs.get(-1, 'quiet_leave')?.toLowerCase() === 'true';
+    const quietEnter = pArgs.get(-1, 'quiet_enter')?.toLowerCase() === 'true';
+
     if (!targetQuery) {
-        return helpResult('move', 'location_id="..."', 'move character to an adjacent location');
+        return helpResult('move', 'location_id="...", quiet_leave=False, quiet_enter=False', 'move character to an adjacent location');
     }
 
     const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
@@ -776,9 +779,20 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
         type: 'move',
         payload: {
             destinationLocationId: targetLocation.id,
-            destinationLocationName: targetLocation.name
+            destinationLocationName: targetLocation.name,
+            quietLeave: String(quietLeave),
+            quietEnter: String(quietEnter),
         }
     });
+
+    if (quietLeave) {
+        return {
+            toolType: 'move',
+            args,
+            textContent: '',
+            displayReplacement: ''
+        };
+    }
 
     return {
         toolType: 'move',
@@ -1666,7 +1680,11 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id');
 
-    if (!targetQuery) return helpResult('kick', 'character_id="...", destination_location_id=None', 'eject character from location');
+    // Two independent toggles — default to false
+    const quietLeave = pArgs.get(-1, 'quiet_leave')?.toLowerCase() === 'true';
+    const quietEnter = pArgs.get(-1, 'quiet_enter')?.toLowerCase() === 'true';
+
+    if (!targetQuery) return helpResult('kick', 'character_id="...", destination_location_id=None, quiet_leave=False, quiet_enter=False', 'eject character from location');
 
     const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
     if (!currentLocation) {
@@ -1729,10 +1747,23 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
             characterId: targetChar.id,
             characterName: targetChar.name,
             destinationLocationId: destLoc.id,
-            destinationLocationName: destLoc.name
+            destinationLocationName: destLoc.name,
+            quietLeave: String(quietLeave),
+            quietEnter: String(quietEnter),
         }
     });
 
+    // QUIET LEAVE: Zero tags, zero text in toolExecutionResults
+    if (quietLeave) {
+        return {
+            toolType: 'kick',
+            args,
+            textContent: '',
+            displayReplacement: ''
+        };
+    }
+
+    // LOUD LEAVE (Default):
     return {
         toolType: 'kick',
         args,
@@ -1777,7 +1808,10 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target') || pArgs.positional.join(' ');
 
-    if (!targetQuery) return helpResult('teleport', 'location_id="..."', 'instantly move character to any location');
+    const quietLeave = pArgs.get(-1, 'quiet_leave')?.toLowerCase() === 'true';
+    const quietEnter = pArgs.get(-1, 'quiet_enter')?.toLowerCase() === 'true';
+
+    if (!targetQuery) return helpResult('teleport', 'location_id="...", quiet_leave=False, quiet_enter=False', 'instantly move character to any location');
 
     const targetLocation = resolveLocation(targetQuery, interactionData);
     if (!targetLocation) return { toolType: 'teleport', args, textContent: `[Error: Location "${targetQuery}" not found]`, displayReplacement: '[Error: Not found]' };
@@ -1793,9 +1827,20 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
         type: 'teleport',
         payload: {
             destinationLocationId: targetLocation.id,
-            destinationLocationName: targetLocation.name
+            destinationLocationName: targetLocation.name,
+            quietLeave: String(quietLeave),
+            quietEnter: String(quietEnter),
         }
     });
+
+    if (quietLeave) {
+        return {
+            toolType: 'teleport',
+            args,
+            textContent: '',
+            displayReplacement: ''
+        };
+    }
 
     return {
         toolType: 'teleport',
@@ -2758,6 +2803,9 @@ export function processPendingToolActions(
                 // ─── 1. MOVE ──────────────────────────────────────────────
                 case 'move': {
                     const destLocId = action.payload.destinationLocationId;
+                    const isQuietLeave = action.payload.quietLeave === 'true';
+                    const isQuietEnter = action.payload.quietEnter === 'true';
+
                     if (destLocId) {
                         const prevMsg = findPrevMsg(updatedData, targetMsg.character.id) as ChatMessage | undefined;
 
@@ -2771,28 +2819,35 @@ export function processPendingToolActions(
                             }
                         }
 
-                        const moveMsg: HistoryMessage = {
-                            messageType: 'interaction',
-                            id: uuidv4(),
-                            character: { ...targetMsg.character },
-                            isPresent: true,
-                            remainingChatStamina: prevMsg?.remainingChatStamina,
-                            remainingActionStamina: updatedActionStamina,
-                            inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
-                            activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
-                            characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
-                            characterLockedLocations: prevMsg?.characterLockedLocations ?? {},
-                            parentMessageId: currentLastMessageId,
-                            firstCreatedTimestamp: sequenceTime,
-                            lastUpdatedTimestamp: sequenceTime,
-                        };
-                        currentLastMessageId = moveMsg.id;
+                        if (!isQuietEnter) {
+                            const moveMsg: HistoryMessage = {
+                                messageType: 'interaction',
+                                id: uuidv4(),
+                                character: { ...targetMsg.character },
+                                isPresent: true,
+                                remainingChatStamina: prevMsg?.remainingChatStamina,
+                                remainingActionStamina: updatedActionStamina,
+                                inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
+                                activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
+                                characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
+                                characterLockedLocations: prevMsg?.characterLockedLocations ?? {},
+                                parentMessageId: currentLastMessageId,
+                                firstCreatedTimestamp: sequenceTime,
+                                lastUpdatedTimestamp: sequenceTime,
+                            };
+                            currentLastMessageId = moveMsg.id;
 
-                        if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
-                        updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], moveMsg];
+                            if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
+                            updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], moveMsg];
+                        }
+
                         changed = true;
 
-                        options?.onToast?.(`🚶 ${targetMsg.character.name} moved to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                        if (!isQuietLeave && !isQuietEnter) {
+                            options?.onToast?.(`🚶 ${targetMsg.character.name} moved to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                        } else if (!isQuietLeave) {
+                            options?.onToast?.(`🚶 ${targetMsg.character.name} left.`, 'info');
+                        }
                     }
                     break;
                 }
@@ -2800,31 +2855,41 @@ export function processPendingToolActions(
                 // ─── 2. TELEPORT ──────────────────────────────────────────
                 case 'teleport': {
                     const destLocId = action.payload.destinationLocationId;
+                    const isQuietLeave = action.payload.quietLeave === 'true';
+                    const isQuietEnter = action.payload.quietEnter === 'true';
+
                     if (destLocId) {
                         const prevMsg = findPrevMsg(updatedData, targetMsg.character.id) as ChatMessage | undefined;
 
-                        const teleportMsg: HistoryMessage = {
-                            messageType: 'interaction',
-                            id: uuidv4(),
-                            character: { ...targetMsg.character },
-                            isPresent: true,
-                            remainingChatStamina: prevMsg?.remainingChatStamina,
-                            remainingActionStamina: prevMsg?.remainingActionStamina,
-                            inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
-                            activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
-                            characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
-                            characterLockedLocations: prevMsg?.characterLockedLocations ?? {},
-                            parentMessageId: currentLastMessageId,
-                            firstCreatedTimestamp: sequenceTime,
-                            lastUpdatedTimestamp: sequenceTime,
-                        };
-                        currentLastMessageId = teleportMsg.id;
+                        if (!isQuietEnter) {
+                            const teleportMsg: HistoryMessage = {
+                                messageType: 'interaction',
+                                id: uuidv4(),
+                                character: { ...targetMsg.character },
+                                isPresent: true,
+                                remainingChatStamina: prevMsg?.remainingChatStamina,
+                                remainingActionStamina: prevMsg?.remainingActionStamina,
+                                inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
+                                activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
+                                characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
+                                characterLockedLocations: prevMsg?.characterLockedLocations ?? {},
+                                parentMessageId: currentLastMessageId,
+                                firstCreatedTimestamp: sequenceTime,
+                                lastUpdatedTimestamp: sequenceTime,
+                            };
+                            currentLastMessageId = teleportMsg.id;
 
-                        if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
-                        updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], teleportMsg];
+                            if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
+                            updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], teleportMsg];
+                        }
+
                         changed = true;
 
-                        options?.onToast?.(`⚡ ${targetMsg.character.name} teleported to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                        if (!isQuietLeave && !isQuietEnter) {
+                            options?.onToast?.(`⚡ ${targetMsg.character.name} teleported to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                        } else if (!isQuietLeave) {
+                            options?.onToast?.(`⚡ ${targetMsg.character.name} vanished.`, 'info');
+                        }
                     }
                     break;
                 }
@@ -2911,29 +2976,31 @@ export function processPendingToolActions(
                 case 'kick': {
                     const sessionParticipants = updatedData.participants || [];
                     const kickedChar = sessionParticipants.find(p => p.id === action.payload.characterId);
+                    const isQuietLeave = action.payload.quietLeave === 'true';
+                    const isQuietEnter = action.payload.quietEnter === 'true';
 
                     if (kickedChar) {
                         const destLocId = action.payload.destinationLocationId;
                         const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id) as ChatMessage | undefined;
 
-                        const kickMsg: HistoryMessage = {
-                            messageType: 'interaction',
-                            id: uuidv4(),
-                            character: { ...kickedChar },
-                            isPresent: true,
-                            remainingChatStamina: prevKickedMsg?.remainingChatStamina,
-                            remainingActionStamina: prevKickedMsg?.remainingActionStamina,
-                            inventory: prevKickedMsg?.inventory ? { ...prevKickedMsg.inventory } : undefined,
-                            activeToolActions: prevKickedMsg?.activeToolActions ? { ...prevKickedMsg.activeToolActions } : undefined,
-                            characterClothingWearingStatuses: prevKickedMsg?.characterClothingWearingStatuses ?? {},
-                            characterLockedLocations: prevKickedMsg?.characterLockedLocations ?? {},
-                            parentMessageId: currentLastMessageId,
-                            firstCreatedTimestamp: sequenceTime,
-                            lastUpdatedTimestamp: sequenceTime,
-                        };
-                        currentLastMessageId = kickMsg.id;
+                        if (destLocId && !isQuietEnter) {
+                            const kickMsg: HistoryMessage = {
+                                messageType: 'interaction',
+                                id: uuidv4(),
+                                character: { ...kickedChar },
+                                isPresent: true,
+                                remainingChatStamina: prevKickedMsg?.remainingChatStamina,
+                                remainingActionStamina: prevKickedMsg?.remainingActionStamina,
+                                inventory: prevKickedMsg?.inventory ? { ...prevKickedMsg.inventory } : undefined,
+                                activeToolActions: prevKickedMsg?.activeToolActions ? { ...prevKickedMsg.activeToolActions } : undefined,
+                                characterClothingWearingStatuses: prevKickedMsg?.characterClothingWearingStatuses ?? {},
+                                characterLockedLocations: prevKickedMsg?.characterLockedLocations ?? {},
+                                parentMessageId: currentLastMessageId,
+                                firstCreatedTimestamp: sequenceTime,
+                                lastUpdatedTimestamp: sequenceTime,
+                            };
+                            currentLastMessageId = kickMsg.id;
 
-                        if (destLocId) {
                             if (!updatedData.interactionHistories[destLocId]) updatedData.interactionHistories[destLocId] = [];
                             updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], kickMsg];
                         }
@@ -2941,7 +3008,11 @@ export function processPendingToolActions(
                         updatedData = { ...updatedData, lastUpdatedTimestamp: sequenceTime };
                         changed = true;
 
-                        options?.onToast?.(`👢 ${action.payload.characterName} kicked to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                        if (!isQuietLeave && !isQuietEnter) {
+                            options?.onToast?.(`👢 ${action.payload.characterName} kicked to ${action.payload.destinationLocationName || 'unknown'}.`, 'info');
+                        } else if (!isQuietLeave) {
+                            options?.onToast?.(`👢 ${action.payload.characterName} was kicked out.`, 'info');
+                        }
                     }
                     break;
                 }
