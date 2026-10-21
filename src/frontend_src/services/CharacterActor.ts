@@ -69,6 +69,7 @@ export interface TurnExecutionParams {
     activeStrategy: BudgetStrategy | null;
     strategyOverride?: BudgetStrategy | null;
     existingCharacterText?: string;
+    prefillText?: string; // ✅ Added prefillText parameter
     allPromptBlocks: PromptBlock[];
     callbacks?: TurnStreamCallbacks;
     isMultiplayerClient?: boolean;
@@ -280,7 +281,7 @@ export class CharacterActor {
         const {
             data, character, signal,
             selectedModel, runningModels, activeStrategy,
-            strategyOverride, existingCharacterText, allPromptBlocks, callbacks,
+            strategyOverride, existingCharacterText, prefillText, allPromptBlocks, callbacks,
             isMultiplayerClient, borrowedModel, metadata,
             toolContext,
         } = params;
@@ -304,7 +305,11 @@ export class CharacterActor {
         let previousExpression: string | null = null;
         let lastIsCompleted = true;
 
+        // ✅ isResuming is ONLY true if we are continuing an existing message
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
+        
+        // ✅ seedText is used for the prompt prefill and accumulator, but doesn't force isResuming
+        const seedText = existingCharacterText || prefillText || '';
 
         const filteredMessages = getFilteredTextMessages(data, character.id, allPromptBlocks);
         const knownCharacterNames = detectName(character, filteredMessages);
@@ -341,7 +346,7 @@ export class CharacterActor {
         }
 
         try {
-            let currentExistingText = existingCharacterText || '';
+            let currentExistingText = seedText; // ✅ Use seedText here
             let finalBudgetData: BudgetData | null = null;
             let lastPromptText = '';
 
