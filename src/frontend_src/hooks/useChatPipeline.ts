@@ -9,6 +9,7 @@ import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/ti
 import { deleteRawMessage, saveRawInteractionData } from '../storages/serverStorage';
 import { useChatStore } from './useChatStore';
 import { useGenerationStore } from './useGenerationStore';
+import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import type { RequestMetadata } from '../services/BudgetStrategyEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -347,10 +348,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 return;
             }
 
-            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
-            
-            // ✅ FIX: Release the generation lock immediately after text generation completes.
-            // Audio playback should not block the user from sending a new message.
+            useGenerationStore.setState({ streamingCharacter: null, streamingText: '' });
             releaseLock();
 
             if (voiceTracker && narrationBehaviour === 'wait') {
@@ -479,8 +477,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
 
-            // ✅ FIX: Only stop the tracker if it's still the one this pipeline instance created.
-            // This prevents a slow audio playback from killing a new generation's audio if the user sends a message.
             if (currentVoiceTrackerRef.current === voiceTracker) {
                 voiceTracker.stopImmediate();
                 currentVoiceTrackerRef.current = null;
@@ -488,8 +484,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
             resetStream();
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
-            
-            // Safe to call multiple times; ensures lock is released if an error happened before the early release.
             releaseLock();
 
             if (pendingResumeRef.current) {
@@ -520,7 +514,9 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
         if (!acquireLock()) return;
         
-        const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
+        const prefillText = thought 
+            ? `${toolResultStartString}System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.${toolResultEndString}\n\n` 
+            : '';
 
         const voiceTracker = new StreamingVoiceTracker(rawCharacter, allCharactersRef.current);
         if (prefillText) voiceTracker.seed(prefillText);
@@ -541,9 +537,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 prefillText
             );
 
-            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
-            
-            // ✅ FIX: Release lock before waiting for audio
+            useGenerationStore.setState({ streamingCharacter: null, streamingText: '' });
             releaseLock();
             
             const narrationBehaviour = currentData.profile?.textGenerationBehaviourOnNarration ?? 'wait';
@@ -552,12 +546,12 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
         } catch (e) {
             console.error('Delayed response error:', e);
-            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
         } finally {
             if (currentVoiceTrackerRef.current === voiceTracker) {
                 voiceTracker.stopImmediate();
                 currentVoiceTrackerRef.current = null;
             }
+            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
             releaseLock();
         }
     }, [getState, acquireLock, releaseLock, chatEngine, isLoadingRef, getActivePromptBlocks, allCharactersRef]);
@@ -720,9 +714,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, undefined, voiceTracker
             );
 
-            useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
-            
-            // ✅ FIX: Release lock before waiting for audio
+            useGenerationStore.setState({ streamingCharacter: null, streamingText: '' });
             releaseLock();
 
             if (voiceTracker && narrationBehaviour === 'wait') {
