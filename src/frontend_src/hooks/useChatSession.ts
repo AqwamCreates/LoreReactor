@@ -467,7 +467,8 @@ export function useChatSession(options: UseChatSessionOptions) {
         isProtagonistCharId,
         errorPrefix = 'Generation failed',
         lockAlreadyAcquired = false,
-    }: GenerationTurnOptions) => {
+        prefillText = '',
+    }: GenerationTurnOptions & { prefillText?: string }) => {
         if (!lockAlreadyAcquired && !acquireLock()) return;
         if (!data.profile || !data.profile?.enableCharacterExpression) sentimentEngine.unload();
 
@@ -534,6 +535,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         const voiceTracker = new StreamingVoiceTracker(respondingChar, allCharactersRef.current);
         if (existingCharacterText) {
             voiceTracker.seed(existingCharacterText);
+        } else if (prefillText) {
+            // ✅ Seed tracker with prefill so it doesn't double-read if model echoes it
+            voiceTracker.seed(prefillText);
         }
         currentVoiceTrackerRef.current = voiceTracker;
         
@@ -565,7 +569,8 @@ export function useChatSession(options: UseChatSessionOptions) {
 
             let turnResult: Awaited<ReturnType<typeof chatEngine.runTurn>> | null = null;
             try {
-                turnResult = await chatEngine.runTurn(data, ctrl, promptBlocks, metadata, existingCharacterText, voiceTracker);
+                // ✅ Pass prefillText down to the engine
+                turnResult = await chatEngine.runTurn(data, ctrl, promptBlocks, metadata, existingCharacterText, voiceTracker, prefillText);
             } catch (e) {
                 if ((e as Error).name === 'AbortError') {
                     turnResult = { interactionData: data, isCompleted: false };
@@ -778,6 +783,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         getActivePromptBlocks
     ]);
 
+    // ✅ Rewritten to use executeTurnPipeline for proper UI state, voice tracking, and lock management
     const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
         const currentState = getState();
         const currentData = currentState.interactionData;
@@ -786,25 +792,20 @@ export function useChatSession(options: UseChatSessionOptions) {
         const rawCharacter = currentData.participants.find(p => p.id === characterId);
         if (!rawCharacter) return;
 
-        if (!acquireLock()) return;
-        
         const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
 
-        try {
-            const promptBlocks = getActivePromptBlocks(currentData);
-            await chatEngine.runTurn(
-                currentData,
-                abortControllerRef.current || new AbortController(),
-                promptBlocks,
-                undefined,
-                prefillText
-            );
-        } catch (e) {
-            console.error('Delayed response error:', e);
-        } finally {
-            releaseLock();
-        }
-    }, [getState, acquireLock, releaseLock, chatEngine, isLoadingRef, getActivePromptBlocks]);
+        const allProtagonistIds = new Set(currentData.protagonistIds || []);
+        const isProtagonist = (id: string) => allProtagonistIds.has(id);
+
+        await executeTurnPipeline({
+            data: currentData,
+            protagonistId: currentData.protagonistIds?.[0] || '',
+            respondingCharacter: rawCharacter,
+            isProtagonistCharId: isProtagonist,
+            errorPrefix: 'Delayed response failed',
+            prefillText,
+        });
+    }, [getState, executeTurnPipeline, isLoadingRef]);
 
     useEffect(() => {
         triggerDelayedResponseRef.current = triggerDelayedResponse;

@@ -53,6 +53,7 @@ export function useChatEngine(deps: EngineDependencies) {
         existingCharacterText?: string,
         metadata?: RequestMetadata,
         voiceTracker?: StreamingVoiceTracker,
+        prefillText?: string, // ✅ Added prefillText parameter
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
@@ -100,6 +101,7 @@ export function useChatEngine(deps: EngineDependencies) {
             metadata,
             toolContext: deps.getToolContext(),
             voiceTracker,
+            prefillText, // ✅ Pass prefillText to CharacterActor
         });
 
         if ('error' in outcome) {
@@ -168,12 +170,14 @@ export function useChatEngine(deps: EngineDependencies) {
         metadata?: RequestMetadata,
         existingCharacterText?: string,
         voiceTracker?: StreamingVoiceTracker,
+        prefillText?: string, // ✅ Added prefillText parameter
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            const result = await handleServerResponse(d, c, promptBlocks, s, onToken, undefined, existingCharacterText || '', metadata, voiceTracker);
+            // ✅ Pass prefillText down to handleServerResponse
+            const result = await handleServerResponse(d, c, promptBlocks, s, onToken, undefined, existingCharacterText || '', metadata, voiceTracker, prefillText);
             
             if (result?.promptText) {
                 lastPromptText = result.promptText;
