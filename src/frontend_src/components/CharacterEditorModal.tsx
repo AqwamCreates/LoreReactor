@@ -974,7 +974,18 @@ export function CharacterEditorModal({
     };
     const hasVoice = (!!voiceFile || hasExistingVoice) && !isVoiceRemoved;
     const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
-    const memoryCount = Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
+    const memoryCount = useMemo(() => {
+        // If there is no local protagonist, just return the total count of all memories
+        if (!localProtagonistId) return Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
+
+        let count = 0;
+        for (const [interactionDataId, memoryArr] of Object.entries(memories)) {
+            const shell = allRawInteractionDataShells.find(s => s.id === interactionDataId);
+            if (shell?.participantIds.includes(localProtagonistId)) count += memoryArr.length;
+        }
+        
+        return count;
+    }, [memories, localProtagonistId, allRawInteractionDataShells]);
 
     const [newMemoryPromptExpression, setNewMemoryPromptExpression] = useState<string>(emotions[0]);
     const [newMemoryPromptTemplate, setNewMemoryPromptTemplate] = useState('');
