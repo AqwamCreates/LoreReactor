@@ -315,7 +315,7 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
 }
 
 .message-left { align-self: flex-start; }
-.message-right { align-self: flex-end; flex-direction: row-reverse; }
+.message-right { align-self: flex-end; flex-direction: row-reverse; padding-left: calc(clamp(80px, 20vw, 160px) + 1rem);}
 
 .avatar-column {
     display: flex;
@@ -385,6 +385,7 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     box-sizing: border-box;
     transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
     overflow: visible;
+    z-index: 1; /* ✅ FIX 2: Establish baseline stacking context */
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -395,6 +396,7 @@ SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
     transform: scale(1.03) translateY(-2px);
     box-shadow: 0 20px 30px -10px rgba(0, 0, 0, 0.25);
     border-color: var(--accent);
+    z-index: 20; /* ✅ FIX 2: Lift bubble and toolbar above adjacent messages */
 }
 
 .bubble-ai { background: var(--social-bg); border-top-left-radius: 4px; }
@@ -1401,11 +1403,19 @@ MODE: LADDER (Standard Chat View)
 
     .mode-ladder .message-row.message-right {
         max-width: 90%;
+        padding-left: 0; /* ✅ FIX 1 Mobile: Reset padding. On mobile, AI avatars move BELOW the bubble, meaning AI bubbles take full width. User bubbles must match. */
     }
 
     .mode-ladder .message-row.message-left .message-toolbar {
         bottom: -40px;
         right: 0;
+    }
+
+    .mode-ladder .message-bubble.toolbar-active {
+        transform: scale(0.98);
+        border-color: var(--accent);
+        transition: transform 0.3s ease, border-color 0.3s ease;
+        z-index: 20; /* ✅ FIX 2 Mobile: Ensure long-press toolbar pops over adjacent messages */
     }
 
     .mode-ladder .toolbar-button {
