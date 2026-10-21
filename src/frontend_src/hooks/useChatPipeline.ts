@@ -231,8 +231,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
     const executeTurnPipeline = useCallback(async ({
         data, protagonistId, existingCharacterText = '', respondingCharacter,
-        isProtagonistCharId, errorPrefix = 'Generation failed', lockAlreadyAcquired = false,
-    }: GenerationTurnOptions) => {
+        isProtagonistCharId, errorPrefix = 'Generation failed', lockAlreadyAcquired = false, prefillText = '',
+    }: GenerationTurnOptions & { prefillText?: string }) => {
         if (!lockAlreadyAcquired && !acquireLock()) return;
         if (!data.profile || !data.profile?.enableCharacterExpression) sentimentEngine.unload();
 
@@ -292,6 +292,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
         const voiceTracker = new StreamingVoiceTracker(respondingChar, allCharactersRef.current);
         if (existingCharacterText) voiceTracker.seed(existingCharacterText);
+        else if (prefillText) voiceTracker.seed(prefillText);
         currentVoiceTrackerRef.current = voiceTracker;
         
         await voiceTracker.start().catch(err => console.warn('[useChatPipeline] VoiceTracker start failed:', err));
@@ -314,7 +315,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 );
             }
 
-            // ✅ PHASE 2: Bypass orchestrator completely for directed turns
             let turnResult: Awaited<ReturnType<typeof chatEngine.runDirectedTurn>> | null = null;
             try {
                 turnResult = await chatEngine.runDirectedTurn(
@@ -324,7 +324,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
                     promptBlocks, 
                     metadata, 
                     existingCharacterText, 
-                    voiceTracker
+                    voiceTracker,
+                    prefillText
                 );
             } catch (e) {
                 if ((e as Error).name === 'AbortError') turnResult = { interactionData: data, isCompleted: false };
@@ -342,6 +343,18 @@ export function useChatPipeline(deps: PipelineDependencies) {
                     saveRawInteractionData(fd).catch(e => console.error('Failed to save partial on null result:', e));
                 }
                 return;
+            }
+
+            // ✅ PHASE 4: Clear streaming UI overlay immediately after text generation completes
+            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+
+            // ✅ PHASE 4: Wait for voice playback in the Pipeline, not the Engine
+            if (voiceTracker && narrationBehaviour === 'wait') {
+                try {
+                    await voiceTracker.waitForPlaybackCompletion();
+                } catch (e) {
+                    console.warn('[useChatPipeline] Voice playback completion error:', e);
+                }
             }
 
             let ud = turnResult.interactionData;
@@ -490,6 +503,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         extractAndScheduleResponses, getActivePromptBlocks, onStateBroadcastRef, allCharactersRef, isAtBottomRef
     ]);
 
+    // ✅ PHASE 4: Fixed scheduled responses to properly manage UI state and voice tracking
     const triggerDelayedResponse = useCallback(async (characterId: string, thought?: string) => {
         const currentState = getState();
         const currentData = currentState.interactionData;
@@ -502,9 +516,14 @@ export function useChatPipeline(deps: PipelineDependencies) {
         
         const prefillText = thought ? `[System Note: You scheduled this follow-up earlier. Your internal thought was: "${thought}". Continue naturally from this premise.]\n\n` : '';
 
+        const voiceTracker = new StreamingVoiceTracker(rawCharacter, allCharactersRef.current);
+        if (prefillText) voiceTracker.seed(prefillText);
+        await voiceTracker.start().catch(() => {});
+
+        useSessionStore.setState({ isLoading: true, streamingCharacter: rawCharacter, streamingText: '' });
+
         try {
             const promptBlocks = getActivePromptBlocks(currentData);
-            // ✅ Pass prefillText directly to the directed turn
             await chatEngine.runDirectedTurn(
                 currentData, 
                 rawCharacter, 
@@ -512,15 +531,24 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 promptBlocks, 
                 undefined, 
                 undefined, 
-                undefined, 
+                voiceTracker, 
                 prefillText
             );
+
+            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+            
+            const narrationBehaviour = currentData.profile?.textGenerationBehaviourOnNarration ?? 'wait';
+            if (voiceTracker && narrationBehaviour === 'wait') {
+                await voiceTracker.waitForPlaybackCompletion();
+            }
         } catch (e) {
             console.error('Delayed response error:', e);
+            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
         } finally {
+            voiceTracker.stopImmediate();
             releaseLock();
         }
-    }, [getState, acquireLock, releaseLock, chatEngine, isLoadingRef, getActivePromptBlocks]);
+    }, [getState, acquireLock, releaseLock, chatEngine, isLoadingRef, getActivePromptBlocks, allCharactersRef]);
 
     useEffect(() => { triggerDelayedResponseRef.current = triggerDelayedResponse; }, [triggerDelayedResponse]);
 
@@ -678,6 +706,17 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 currentInteractionData, char, promptBlocks, ctrl.signal,
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, undefined, voiceTracker
             );
+
+            // ✅ PHASE 4: Clear UI and wait for voice in Pipeline
+            useSessionStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
+
+            if (voiceTracker && narrationBehaviour === 'wait') {
+                try {
+                    await voiceTracker.waitForPlaybackCompletion();
+                } catch (e) {
+                    console.warn('[useChatPipeline] Resume voice playback completion error:', e);
+                }
+            }
 
             const liveStreamedText = streamingTextRef.current || existingText;
             const dataToFinalize = result?.interactionData || currentInteractionData;

@@ -8,7 +8,6 @@ import { getBudgetStrategyEngine, type RequestMetadata } from '../services/Budge
 import { updatePartialMessageInInteractionData } from '../utilities/interactionDataLogic';
 import type { ToolExecutionContext } from '../services/ToolExecutor';
 import type { StreamingVoiceTracker } from '../services/StreamingVoiceTracker';
-import { useSessionStore } from './useSessionStore';
 
 const characterActor = new CharacterActor();
 const characterSoul = new CharacterSoul();
@@ -44,6 +43,7 @@ export function useChatEngine(deps: EngineDependencies) {
         acquireLock, releaseLock,
     } = deps;
 
+    // ✅ PHASE 4: Pure Engine. No useSessionStore imports. No direct UI mutations.
     const handleServerResponse = useCallback(async (
         data: InteractionData, 
         character: Character,
@@ -54,7 +54,7 @@ export function useChatEngine(deps: EngineDependencies) {
         existingCharacterText?: string,
         metadata?: RequestMetadata,
         voiceTracker?: StreamingVoiceTracker,
-        prefillText?: string, // ✅ PHASE 2: Added prefillText
+        prefillText?: string,
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
@@ -96,7 +96,7 @@ export function useChatEngine(deps: EngineDependencies) {
 
         const outcome = await characterActor.executeTurn({
             data, character, signal, selectedModel, runningModels, activeStrategy,
-            strategyOverride, existingCharacterText, prefillText, allPromptBlocks, // ✅ Passed prefillText
+            strategyOverride, existingCharacterText, prefillText, allPromptBlocks, 
             callbacks,
             borrowedModel,
             metadata,
@@ -112,16 +112,6 @@ export function useChatEngine(deps: EngineDependencies) {
             else if (error.type === 'budget') addToast(error.message, 'error');
             else addToast(`Inference Error: ${error.message}`, 'error');
             return null;
-        }
-
-        // ✅ In 'wait' mode, pause turn sequence progression until this character's voice narration finishes playing completely
-        const narrationBehaviour = data.profile?.textGenerationBehaviourOnNarration ?? 'wait';
-        if (voiceTracker && narrationBehaviour === 'wait') {
-            try {
-                await voiceTracker.waitForPlaybackCompletion();
-            } catch (e) {
-                console.warn('[useChatEngine] Voice playback completion error:', e);
-            }
         }
 
         const { result } = outcome;
@@ -143,7 +133,6 @@ export function useChatEngine(deps: EngineDependencies) {
             costWithoutCacheMisses: prev.costWithoutCacheMisses + result.statsDelta.costWithoutCacheMisses,
         }));
 
-        // PRESERVE LIVE PROFILE: Keep the current live profile from state (e.g. if autonomousMode was toggled off)
         const liveProfile = getState().interactionData?.profile;
         const baseUpdated = isResuming
             ? (getState().interactionData ?? result.updatedData)
@@ -154,15 +143,10 @@ export function useChatEngine(deps: EngineDependencies) {
             profile: liveProfile ?? baseUpdated.profile,
         };
         
-        // ✅ Commit the generated message to the UI state immediately
         setInteractionData(effectiveData);
 
-        // ✅ Clear the streaming overlay AND isLoading so the "Thinking..." indicator doesn't show up while audio plays.
-        useSessionStore.setState({
-            isLoading: false,
-            streamingCharacter: null,
-            streamingText: '',
-        });
+        // ✅ PHASE 4: Removed useSessionStore.setState and voiceTracker.waitForPlaybackCompletion.
+        // The Pipeline is now responsible for clearing the UI and awaiting audio.
 
         return {
             interactionData: effectiveData,
@@ -173,7 +157,6 @@ export function useChatEngine(deps: EngineDependencies) {
         };
     }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel, deps.getToolContext]);
 
-    // ✅ PHASE 2: Directed Turn Execution (Bypasses Orchestrator)
     const runDirectedTurn = useCallback(async (
         initialData: InteractionData,
         character: Character,
@@ -209,7 +192,6 @@ export function useChatEngine(deps: EngineDependencies) {
         return { interactionData: initialData, isCompleted: false };
     }, [handleServerResponse, setStreamingState]);
 
-    // Kept strictly for Autonomous Simulation Loop
     const runTurn = useCallback(async (
         initialData: InteractionData,
         signal: AbortController,
@@ -279,7 +261,7 @@ export function useChatEngine(deps: EngineDependencies) {
 
     return useMemo(() => ({
         handleServerResponse,
-        runDirectedTurn, // ✅ Exported
+        runDirectedTurn,
         runTurn,
         startAutonomousMode,
         stopAutonomousMode,
