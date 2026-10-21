@@ -348,7 +348,11 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 return;
             }
 
-            useGenerationStore.setState({ streamingCharacter: null, streamingText: '' });
+            // Text generation is complete. Clear streaming text to hide the streaming bubble.
+            // Keep isLoading: true and streamingCharacter set so the "Stop" button remains active during audio playback.
+            useGenerationStore.setState({ streamingText: '' });
+            
+            // Release the pipeline lock so a new user message can interrupt the audio if needed.
             releaseLock();
 
             if (voiceTracker && narrationBehaviour === 'wait') {
@@ -483,6 +487,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
 
             resetStream();
+            // Clean up UI state once audio is fully finished or stopped
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
             releaseLock();
 
@@ -537,7 +542,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 prefillText
             );
 
-            useGenerationStore.setState({ streamingCharacter: null, streamingText: '' });
+            useGenerationStore.setState({ streamingText: '' });
             releaseLock();
             
             const narrationBehaviour = currentData.profile?.textGenerationBehaviourOnNarration ?? 'wait';
@@ -595,6 +600,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         abortControllerRef.current?.abort();
         abortControllerRef.current = null;
 
+        // Immediately kill audio playback
         if (currentVoiceTrackerRef.current) {
             currentVoiceTrackerRef.current.stopImmediate();
             currentVoiceTrackerRef.current = null;
@@ -714,7 +720,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 throttledSetStreamingTextWithBroadcast, undefined, existingText, undefined, voiceTracker
             );
 
-            useGenerationStore.setState({ streamingCharacter: null, streamingText: '' });
+            useGenerationStore.setState({ streamingText: '' });
             releaseLock();
 
             if (voiceTracker && narrationBehaviour === 'wait') {

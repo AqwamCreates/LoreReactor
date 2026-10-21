@@ -2842,7 +2842,7 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     background: var(--accent-bg);
     color: var(--accent);
     border: 1px solid var(--accent-border);
-    padding: 8px 16px;
+    padding: 8px 10px;
     border-radius: 6px;
     font-size: 0.85rem;
     font-weight: bold;
