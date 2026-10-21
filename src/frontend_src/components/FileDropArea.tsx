@@ -4,7 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 
 interface FileDropAreaProps {
     onDropFiles: (files: File[]) => void;
-    acceptedTypes?: ('image' | 'audio')[];
+    acceptedTypes?: ('image' | 'audio' | 'json')[];
     disabled?: boolean;
     children: React.ReactNode;
     overlayTitle?: string;
@@ -53,7 +53,9 @@ export function FileDropArea({
     const isOsFileDrag = (e: React.DragEvent) => {
         const types = e.dataTransfer?.types;
         if (!types) return false;
-        return typeof types.includes === 'function' ? types.includes('Files') : Array.from(types).includes('Files');
+        if (typeof (types as any).includes === 'function') return (types as any).includes('Files');
+        if (typeof (types as any).contains === 'function') return (types as any).contains('Files');
+        return Array.from(types).includes('Files');
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -97,10 +99,12 @@ export function FileDropArea({
         if (acceptedTypes && acceptedTypes.length > 0) {
             const isImage = (f: File) => f.type.startsWith('image/') || ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].some(ext => f.name.toLowerCase().endsWith(ext));
             const isAudio = (f: File) => f.type.startsWith('audio/') || ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'].some(ext => f.name.toLowerCase().endsWith(ext));
+            const isJson = (f: File) => f.type === 'application/json' || f.name.toLowerCase().endsWith('.json');
 
             files = rawFiles.filter(f => {
                 if (acceptedTypes.includes('image') && isImage(f)) return true;
                 if (acceptedTypes.includes('audio') && isAudio(f)) return true;
+                if (acceptedTypes.includes('json') && isJson(f)) return true;
                 return false;
             });
         }

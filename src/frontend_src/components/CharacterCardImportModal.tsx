@@ -19,6 +19,7 @@ import {
 import { detectToolsFromText, type DetectedToolsResult } from '../utilities/toolDetection';
 import { ToolPermissionModal } from './ToolPermissionModal';
 import { uploadCharacterImage } from '../storages/serverStorage';
+import { FileDropArea } from './FileDropArea';
 import { v4 as uuidv4 } from 'uuid';
 import { defaultCharacterTools } from '../dictionaries/defaults';
 import '../main.css';
@@ -69,11 +70,7 @@ export function CharacterCardImportModal({
         onClose();
     };
 
-    const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        e.target.value = '';
-
+    const processCardFile = async (file: File) => {
         setIsProcessing(true);
         setError(null);
         setPreview(null);
@@ -132,7 +129,6 @@ export function CharacterCardImportModal({
             const detectedTools = detectToolsFromText(traitText);
 
             // By default, enable safe in-world tools that matched persona, plus baseline defaults.
-            // Privileged tools (shell, front_camera, etc.) remain false until explicitly reviewed/allowed.
             const initialTools: Record<tool, boolean> = { ...defaultCharacterTools };
             for (const rule of detectedTools.inWorldReadonly) {
                 initialTools[rule.tool] = true;
@@ -216,7 +212,7 @@ export function CharacterCardImportModal({
                 lastUpdatedTimestamp: extended.modificationDate || now,
             };
 
-            // Build finalized lorebook contexts using new RegularExpressionTrigger[] format
+            // Build finalized lorebook contexts
             const lorebookContexts: Context[] = (extended.lorebookContexts || []).map(entry => ({
                 id: uuidv4(),
                 name: entry.name || 'Lorebook Entry',
@@ -259,7 +255,6 @@ export function CharacterCardImportModal({
                 detectedTools,
             });
 
-            // Automatically open permission review if high-privilege OS tools are detected
             if (detectedTools.osPrivileged.length > 0 || detectedTools.entityAdmin.length > 0) {
                 setShowToolPermissionModal(true);
             }
@@ -268,6 +263,19 @@ export function CharacterCardImportModal({
         } finally {
             setIsProcessing(false);
         }
+    };
+
+    const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+        await processCardFile(file);
+    };
+
+    const handleDropFiles = async (files: File[]) => {
+        const file = files[0];
+        if (!file) return;
+        await processCardFile(file);
     };
 
     const handleConfirmSave = async () => {
@@ -313,179 +321,186 @@ export function CharacterCardImportModal({
         <>
             <div className="modal-overlay" onClick={handleClose}>
                 <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
-                    <div className="modal-header">
-                        <h2>Import Character Card</h2>
-                        <div className="editor-modal-actions">
-                            <button 
-                                type="button" 
-                                className="editor-button editor-button-cancel" 
-                                onClick={handleClose} 
-                                disabled={isSaving || isProcessing}
-                            >
-                                {preview ? 'Cancel' : 'Close'}
-                            </button>
-                        </div>
-                    </div>
-
-                    <div className="modal-body editor-modal-body">
-                        {error && <div className="editor-error-message editor-error-centered">{error}</div>}
-
-                        {/* File Selection */}
-                        {!preview && !isProcessing && (
-                            <div style={{ textAlign: 'center', padding: '40px 20px' }}>
-                                <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🎴</div>
-                                <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '8px' }}>Select a Character Card</div>
-                                <div style={{ fontSize: '0.7rem', opacity: 0.6, marginBottom: '20px' }}>
-                                    Supports TavernAI V1, V2, and V3 formats.<br />
-                                    Accepts PNG, CharX (.charx), and JSON files.<br />
-                                    Characters, emotion images, and lorebook entries will be extracted automatically.
-                                </div>
-                                <button
-                                    type="button"
-                                    className="editor-button editor-button-save entity-upload-button"
-                                    onClick={() => fileInputRef.current?.click()}
+                    <FileDropArea
+                        disabled={isSaving || isProcessing}
+                        onDropFiles={handleDropFiles}
+                        overlayTitle="Drop Character Card"
+                        overlaySubtitle="Drop TavernAI Card (PNG, CharX, JSON)"
+                    >
+                        <div className="modal-header">
+                            <h2>Import Character Card</h2>
+                            <div className="editor-modal-actions">
+                                <button 
+                                    type="button" 
+                                    className="editor-button editor-button-cancel" 
+                                    onClick={handleClose} 
+                                    disabled={isSaving || isProcessing}
                                 >
-                                    Choose File
+                                    {preview ? 'Cancel' : 'Close'}
                                 </button>
-                                <input
-                                    ref={fileInputRef}
-                                    type="file"
-                                    accept=".png,.charx,.json,image/png,application/zip,application/json"
-                                    hidden
-                                    onChange={handleFileSelected}
-                                />
                             </div>
-                        )}
+                        </div>
 
-                        {/* Processing State */}
-                        {isProcessing && (
-                            <div style={{ textAlign: 'center', padding: '60px 20px' }}>
-                                <div style={{ fontSize: '2rem', marginBottom: '12px' }}>⏳</div>
-                                <div style={{ fontSize: '0.85rem', opacity: 0.7 }}>Parsing character card & analyzing persona...</div>
-                            </div>
-                        )}
+                        <div className="modal-body editor-modal-body">
+                            {error && <div className="editor-error-message editor-error-centered">{error}</div>}
 
-                        {/* Preview & Confirm */}
-                        {preview && !isProcessing && (
-                            <>
-                                {/* Character Summary */}
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Character Preview</span>
-                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.75rem' }}>
-                                        <div><strong>Name:</strong> {preview.character.name}</div>
-                                        <div><strong>Source:</strong> {preview.cardFileName}</div>
-                                        {preview.nickname && <div><strong>Nickname:</strong> {preview.nickname}</div>}
-                                        {preview.specVersion && <div><strong>Spec:</strong> V{preview.specVersion}</div>}
-                                        <div><strong>Description:</strong> {preview.character.description?.substring(0, 80) || '(none)'}{preview.character.description && preview.character.description.length > 80 ? '...' : ''}</div>
-                                        <div><strong>Emotion Images:</strong> {preview.emotionImageCount}</div>
-                                        <div><strong>System Prompt:</strong> {preview.character.systemPrompt ? `${preview.character.systemPrompt.length} chars` : '(none)'}</div>
-                                        <div><strong>Starter Prompts:</strong> {preview.character.starterPrompts ? preview.character.starterPrompts.length : 0}</div>
+                            {/* File Selection */}
+                            {!preview && !isProcessing && (
+                                <div className="entity-upload-state" style={{ textAlign: 'center', padding: '40px 20px' }}>
+                                    <div style={{ fontSize: '3rem', marginBottom: '16px' }}>🎴</div>
+                                    <div style={{ fontSize: '0.9rem', fontWeight: 'bold', marginBottom: '8px' }}>Select or Drop a Character Card</div>
+                                    <div style={{ fontSize: '0.7rem', opacity: 0.6, marginBottom: '20px' }}>
+                                        Supports TavernAI V1, V2, and V3 formats.<br />
+                                        Accepts PNG, CharX (.charx), and JSON files.<br />
+                                        Characters, emotion images, and lorebook entries will be extracted automatically.
                                     </div>
-                                    <div style={{ marginTop: '8px', fontSize: '0.65rem', opacity: 0.5 }}>
-                                        Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Chat Regen={preview.character.chatStaminaRegenerationRate.toFixed(2)} · Action Stamina={preview.character.maximumActionStamina} · Action Regen={preview.character.actionStaminaRegenerationRate.toFixed(2)} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}
-                                    </div>
+                                    <button
+                                        type="button"
+                                        className="editor-button editor-button-save entity-upload-button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                    >
+                                        Choose File
+                                    </button>
+                                    <input
+                                        ref={fileInputRef}
+                                        type="file"
+                                        accept=".png,.charx,.json,image/png,application/zip,application/json"
+                                        hidden
+                                        onChange={handleFileSelected}
+                                    />
                                 </div>
+                            )}
 
-                                {/* Tool Permissions & Detection Banner */}
-                                <div className="editor-section">
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
-                                        <span className="editor-section-title" style={{ margin: 0 }}>
-                                            Tool Permissions ({activeToolsCount} active)
-                                        </span>
-                                        <button
-                                            type="button"
-                                            className="toolbar-button"
-                                            onClick={() => setShowToolPermissionModal(true)}
-                                            style={{ fontSize: '0.7rem', width: 'auto', padding: '2px 8px', height: '26px' }}
-                                        >
-                                            🛡️ Configure Tools
-                                        </button>
-                                    </div>
-
-                                    {/* Warning for High-Privilege Tools */}
-                                    {(preview.detectedTools.osPrivileged.length > 0 || preview.detectedTools.entityAdmin.length > 0) && (
-                                        <div 
-                                            className="model-status-banner model-status-warning" 
-                                            style={{ margin: '8px 0 0 0', padding: '6px 10px', fontSize: '0.7rem', borderRadius: '6px', cursor: 'pointer' }}
-                                            onClick={() => setShowToolPermissionModal(true)}
-                                        >
-                                            <span className="model-status-icon">⚠️</span>
-                                            <div className="model-status-text" style={{ textAlign: 'left' }}>
-                                                <strong>{preview.detectedTools.osPrivileged.length + preview.detectedTools.entityAdmin.length} Privileged Tool(s) Detected</strong>: {[...preview.detectedTools.osPrivileged, ...preview.detectedTools.entityAdmin].map(p => p.tool).join(', ')}. Click to review permissions.
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    {(preview.detectedTools.osPrivileged.length + preview.detectedTools.entityAdmin.length) === 0 && (preview.detectedTools.inWorldReadonly.length + preview.detectedTools.inWorldMutating.length) > 0 && (
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
-                                            Roleplay tools enabled from persona: {[...preview.detectedTools.inWorldReadonly, ...preview.detectedTools.inWorldMutating].map(s => s.tool).join(', ')}
-                                        </div>
-                                    )}
+                            {/* Processing State */}
+                            {isProcessing && (
+                                <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+                                    <div style={{ fontSize: '2rem', marginBottom: '12px' }}>⏳</div>
+                                    <div style={{ fontSize: '0.85rem', opacity: 0.7 }}>Parsing character card & analyzing persona...</div>
                                 </div>
+                            )}
 
-                                {/* Lorebook Summary */}
-                                {preview.lorebookContexts.length > 0 && (
+                            {/* Preview & Confirm */}
+                            {preview && !isProcessing && (
+                                <>
+                                    {/* Character Summary */}
                                     <div className="editor-section">
-                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span className="editor-section-title">Lorebook Entries ({preview.lorebookContexts.length})</span>
-                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={includeLorebook}
-                                                    onChange={e => setIncludeLorebook(e.target.checked)}
-                                                    className="editor-checkbox-input"
-                                                    disabled={isSaving}
-                                                />
-                                                <span style={{ fontSize: '0.7rem' }}>Import</span>
-                                            </label>
+                                        <span className="editor-section-title">Character Preview</span>
+                                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', fontSize: '0.75rem' }}>
+                                            <div><strong>Name:</strong> {preview.character.name}</div>
+                                            <div><strong>Source:</strong> {preview.cardFileName}</div>
+                                            {preview.nickname && <div><strong>Nickname:</strong> {preview.nickname}</div>}
+                                            {preview.specVersion && <div><strong>Spec:</strong> V{preview.specVersion}</div>}
+                                            <div><strong>Description:</strong> {preview.character.description?.substring(0, 80) || '(none)'}{preview.character.description && preview.character.description.length > 80 ? '...' : ''}</div>
+                                            <div><strong>Emotion Images:</strong> {preview.emotionImageCount}</div>
+                                            <div><strong>System Prompt:</strong> {preview.character.systemPrompt ? `${preview.character.systemPrompt.length} chars` : '(none)'}</div>
+                                            <div><strong>Starter Prompts:</strong> {preview.character.starterPrompts ? preview.character.starterPrompts.length : 0}</div>
                                         </div>
-                                        {includeLorebook && (
-                                            <div style={{ maxHeight: '150px', overflowY: 'auto', marginTop: '8px', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px' }}>
-                                                {preview.lorebookContexts.map((context, i) => {
-                                                    const firstTrigger = context.regularExpressionActivationTriggers?.[0]?.trigger;
-                                                    return (
-                                                        <div key={context.id} style={{ fontSize: '0.7rem', padding: '4px 0', borderBottom: i < preview.lorebookContexts.length - 1 ? '1px solid var(--border)' : 'none' }}>
-                                                            <strong>{context.name}</strong>
-                                                            {firstTrigger && (
-                                                                <span style={{ opacity: 0.5, marginLeft: '6px', fontFamily: 'monospace', fontSize: '0.6rem' }}>
-                                                                    /{firstTrigger}/
-                                                                </span>
-                                                            )}
-                                                            <div style={{ opacity: 0.6, fontSize: '0.6rem', marginTop: '2px' }}>
-                                                                {context.text?.substring(0, 100) || '(no content)'}{context.text && context.text.length > 100 ? '...' : ''}
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
+                                        <div style={{ marginTop: '8px', fontSize: '0.65rem', opacity: 0.5 }}>
+                                            Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Chat Regen={preview.character.chatStaminaRegenerationRate.toFixed(2)} · Action Stamina={preview.character.maximumActionStamina} · Action Regen={preview.character.actionStaminaRegenerationRate.toFixed(2)} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}
+                                        </div>
+                                    </div>
+
+                                    {/* Tool Permissions & Detection Banner */}
+                                    <div className="editor-section">
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                                            <span className="editor-section-title" style={{ margin: 0 }}>
+                                                Tool Permissions ({activeToolsCount} active)
+                                            </span>
+                                            <button
+                                                type="button"
+                                                className="toolbar-button"
+                                                onClick={() => setShowToolPermissionModal(true)}
+                                                style={{ fontSize: '0.7rem', width: 'auto', padding: '2px 8px', height: '26px' }}
+                                            >
+                                                🛡️ Configure Tools
+                                            </button>
+                                        </div>
+
+                                        {/* Warning for High-Privilege Tools */}
+                                        {(preview.detectedTools.osPrivileged.length > 0 || preview.detectedTools.entityAdmin.length > 0) && (
+                                            <div 
+                                                className="model-status-banner model-status-warning" 
+                                                style={{ margin: '8px 0 0 0', padding: '6px 10px', fontSize: '0.7rem', borderRadius: '6px', cursor: 'pointer' }}
+                                                onClick={() => setShowToolPermissionModal(true)}
+                                            >
+                                                <span className="model-status-icon">⚠️</span>
+                                                <div className="model-status-text" style={{ textAlign: 'left' }}>
+                                                    <strong>{preview.detectedTools.osPrivileged.length + preview.detectedTools.entityAdmin.length} Privileged Tool(s) Detected</strong>: {[...preview.detectedTools.osPrivileged, ...preview.detectedTools.entityAdmin].map(p => p.tool).join(', ')}. Click to review permissions.
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {(preview.detectedTools.osPrivileged.length + preview.detectedTools.entityAdmin.length) === 0 && (preview.detectedTools.inWorldReadonly.length + preview.detectedTools.inWorldMutating.length) > 0 && (
+                                            <div style={{ fontSize: '0.65rem', opacity: 0.6, marginTop: '4px' }}>
+                                                Roleplay tools enabled from persona: {[...preview.detectedTools.inWorldReadonly, ...preview.detectedTools.inWorldMutating].map(s => s.tool).join(', ')}
                                             </div>
                                         )}
                                     </div>
-                                )}
 
-                                {/* Confirm Button */}
-                                <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
-                                    <button
-                                        type="button"
-                                        className="editor-button editor-button-cancel"
-                                        onClick={() => { reset(); }}
-                                        disabled={isSaving}
-                                        style={{ flex: 1 }}
-                                    >
-                                        Choose Different File
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="editor-button editor-button-save"
-                                        onClick={handleConfirmSave}
-                                        disabled={isSaving}
-                                        style={{ flex: 1 }}
-                                    >
-                                        {isSaving ? 'Saving...' : `✅ Save Character${includeLorebook && preview.lorebookContexts.length > 0 ? ` + ${preview.lorebookContexts.length} Contexts` : ''}`}
-                                    </button>
-                                </div>
-                            </>
-                        )}
-                    </div>
+                                    {/* Lorebook Summary */}
+                                    {preview.lorebookContexts.length > 0 && (
+                                        <div className="editor-section">
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <span className="editor-section-title">Lorebook Entries ({preview.lorebookContexts.length})</span>
+                                                <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={includeLorebook}
+                                                        onChange={e => setIncludeLorebook(e.target.checked)}
+                                                        className="editor-checkbox-input"
+                                                        disabled={isSaving}
+                                                    />
+                                                    <span style={{ fontSize: '0.7rem' }}>Import</span>
+                                                </label>
+                                            </div>
+                                            {includeLorebook && (
+                                                <div style={{ maxHeight: '150px', overflowY: 'auto', marginTop: '8px', border: '1px solid var(--border)', borderRadius: '6px', padding: '6px' }}>
+                                                    {preview.lorebookContexts.map((context, i) => {
+                                                        const firstTrigger = context.regularExpressionActivationTriggers?.[0]?.trigger;
+                                                        return (
+                                                            <div key={context.id} style={{ fontSize: '0.7rem', padding: '4px 0', borderBottom: i < preview.lorebookContexts.length - 1 ? '1px solid var(--border)' : 'none' }}>
+                                                                <strong>{context.name}</strong>
+                                                                {firstTrigger && (
+                                                                  <span style={{ opacity: 0.5, marginLeft: '6px', fontFamily: 'monospace', fontSize: '0.6rem' }}>
+                                                                      /{firstTrigger}/
+                                                                  </span>
+                                                                )}
+                                                                <div style={{ opacity: 0.6, fontSize: '0.6rem', marginTop: '2px' }}>
+                                                                    {context.text?.substring(0, 100) || '(no content)'}{context.text && context.text.length > 100 ? '...' : ''}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+
+                                    {/* Confirm Button */}
+                                    <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-cancel"
+                                            onClick={() => { reset(); }}
+                                            disabled={isSaving}
+                                            style={{ flex: 1 }}
+                                        >
+                                            Choose Different File
+                                        </button>
+                                        <button
+                                            type="button"
+                                            className="editor-button editor-button-save"
+                                            onClick={handleConfirmSave}
+                                            disabled={isSaving}
+                                            style={{ flex: 1 }}
+                                        >
+                                            {isSaving ? 'Saving...' : `✅ Save Character${includeLorebook && preview.lorebookContexts.length > 0 ? ` + ${preview.lorebookContexts.length} Contexts` : ''}`}
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </FileDropArea>
                 </div>
             </div>
 

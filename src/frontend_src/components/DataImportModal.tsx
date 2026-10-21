@@ -3,6 +3,7 @@ import { useState, useRef, useMemo } from 'react';
 import { validateExport, importSelectedData, type LoreReactorExport, type ImportResult } from '../services/DataPortabilityEngine';
 import { buildJsonSchema } from '../utilities/dataSchema';
 import { EntitySelectList } from './EntitySelectList';
+import { FileDropArea } from './FileDropArea';
 import '../main.css';
 import { dataPortabilityVersion } from '../dictionaries/versions';
 
@@ -121,19 +122,37 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setIncludeBudgetData(!!json.budgetData);
     };
 
-    const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (!file) return;
-        e.target.value = '';
-        setError(null); setParsedData(null); setImportResult(null);
+    const processJsonFile = async (file: File) => {
+        setError(null);
+        setParsedData(null);
+        setImportResult(null);
 
         try {
             const text = await file.text();
             const json = JSON.parse(text);
-            if (!validateExport(json)) { setError('Invalid LoreReactor export file. The file may be corrupted or from an incompatible version.'); return; }
+            if (!validateExport(json)) {
+                setError('Invalid LoreReactor export file. The file may be corrupted or from an incompatible version.');
+                return;
+            }
             setParsedData(json);
             populateSelectionFromData(json);
-        } catch (error) { setError(`Failed to parse file: ${(error as Error).message}`); }
+            setActiveSource('file');
+        } catch (err) {
+            setError(`Failed to parse file: ${(err as Error).message}`);
+        }
+    };
+
+    const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        e.target.value = '';
+        await processJsonFile(file);
+    };
+
+    const handleDropFiles = async (files: File[]) => {
+        const file = files[0];
+        if (!file) return;
+        await processJsonFile(file);
     };
 
     const handlePasteImport = () => {
@@ -255,219 +274,226 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     return (
         <div className="modal-overlay" onClick={handleClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
-                <div className="modal-header">
-                    <h2>Import Data</h2>
-                    <div className="editor-modal-actions">
-                        <button type="button" className="editor-button editor-button-cancel" onClick={handleClose} disabled={isImporting}>
-                            {importResult ? 'Close' : 'Cancel'}
-                        </button>
+                <FileDropArea
+                    acceptedTypes={['json']}
+                    disabled={isImporting || !!parsedData || !!importResult}
+                    onDropFiles={handleDropFiles}
+                    overlayTitle="Drop LoreReactor Export File"
+                    overlaySubtitle="Drop a .json export file to inspect and import"
+                >
+                    <div className="modal-header">
+                        <h2>Import Data</h2>
+                        <div className="editor-modal-actions">
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClose} disabled={isImporting}>
+                                {importResult ? 'Close' : 'Cancel'}
+                            </button>
+                        </div>
                     </div>
-                </div>
 
-                <div className="modal-body editor-modal-body">
-                    {error && <div className="editor-error-message editor-error-centered">{error}</div>}
+                    <div className="modal-body editor-modal-body">
+                        {error && <div className="editor-error-message editor-error-centered">{error}</div>}
 
-                    {!parsedData && !importResult && (
-                        <>
-                            {/* Source Tabs */}
-                            <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border)' }}>
-                                {[
-                                    { id: 'file' as ImportSource, label: '📁 From File' },
-                                    { id: 'paste' as ImportSource, label: '📋 Paste JSON' },
-                                    { id: 'schema' as ImportSource, label: '📐 JSON Schema' },
-                                ].map(tab => (
-                                    <button
-                                        key={tab.id}
-                                        type="button"
-                                        onClick={() => { setActiveSource(tab.id); setError(null); }}
-                                        className={`entity-tab-button ${activeSource === tab.id ? 'entity-tab-button-active' : ''}`}
-                                        style={{ fontSize: '0.7rem', padding: '8px 12px' }}
-                                    >
-                                        {tab.label}
-                                    </button>
-                                ))}
-                            </div>
-
-                            {/* File Upload */}
-                            {activeSource === 'file' && (
-                                <div className="entity-upload-state">
-                                    <div className="entity-upload-icon">📥</div>
-                                    <div className="entity-upload-title">Import from JSON File</div>
-                                    <div className="entity-upload-hint">
-                                        Load a previously exported LoreReactor JSON file.<br />
-                                        You can choose which items to import after loading.<br />
-                                        Existing entities with matching IDs will be overwritten.
-                                    </div>
-                                    <button type="button" className="editor-button editor-button-save entity-upload-button"
-                                        onClick={() => fileInputRef.current?.click()}>
-                                        Choose File
-                                    </button>
-                                    <input ref={fileInputRef} type="file" accept=".json,application/json" hidden onChange={handleFileSelected} />
+                        {!parsedData && !importResult && (
+                            <>
+                                {/* Source Tabs */}
+                                <div style={{ display: 'flex', gap: '4px', marginBottom: '16px', borderBottom: '1px solid var(--border)' }}>
+                                    {[
+                                        { id: 'file' as ImportSource, label: '📁 From File' },
+                                        { id: 'paste' as ImportSource, label: '📋 Paste JSON' },
+                                        { id: 'schema' as ImportSource, label: '📐 JSON Schema' },
+                                    ].map(tab => (
+                                        <button
+                                            key={tab.id}
+                                            type="button"
+                                            onClick={() => { setActiveSource(tab.id); setError(null); }}
+                                            className={`entity-tab-button ${activeSource === tab.id ? 'entity-tab-button-active' : ''}`}
+                                            style={{ fontSize: '0.7rem', padding: '8px 12px' }}
+                                        >
+                                            {tab.label}
+                                        </button>
+                                    ))}
                                 </div>
-                            )}
 
-                            {/* Paste JSON */}
-                            {activeSource === 'paste' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                                        Paste a LoreReactor export JSON directly. Useful for quick transfers between instances or importing AI-generated text data that matches the export format.
+                                {/* File Upload */}
+                                {activeSource === 'file' && (
+                                    <div className="entity-upload-state">
+                                        <div className="entity-upload-icon">📥</div>
+                                        <div className="entity-upload-title">Import from JSON File</div>
+                                        <div className="entity-upload-hint">
+                                            Load a previously exported LoreReactor JSON file.<br />
+                                            You can drag & drop the file directly or choose it below.<br />
+                                            Existing entities with matching IDs will be overwritten.
+                                        </div>
+                                        <button type="button" className="editor-button editor-button-save entity-upload-button"
+                                            onClick={() => fileInputRef.current?.click()}>
+                                            Choose File
+                                        </button>
+                                        <input ref={fileInputRef} type="file" accept=".json,application/json" hidden onChange={handleFileSelected} />
                                     </div>
-                                    <textarea
-                                        value={pasteText}
-                                        onChange={(e) => setPasteText(e.target.value)}
-                                        placeholder='{"version": 2, "exportedAt": "...", "characters": [...], ...}'
-                                        className="editor-textarea"
-                                        rows={12}
-                                        style={{ fontFamily: 'monospace', fontSize: '0.7rem', resize: 'vertical' }}
-                                    />
-                                    <button
-                                        type="button"
-                                        className="editor-button editor-button-save"
-                                        onClick={handlePasteImport}
-                                        disabled={!pasteText}
-                                    >
-                                        Parse & Preview
-                                    </button>
-                                </div>
-                            )}
+                                )}
 
-                            {/* JSON Schema */}
-                            {activeSource === 'schema' && (
-                                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                                        Generate a JSON schema wrapped in the LoreReactor export envelope. Copy and paste into an AI prompt to get correctly structured output that can be imported directly via the "Paste JSON" tab.
-                                    </div>
-                                    <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px' }}>Include Entity Types:</div>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                                        {SCHEMA_ENTITY_OPTIONS.map(entity => (
-                                            <label key={entity} className="editor-checkbox-label" style={{ margin: 0 }}>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={schemaEntities.includes(entity)}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setSchemaEntities(prev => [...prev, entity]);
-                                                        } else {
-                                                            setSchemaEntities(prev => prev.filter(x => x !== entity));
-                                                        }
-                                                    }}
-                                                    className="editor-checkbox-input"
-                                                />
-                                                <span style={{ fontSize: '0.7rem' }}>{entity}</span>
-                                            </label>
-                                        ))}
-                                    </div>
-                                    <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                {/* Paste JSON */}
+                                {activeSource === 'paste' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                                            Paste a LoreReactor export JSON directly. Useful for quick transfers between instances or importing AI-generated text data that matches the export format.
+                                        </div>
+                                        <textarea
+                                            value={pasteText}
+                                            onChange={(e) => setPasteText(e.target.value)}
+                                            placeholder='{"version": 2, "exportedAt": "...", "characters": [...], ...}'
+                                            className="editor-textarea"
+                                            rows={12}
+                                            style={{ fontFamily: 'monospace', fontSize: '0.7rem', resize: 'vertical' }}
+                                        />
                                         <button
                                             type="button"
                                             className="editor-button editor-button-save"
-                                            onClick={handleCopySchema}
-                                            disabled={schemaEntities.length === 0}
-                                            style={{ flex: 1 }}
+                                            onClick={handlePasteImport}
+                                            disabled={!pasteText}
                                         >
-                                            {schemaCopied ? '✅ Copied!' : '📋 Copy Schema to Clipboard'}
+                                            Parse & Preview
                                         </button>
                                     </div>
-                                    {schemaEntities.length === 0 && (
-                                        <div style={{ fontSize: '0.65rem', opacity: 0.5, fontStyle: 'italic' }}>Select at least one entity type to generate a schema.</div>
-                                    )}
-                                    {wrappedSchemaText && (
-                                        <pre style={{
-                                            background: 'var(--social-bg)',
-                                            border: '1px solid var(--border)',
-                                            borderRadius: '6px',
-                                            padding: '10px',
-                                            fontSize: '0.6rem',
-                                            fontFamily: 'monospace',
-                                            whiteSpace: 'pre-wrap',
-                                            wordBreak: 'break-word',
-                                            maxHeight: '400px',
-                                            overflowY: 'auto',
-                                            color: 'var(--text-h)',
-                                            margin: 0,
-                                        }}>{wrappedSchemaText}</pre>
-                                    )}
-                                </div>
-                            )}
-                        </>
-                    )}
+                                )}
 
-                    {parsedData && !importResult && !isImporting && (
-                        <>
-                            <div className="editor-section">
-                                <span className="editor-section-title">Select Items to Import</span>
-                                <div className="entity-ref-hint">
-                                    {activeSource === 'file' ? `File exported: ${new Date(parsedData.exportedAt).toLocaleString()}.` : 'Pasted JSON loaded.'} Click items to deselect. Only selected items will be imported.
-                                </div>
+                                {/* JSON Schema */}
+                                {activeSource === 'schema' && (
+                                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                                        <div style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                                            Generate a JSON schema wrapped in the LoreReactor export envelope. Copy and paste into an AI prompt to get correctly structured output that can be imported directly via the "Paste JSON" tab.
+                                        </div>
+                                        <div style={{ fontSize: '0.7rem', fontWeight: 'bold', marginBottom: '4px' }}>Include Entity Types:</div>
+                                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                                            {SCHEMA_ENTITY_OPTIONS.map(entity => (
+                                                <label key={entity} className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={schemaEntities.includes(entity)}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setSchemaEntities(prev => [...prev, entity]);
+                                                            } else {
+                                                                setSchemaEntities(prev => prev.filter(x => x !== entity));
+                                                            }
+                                                        }}
+                                                        className="editor-checkbox-input"
+                                                    />
+                                                    <span style={{ fontSize: '0.7rem' }}>{entity}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                                            <button
+                                                type="button"
+                                                className="editor-button editor-button-save"
+                                                onClick={handleCopySchema}
+                                                disabled={schemaEntities.length === 0}
+                                                style={{ flex: 1 }}
+                                            >
+                                                {schemaCopied ? '✅ Copied!' : '📋 Copy Schema to Clipboard'}
+                                            </button>
+                                        </div>
+                                        {schemaEntities.length === 0 && (
+                                            <div style={{ fontSize: '0.65rem', opacity: 0.5, fontStyle: 'italic' }}>Select at least one entity type to generate a schema.</div>
+                                        )}
+                                        {wrappedSchemaText && (
+                                            <pre style={{
+                                                background: 'var(--social-bg)',
+                                                border: '1px solid var(--border)',
+                                                borderRadius: '6px',
+                                                padding: '10px',
+                                                fontSize: '0.6rem',
+                                                fontFamily: 'monospace',
+                                                whiteSpace: 'pre-wrap',
+                                                wordBreak: 'break-word',
+                                                maxHeight: '400px',
+                                                overflowY: 'auto',
+                                                color: 'var(--text-h)',
+                                                margin: 0,
+                                            }}>{wrappedSchemaText}</pre>
+                                        )}
+                                    </div>
+                                )}
+                            </>
+                        )}
 
-                                {parsedData.chats.length > 0 && (
-                                    <EntitySelectList label="Chat Sessions" items={parsedData.chats} selectedIds={selectedChatIds}
-                                        onToggle={(id) => toggle(selectedChatIds, setSelectedChatIds, id)} searchQuery={chatSearch} onSearchChange={setChatSearch} />
-                                )}
-                                {parsedData.characters.length > 0 && (
-                                    <EntitySelectList label="Characters" items={parsedData.characters} selectedIds={selectedCharacterIds}
-                                        onToggle={(id) => toggle(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={characterSearch} onSearchChange={setCharacterSearch} />
-                                )}
-                                {parsedData.contexts.length > 0 && (
-                                    <EntitySelectList label="Contexts" items={parsedData.contexts} selectedIds={selectedContextIds}
-                                        onToggle={(id) => toggle(selectedContextIds, setSelectedContextIds, id)} searchQuery={contextSearch} onSearchChange={setContextSearch} />
-                                )}
-                                {parsedData.locations.length > 0 && (
-                                    <EntitySelectList label="Locations" items={parsedData.locations} selectedIds={selectedLocationIds}
-                                        onToggle={(id) => toggle(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locationSearch} onSearchChange={setLocationSearch} />
-                                )}
-                                {parsedData.audioTracks.length > 0 && (
-                                    <EntitySelectList label="Audio Tracks" items={parsedData.audioTracks} selectedIds={selectedAudioTrackIds}
-                                        onToggle={(id) => toggle(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
-                                )}
-                                {(parsedData.worlds?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Worlds" items={parsedData.worlds} selectedIds={selectedWorldIds}
-                                        onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
-                                )}
-                                {parsedData.languageModels.length > 0 && (
-                                    <EntitySelectList label="Language Models" items={parsedData.languageModels} selectedIds={selectedLanguageModelIds}
-                                        onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
-                                )}
-                                {parsedData.samplers.length > 0 && (
-                                    <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
-                                        onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
-                                )}
-                                {parsedData.promptBlocks.length > 0 && (
-                                    <EntitySelectList label="Prompt Blocks" items={parsedData.promptBlocks} selectedIds={selectedPromptBlockIds}
-                                        onToggle={(id) => toggle(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} />
-                                )}
-                                {parsedData.stopPatterns.length > 0 && (
-                                    <EntitySelectList label="Stop Patterns" items={parsedData.stopPatterns} selectedIds={selectedStopPatternIds}
-                                        onToggle={(id) => toggle(selectedStopPatternIds, setSelectedStopPatternIds, id)} searchQuery={stopPatternSearch} onSearchChange={setStopPatternSearch} />
-                                )}
-                                {(parsedData.retrievalConfigurations?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Retrieval Configurations" items={parsedData.retrievalConfigurations || []} selectedIds={selectedRetrievalConfigurationIds}
-                                        onToggle={(id) => toggle(selectedRetrievalConfigurationIds, setSelectedRetrievalConfigurationIds, id)} searchQuery={retrievalConfigurationSearch} onSearchChange={setRetrievalConfigurationSearch} />
-                                )}
-                                {parsedData.budgetStrategies.length > 0 && (
-                                    <EntitySelectList label="Budget Strategies" items={parsedData.budgetStrategies} selectedIds={selectedBudgetStrategyIds}
-                                        onToggle={(id) => toggle(selectedBudgetStrategyIds, setSelectedBudgetStrategyIds, id)} searchQuery={budgetStrategySearch} onSearchChange={setBudgetStrategySearch} />
-                                )}
-                                {parsedData.profiles.length > 0 && (
-                                    <EntitySelectList label="Profiles" items={parsedData.profiles} selectedIds={selectedProfileIds}
-                                        onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
-                                )}
-                                {(parsedData.memories?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Memories" items={parsedData.memories} selectedIds={selectedMemoryIds}
-                                        onToggle={(id) => toggle(selectedMemoryIds, setSelectedMemoryIds, id)} searchQuery={memorySearch} onSearchChange={setMemorySearch} />
-                                )}
-                                {(parsedData.accounts?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Accounts" items={parsedData.accounts} selectedIds={selectedAccountIds}
-                                        onToggle={(id) => toggle(selectedAccountIds, setSelectedAccountIds, id)} searchQuery={accountSearch} onSearchChange={setAccountSearch} />
-                                )}
-                                {(parsedData.multiplayerData?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Multiplayer Data" items={parsedData.multiplayerData} selectedIds={selectedMultiplayerDataIds}
-                                        onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
-                                )}
-                                {(parsedData.entityFolders?.length ?? 0) > 0 && (
-                                    <EntitySelectList label="Entity Folders" items={parsedData.entityFolders} selectedIds={selectedEntityFolderIds}
-                                        onToggle={(id) => toggle(selectedEntityFolderIds, setSelectedEntityFolderIds, id)} searchQuery={entityFolderSearch} onSearchChange={setEntityFolderSearch} />
-                                )}
+                        {parsedData && !importResult && !isImporting && (
+                            <>
+                                <div className="editor-section">
+                                    <span className="editor-section-title">Select Items to Import</span>
+                                    <div className="entity-ref-hint">
+                                        {activeSource === 'file' ? `File exported: ${new Date(parsedData.exportedAt).toLocaleString()}.` : 'Pasted JSON loaded.'} Click items to deselect. Only selected items will be imported.
+                                    </div>
+
+                                    {parsedData.chats.length > 0 && (
+                                        <EntitySelectList label="Chat Sessions" items={parsedData.chats} selectedIds={selectedChatIds}
+                                            onToggle={(id) => toggle(selectedChatIds, setSelectedChatIds, id)} searchQuery={chatSearch} onSearchChange={setChatSearch} />
+                                    )}
+                                    {parsedData.characters.length > 0 && (
+                                        <EntitySelectList label="Characters" items={parsedData.characters} selectedIds={selectedCharacterIds}
+                                            onToggle={(id) => toggle(selectedCharacterIds, setSelectedCharacterIds, id)} searchQuery={characterSearch} onSearchChange={setCharacterSearch} />
+                                    )}
+                                    {parsedData.contexts.length > 0 && (
+                                        <EntitySelectList label="Contexts" items={parsedData.contexts} selectedIds={selectedContextIds}
+                                            onToggle={(id) => toggle(selectedContextIds, setSelectedContextIds, id)} searchQuery={contextSearch} onSearchChange={setContextSearch} />
+                                    )}
+                                    {parsedData.locations.length > 0 && (
+                                        <EntitySelectList label="Locations" items={parsedData.locations} selectedIds={selectedLocationIds}
+                                            onToggle={(id) => toggle(selectedLocationIds, setSelectedLocationIds, id)} searchQuery={locationSearch} onSearchChange={setLocationSearch} />
+                                    )}
+                                    {parsedData.audioTracks.length > 0 && (
+                                        <EntitySelectList label="Audio Tracks" items={parsedData.audioTracks} selectedIds={selectedAudioTrackIds}
+                                            onToggle={(id) => toggle(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
+                                    )}
+                                    {(parsedData.worlds?.length ?? 0) > 0 && (
+                                        <EntitySelectList label="Worlds" items={parsedData.worlds} selectedIds={selectedWorldIds}
+                                            onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
+                                    )}
+                                    {parsedData.languageModels.length > 0 && (
+                                        <EntitySelectList label="Language Models" items={parsedData.languageModels} selectedIds={selectedLanguageModelIds}
+                                            onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
+                                    )}
+                                    {parsedData.samplers.length > 0 && (
+                                        <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
+                                            onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
+                                    )}
+                                    {parsedData.promptBlocks.length > 0 && (
+                                        <EntitySelectList label="Prompt Blocks" items={parsedData.promptBlocks} selectedIds={selectedPromptBlockIds}
+                                            onToggle={(id) => toggle(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} />
+                                    )}
+                                    {parsedData.stopPatterns.length > 0 && (
+                                        <EntitySelectList label="Stop Patterns" items={parsedData.stopPatterns} selectedIds={selectedStopPatternIds}
+                                            onToggle={(id) => toggle(selectedStopPatternIds, setSelectedStopPatternIds, id)} searchQuery={stopPatternSearch} onSearchChange={setStopPatternSearch} />
+                                    )}
+                                    {(parsedData.retrievalConfigurations?.length ?? 0) > 0 && (
+                                        <EntitySelectList label="Retrieval Configurations" items={parsedData.retrievalConfigurations || []} selectedIds={selectedRetrievalConfigurationIds}
+                                            onToggle={(id) => toggle(selectedRetrievalConfigurationIds, setSelectedRetrievalConfigurationIds, id)} searchQuery={retrievalConfigurationSearch} onSearchChange={setRetrievalConfigurationSearch} />
+                                    )}
+                                    {parsedData.budgetStrategies.length > 0 && (
+                                        <EntitySelectList label="Budget Strategies" items={parsedData.budgetStrategies} selectedIds={selectedBudgetStrategyIds}
+                                            onToggle={(id) => toggle(selectedBudgetStrategyIds, setSelectedBudgetStrategyIds, id)} searchQuery={budgetStrategySearch} onSearchChange={setBudgetStrategySearch} />
+                                    )}
+                                    {parsedData.profiles.length > 0 && (
+                                        <EntitySelectList label="Profiles" items={parsedData.profiles} selectedIds={selectedProfileIds}
+                                            onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
+                                    )}
+                                    {(parsedData.memories?.length ?? 0) > 0 && (
+                                        <EntitySelectList label="Memories" items={parsedData.memories} selectedIds={selectedMemoryIds}
+                                            onToggle={(id) => toggle(selectedMemoryIds, setSelectedMemoryIds, id)} searchQuery={memorySearch} onSearchChange={setMemorySearch} />
+                                    )}
+                                    {(parsedData.accounts?.length ?? 0) > 0 && (
+                                        <EntitySelectList label="Accounts" items={parsedData.accounts} selectedIds={selectedAccountIds}
+                                            onToggle={(id) => toggle(selectedAccountIds, setSelectedAccountIds, id)} searchQuery={accountSearch} onSearchChange={setAccountSearch} />
+                                    )}
+                                    {(parsedData.multiplayerData?.length ?? 0) > 0 && (
+                                        <EntitySelectList label="Multiplayer Data" items={parsedData.multiplayerData} selectedIds={selectedMultiplayerDataIds}
+                                            onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
+                                    )}
+                                    {(parsedData.entityFolders?.length ?? 0) > 0 && (
+                                        <EntitySelectList label="Entity Folders" items={parsedData.entityFolders} selectedIds={selectedEntityFolderIds}
+                                            onToggle={(id) => toggle(selectedEntityFolderIds, setSelectedEntityFolderIds, id)} searchQuery={entityFolderSearch} onSearchChange={setEntityFolderSearch} />
+                                    )}
 
                                 <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
                                     <span className="editor-section-title" style={{ fontSize: '0.8rem' }}>Singleton Data</span>
@@ -564,7 +590,8 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                         </>
                     )}
                 </div>
-            </div>
+            </FileDropArea>
         </div>
-    );
+    </div>
+);
 }
