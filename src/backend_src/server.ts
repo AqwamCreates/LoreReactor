@@ -3050,7 +3050,7 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
 
       const tempRawPath = path.join(TTS_TEMP_DIR, `raw_${requestId}${ext}`);
       const tempReferenceWavPath = path.join(TTS_TEMP_DIR, `reference_${requestId}.wav`);
-      const tempOutPath = path.join(TTS_TEMP_DIR, `out_${requestId}.wav`);
+      const tempOutPath = path.join(TTS_TEMP_DIR, `output_${requestId}.wav`);
 
       try {
         fs.writeFileSync(tempRawPath, audioBuffer);
