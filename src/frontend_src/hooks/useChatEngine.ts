@@ -8,6 +8,7 @@ import { getBudgetStrategyEngine, type RequestMetadata } from '../services/Budge
 import { updatePartialMessageInInteractionData } from '../utilities/interactionDataLogic';
 import type { ToolExecutionContext } from '../services/ToolExecutor';
 import type { StreamingVoiceTracker } from '../services/StreamingVoiceTracker';
+import { useSessionStore } from './useSessionStore';
 
 const characterActor = new CharacterActor();
 const characterSoul = new CharacterSoul();
@@ -53,7 +54,7 @@ export function useChatEngine(deps: EngineDependencies) {
         existingCharacterText?: string,
         metadata?: RequestMetadata,
         voiceTracker?: StreamingVoiceTracker,
-        prefillText?: string, // ✅ Added prefillText parameter
+        prefillText?: string,
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
@@ -101,7 +102,7 @@ export function useChatEngine(deps: EngineDependencies) {
             metadata,
             toolContext: deps.getToolContext(),
             voiceTracker,
-            prefillText, // ✅ Pass prefillText to CharacterActor
+            prefillText,
         });
 
         if ('error' in outcome) {
@@ -112,16 +113,6 @@ export function useChatEngine(deps: EngineDependencies) {
             else if (error.type === 'budget') addToast(error.message, 'error');
             else addToast(`Inference Error: ${error.message}`, 'error');
             return null;
-        }
-
-        // ✅ In 'wait' mode, pause turn sequence progression until this character's voice narration finishes playing completely
-        const narrationBehaviour = data.profile?.textGenerationBehaviourOnNarration ?? 'wait';
-        if (voiceTracker && narrationBehaviour === 'wait') {
-            try {
-                await voiceTracker.waitForPlaybackCompletion();
-            } catch (e) {
-                console.warn('[useChatEngine] Voice playback completion error:', e);
-            }
         }
 
         const { result } = outcome;
@@ -154,6 +145,27 @@ export function useChatEngine(deps: EngineDependencies) {
             profile: liveProfile ?? baseUpdated.profile,
         };
         
+        // ✅ 1. Commit the generated message to the UI state immediately
+        setInteractionData(effectiveData);
+
+        // ✅ 2. Clear the streaming overlay AND isLoading so the "Thinking..." indicator doesn't show up while audio plays.
+        // The actual message is now in the chat history, and the response lock (isLoadingRef) still prevents concurrent generations.
+        useSessionStore.setState({
+            isLoading: false,
+            streamingCharacter: null,
+            streamingText: '',
+        });
+
+        // ✅ 3. In 'wait' mode, pause turn sequence progression until this character's voice narration finishes playing completely
+        const narrationBehaviour = data.profile?.textGenerationBehaviourOnNarration ?? 'wait';
+        if (voiceTracker && narrationBehaviour === 'wait') {
+            try {
+                await voiceTracker.waitForPlaybackCompletion();
+            } catch (e) {
+                console.warn('[useChatEngine] Voice playback completion error:', e);
+            }
+        }
+
         return {
             interactionData: effectiveData,
             isCompleted: result.isCompleted,
@@ -170,13 +182,12 @@ export function useChatEngine(deps: EngineDependencies) {
         metadata?: RequestMetadata,
         existingCharacterText?: string,
         voiceTracker?: StreamingVoiceTracker,
-        prefillText?: string, // ✅ Added prefillText parameter
+        prefillText?: string,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            // ✅ Pass prefillText down to handleServerResponse
             const result = await handleServerResponse(d, c, promptBlocks, s, onToken, undefined, existingCharacterText || '', metadata, voiceTracker, prefillText);
             
             if (result?.promptText) {
