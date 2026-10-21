@@ -31,7 +31,6 @@ export function PromptBlockEditorModal({
     allContexts = [],
     allLocations = [],
 }: PromptBlockEditorModalProps) {
-
     return (
         <PromptBlockEditorModalInner
             onClose={onClose}
@@ -283,7 +282,7 @@ function PromptBlockEditorModalInner({
                 <FileDropArea
                     acceptedTypes={['image']}
                     disabled={isUploading}
-                    onDropImages={handleImageFilesAdded}
+                    onDropFiles={handleImageFilesAdded}
                     overlayTitle="Drop Prompt Block Images"
                     overlaySubtitle="Drop image files here to attach to this prompt block"
                 >

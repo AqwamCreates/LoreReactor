@@ -47,8 +47,10 @@ export function CharacterImageEditorModal({
         uploadImageForEmotion(emotion, file);
     };
 
-    const handleDropImage = (emotion: string, file: File) => {
-        uploadImageForEmotion(emotion, file);
+    const handleDropFiles = (emotion: string, files: File[]) => {
+        if (files[0]) {
+            uploadImageForEmotion(emotion, files[0]);
+        }
     };
 
     const handleRemove = (emotion: string) => {
@@ -119,7 +121,7 @@ export function CharacterImageEditorModal({
                                         <FileDropArea
                                             acceptedTypes={['image']}
                                             disabled={!!uploadingEmotion || isReadOnly}
-                                            onDropImage={file => handleDropImage(emotion, file)}
+                                            onDropFiles={files => handleDropFiles(emotion, files)}
                                             overlayTitle=""
                                             overlaySubtitle=""
                                         >

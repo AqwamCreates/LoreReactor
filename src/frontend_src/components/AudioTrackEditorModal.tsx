@@ -1,5 +1,4 @@
 // src/frontend_src/components/AudioTrackEditorModal.tsx
-import type React from 'react';
 import { useState, useEffect, useRef } from 'react';
 import type { AudioTrack, Character, Context, Location, audioCategory, RegularExpressionTrigger } from '../types';
 import { uploadAudioTrack, getAudioTrackUrl, cloneAudioTrack } from '../storages/serverStorage';
@@ -35,7 +34,6 @@ export function AudioTrackEditorModal({
     allContexts = [],
     allLocations = [],
 }: AudioTrackEditorModalProps) {
-
     return (
         <AudioTrackEditorModalInner
             onClose={onClose}
@@ -118,6 +116,12 @@ function AudioTrackEditorModalInner({
         }
         if (errors.filename) setErrors(prev => ({ ...prev, filename: undefined }));
         setPreviewUrl(URL.createObjectURL(file));
+    };
+
+    const handleDropFiles = (files: File[]) => {
+        if (files[0]) {
+            handleAudioFileSelected(files[0]);
+        }
     };
 
     const validate = (): boolean => {
@@ -255,7 +259,7 @@ function AudioTrackEditorModalInner({
                 <FileDropArea
                     acceptedTypes={['audio']}
                     disabled={isUploading || isReadOnly}
-                    onDropAudio={handleAudioFileSelected}
+                    onDropFiles={handleDropFiles}
                     overlayTitle="Drop Audio File"
                     overlaySubtitle="Drop audio track file here (.ogg, .mp3, .wav, .flac)"
                 >

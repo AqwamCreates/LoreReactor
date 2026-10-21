@@ -4,6 +4,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, LanguageModel } from '../types';
 import { computeSlashAutocomplete, applySlashSelection } from '../utilities/slashCommandLogic';
 import { useGenerationStore } from '../hooks/useGenerationStore';
+import { FileDropArea } from './FileDropArea';
 
 interface ChatInputProps {
     inputText: string;
@@ -93,6 +94,11 @@ export function ChatInput({
         textareaRef.current?.focus();
     };
 
+    const handleFilesDropped = (droppedFiles: File[]) => {
+        if (isLoading || !isModelReady) return;
+        setPendingFiles(prev => [...prev, ...droppedFiles]);
+    };
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (showAutocomplete) {
             if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
@@ -140,7 +146,19 @@ export function ChatInput({
     };
 
     return (
-        <div className="input-wrapper" style={{ position: 'relative' }}>
+        <FileDropArea
+            disabled={isLoading || !isModelReady}
+            onDropFiles={handleFilesDropped}
+            overlayTitle="Drop Files to Attach"
+            overlaySubtitle="Add images, audio, or files to your message"
+            className="input-wrapper"
+            style={{ 
+                position: 'relative', 
+                height: 'auto', 
+                flex: '0 0 auto', 
+                overflow: 'visible' 
+            }}
+        >
             {!activeStrategy && !isModelReady && (
                 <div className={`model-status-banner ${!selectedModelId ? 'model-status-warning' : 'model-status-loading'}`}>
                     {!selectedModelId && <span className="model-status-icon">🤖</span>}
@@ -216,10 +234,10 @@ export function ChatInput({
                 <button
                     type="button"
                     onClick={showStopButton ? onStopGeneration : onSend}
-                    disabled={!showStopButton && (!inputText && !pendingFiles.length) || (!showStopButton && !isModelReady) || (!showStopButton && !localProtagonist)}
+                    disabled={!showStopButton && (!inputText && !pendingFiles.length || !isModelReady || !localProtagonist)}
                     className={`send-button ${!showStopButton && !isModelReady ? 'send-button-disabled' : ''}`}
                 >{showStopButton ? '⏹' : !isModelReady ? '⏳' : '↑'}</button>
             </div>
-        </div>
+        </FileDropArea>
     );
 }

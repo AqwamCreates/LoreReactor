@@ -79,12 +79,12 @@ interface CharacterEditorModalProps {
     existingCharacter?: Character | null;
     allCharacters: Character[];
     allSamplers: Sampler[];
-    allRetrievalConfigurations: RetrievalConfiguration[]; // ✅ ADDED
+    allRetrievalConfigurations: RetrievalConfiguration[];
     isLoadingSamplers?: boolean;
     selectedModel?: LanguageModel | null;
     runningModels?: Record<string, any>;
     interactionData?: InteractionData | null;
-    allRawInteractionDataShells: RawInteractionData[]
+    allRawInteractionDataShells: RawInteractionData[];
     localProtagonistId?: string | null;
 }
 
@@ -113,17 +113,17 @@ export function CharacterEditorModal({
         return null;
     });
     
-    // ✅ Dual Sampler States
+    // Dual Sampler States
     const [selectedLanguageModelSamplerId, setSelectedLanguageModelSamplerId] = useState<string>(existingCharacter?.languageModelSampler?.id || (allSamplers[0]?.id || ''));
     const [selectedTextToSpeechModelSamplerId, setSelectedTextToSpeechModelSamplerId] = useState<string>(existingCharacter?.textToSpeechModelSampler?.id || (allSamplers[0]?.id || ''));
     
-    // ✅ Retrieval Configuration States
+    // Retrieval Configuration States
     const [selectedDialogueRetrievalConfigurationId, setSelectedDialogueRetrievalConfigurationId] = useState<string>(existingCharacter?.dialogueRetrievalConfiguration?.id || '');
     const [selectedStarterPromptRetrievalConfigurationId, setSelectedStarterPromptRetrievalConfigurationId] = useState<string>(existingCharacter?.starterPromptRetrievalConfiguration?.id || '');
     const [selectedKnowledgeRetrievalConfigurationId, setSelectedKnowledgeRetrievalConfigurationId] = useState<string>(existingCharacter?.knowledgeRetrievalConfiguration?.id || '');
     const [selectedMemoryRetrievalConfigurationId, setSelectedMemoryRetrievalConfigurationId] = useState<string>(existingCharacter?.memoryRetrievalConfiguration?.id || '');
     
-    // ✅ Stop patterns on Character
+    // Stop patterns on Character
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingCharacter?.stopPatterns?.map(sp => sp.id) || []);
     
     const [isUploading, setIsUploading] = useState(false);
@@ -199,17 +199,17 @@ export function CharacterEditorModal({
     const [dialoguePrompts, setDialoguePrompts] = useState<DialoguePrompt[]>(existingCharacter?.dialoguePrompts ?? []);
     const [knowledgePrompts, setKnowledgePrompts] = useState<KnowledgePrompt[]>(existingCharacter?.knowledgePrompts ?? []);
     
-    // ✅ Updated Starter Prompts State
+    // Starter Prompts State
     const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>(existingCharacter?.starterPrompts ?? []);
     const [showStarterPromptEditor, setShowStarterPromptEditor] = useState(false);
 
-    // ✅ Embedding Opt-in States
+    // Embedding Opt-in States
     const [useEmbeddingModelForDialoguePrompts, setUseEmbeddingModelForDialoguePrompts] = useState(existingCharacter?.useEmbeddingModelForDialoguePrompts ?? false);
     const [useEmbeddingModelForStarterPrompts, setUseEmbeddingModelForStarterPrompts] = useState(existingCharacter?.useEmbeddingModelForStarterPrompts ?? false);
     const [useEmbeddingModelForKnowledgePrompts, setUseEmbeddingModelForKnowledgePrompts] = useState(existingCharacter?.useEmbeddingModelForKnowledgePrompts ?? false);
     const [useEmbeddingModelForMemories, setUseEmbeddingModelForMemories] = useState(existingCharacter?.useEmbeddingModelForMemories ?? false);
 
-    // ✅ Memory Search Spaces State
+    // Memory Search Spaces State
     const [memorySearchSpaces, setMemorySearchSpaces] = useState<memorySearchSpace[]>(existingCharacter?.memorySearchSpaces ?? ['self', 'listener', 'co-located protagonists', 'co-located non-protagonists']);
 
     const [memoryPrompts, setMemoryPrompts] = useState<Record<string, string>>(existingCharacter?.memoryPrompts ?? {});
@@ -570,6 +570,29 @@ export function CharacterEditorModal({
         if (voiceInputRef.current) voiceInputRef.current.value = ''; 
     };
 
+    // ✅ Drop files handler matching FileDropArea's onDropFiles(files: File[]) contract
+    const handleDropFiles = (files: File[]) => {
+        for (const file of files) {
+            const isImage = file.type.startsWith('image/') || ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].some(ext => file.name.toLowerCase().endsWith(ext));
+            const isAudio = file.type.startsWith('audio/') || ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'].some(ext => file.name.toLowerCase().endsWith(ext));
+
+            if (isImage) {
+                setImageFile(file);
+                setImagePreview(URL.createObjectURL(file));
+                setActiveTab('general');
+            } else if (isAudio) {
+                if (file.size > MAX_VOICE_FILE_SIZE) { 
+                    setSubmitError(`Voice file too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB.`); 
+                    continue; 
+                }
+                setVoiceFile(file); 
+                setIsVoiceRemoved(false);
+                setSubmitError(null);
+                setActiveTab('general');
+            }
+        }
+    };
+
     const handleCardImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]; if (!file) return; e.target.value = '';
         const card = await parseCharacterCard(file);
@@ -629,7 +652,6 @@ export function CharacterEditorModal({
         initialKnownCharacterNamesRef.current = {};
         setIsVoiceRemoved(false);
         
-        // ✅ Updated Starter Prompts Import Logic
         if (fields.starterPrompt) {
             const now = Date.now();
             setStarterPrompts([{
@@ -891,14 +913,12 @@ export function CharacterEditorModal({
             }
         }
 
-        // ✅ Build dual samplers and direct stop patterns
         const baseLanguageModelSampler = allSamplers.find(s => s.id === selectedLanguageModelSamplerId);
         const finalLanguageModelSampler = baseLanguageModelSampler ? { ...baseLanguageModelSampler } : undefined;
 
         const baseTextToSpeechModelSampler = allSamplers.find(s => s.id === selectedTextToSpeechModelSamplerId);
         const finalTextToSpeechModelSampler = baseTextToSpeechModelSampler ? { ...baseTextToSpeechModelSampler } : undefined;
 
-        // ✅ Build Retrieval Configurations
         const finalDialogueRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedDialogueRetrievalConfigurationId);
         const finalStarterPromptRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedStarterPromptRetrievalConfigurationId);
         const finalKnowledgeRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedKnowledgeRetrievalConfigurationId);
@@ -917,18 +937,16 @@ export function CharacterEditorModal({
             appearancePrompt: appearancePrompt || undefined,
             dialoguePrompts: dialoguePrompts.length > 0 ? dialoguePrompts : undefined,
             knowledgePrompts: knowledgePrompts.length > 0 ? knowledgePrompts : undefined,
-            // ✅ Updated to Array Length Check
             starterPrompts: starterPrompts.length > 0 ? starterPrompts : undefined,
             memoryPrompts: Object.keys(memoryPrompts).length > 0 ? memoryPrompts : undefined,
             aliases: aliases.length > 0 ? aliases : undefined,
             images: Object.keys(finalImages).length > 0 ? finalImages : undefined,
-            voice: finalVoice, // ✅ PRESERVED AND PROPERLY CLONED
+            voice: finalVoice,
             useFrontCameraImage: useFrontCameraImage || undefined,
             languageModelSampler: finalLanguageModelSampler,
             textToSpeechModelSampler: finalTextToSpeechModelSampler,
             stopPatterns: finalStopPatterns.length > 0 ? finalStopPatterns : undefined,
             
-            // ✅ Added Retrieval Configurations
             dialogueRetrievalConfiguration: finalDialogueRetrievalConfiguration,
             starterPromptRetrievalConfiguration: finalStarterPromptRetrievalConfiguration,
             knowledgeRetrievalConfiguration: finalKnowledgeRetrievalConfiguration,
@@ -946,13 +964,11 @@ export function CharacterEditorModal({
             numberOfMessagesToDisableDialoguePrompt: Number.isNaN(rawDisableDialogue) ? 0 : Math.max(0, rawDisableDialogue),
             numberOfMessagesToDisableStarterPrompt: Number.isNaN(rawDisableStarter) ? 0 : Math.max(0, rawDisableStarter),
             
-            // ✅ Added Embedding Toggles
             useEmbeddingModelForDialoguePrompts: useEmbeddingModelForDialoguePrompts || undefined,
             useEmbeddingModelForStarterPrompts: useEmbeddingModelForStarterPrompts || undefined,
             useEmbeddingModelForKnowledgePrompts: useEmbeddingModelForKnowledgePrompts || undefined,
             useEmbeddingModelForMemories: useEmbeddingModelForMemories || undefined,
 
-            // ✅ Added Memory Search Spaces
             memorySearchSpaces: memorySearchSpaces.length > 0 ? memorySearchSpaces : undefined,
 
             tools: { ...tools },
@@ -976,7 +992,6 @@ export function CharacterEditorModal({
     const hasVoice = (!!voiceFile || hasExistingVoice) && !isVoiceRemoved;
     const effectiveCharacterId = existingCharacter?.id || pendingCharacterId || '';
     const memoryCount = useMemo(() => {
-        // If there is no local protagonist, just return the total count of all memories
         if (!localProtagonistId) return Object.values(memories).reduce((sum, arr) => sum + arr.length, 0);
 
         let count = 0;
@@ -1069,21 +1084,7 @@ export function CharacterEditorModal({
                     <FileDropArea
                         acceptedTypes={['image', 'audio']}
                         disabled={isUploading || isReadOnly}
-                        onDropImage={(file) => {
-                            setImageFile(file);
-                            setImagePreview(URL.createObjectURL(file));
-                            setActiveTab('general');
-                        }}
-                        onDropAudio={(file) => {
-                            if (file.size > MAX_VOICE_FILE_SIZE) { 
-                                setSubmitError(`Voice file too large (${(file.size / 1024 / 1024).toFixed(1)}MB). Maximum is 5MB.`); 
-                                return; 
-                            }
-                            setVoiceFile(file); 
-                            setIsVoiceRemoved(false);
-                            setSubmitError(null);
-                            setActiveTab('general');
-                        }}
+                        onDropFiles={handleDropFiles}
                         overlayTitle="Drop Character Asset"
                         overlaySubtitle="Images set neutral avatar • Audio sets voice file"
                     >
@@ -1221,7 +1222,6 @@ export function CharacterEditorModal({
 
                             {activeTab === 'behaviour' && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                                    {/* ✅ Updated Starter Prompts Section */}
                                     <div className="editor-section" style={{ margin: 0 }}>
                                         <div className="editor-section-title">Starter Prompts ({starterPrompts.length})</div>
                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Weighted starter messages. Higher weight = more likely to be selected.</div>
@@ -1393,7 +1393,6 @@ export function CharacterEditorModal({
                                         </div>
                                     </div>
 
-                                    {/* ✅ Added Semantic Memory & Search Section */}
                                     <div className="editor-section" style={{ margin: 0 }}>
                                         <span className="editor-section-title">Semantic Memory & Search (Embeddings)</span>
                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '8px' }}>
@@ -1416,7 +1415,6 @@ export function CharacterEditorModal({
                                             <span>Use Embeddings for Memories</span>
                                         </label>
 
-                                        {/* ✅ Added Memory Search Spaces */}
                                         <div style={{ marginTop: '12px', borderTop: '1px solid var(--border)', paddingTop: '8px' }}>
                                             <span style={{ fontWeight: 'bold', fontSize: '0.7rem' }}>Memory Search Spaces</span>
                                             <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>
@@ -1572,7 +1570,6 @@ export function CharacterEditorModal({
                                 </div>
                             )}
 
-                            {/* ✅ Dual Samplers, Retrieval Configurations & Stop Patterns */}
                             {activeTab === 'model' && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     <div className="editor-section">
@@ -1595,7 +1592,6 @@ export function CharacterEditorModal({
                                         </select>
                                     </div>
 
-                                    {/* ✅ ADDED RETRIEVAL CONFIGURATIONS */}
                                     <div className="editor-section">
                                         <span className="editor-section-title">Dialogue Retrieval Configuration</span>
                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls semantic search parameters (Top-K, Threshold, Token Budget) for dialogue prompts.</div>
@@ -1799,7 +1795,6 @@ export function CharacterEditorModal({
                 />
             )}
 
-            {/* ✅ Added Starter Prompt Editor Modal */}
             {showStarterPromptEditor && (
                 <CharacterStarterPromptEditorModal
                     onClose={() => setShowStarterPromptEditor(false)}

@@ -33,7 +33,6 @@ export function ContextEditorModal({
     existingContext,
     allCharacters = [],
 }: ContextEditorModalProps) {
-
     return (
         <ContextEditorModalInner
             onClose={onClose}
@@ -380,7 +379,7 @@ function ContextEditorModalInner({
                 <FileDropArea
                     acceptedTypes={['image']}
                     disabled={isUploading || isReadOnly}
-                    onDropImages={handleImageFilesAdded}
+                    onDropFiles={handleImageFilesAdded}
                     overlayTitle="Drop Context Images"
                     overlaySubtitle="Drop image files here to attach to this context"
                 >

@@ -3,10 +3,7 @@ import type React from 'react';
 import { useState, useRef, useEffect } from 'react';
 
 interface FileDropAreaProps {
-    onDropImage?: (file: File) => void;
-    onDropImages?: (files: File[]) => void;
-    onDropAudio?: (file: File) => void;
-    onDropFile?: (file: File) => void;
+    onDropFiles: (files: File[]) => void;
     acceptedTypes?: ('image' | 'audio')[];
     disabled?: boolean;
     children: React.ReactNode;
@@ -17,15 +14,12 @@ interface FileDropAreaProps {
 }
 
 export function FileDropArea({
-    onDropImage,
-    onDropImages,
-    onDropAudio,
-    onDropFile,
-    acceptedTypes = ['image', 'audio'],
+    onDropFiles,
+    acceptedTypes,
     disabled = false,
     children,
-    overlayTitle = 'Drop File to Assign',
-    overlaySubtitle = 'Drop images or audio files here',
+    overlayTitle = 'Drop Files to Assign',
+    overlaySubtitle = 'Drop your files here',
     className,
     style,
 }: FileDropAreaProps) {
@@ -55,11 +49,11 @@ export function FileDropArea({
         return () => ro.disconnect();
     }, []);
 
-    // Helper to check if the drag item is an actual OS file (not an internal DOM element)
+    // Helper to check if the drag item is an actual OS file
     const isOsFileDrag = (e: React.DragEvent) => {
         const types = e.dataTransfer?.types;
         if (!types) return false;
-        return typeof types.contains === 'function' ? types.contains('Files') : Array.from(types).includes('Files');
+        return typeof types.includes === 'function' ? types.includes('Files') : Array.from(types).includes('Files');
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -94,21 +88,25 @@ export function FileDropArea({
         
         if (disabled || !isOsFileDrag(e)) return;
 
-        const files = Array.from(e.dataTransfer.files || []);
-        if (files.length === 0) return;
+        const rawFiles = Array.from(e.dataTransfer.files || []);
+        if (rawFiles.length === 0) return;
 
-        const imageFiles = files.filter(f => f.type.startsWith('image/') || ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].some(ext => f.name.toLowerCase().endsWith(ext)));
-        const audioFiles = files.filter(f => f.type.startsWith('audio/') || ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'].some(ext => f.name.toLowerCase().endsWith(ext)));
+        let files = rawFiles;
 
-        if (imageFiles.length > 0 && acceptedTypes.includes('image')) {
-            onDropImages?.(imageFiles);
-            onDropImage?.(imageFiles[0]);
+        // Filter by acceptedTypes if specified
+        if (acceptedTypes && acceptedTypes.length > 0) {
+            const isImage = (f: File) => f.type.startsWith('image/') || ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].some(ext => f.name.toLowerCase().endsWith(ext));
+            const isAudio = (f: File) => f.type.startsWith('audio/') || ['.wav', '.mp3', '.flac', '.ogg', '.m4a', '.aac'].some(ext => f.name.toLowerCase().endsWith(ext));
+
+            files = rawFiles.filter(f => {
+                if (acceptedTypes.includes('image') && isImage(f)) return true;
+                if (acceptedTypes.includes('audio') && isAudio(f)) return true;
+                return false;
+            });
         }
-        if (audioFiles.length > 0 && acceptedTypes.includes('audio')) {
-            onDropAudio?.(audioFiles[0]);
-        }
-        if (imageFiles.length === 0 && audioFiles.length === 0) {
-            onDropFile?.(files[0]);
+
+        if (files.length > 0) {
+            onDropFiles(files);
         }
     };
 
@@ -117,7 +115,7 @@ export function FileDropArea({
     const height = dimensions.height || 300;
     const minDim = Math.min(width, height);
 
-    // Scale from 0.35 (for small ~90px cards) up to 1.0 (for >=350px full containers)
+    // Scale from 0.35 (for small <=90px slots) up to 1.0 (for >=350px full containers)
     const scale = Math.min(1, Math.max(0.35, minDim / 350));
 
     const iconFontSize = `${Math.max(1.2, 4 * scale)}rem`;
