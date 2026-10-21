@@ -8,12 +8,12 @@ import type {
     BaseMessage, Character, Context, Location, AudioTrack, Profile,
     InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage,
     PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory,
-    Extension, Account, MultiplayerData, toolUsageDisplayMode, HistoryMessage, ToolMessage,
+    Extension, Account, MultiplayerData, toolUsageDisplayMode, ToolMessage,
     tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel,
     entityType, ActiveToolActions, PendingToolAction, PendingToolActionType,
     TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry, TradeOffer
 } from '../types';
-import { findLatestMessage } from '../utilities/messageLogic';
+import { findLatestMessage, createMessage } from '../utilities/messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocation, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../utilities/locationLogic';
 import { getAudioEngine } from './AudioEngine';
@@ -2773,8 +2773,6 @@ async function executeHardwareControl(args: string): Promise<ToolResult> {
 
 // ─── Process Pending Tool Actions ───────────────────────────────────
 
-import { createChatMessage } from '../utilities/interactionDataLogic';
-
 export function processPendingToolActions(
     data: InteractionData, allCharacters: Character[], options?: { onToast?: (msg: string, type: 'success' | 'error' | 'info') => void }
 ): InteractionData {
@@ -2810,7 +2808,7 @@ export function processPendingToolActions(
                     const isQuietEnter = action.payload.quietEnter === 'true';
 
                     if (destLocId) {
-                        const prevMsg = findPrevMsg(updatedData, targetMsg.character.id) as ChatMessage | undefined;
+                        const prevMsg = findPrevMsg(updatedData, targetMsg.character.id);
 
                         let updatedActionStamina = prevMsg?.remainingActionStamina;
                         if (updatedActionStamina !== undefined) {
@@ -2826,47 +2824,18 @@ export function processPendingToolActions(
                             updatedData.interactionHistories[destLocId] = [];
                         }
 
-                        // QUIET ENTER: Append silent 'interaction' anchor (zero tags, zero text)
-                        if (isQuietEnter) {
-                            const silentMoveMsg: HistoryMessage = {
-                                messageType: 'interaction',
-                                id: uuidv4(),
-                                character: { ...targetMsg.character },
-                                isPresent: true,
-                                remainingChatStamina: prevMsg?.remainingChatStamina,
-                                remainingActionStamina: updatedActionStamina,
-                                inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
-                                activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
-                                characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
-                                characterLockedLocations: prevMsg?.characterLockedLocations ?? {},
-                                parentMessageId: currentLastMessageId,
-                                firstCreatedTimestamp: sequenceTime,
-                                lastUpdatedTimestamp: sequenceTime,
-                            };
-                            currentLastMessageId = silentMoveMsg.id;
-                            updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], silentMoveMsg];
-                        } 
-                        // LOUD ENTER: Append the message showing [Entered "..."]
-                        else {
-                            const enteredMsg = createChatMessage(
-                                updatedData,
-                                targetMsg.character,
-                                `[Entered "${destLocName}"]`,
-                                {
-                                    clothingWearingStatuses: prevMsg?.characterClothingWearingStatuses,
-                                    characterLockedLocations: prevMsg?.characterLockedLocations,
-                                    inventory: prevMsg?.inventory,
-                                    activeToolActions: prevMsg?.activeToolActions,
-                                }
-                            );
-                            enteredMsg.remainingActionStamina = updatedActionStamina;
-                            enteredMsg.parentMessageId = currentLastMessageId;
-                            enteredMsg.firstCreatedTimestamp = sequenceTime;
-                            enteredMsg.lastUpdatedTimestamp = sequenceTime;
-                            currentLastMessageId = enteredMsg.id;
-                            updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], enteredMsg];
-                        }
-
+                        // quiet_enter: No textContent passed -> Automatically infers silent 'interaction'
+                        // loud_enter:  textContent passed -> Automatically infers 'chat'
+                        const moveMsg = createMessage(targetMsg.character, {
+                            ...(isQuietEnter ? {} : { textContent: `[Entered "${destLocName}"]` }),
+                            remainingActionStamina: updatedActionStamina,
+                            timestamp: sequenceTime,
+                            parentMessageId: currentLastMessageId,
+                            previousMessage: prevMsg,
+                            interactionData: updatedData,
+                        });
+                        currentLastMessageId = moveMsg.id;
+                        updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], moveMsg];
                         changed = true;
 
                         if (!isQuietLeave && !isQuietEnter) {
@@ -2886,52 +2855,23 @@ export function processPendingToolActions(
                     const isQuietEnter = action.payload.quietEnter === 'true';
 
                     if (destLocId) {
-                        const prevMsg = findPrevMsg(updatedData, targetMsg.character.id) as ChatMessage | undefined;
+                        const prevMsg = findPrevMsg(updatedData, targetMsg.character.id);
 
                         if (!updatedData.interactionHistories[destLocId]) {
                             updatedData.interactionHistories[destLocId] = [];
                         }
 
-                        // QUIET ENTER: Append silent 'interaction' anchor (zero tags, zero text)
-                        if (isQuietEnter) {
-                            const silentTeleportMsg: HistoryMessage = {
-                                messageType: 'interaction',
-                                id: uuidv4(),
-                                character: { ...targetMsg.character },
-                                isPresent: true,
-                                remainingChatStamina: prevMsg?.remainingChatStamina,
-                                remainingActionStamina: prevMsg?.remainingActionStamina,
-                                inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
-                                activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
-                                characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
-                                characterLockedLocations: prevMsg?.characterLockedLocations ?? {},
-                                parentMessageId: currentLastMessageId,
-                                firstCreatedTimestamp: sequenceTime,
-                                lastUpdatedTimestamp: sequenceTime,
-                            };
-                            currentLastMessageId = silentTeleportMsg.id;
-                            updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], silentTeleportMsg];
-                        } 
-                        // LOUD ENTER: Append the message showing [Entered "..."]
-                        else {
-                            const enteredMsg = createChatMessage(
-                                updatedData,
-                                targetMsg.character,
-                                `[Entered "${destLocName}"]`,
-                                {
-                                    clothingWearingStatuses: prevMsg?.characterClothingWearingStatuses,
-                                    characterLockedLocations: prevMsg?.characterLockedLocations,
-                                    inventory: prevMsg?.inventory,
-                                    activeToolActions: prevMsg?.activeToolActions,
-                                }
-                            );
-                            enteredMsg.parentMessageId = currentLastMessageId;
-                            enteredMsg.firstCreatedTimestamp = sequenceTime;
-                            enteredMsg.lastUpdatedTimestamp = sequenceTime;
-                            currentLastMessageId = enteredMsg.id;
-                            updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], enteredMsg];
-                        }
-
+                        // quiet_enter: No textContent passed -> Automatically infers silent 'interaction'
+                        // loud_enter:  textContent passed -> Automatically infers 'chat'
+                        const teleportMsg = createMessage(targetMsg.character, {
+                            ...(isQuietEnter ? {} : { textContent: `[Entered "${destLocName}"]` }),
+                            timestamp: sequenceTime,
+                            parentMessageId: currentLastMessageId,
+                            previousMessage: prevMsg,
+                            interactionData: updatedData,
+                        });
+                        currentLastMessageId = teleportMsg.id;
+                        updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], teleportMsg];
                         changed = true;
 
                         if (!isQuietLeave && !isQuietEnter) {
@@ -2949,25 +2889,17 @@ export function processPendingToolActions(
                     const text = action.payload.text;
                     const senderLatest = findLatestMessage(updatedData, targetMsg.character);
                     const locId = senderLatest?.locationId || 'global';
+                    const prevMsg = findPrevMsg(updatedData, targetMsg.character.id);
 
-                    const whisperMsg: WhisperMessage = {
-                        messageType: 'whisper',
-                        id: uuidv4(),
-                        character: { ...targetMsg.character },
+                    // targetCharacterIds passed -> Automatically infers 'whisper'
+                    const whisperMsg = createMessage(targetMsg.character, {
                         textContent: text,
                         targetCharacterIds: targetIds,
-                        files: [],
-                        modelTextContentSummaries: {},
-                        modelInteractionTextContentSummaries: {},
-                        kvCacheTextContentPaths: {},
-                        kvCacheTextContentSummaryPaths: {},
-                        kvCacheInteractionTextContentSummaries: {},
-                        characterClothingWearingStatuses: (targetMsg as ChatMessage)?.characterClothingWearingStatuses ?? {},
-                        characterLockedLocations: (targetMsg as ChatMessage)?.characterLockedLocations ?? {},
+                        timestamp: sequenceTime,
                         parentMessageId: currentLastMessageId,
-                        firstCreatedTimestamp: sequenceTime,
-                        lastUpdatedTimestamp: sequenceTime,
-                    };
+                        previousMessage: prevMsg,
+                        interactionData: updatedData,
+                    });
                     currentLastMessageId = whisperMsg.id;
 
                     if (!updatedData.interactionHistories[locId]) updatedData.interactionHistories[locId] = [];
@@ -2987,23 +2919,15 @@ export function processPendingToolActions(
                         const charToInvite = invitedChar;
                         const inviterLoc = getCurrentLocation(updatedData, targetMsg.character);
                         const currentLocId = inviterLoc?.id;
-                        const prevInvitedMsg = findPrevMsg(updatedData, charToInvite.id) as ChatMessage | undefined;
+                        const prevInvitedMsg = findPrevMsg(updatedData, charToInvite.id);
 
-                        const inviteMsg: HistoryMessage = {
-                            messageType: 'interaction',
-                            id: uuidv4(),
-                            character: { ...charToInvite },
-                            isPresent: true,
-                            remainingChatStamina: prevInvitedMsg?.remainingChatStamina,
-                            remainingActionStamina: prevInvitedMsg?.remainingActionStamina,
-                            inventory: prevInvitedMsg?.inventory ? { ...prevInvitedMsg.inventory } : undefined,
-                            activeToolActions: prevInvitedMsg?.activeToolActions ? { ...prevInvitedMsg.activeToolActions } : undefined,
-                            characterClothingWearingStatuses: prevInvitedMsg?.characterClothingWearingStatuses ?? {},
-                            characterLockedLocations: prevInvitedMsg?.characterLockedLocations ?? {},
+                        // No textContent -> Automatically infers silent 'interaction'
+                        const inviteMsg = createMessage(charToInvite, {
+                            timestamp: sequenceTime,
                             parentMessageId: currentLastMessageId,
-                            firstCreatedTimestamp: sequenceTime,
-                            lastUpdatedTimestamp: sequenceTime,
-                        };
+                            previousMessage: prevInvitedMsg,
+                            interactionData: updatedData,
+                        });
                         currentLastMessageId = inviteMsg.id;
 
                         if (currentLocId) {
@@ -3031,52 +2955,24 @@ export function processPendingToolActions(
                     if (kickedChar) {
                         const destLocId = action.payload.destinationLocationId;
                         const destLocName = action.payload.destinationLocationName || destLocId;
-                        const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id) as ChatMessage | undefined;
+                        const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id);
 
                         if (destLocId) {
                             if (!updatedData.interactionHistories[destLocId]) {
                                 updatedData.interactionHistories[destLocId] = [];
                             }
 
-                            // QUIET ENTER: Append silent 'interaction' anchor (zero tags, zero text)
-                            if (isQuietEnter) {
-                                const silentKickMsg: HistoryMessage = {
-                                    messageType: 'interaction',
-                                    id: uuidv4(),
-                                    character: { ...kickedChar },
-                                    isPresent: true,
-                                    remainingChatStamina: prevKickedMsg?.remainingChatStamina,
-                                    remainingActionStamina: prevKickedMsg?.remainingActionStamina,
-                                    inventory: prevKickedMsg?.inventory ? { ...prevKickedMsg.inventory } : undefined,
-                                    activeToolActions: prevKickedMsg?.activeToolActions ? { ...prevKickedMsg.activeToolActions } : undefined,
-                                    characterClothingWearingStatuses: prevKickedMsg?.characterClothingWearingStatuses ?? {},
-                                    characterLockedLocations: prevKickedMsg?.characterLockedLocations ?? {},
-                                    parentMessageId: currentLastMessageId,
-                                    firstCreatedTimestamp: sequenceTime,
-                                    lastUpdatedTimestamp: sequenceTime,
-                                };
-                                currentLastMessageId = silentKickMsg.id;
-                                updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], silentKickMsg];
-                            } 
-                            // LOUD ENTER: Append the message showing [Entered "..."]
-                            else {
-                                const enteredMsg = createChatMessage(
-                                    updatedData,
-                                    kickedChar,
-                                    `[Entered "${destLocName}"]`,
-                                    {
-                                        clothingWearingStatuses: prevKickedMsg?.characterClothingWearingStatuses,
-                                        characterLockedLocations: prevKickedMsg?.characterLockedLocations,
-                                        inventory: prevKickedMsg?.inventory,
-                                        activeToolActions: prevKickedMsg?.activeToolActions,
-                                    }
-                                );
-                                enteredMsg.parentMessageId = currentLastMessageId;
-                                enteredMsg.firstCreatedTimestamp = sequenceTime;
-                                enteredMsg.lastUpdatedTimestamp = sequenceTime;
-                                currentLastMessageId = enteredMsg.id;
-                                updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], enteredMsg];
-                            }
+                            // quiet_enter: No textContent passed -> Automatically infers silent 'interaction'
+                            // loud_enter:  textContent passed -> Automatically infers 'chat'
+                            const kickMsg = createMessage(kickedChar, {
+                                ...(isQuietEnter ? {} : { textContent: `[Entered "${destLocName}"]` }),
+                                timestamp: sequenceTime,
+                                parentMessageId: currentLastMessageId,
+                                previousMessage: prevKickedMsg,
+                                interactionData: updatedData,
+                            });
+                            currentLastMessageId = kickMsg.id;
+                            updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], kickMsg];
                         }
 
                         updatedData = { ...updatedData, lastUpdatedTimestamp: sequenceTime };
@@ -3113,25 +3009,18 @@ export function processPendingToolActions(
                     const realChar = allCharacters.find(c => c.id === charId) || updatedData.participants.find(p => p.id === charId);
                     if (!realChar) break;
                     
-                    const prevMsg = findPrevMsg(updatedData, charId) as ChatMessage | undefined;
+                    const prevMsg = findPrevMsg(updatedData, charId);
                     const newLocks = { ...(prevMsg?.characterLockedLocations ?? {}) };
                     newLocks[locId] = true;
 
-                    const lockMsg: HistoryMessage = {
-                        messageType: 'interaction',
-                        id: uuidv4(),
-                        character: { ...realChar },
-                        isPresent: true,
-                        remainingChatStamina: prevMsg?.remainingChatStamina,
-                        remainingActionStamina: prevMsg?.remainingActionStamina,
-                        inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
-                        activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
-                        characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
+                    // No textContent -> Automatically infers silent 'interaction'
+                    const lockMsg = createMessage(realChar, {
                         characterLockedLocations: newLocks,
+                        timestamp: sequenceTime,
                         parentMessageId: currentLastMessageId,
-                        firstCreatedTimestamp: sequenceTime,
-                        lastUpdatedTimestamp: sequenceTime,
-                    };
+                        previousMessage: prevMsg,
+                        interactionData: updatedData,
+                    });
                     currentLastMessageId = lockMsg.id;
 
                     const charCurrentLocId = getCurrentLocation(updatedData, realChar)?.id || 'global';
@@ -3146,25 +3035,18 @@ export function processPendingToolActions(
                     const realChar = allCharacters.find(c => c.id === charId) || updatedData.participants.find(p => p.id === charId);
                     if (!realChar) break;
                     
-                    const prevMsg = findPrevMsg(updatedData, charId) as ChatMessage | undefined;
+                    const prevMsg = findPrevMsg(updatedData, charId);
                     const newLocks = { ...(prevMsg?.characterLockedLocations ?? {}) };
                     delete newLocks[locId];
 
-                    const unlockMsg: HistoryMessage = {
-                        messageType: 'interaction',
-                        id: uuidv4(),
-                        character: { ...realChar },
-                        isPresent: true,
-                        remainingChatStamina: prevMsg?.remainingChatStamina,
-                        remainingActionStamina: prevMsg?.remainingActionStamina,
-                        inventory: prevMsg?.inventory ? { ...prevMsg.inventory } : undefined,
-                        activeToolActions: prevMsg?.activeToolActions ? { ...prevMsg.activeToolActions } : undefined,
-                        characterClothingWearingStatuses: prevMsg?.characterClothingWearingStatuses ?? {},
+                    // No textContent -> Automatically infers silent 'interaction'
+                    const unlockMsg = createMessage(realChar, {
                         characterLockedLocations: newLocks,
+                        timestamp: sequenceTime,
                         parentMessageId: currentLastMessageId,
-                        firstCreatedTimestamp: sequenceTime,
-                        lastUpdatedTimestamp: sequenceTime,
-                    };
+                        previousMessage: prevMsg,
+                        interactionData: updatedData,
+                    });
                     currentLastMessageId = unlockMsg.id;
 
                     const charCurrentLocId = getCurrentLocation(updatedData, realChar)?.id || 'global';

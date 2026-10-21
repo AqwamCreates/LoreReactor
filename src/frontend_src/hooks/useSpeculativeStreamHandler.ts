@@ -3,7 +3,7 @@ import { useCallback, useRef, type RefObject } from 'react';
 import type { Character, InteractionData, ChatMessage, HistoryMessage, TextMessage } from '../types';
 import { calculateLatencyFactor } from '../utilities/chatSessionLogic';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
-import { createChatMessage } from '../utilities/interactionDataLogic';
+import { createMessage } from '../utilities/messageLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 
@@ -102,10 +102,11 @@ export function useSpeculativeStreamHandler({
 
                             if (!existingMsg) {
                                 const currentLocId = getCurrentLocationId(freshData, char) || 'global';
-                                // createChatMessage already assigns completedText to textContent
-                                const speculativeMsg = createChatMessage(freshData, char, completedText);
+                                const speculativeMsg = createMessage(char, {
+                                    textContent: completedText,
+                                    interactionData: freshData,
+                                });
                                 speculativeMsg.id = msgId;
-                                speculativeMsg.textContent = completedText;
 
                                 const newHistories = { ...freshData.interactionHistories };
                                 if (!newHistories[currentLocId]) newHistories[currentLocId] = [];

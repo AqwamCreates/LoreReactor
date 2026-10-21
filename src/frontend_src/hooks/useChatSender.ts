@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useChatSender.ts
 import { useCallback } from 'react';
-import type { Character, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult, TextMessage, InteractionMessage } from '../types';
-import { createChatMessage } from '../utilities/interactionDataLogic';
+import type { Character, InteractionData, HistoryMessage, InterjectableAction, ToolExecutionResult, TextMessage, InteractionMessage, ChatMessage } from '../types';
+import { createMessage } from '../utilities/messageLogic';
 import { processPendingToolActions, executeTool, type ToolExecutionContext } from '../services/ToolExecutor';
 import { parseSlashCommand } from '../services/ToolInvocationParser';
 import { getCurrentLocationId, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
@@ -17,7 +17,6 @@ import {
     generateActionStaminaForInteractionData,
     consumeChatStaminaForMessage
 } from '../utilities/characterLogic';
-import { v4 as uuidv4 } from 'uuid';
 import {
     NO_ARG_TOOLS,
     HOST_ONLY_TOOLS,
@@ -100,7 +99,11 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
             if (!acquireLock()) { addToast('Already processing...', 'info'); return; }
             try {
-                const slashMessage = createChatMessage(currentInteractionData, activeCharacter, '', {});
+                const slashMessage = createMessage(activeCharacter, {
+                    textContent: '',
+                    interactionData: currentInteractionData,
+                }) as ChatMessage;
+
                 const toolContext = buildToolContext();
                 const toolResult = await executeTool(
                     slashInvocation,
@@ -196,11 +199,13 @@ export function useChatSender(opts: UseChatSenderOptions) {
             const textMessages = getLocalMessageHistory(currentInteractionData, activeCharacter, ['chat', 'whisper']) as TextMessage[];
             const knownCharacterNames = detectName(activeCharacter, textMessages, text);
 
-            const chatMessage = createChatMessage(currentInteractionData, activeCharacter, text, {
+            const chatMessage = createMessage(activeCharacter, {
+                textContent: text,
                 files: encodedFiles,
                 frontCameraImage: frontCameraImageBase64,
-                knownCharacterNames
-            });
+                knownCharacterNames,
+                interactionData: currentInteractionData,
+            }) as ChatMessage;
 
             const paragraphs = (text.match(/\n\n/g) || []).length + 1;
             const chatCost = computeChatStaminaConsumptionCost(activeCharacter, currentInteractionData, paragraphs);
@@ -246,19 +251,14 @@ export function useChatSender(opts: UseChatSenderOptions) {
                         currentActionStamina = Math.max(0, currentActionStamina - movementCost);
                     }
 
-                    const arrivalInteraction: InteractionMessage = {
-                        messageType: 'interaction',
-                        id: uuidv4(),
-                        character: { ...activeCharacter },
-                        isPresent: true,
-                        remainingChatStamina: chatMessage.remainingChatStamina,
+                    // Pure presence anchor: no textContent infers 'interaction' automatically
+                    const arrivalInteraction = createMessage(activeCharacter, {
                         remainingActionStamina: currentActionStamina,
-                        characterClothingWearingStatuses: chatMessage.characterClothingWearingStatuses,
-                        characterLockedLocations: chatMessage.characterLockedLocations,
                         parentMessageId: chatMessage.id,
-                        firstCreatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
-                        lastUpdatedTimestamp: chatMessage.firstCreatedTimestamp + 1,
-                    };
+                        timestamp: chatMessage.firstCreatedTimestamp + 1,
+                        previousMessage: chatMessage,
+                        interactionData: td,
+                    }) as InteractionMessage;
 
                     onMessageBroadcastRef.current?.(arrivalInteraction);
 
@@ -310,7 +310,11 @@ export function useChatSender(opts: UseChatSenderOptions) {
         const textMessages = getLocalMessageHistory(currentInteractionData, activeProtagonist, ['chat', 'whisper']) as TextMessage[];
         const knownCharacterNames = detectName(activeProtagonist, textMessages);
 
-        const chatMessage = createChatMessage(currentInteractionData, activeProtagonist, actionText, { knownCharacterNames });
+        const chatMessage = createMessage(activeProtagonist, {
+            textContent: actionText,
+            knownCharacterNames,
+            interactionData: currentInteractionData,
+        }) as ChatMessage;
 
         const currentLocId = getCurrentLocationId(currentInteractionData, activeProtagonist) || 'global';
         const newHistories = { ...currentInteractionData.interactionHistories };

@@ -9,7 +9,7 @@ import type {
     ToolMessage
 } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
-import { buildRequestBody, createChatMessage, createToolMessage, isToolMessageText, addMessageToInteractionData } from '../utilities/interactionDataLogic';
+import { buildRequestBody, addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getFilteredTextMessages } from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
@@ -20,7 +20,7 @@ import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEng
 import { ToolInvocationParser, type ToolInvocation } from './ToolInvocationParser';
 import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools, formatToolDisplay, type ToolExecutionContext, type ToolResult } from './ToolExecutor';
-import { findLatestMessage } from '../utilities/messageLogic';
+import { findLatestMessage, createMessage } from '../utilities/messageLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
 import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import type { StreamingVoiceTracker } from './StreamingVoiceTracker';
@@ -69,7 +69,7 @@ export interface TurnExecutionParams {
     activeStrategy: BudgetStrategy | null;
     strategyOverride?: BudgetStrategy | null;
     existingCharacterText?: string;
-    prefillText?: string; // ✅ PHASE 2: Added prefillText
+    prefillText?: string;
     allPromptBlocks: PromptBlock[];
     callbacks?: TurnStreamCallbacks;
     isMultiplayerClient?: boolean;
@@ -299,7 +299,6 @@ export class CharacterActor {
         let previousExpression: string | null = null;
         let lastIsCompleted = true;
 
-        // ✅ PHASE 2: isResuming is ONLY true if we are continuing an existing message
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
         const seedText = existingCharacterText || prefillText || '';
 
@@ -495,14 +494,17 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createChatMessage(data, character, '', { 
+                    const dummyTargetMsg = createMessage(character, { 
+                        textContent: '',
                         clothingWearingStatuses: resolvedClothingStatuses, 
                         knownCharacterNames,
                         activeToolActions: accumulatedActiveToolActions,
                         pendingToolActions: accumulatedPendingActions,
                         inventory: accumulatedInventory,
                         characterLockedLocations: accumulatedLockedLocations,
-                    });
+                        interactionData: data,
+                        previousMessage: latestMsg,
+                    }) as ChatMessage;
 
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
@@ -575,14 +577,17 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createChatMessage(data, character, '', { 
+                    const dummyTargetMsg = createMessage(character, { 
+                        textContent: '',
                         clothingWearingStatuses: resolvedClothingStatuses, 
                         knownCharacterNames,
                         activeToolActions: accumulatedActiveToolActions,
                         pendingToolActions: accumulatedPendingActions,
                         inventory: accumulatedInventory,
                         characterLockedLocations: accumulatedLockedLocations,
-                    });
+                        interactionData: data,
+                        previousMessage: latestMsg,
+                    }) as ChatMessage;
 
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
@@ -632,14 +637,17 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createChatMessage(data, character, '', { 
+                    const dummyTargetMsg = createMessage(character, { 
+                        textContent: '',
                         clothingWearingStatuses: resolvedClothingStatuses, 
                         knownCharacterNames,
                         activeToolActions: accumulatedActiveToolActions,
                         pendingToolActions: accumulatedPendingActions,
                         inventory: accumulatedInventory,
                         characterLockedLocations: accumulatedLockedLocations,
-                    });
+                        interactionData: data,
+                        previousMessage: latestMsg,
+                    }) as ChatMessage;
 
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
@@ -679,7 +687,6 @@ export class CharacterActor {
             );
 
             let updatedData: InteractionData;
-            const isTool = isToolMessageText(rawText);
 
             if (isResuming) {
                 const allExecutionResults = accState.getCollectedExecutionResults();
@@ -726,31 +733,21 @@ export class CharacterActor {
                 const hasPending = accumulatedPendingActions.length > 0;
                 const hasActive = Object.keys(accumulatedActiveToolActions).length > 0;
                 const hasInv = Object.keys(accumulatedInventory).length > 0;
-
-                const msg = isTool
-                    ? createToolMessage(data, character, rawText, {
-                        clothingWearingStatuses: resolvedClothingStatuses,
-                        knownCharacterNames,
-                        characterLockedLocations: accumulatedLockedLocations,
-                        pendingToolActions: hasPending ? accumulatedPendingActions : undefined,
-                        activeToolActions: hasActive ? accumulatedActiveToolActions : undefined,
-                        inventory: hasInv ? accumulatedInventory : undefined,
-                    })
-                    : createChatMessage(data, character, rawText, {
-                        clothingWearingStatuses: resolvedClothingStatuses,
-                        knownCharacterNames,
-                        characterLockedLocations: accumulatedLockedLocations,
-                        pendingToolActions: hasPending ? accumulatedPendingActions : undefined,
-                        activeToolActions: hasActive ? accumulatedActiveToolActions : undefined,
-                        inventory: hasInv ? accumulatedInventory : undefined,
-                    });
-
                 const allExecutionResults = accState.getCollectedExecutionResults();
-                if (allExecutionResults.length > 0) {
-                    msg.toolExecutionResults = allExecutionResults;
-                }
 
-                msg.characterExpression = latestExpression ?? undefined;
+                const msg = createMessage(character, {
+                    textContent: rawText,
+                    clothingWearingStatuses: resolvedClothingStatuses,
+                    knownCharacterNames,
+                    characterLockedLocations: accumulatedLockedLocations,
+                    pendingToolActions: hasPending ? accumulatedPendingActions : undefined,
+                    activeToolActions: hasActive ? accumulatedActiveToolActions : undefined,
+                    inventory: hasInv ? accumulatedInventory : undefined,
+                    toolExecutionResults: allExecutionResults.length > 0 ? allExecutionResults : undefined,
+                    characterExpression: latestExpression ?? undefined,
+                    interactionData: data,
+                    previousMessage: latestMsg,
+                });
 
                 const speakerLocationId = getCurrentLocationId(data, character) || 'global';
                 updatedData = addMessageToInteractionData(data, msg, speakerLocationId);

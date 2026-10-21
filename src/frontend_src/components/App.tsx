@@ -3,7 +3,8 @@ import type React from 'react';
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue, getCharacterImageUrl } from '../storages/serverStorage';
-import { createChatMessage, addMessageToInteractionData } from '../utilities/interactionDataLogic';
+import { addMessageToInteractionData } from '../utilities/interactionDataLogic';
+import { createMessage } from '../utilities/messageLogic';
 import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
@@ -485,7 +486,7 @@ function App() {
 
     // ─── Local UI State ──────────────────────────────────────────────
     const editingId = useUIStore(s => s.editingId);
-    const editDraft = useUIStore(s => s.editDraft); // ✅ Updated to useUIStore
+    const editDraft = useUIStore(s => s.editDraft);
 
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [isOverlayOpen, setIsOverlayOpen] = useState(false);
@@ -837,7 +838,11 @@ function App() {
     const handleForceFirstMessage = useCallback((char: Character) => {
         if (!interactionData || mp.isMultiplayerClient) return;
         const text = getCharacterStarterMessage(char);
-        const msg = createChatMessage(interactionData, char, text);
+        const msg = createMessage(char, {
+            textContent: text,
+            interactionData,
+        }) as ChatMessage; // Properly cast since textContent forces it to ChatMessage
+        
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Sent first message as ${char.name}`, 'success');
@@ -849,7 +854,11 @@ function App() {
 
     const handleSendCustom = useCallback((char: Character, text: string) => {
         if (!interactionData || mp.isMultiplayerClient) return;
-        const msg = createChatMessage(interactionData, char, text);
+        const msg = createMessage(char, {
+            textContent: text,
+            interactionData,
+        }) as ChatMessage;
+        
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Sent message as ${char.name}`, 'success');
@@ -861,7 +870,11 @@ function App() {
 
     const handleInjectCustom = useCallback((char: Character, text: string) => {
         if (!interactionData || mp.isMultiplayerClient) return;
-        const msg = createChatMessage(interactionData, char, text);
+        const msg = createMessage(char, {
+            textContent: text,
+            interactionData,
+        }) as ChatMessage;
+        
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Injected message as ${char.name}`, 'success');
@@ -874,7 +887,11 @@ function App() {
     const handleInjectFirst = useCallback((char: Character) => {
         if (!interactionData || mp.isMultiplayerClient) return;
         const text = getCharacterStarterMessage(char);
-        const msg = createChatMessage(interactionData, char, text);
+        const msg = createMessage(char, {
+            textContent: text,
+            interactionData,
+        }) as ChatMessage;
+        
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Injected first message as ${char.name}`, 'success');

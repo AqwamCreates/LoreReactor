@@ -1,12 +1,11 @@
 // src/frontend_src/utilities/interactionDataLogic.ts
 import type { 
     Character, InteractionData, HistoryMessage, ChatMessage, PromptBlock, 
-    TextMessage, ToolExecutionResult, ToolMessage, 
-    RawInteractionData, ActiveToolActions, PendingToolAction, Inventory 
+    TextMessage, RawInteractionData,
 } from '../types';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { v4 as uuidv4 } from 'uuid';
-import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses, generateInitialCharacterText } from './characterLogic';
+import { generateInitialCharacterText } from './characterLogic';
 import { buildPrompt } from './promptLogic';
 import { findLatestMessage } from './messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from './timelineLogic';
@@ -146,159 +145,7 @@ export function createNewInteractionData(character: Character): InteractionData 
     };
 }
 
-export function createChatMessage(
-    interactionData: InteractionData,
-    character: Character,
-    textContent: string,
-    options?: { 
-        files?: string[]; 
-        frontCameraImage?: string; 
-        knownCharacterNames?: Record<string, Record<string, boolean>>; 
-        clothingWearingStatuses?: Record<string, boolean>;
-        characterLockedLocations?: Record<string, boolean>;
-        pendingToolActions?: PendingToolAction[];
-        activeToolActions?: ActiveToolActions;
-        inventory?: Inventory;
-    }
-): ChatMessage {
-    const latest = findLatestMessage(interactionData, character);
-    const previousMessage = latest?.message;
-    
-    const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.profile);
-    const effectiveMaximumActionStamina = getEffectiveMaximumActionStamina(character, interactionData.profile);
-    const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
-    const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
-    
-    const globalMessages = getGlobalMessageHistory(interactionData);
-    const lastMessageId = globalMessages.length > 0 ? globalMessages[globalMessages.length - 1].id : null;
-    const now = Date.now();
-
-    const id = uuidv4();
-    const files = options?.files ?? [];
-    const frontCameraImage = options?.frontCameraImage;
-
-    const knownCharacterNames = options?.knownCharacterNames ??
-        (character.knownCharacterNames
-            ? Object.fromEntries(
-                Object.entries(character.knownCharacterNames).map(([charId, names]) =>
-                    [charId, Object.fromEntries(names.map(n => [n, true] as const))]
-                )
-            )
-            : {});
-    const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
-    const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
-    const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
-    const characterLockedLocations = options?.characterLockedLocations ?? { ...prevLockedLocations };
-
-    // ✅ Inherit ongoing RPG inventory across turns
-    const prevInventory = previousMessage?.inventory;
-    const inventory = options?.inventory ?? (prevInventory ? { ...prevInventory } : undefined);
-
-    // ✅ Inherit ongoing active tool state (timers, stopwatches, schedules, notes, trade offers) across turns
-    const prevActiveToolActions = previousMessage?.activeToolActions;
-    const activeToolActions = options?.activeToolActions ?? (prevActiveToolActions ? { ...prevActiveToolActions } : undefined);
-
-    return {
-        id,
-        messageType: 'chat',
-        character: { ...character },
-        textContent,
-        isPresent: true,
-        files,
-        frontCameraImage,
-        remainingChatStamina,
-        remainingActionStamina,
-        knownCharacterNames,
-        characterClothingWearingStatuses: clothingWearingStatuses,
-        characterLockedLocations,
-        inventory,
-        activeToolActions,
-        pendingToolActions: options?.pendingToolActions,
-        modelTextContentSummaries: {},
-        modelInteractionTextContentSummaries: {},
-        kvCacheTextContentPaths: {},
-        kvCacheTextContentSummaryPaths: {},
-        kvCacheInteractionTextContentSummaries: {},
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-        parentMessageId: lastMessageId,
-    } as ChatMessage;
-}
-
-export function createToolMessage(
-    interactionData: InteractionData,
-    character: Character,
-    textContent: string,
-    options?: { 
-        files?: string[]; 
-        frontCameraImage?: string; 
-        knownCharacterNames?: Record<string, Record<string, boolean>>; 
-        clothingWearingStatuses?: Record<string, boolean>; 
-        characterLockedLocations?: Record<string, boolean>;
-        toolExecutionResults?: ToolExecutionResult[];
-        pendingToolActions?: PendingToolAction[];
-        activeToolActions?: ActiveToolActions;
-        inventory?: Inventory;
-    }
-): ToolMessage {
-    const latest = findLatestMessage(interactionData, character);
-    const previousMessage = latest?.message;
-    
-    const effectiveMaximumChatStamina = getEffectiveMaximumChatStamina(character, interactionData.profile);
-    const effectiveMaximumActionStamina = getEffectiveMaximumActionStamina(character, interactionData.profile);
-    const remainingChatStamina = previousMessage?.remainingChatStamina ?? effectiveMaximumChatStamina;
-    const remainingActionStamina = previousMessage?.remainingActionStamina ?? effectiveMaximumActionStamina;
-    
-    const globalMessages = getGlobalMessageHistory(interactionData);
-    const lastMessageId = globalMessages.length > 0 ? globalMessages[globalMessages.length - 1].id : null;
-    const now = Date.now();
-
-    const id = uuidv4();
-    const files = options?.files ?? [];
-    const frontCameraImage = options?.frontCameraImage;
-    const toolExecutionResults = options?.toolExecutionResults;
-
-    const knownCharacterNames = options?.knownCharacterNames ??
-        (character.knownCharacterNames
-            ? Object.fromEntries(
-                Object.entries(character.knownCharacterNames).map(([charId, names]) =>
-                    [charId, Object.fromEntries(names.map(n => [n, true] as const))]
-                )
-            )
-            : {});
-    const prevClothingStatuses = (previousMessage as ChatMessage)?.characterClothingWearingStatuses;
-    const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothingStatuses ?? initializeClothingWearingStatuses(character);
-    const prevLockedLocations = previousMessage?.characterLockedLocations ?? {};
-    const characterLockedLocations = options?.characterLockedLocations ?? { ...prevLockedLocations };
-
-    const prevInventory = previousMessage?.inventory;
-    const inventory = options?.inventory ?? (prevInventory ? { ...prevInventory } : undefined);
-
-    const prevActiveToolActions = previousMessage?.activeToolActions;
-    const activeToolActions = options?.activeToolActions ?? (prevActiveToolActions ? { ...prevActiveToolActions } : undefined);
-
-    return {
-        id,
-        messageType: 'tool',
-        character: { ...character },
-        textContent,
-        isPresent: true,
-        files,
-        frontCameraImage,
-        toolExecutionResults,
-        remainingChatStamina,
-        remainingActionStamina,
-        knownCharacterNames,
-        characterClothingWearingStatuses: clothingWearingStatuses,
-        characterLockedLocations,
-        inventory,
-        activeToolActions,
-        pendingToolActions: options?.pendingToolActions,
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-        parentMessageId: lastMessageId,
-    } as ToolMessage;
-}
+// ─── Interaction Data Mutations ────────────────────────────────────
 
 export function addMessageToInteractionData(
     interactionData: InteractionData, 

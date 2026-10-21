@@ -1,8 +1,14 @@
 // frontend_src/utilities/messageLogic.ts
 import { deleteRawMessage, saveRawInteractionData, loadAllRawInteractionDataShells } from '../storages/serverStorage';
-import type { InteractionData, HistoryMessage, ChatMessage, Character, messageType } from '../types';
+import type { 
+    InteractionData, HistoryMessage, ChatMessage, Character, messageType, 
+    ActiveToolActions, BaseMessage, InteractionMessage, Inventory, 
+    NarrationMessage, PendingToolAction, ToolExecutionResult, ToolMessage, WhisperMessage 
+} from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { getGlobalMessageHistory } from './timelineLogic';
+import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses } from './characterLogic';
+import { isToolMessageText } from './interactionDataLogic';
 
 // Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
 async function getParentMessageIds(chatId: string): Promise<Set<string>> {
@@ -137,7 +143,7 @@ export async function editChatMessage(interactionData: InteractionData, messageI
     for (const [locId, messages] of Object.entries(updatedHistories)) {
         const index = messages.findIndex(m => m.id === messageId);
         if (index !== -1) {
-            const msg = messages[index]
+            const msg = messages[index];
             const messageType = msg.messageType;
             if (messageType === 'chat' || messageType === "whisper") {
                 updatedHistories[locId] = [...messages];
@@ -170,7 +176,6 @@ export async function editChatMessage(interactionData: InteractionData, messageI
  * Mass deletes messages from the target message's location onwards.
  * Automatically resolves the locationId from the messageId.
  */
-// In src/utilities/messageLogic.ts
 export async function massDeleteMessages(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
     const parentInteractionMessageIds = await getParentMessageIds(interactionData.id);
     
@@ -333,4 +338,173 @@ export function getMessageById(interactionData: InteractionData, messageId: stri
         }
     }
     return undefined;
+}
+
+// ─── Unified Message Factory ───────────────────────────────────────
+
+export interface CreateMessageOptions {
+    messageType?: messageType;
+    textContent?: string;
+    files?: string[];
+    frontCameraImage?: string;
+    targetCharacterIds?: string[];
+    toolExecutionResults?: ToolExecutionResult[];
+    knownCharacterNames?: Record<string, Record<string, boolean>>;
+    clothingWearingStatuses?: Record<string, boolean>;
+    characterLockedLocations?: Record<string, boolean>;
+    pendingToolActions?: PendingToolAction[];
+    activeToolActions?: ActiveToolActions;
+    inventory?: Inventory;
+    characterExpression?: string;
+    isPresent?: boolean;
+    remainingChatStamina?: number;
+    remainingActionStamina?: number;
+    parentMessageId?: string | null;
+    timestamp?: number;
+    interactionData?: InteractionData;
+    previousMessage?: HistoryMessage | null;
+    doNotRespond?: boolean;
+}
+
+function inferMessageType(options?: CreateMessageOptions): messageType {
+    if (options?.messageType) {
+        return options.messageType;
+    }
+
+    if (options?.targetCharacterIds && options.targetCharacterIds.length > 0) {
+        return 'whisper';
+    }
+
+    if (options?.textContent === undefined) {
+        return 'interaction';
+    }
+
+    if (isToolMessageText(options.textContent)) {
+        return 'tool';
+    }
+
+    return 'chat';
+}
+
+export function createMessage(character: Character, options?: CreateMessageOptions): HistoryMessage {
+    const interactionData = options?.interactionData;
+    const prev = options?.previousMessage !== undefined
+        ? options.previousMessage
+        : (interactionData ? findLatestMessage(interactionData, character)?.message : undefined);
+
+    const effectiveMaxChatStamina = getEffectiveMaximumChatStamina(character, interactionData?.profile);
+    const effectiveMaxActionStamina = getEffectiveMaximumActionStamina(character, interactionData?.profile);
+    const remainingChatStamina = options?.remainingChatStamina 
+        ?? prev?.remainingChatStamina 
+        ?? effectiveMaxChatStamina;
+    const remainingActionStamina = options?.remainingActionStamina 
+        ?? prev?.remainingActionStamina 
+        ?? effectiveMaxActionStamina;
+
+    const globalMessages = interactionData ? getGlobalMessageHistory(interactionData) : [];
+    const defaultParentId = globalMessages.length > 0 ? globalMessages[globalMessages.length - 1].id : null;
+    const parentMessageId = options?.parentMessageId !== undefined ? options.parentMessageId : defaultParentId;
+    const now = options?.timestamp ?? Date.now();
+
+    const knownCharacterNames = options?.knownCharacterNames ??
+        (character.knownCharacterNames
+            ? Object.fromEntries(
+                Object.entries(character.knownCharacterNames).map(([charId, names]) =>
+                    [charId, Object.fromEntries(names.map(n => [n, true] as const))]
+                )
+            )
+            : {});
+
+    const prevClothing = (prev as ChatMessage)?.characterClothingWearingStatuses;
+    const clothingWearingStatuses = options?.clothingWearingStatuses 
+        ?? prevClothing 
+        ?? initializeClothingWearingStatuses(character);
+
+    const characterLockedLocations = options?.characterLockedLocations 
+        ?? (prev?.characterLockedLocations ? { ...prev.characterLockedLocations } : {});
+
+    const inventory = options?.inventory 
+        ?? (prev?.inventory ? { ...prev.inventory } : undefined);
+
+    const activeToolActions = options?.activeToolActions 
+        ?? (prev?.activeToolActions ? { ...prev.activeToolActions } : undefined);
+
+    const resolvedType = inferMessageType(options);
+    const textContent = options?.textContent ?? '';
+
+    const baseMessage: BaseMessage = {
+        id: uuidv4(),
+        character: { ...character },
+        isPresent: options?.isPresent ?? true,
+        characterExpression: options?.characterExpression ?? prev?.characterExpression,
+        remainingChatStamina,
+        remainingActionStamina,
+        knownCharacterNames,
+        characterClothingWearingStatuses: clothingWearingStatuses,
+        characterLockedLocations,
+        inventory,
+        activeToolActions,
+        pendingToolActions: options?.pendingToolActions,
+        parentMessageId,
+        firstCreatedTimestamp: now,
+        lastUpdatedTimestamp: now,
+    };
+
+    switch (resolvedType) {
+        case 'interaction':
+            return {
+                ...baseMessage,
+                messageType: 'interaction',
+            } as InteractionMessage;
+
+        case 'whisper':
+            return {
+                ...baseMessage,
+                messageType: 'whisper',
+                textContent,
+                targetCharacterIds: options?.targetCharacterIds ?? [],
+                files: options?.files ?? [],
+                frontCameraImage: options?.frontCameraImage,
+                toolExecutionResults: options?.toolExecutionResults,
+                doNotRespond: options?.doNotRespond,
+                modelTextContentSummaries: {},
+                modelInteractionTextContentSummaries: {},
+                kvCacheTextContentPaths: {},
+                kvCacheTextContentSummaryPaths: {},
+                kvCacheInteractionTextContentSummaries: {},
+            } as WhisperMessage;
+
+        case 'tool':
+            return {
+                ...baseMessage,
+                messageType: 'tool',
+                textContent,
+                files: options?.files ?? [],
+                frontCameraImage: options?.frontCameraImage,
+                toolExecutionResults: options?.toolExecutionResults,
+            } as ToolMessage;
+
+        case 'narration':
+            return {
+                ...baseMessage,
+                messageType: 'narration',
+                textContent,
+            } as NarrationMessage;
+
+        default:
+            return {
+                ...baseMessage,
+                messageType: 'chat',
+                textContent,
+                files: options?.files ?? [],
+                frontCameraImage: options?.frontCameraImage,
+                toolExecutionResults: options?.toolExecutionResults,
+                doNotRespond: options?.doNotRespond,
+                modelTextContentSummaries: {},
+                modelInteractionTextContentSummaries: {},
+                kvCacheTextContentPaths: {},
+                kvCacheTextContentSummaryPaths: {},
+                kvCacheInteractionTextContentSummaries: {},
+            } as ChatMessage;
+    }
 }

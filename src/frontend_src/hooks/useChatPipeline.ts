@@ -1,6 +1,7 @@
 // src/frontend_src/hooks/useChatPipeline.ts
 import { useRef, useCallback, useEffect } from 'react';
-import { createChatMessage, convertIdsToDisplayNames, createNewInteractionData } from '../utilities/interactionDataLogic';
+import { convertIdsToDisplayNames, createNewInteractionData } from '../utilities/interactionDataLogic';
+import { createMessage } from '../utilities/messageLogic';
 import { processPendingToolActions } from '../services/ToolExecutor';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
@@ -122,7 +123,10 @@ export function useChatPipeline(deps: PipelineDependencies) {
         const currentLocId = getCurrentLocationId(base, p.character) || 'global';
         const newHistories = { ...base.interactionHistories };
         const currentLocMessages = newHistories[currentLocId] || [];
-        const chatMessage = createChatMessage(base, p.character, dt);
+        const chatMessage = createMessage(p.character, {
+            textContent: dt,
+            interactionData: base,
+        });
         newHistories[currentLocId] = [...currentLocMessages, chatMessage];
         return { ...base, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
     }, []);
@@ -371,7 +375,10 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 const liveText = streamingTextRef.current;
                 if (liveText && respondingChar) {
                     const currentLocId = getCurrentLocationId(ud, respondingChar) || 'global';
-                    const fallbackMsg = createChatMessage(ud, respondingChar, liveText);
+                    const fallbackMsg = createMessage(respondingChar, {
+                        textContent: liveText,
+                        interactionData: ud,
+                    });
                     if (streamingMessageIdRef.current) fallbackMsg.id = streamingMessageIdRef.current;
                     const newHistories = { ...ud.interactionHistories };
                     const currentLocMessages = newHistories[currentLocId] || [];
