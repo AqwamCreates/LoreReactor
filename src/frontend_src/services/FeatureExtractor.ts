@@ -270,9 +270,7 @@ export class FeatureExtractor {
         if (lastCallStart !== -1) {
             const callSlice = prompt.slice(lastCallStart, lastCallEnd !== -1 && lastCallEnd > lastCallStart ? lastCallEnd : undefined);
             const toolMatch = callSlice.match(/[⟪]\s*([a-zA-Z_]\w*)/);
-            if (toolMatch && toolMatch[1]) {
-                features[`activeTool:${toolMatch[1].toLowerCase()}`] = 1;
-            }
+            if (toolMatch?.[1]) features[`activeTool:${toolMatch[1].toLowerCase()}`] = 1;
         }
 
         // ── Positional Content Scoring (Log-Distance with explicit zero checks) ──
