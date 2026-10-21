@@ -15,7 +15,8 @@ import type {
   Clothing,
   Profile,
   cacheEfficiencyConfigurationType,
-  RawInteractionData
+  RawInteractionData,
+  ToolExecutionResult
 } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
@@ -50,7 +51,7 @@ import { isEntityActiveWithCache, doesAnyTriggerMatchCached, type CombinationCac
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. ";
 const beingIgnoredInstructions = "Anytime a character ignore me talking, there would be an awkward atmosphere. ";
 const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them. ";
-const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones. ";
+const noEmptyResponseInstruction = "I will also always create a response instead of giving empty ones. ";
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts. ";
 const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns. ";
 const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus. ";
@@ -98,11 +99,51 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
   }
 }
 
+/**
+ * Sanitizes raw tool call/result markers from text.
+ * - stripTools = true: Removes tool syntax entirely (for regex/embedding search spaces).
+ * - stripTools = false: Replaces tool calls with their actual textContent result (for other characters & summaries).
+ */
+export function sanitizeToolSyntax(
+    text: string, 
+    toolExecutionResults: ToolExecutionResult[] | undefined,
+    stripTools: boolean
+): string {
+    if (!text) return text;
+    let sanitized = text;
+
+    // 1. Precise replacement using saved execution results
+    if (toolExecutionResults && toolExecutionResults.length > 0) {
+        for (const res of toolExecutionResults) {
+            if (!sanitized.includes(res.rawMatch)) continue;
+            const stringReplacement = stripTools ? '' : res.textContent;
+            sanitized = sanitized.replace(res.rawMatch, stringReplacement);
+        }
+    }
+
+    // 2. Fallback regex for any uncaptured/legacy markers
+    const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const obsStart = escapeRegex(toolResultStartString);
+    const obsEnd = escapeRegex(toolResultEndString);
+    const callStart = escapeRegex(toolCallStartString);
+    const callEnd = escapeRegex(toolCallEndString);
+
+    // Strip observations ⟦...⟧ completely
+    const observationRegex = new RegExp(`${obsStart}[\\s\\S]*?${obsEnd}`, 'g');
+    sanitized = sanitized.replace(observationRegex, '');
+    
+    // Strip uncaptured calls ⟪...⟫ completely
+    const callRegex = new RegExp(`${callStart}[\\s\\S]*?${callEnd}`, 'g');
+    sanitized = sanitized.replace(callRegex, '');
+    
+    return sanitized.replace(/\s{2,}/g, ' ').trim();
+}
+
 const GLOBAL_STRINGS: Record<string, string> = {
   topicExpansionInstructions,
   beingIgnoredInstructions,
   noHallucinationInstructions,
-  noEmptyResponseInstructions,
+  noEmptyResponseInstruction,
   mistakeCorrectionInstructions,
   languageInstructions,
   literaryDeviceInstructions,
@@ -1011,7 +1052,8 @@ function buildPromptContext(
   for (const msg of localHistory) {
     if (isTextMessage(msg) && isMessageVisibleTo(msg, characterId)) {
       characterIdArray.push(msg.character.id);
-      textContentArray.push(msg.textContent);
+      // 🛡️ Strip tool syntax from search spaces so it doesn't trigger regex/embeddings
+      textContentArray.push(sanitizeToolSyntax(msg.textContent, (msg as ChatMessage).toolExecutionResults, true));
     }
   }
   const currentLocationId = getCurrentLocationId(interactionData, character);
@@ -1278,7 +1320,7 @@ function buildThinkPromptText(ctx: PromptBuildContext): string {
 
 function buildMetaThinkText(ctx: PromptBuildContext): string {
   const characterInstructions = `I will respond exclusively as ${ctx.characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${ctx.characterParticipantTag} is likely to use.`;
-  return `${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions}`;
+  return `${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstruction} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions}`;
 }
 
 async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string> {
@@ -1417,7 +1459,11 @@ async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
   coLocatedIds.add(ctx.characterId);
   const socialHistoryText = ctx.localHistory
     .filter(m => isTextMessage(m) && coLocatedIds.has(m.character.id))
-    .map(m => `[${m.character.name}]: ${(m as TextMessage).textContent}`)
+    .map(m => {
+        // 🛡️ Sanitize tool syntax from social history so memory retrievals aren't polluted by backend plumbing
+        const cleanText = sanitizeToolSyntax((m as TextMessage).textContent, (m as ChatMessage).toolExecutionResults, true);
+        return `[${m.character.name}]: ${cleanText}`;
+    })
     .join('\n');
   const retrieved = await retrieveEligibleMemories(
     ctx.character,
@@ -1460,7 +1506,7 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
     const preArrivalHistory = getLatestLocalLocationMessageHistory(ctx.interactionData, ['chat', 'whisper']);
     if (preArrivalHistory.length > 0) {
       const historyText = preArrivalHistory
-        .map(m => `[${m.character.name}]: ${(m as TextMessage).textContent}`)
+        .map(m => `[${m.character.name}]: ${sanitizeToolSyntax((m as TextMessage).textContent, (m as ChatMessage).toolExecutionResults, true)}`)
         .join('\n');
       const queryVector = await embeddingEngine.embed(historyText);
       if (queryVector) {
@@ -1679,7 +1725,7 @@ function buildAntiRepetitionNudgeText(ctx: PromptBuildContext): string {
   const localHistory = getLocalMessageHistory(ctx.interactionData, ctx.character, ['chat', 'whisper'], windowSize);
   const recentAiMessages = localHistory.filter(m => m.character.id === ctx.characterId) as TextMessage[];
   if (recentAiMessages.length < 2) return '';
-  const texts = recentAiMessages.map(m => m.textContent);
+  const texts = recentAiMessages.map(m => sanitizeToolSyntax(m.textContent, (m as ChatMessage).toolExecutionResults, true));
   const extractSentenceShingles = (text: string): Set<string>[] => {
     const rawSentences = text.split(/(?<=[.!?])\s+|\n+/).filter(s => s.length > 0);
     const sentenceShingles: Set<string>[] = [];
@@ -1975,8 +2021,21 @@ export function createChatHistoryArray(
     const whisperSuffix = isWhisper ? ' [Whisper]' : '';
     const finalRoleStr = `${roleStr}${whisperSuffix}`;
     let chatHistoryText = ctx.delimiters.turnStart(finalRoleStr);
+    
+    let historyText = p.text;
+    
+    // 🛡️ DIVERGENCE: Clean tool markers for OTHER characters
+    const isSelf = p.msg.character.id === ctx.characterId;
+    if (!isSelf) {
+        historyText = sanitizeToolSyntax(
+            historyText,
+            (p.msg as ChatMessage).toolExecutionResults,
+            false
+        );
+    }
+
     const replacedText = replacePlaceholders(
-      p.text,
+      historyText,
       ctx.characterParticipantTag,
       ctx.characterName,
       ctx.coLocatedProtagonists,
@@ -2640,8 +2699,12 @@ export async function buildPrompt(
         );
         for (const msg of chatHistoryForTemplate) {
           const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
-          const content = replacePlaceholders(
-            selectModelSummary(msg, modelId),
+          let content = selectModelSummary(msg, modelId);
+          if (msg.character.id !== ctx.characterId) {
+              content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
+          }
+          content = replacePlaceholders(
+            content,
             ctx.characterParticipantTag,
             ctx.characterName,
             ctx.coLocatedProtagonists,
@@ -2674,8 +2737,12 @@ export async function buildPrompt(
         );
         for (const msg of chatHistoryForTemplate) {
           const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
-          const content = replacePlaceholders(
-            selectModelSummary(msg, modelId),
+          let content = selectModelSummary(msg, modelId);
+          if (msg.character.id !== ctx.characterId) {
+              content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
+          }
+          content = replacePlaceholders(
+            content,
             ctx.characterParticipantTag,
             ctx.characterName,
             ctx.coLocatedProtagonists,

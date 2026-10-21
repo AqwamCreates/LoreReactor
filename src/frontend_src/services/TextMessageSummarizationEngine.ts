@@ -3,7 +3,7 @@ import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, 
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryArray, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredTextMessages, deriveDelimiters } from '../utilities/promptLogic';
+import { createChatHistoryArray, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredTextMessages, deriveDelimiters, sanitizeToolSyntax } from '../utilities/promptLogic';
 import { detectName } from '../utilities/nameDetection';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities/locationLogic';
@@ -56,8 +56,11 @@ export async function generateMessageSummary(
 ): Promise<string | null> {
     if (message.messageType !== 'chat') return null;
     const chatMsg = message as ChatMessage;
-    const text = chatMsg.textContent;
+    let text = chatMsg.textContent;
     if (!text) return null;
+
+    // 🛡️ Clean raw syntax before feeding to summarizer
+    text = sanitizeToolSyntax(text, chatMsg.toolExecutionResults, true);
 
     const stops = getSummarizationStopTokens(profile?.interactionDataSummarizationStopPattern);
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
@@ -266,9 +269,11 @@ async function compressChunk(
         (m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent);
     if (chatMessages.length === 0) return null;
 
-    const formattedMessages = chatMessages.map(m =>
-        `${m.character.name}: ${m.textContent}`
-    ).join('\n\n');
+    const formattedMessages = chatMessages.map(m => {
+        // 🛡️ Clean raw syntax before feeding to compressor
+        const cleanText = sanitizeToolSyntax(m.textContent, m.toolExecutionResults, true);
+        return `${m.character.name}: ${cleanText}`;
+    }).join('\n\n');
 
     const stops = getSummarizationStopTokens(profile?.interactionDataSummarizationStopPattern);
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formattedMessages}\n\nCompressed paragraph:`;
@@ -322,7 +327,11 @@ export async function generateLocationVisitSummary(
         const tag = otherParticipantId !== -1 ? `Character ${otherParticipantId + 1}` : 'Unknown';
         const charName = chatMsg.character.name;
 
-        const text = chatMsg.modelTextContentSummaries?.[modelId] || chatMsg.textContent;
+        let text = chatMsg.modelTextContentSummaries?.[modelId] || chatMsg.textContent;
+        
+        // 🛡️ Clean raw syntax before feeding to location memory generator
+        text = sanitizeToolSyntax(text, chatMsg.toolExecutionResults, true);
+
         scopedMessages.push(`${delimiters.turnStart(`${tag} (${charName})`)}${text}${delimiters.turnEnd}`);
     }
 
