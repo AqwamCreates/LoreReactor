@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useChatPipeline.ts
 import { useRef, useCallback, useEffect } from 'react';
 import { createChatMessage, convertIdsToDisplayNames, createNewInteractionData } from '../utilities/interactionDataLogic';
-import { processPendingToolActions, type ToolExecutionContext } from '../services/ToolExecutor';
+import { processPendingToolActions } from '../services/ToolExecutor';
 import { runSummarization } from '../services/SummarizationEngine';
 import { consumeChatStaminaForMessage } from '../utilities/characterLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
@@ -48,7 +48,6 @@ export interface PipelineDependencies {
     onStateBroadcastRef: React.MutableRefObject<((state: Partial<InteractionData>) => void) | undefined>;
     allCharactersRef: React.MutableRefObject<Character[]>;
     getActivePromptBlocks: (data: InteractionData | null | undefined) => PromptBlock[];
-    buildToolContext: () => ToolExecutionContext;
     isModelReadyForGeneration: () => boolean;
     isAtBottomRef: React.MutableRefObject<boolean>;
 }
@@ -59,7 +58,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
         throttledSetStreamingTextWithBroadcast, isSpeculatingRef, setStreamingText,
         streamingTextRef, resetStream, setStreamingState, setStats, setInteractionData,
         generateAmbientNarration, addToast, onMessageBroadcastRef, onStateBroadcastRef,
-        allCharactersRef, getActivePromptBlocks, buildToolContext, isModelReadyForGeneration,
+        allCharactersRef, getActivePromptBlocks, isModelReadyForGeneration,
         isAtBottomRef
     } = deps;
 
@@ -315,9 +314,18 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 );
             }
 
-            let turnResult: Awaited<ReturnType<typeof chatEngine.runTurn>> | null = null;
+            // ✅ PHASE 2: Bypass orchestrator completely for directed turns
+            let turnResult: Awaited<ReturnType<typeof chatEngine.runDirectedTurn>> | null = null;
             try {
-                turnResult = await chatEngine.runTurn(data, ctrl, promptBlocks, metadata, existingCharacterText, voiceTracker);
+                turnResult = await chatEngine.runDirectedTurn(
+                    data, 
+                    respondingChar, 
+                    ctrl, 
+                    promptBlocks, 
+                    metadata, 
+                    existingCharacterText, 
+                    voiceTracker
+                );
             } catch (e) {
                 if ((e as Error).name === 'AbortError') turnResult = { interactionData: data, isCompleted: false };
                 else throw e;
@@ -496,7 +504,17 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
         try {
             const promptBlocks = getActivePromptBlocks(currentData);
-            await chatEngine.runTurn(currentData, abortControllerRef.current || new AbortController(), promptBlocks, undefined, prefillText);
+            // ✅ Pass prefillText directly to the directed turn
+            await chatEngine.runDirectedTurn(
+                currentData, 
+                rawCharacter, 
+                abortControllerRef.current || new AbortController(), 
+                promptBlocks, 
+                undefined, 
+                undefined, 
+                undefined, 
+                prefillText
+            );
         } catch (e) {
             console.error('Delayed response error:', e);
         } finally {

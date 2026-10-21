@@ -25,14 +25,13 @@ import {
     computeChatStaminaConsumptionCost,
     computeMovementCost,
 } from '../utilities/dynamicCharacterLogic';
-import type { HandleServerResponseResult, TurnContext } from '../hooks/useChatEngine';
+import type { HandleServerResponseResult } from '../hooks/useChatEngine';
 
-// ✅ PHASE 1: Executor now accepts the unified TurnContext
-type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal, context: TurnContext) => Promise<HandleServerResponseResult | null>;
+// ✅ Reverted to pure 3-argument executor for Autonomous Simulation
+type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>;
 
 export interface TurnSequenceOptions {
-    singleTurn?: boolean; 
-    forcedSpeakerId?: string; 
+    singleTurn?: boolean; // True in Autonomous mode, false in manual chat
 }
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
@@ -81,7 +80,6 @@ export async function runTurnSequence(
     currentInteractionData: InteractionData,
     executor: TurnExecutor,
     abortController: AbortController,
-    context: TurnContext, // ✅ Added Context parameter
     onSpeakerChange?: (char: Character | null) => void,
     onIntermediateData?: (data: InteractionData) => void,
     options?: TurnSequenceOptions
@@ -155,36 +153,26 @@ export async function runTurnSequence(
         }
 
         const globalWinner = weightedSample(globalPool);
-        
-        let effectiveWinner = globalWinner;
-        if (options?.forcedSpeakerId) {
-            const forcedChar = remaining.find(c => c.id === options.forcedSpeakerId);
-            if (forcedChar) {
-                effectiveWinner = { item: forcedChar, weight: 1 };
-            }
-        }
+        if (!globalWinner) break;
 
-        if (!effectiveWinner) break;
-
-        const effectiveSkip = computeEffectiveSkip(effectiveWinner, workingData, triggeringMessageText);
-        if (Math.random() < effectiveSkip && !options?.forcedSpeakerId) {
-            actedThisSequence.add(effectiveWinner.id);
+        const effectiveSkip = computeEffectiveSkip(globalWinner, workingData, triggeringMessageText);
+        if (Math.random() < effectiveSkip) {
+            actedThisSequence.add(globalWinner.id);
             if (options?.singleTurn) break;
             continue;
         }
 
-        const winnerCoLocated = isCoLocatedWithAnyProtagonist(workingData, effectiveWinner.id, protagonistLocIds, !!hasLocations);
+        const winnerCoLocated = isCoLocatedWithAnyProtagonist(workingData, globalWinner.id, protagonistLocIds, !!hasLocations);
 
-        if (winnerCoLocated || options?.forcedSpeakerId) {
+        if (winnerCoLocated) {
             const chatEligible = remaining.filter(p => {
                 if (spokenThisSequence.has(p.id)) return false;
                 if (chatRefusedThisIteration.has(p.id)) return false;
-                if (options?.forcedSpeakerId && p.id === options.forcedSpeakerId) return true;
                 return isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIds, !!hasLocations);
             });
 
             if (chatEligible.length === 0) {
-                actedThisSequence.add(effectiveWinner.id);
+                actedThisSequence.add(globalWinner.id);
                 if (options?.singleTurn) break;
                 continue;
             }
@@ -192,26 +180,18 @@ export async function runTurnSequence(
             const chatPool: { item: Character; weight: number }[] = [];
             for (const char of chatEligible) {
                 const score = computeChatScore(char, workingData);
-                if (score > 0 || (options?.forcedSpeakerId && char.id === options.forcedSpeakerId)) {
-                    chatPool.push({ item: char, weight: score > 0 ? score : 1 });
-                }
+                if (score > 0) chatPool.push({ item: char, weight: score });
             }
 
-            let speaker = weightedSample(chatPool);
-            
-            if (options?.forcedSpeakerId) {
-                const forcedChar = chatEligible.find(c => c.id === options.forcedSpeakerId);
-                if (forcedChar) speaker = { item: forcedChar, weight: 1 };
-            }
-
+            const speaker = weightedSample(chatPool);
             if (!speaker) {
-                actedThisSequence.add(effectiveWinner.id);
+                actedThisSequence.add(globalWinner.id);
                 if (options?.singleTurn) break;
                 continue;
             }
 
             const chatProb = getEffectiveChatProbability(speaker, profile);
-            if (chatProb < 1 && Math.random() >= chatProb && !options?.forcedSpeakerId) {
+            if (chatProb < 1 && Math.random() >= chatProb) {
                 chatRefusedThisIteration.add(speaker.id);
                 if (options?.singleTurn) break;
                 continue;
@@ -219,8 +199,7 @@ export async function runTurnSequence(
 
             if (onSpeakerChange) onSpeakerChange(speaker);
 
-            // ✅ Pass the context down to the executor
-            const result = await executor(workingData, speaker, abortController.signal, context);
+            const result = await executor(workingData, speaker, abortController.signal);
 
             if (!result) {
                 sequenceCompleted = false;
@@ -313,7 +292,7 @@ export async function runTurnSequence(
 
             const mover = weightedSample(actionPool);
             if (!mover) {
-                actedThisSequence.add(effectiveWinner.id);
+                actedThisSequence.add(globalWinner.id);
                 if (options?.singleTurn) break;
                 continue;
             }

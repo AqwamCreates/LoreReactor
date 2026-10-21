@@ -185,7 +185,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         isMultiplayerClient, chatEngine, acquireLock, releaseLock, isLoadingRef, throttledSetStreamingTextWithBroadcast,
         isSpeculatingRef, setStreamingText, streamingTextRef, resetStream, setStreamingState, setStats, setInteractionData,
         generateAmbientNarration, addToast, onMessageBroadcastRef, onStateBroadcastRef, allCharactersRef, getActivePromptBlocks,
-        buildToolContext, isModelReadyForGeneration, isAtBottomRef
+        isModelReadyForGeneration, isAtBottomRef
     });
 
     // ─── Sender Initialization ─────────────────────────────────────
