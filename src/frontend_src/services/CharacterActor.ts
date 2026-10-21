@@ -69,7 +69,7 @@ export interface TurnExecutionParams {
     activeStrategy: BudgetStrategy | null;
     strategyOverride?: BudgetStrategy | null;
     existingCharacterText?: string;
-    prefillText?: string; // ✅ Added prefillText parameter
+    prefillText?: string; // ✅ PHASE 2: Added prefillText
     allPromptBlocks: PromptBlock[];
     callbacks?: TurnStreamCallbacks;
     isMultiplayerClient?: boolean;
@@ -178,7 +178,6 @@ function applyToolReplacements(
     for (let i = 0; i < replacements.rawReplacements.length; i++) {
         const { rawMatch, resultText } = replacements.rawReplacements[i];
 
-        // Raw prompt context: delimited observation boundary (⟪tool()⟫⟦result: ...⟧)
         const rawReplacement = `${rawMatch}${toolResultStartString}result: ${resultText}${toolResultEndString} `;
         if (currentRaw.includes(rawMatch)) {
             currentRaw = currentRaw.replace(rawMatch, rawReplacement);
@@ -191,7 +190,6 @@ function applyToolReplacements(
     acc.setRaw(currentRaw);
 
     if (displayContext) {
-        // Compile display representation dynamically adhering to the configured placement mode
         const compiled = compileMessageDisplayText(
             currentRaw,
             displayContext.displayMode,
@@ -228,14 +226,11 @@ function classifyError(error: unknown, signal: AbortSignal): TurnError {
 
 function nukeHallucinatedResults(text: string): string {
     let clean = text;
-    
-    // Only nuke trailing unclosed observations (leaving completed legitimate observations intact)
     const lastOpen = clean.lastIndexOf(toolResultStartString);
     const lastClose = clean.lastIndexOf(toolResultEndString);
     if (lastOpen !== -1 && lastOpen > lastClose) {
         clean = clean.substring(0, lastOpen);
     }
-    
     return clean;
 }
 
@@ -305,10 +300,8 @@ export class CharacterActor {
         let previousExpression: string | null = null;
         let lastIsCompleted = true;
 
-        // ✅ isResuming is ONLY true if we are continuing an existing message
+        // ✅ PHASE 2: isResuming is ONLY true if we are continuing an existing message
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
-        
-        // ✅ seedText is used for the prompt prefill and accumulator, but doesn't force isResuming
         const seedText = existingCharacterText || prefillText || '';
 
         const filteredMessages = getFilteredTextMessages(data, character.id, allPromptBlocks);
@@ -324,7 +317,6 @@ export class CharacterActor {
             character,
         };
 
-        // Track persistent state across passes
         let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
         let accumulatedActiveToolActions: ActiveToolActions = latestMsg?.activeToolActions ? { ...latestMsg.activeToolActions } : {};
         let accumulatedPendingActions: PendingToolAction[] = [];
@@ -346,7 +338,7 @@ export class CharacterActor {
         }
 
         try {
-            let currentExistingText = seedText; // ✅ Use seedText here
+            let currentExistingText = seedText;
             let finalBudgetData: BudgetData | null = null;
             let lastPromptText = '';
 
@@ -390,7 +382,6 @@ export class CharacterActor {
                     const parsed = parser.processChunk(delta);
                     let newRaw = acc.raw + delta;
 
-                    // Truncate fake hallucinations immediately
                     const hallucinationIdx = newRaw.indexOf(toolResultStartString, baseLength);
                     if (hallucinationIdx !== -1) {
                         newRaw = newRaw.substring(0, hallucinationIdx);
@@ -401,7 +392,6 @@ export class CharacterActor {
 
                     acc.setRaw(newRaw);
 
-                    // 1. Stop stream immediately upon complete tool call
                     if (parsed.toolInvocations.length > 0) {
                         for (const inv of parsed.toolInvocations) {
                             acc.addPendingInvocation(inv);
@@ -410,7 +400,6 @@ export class CharacterActor {
                         return;
                     }
 
-                    // 2. Compile display text dynamically from raw text adhering to placement mode
                     const compiled = compileMessageDisplayText(
                         newRaw,
                         displayCtx.displayMode,
@@ -434,7 +423,6 @@ export class CharacterActor {
                 },
             });
 
-            // ─── Single Stream Pass Execution Handler ───────────────
             const runSingleStreamPass = async (
                 reqBody: Record<string, unknown>,
                 isBudget: boolean
@@ -492,7 +480,6 @@ export class CharacterActor {
                 }
             };
 
-            // ─── Borrowed Model Path ────────────────────────────────
             if (borrowedModel) {
                 this.engine.setRunningModels(runningModels);
                 this.engine.setContext(borrowedModel);
@@ -521,7 +508,6 @@ export class CharacterActor {
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
 
-                    // Preserve state mutations made by tools on dummyTargetMsg across stream passes
                     if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
                     if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
                     if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
@@ -529,7 +515,6 @@ export class CharacterActor {
                     if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
-
                     applyToolReplacements(accState, toolResult, callbacks, displayContext);
 
                     if (params.voiceTracker) {
@@ -543,7 +528,6 @@ export class CharacterActor {
                 }
 
             } else if (strat) {
-                // ─── Budget Strategy Path ───────────────────────────
                 const bse = getBudgetStrategyEngine();
                 bse.setStrategy(strat);
                 bse.setRunningModels(runningModels);
@@ -604,7 +588,6 @@ export class CharacterActor {
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
 
-                    // Preserve state mutations made by tools on dummyTargetMsg across stream passes
                     if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
                     if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
                     if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
@@ -612,7 +595,6 @@ export class CharacterActor {
                     if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
-
                     applyToolReplacements(accState, toolResult, callbacks, displayContext);
 
                     if (params.voiceTracker) {
@@ -626,7 +608,6 @@ export class CharacterActor {
                 }
 
             } else {
-                // ─── Direct Model Path ──────────────────────────────
                 if (!selectedModel) {
                     return { error: { message: 'No model selected', type: 'no_model' } };
                 }
@@ -664,7 +645,6 @@ export class CharacterActor {
                     const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
                     if (!toolResult) break;
 
-                    // Preserve state mutations made by tools on dummyTargetMsg across stream passes
                     if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
                     if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
                     if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
@@ -672,7 +652,6 @@ export class CharacterActor {
                     if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
-
                     applyToolReplacements(accState, toolResult, callbacks, displayContext);
 
                     if (params.voiceTracker) {
@@ -691,7 +670,6 @@ export class CharacterActor {
                 return { error: { message: 'Empty response from model', type: 'inference' } };
             }
 
-            // Final display text compilation ensures 100% parity with saved message rendering
             const finalDisplayText = compileMessageDisplayText(
                 rawText,
                 displayContext.displayMode,
@@ -713,14 +691,9 @@ export class CharacterActor {
                         : msgs.findIndex(m => m.character.id === character.id && (m.messageType === 'chat' || m.messageType === 'whisper'));
                     if (targetIdx !== -1) {
                         newHistories[locId] = [...msgs];
-                        
-                        // Cast to a union of all message types that possess textContent and tool execution results
                         const targetMsg = { ...msgs[targetIdx] } as ChatMessage | WhisperMessage | ToolMessage | NarrationMessage;
-                        
-                        // FIX: Explicitly sync textContent with accumulated rawText on resume
                         targetMsg.textContent = rawText;
 
-                        // Narrow the type to exclude NarrationMessage, which lacks toolExecutionResults
                         if (allExecutionResults.length > 0 && targetMsg.messageType !== 'narration') {
                             targetMsg.toolExecutionResults = [
                                 ...(targetMsg.toolExecutionResults || []),
@@ -778,7 +751,6 @@ export class CharacterActor {
                     msg.toolExecutionResults = allExecutionResults;
                 }
 
-                // Both ChatMessage and ToolMessage inherit characterExpression from BaseMessage
                 msg.characterExpression = latestExpression ?? undefined;
 
                 const speakerLocationId = getCurrentLocationId(data, character) || 'global';

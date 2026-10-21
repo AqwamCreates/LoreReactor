@@ -21,18 +21,6 @@ export interface HandleServerResponseResult {
     displayText?: string;
 }
 
-// ✅ PHASE 1: Unified Context Object for the Generation Pipeline
-export interface TurnContext {
-    promptBlocks: PromptBlock[];
-    metadata?: RequestMetadata;
-    existingText?: string;
-    prefillText?: string;
-    voiceTracker?: StreamingVoiceTracker;
-    forcedSpeakerId?: string;
-    toolContext: ToolExecutionContext;
-    strategyOverride?: BudgetStrategy | null;
-}
-
 interface EngineDependencies {
     getState: () => any;
     setInteractionData: (d: InteractionData) => void;
@@ -43,6 +31,7 @@ interface EngineDependencies {
     setLastSelectedModelId: (id: string | null) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
+    getToolContext: () => ToolExecutionContext;
     acquireLock?: () => boolean;
     releaseLock?: () => void;
 }
@@ -58,15 +47,20 @@ export function useChatEngine(deps: EngineDependencies) {
     const handleServerResponse = useCallback(async (
         data: InteractionData, 
         character: Character,
+        allPromptBlocks: PromptBlock[], 
         signal: AbortSignal,
-        context: TurnContext,
         onToken?: (text: string) => void,
+        strategyOverride?: BudgetStrategy | null,
+        existingCharacterText?: string,
+        metadata?: RequestMetadata,
+        voiceTracker?: StreamingVoiceTracker,
+        prefillText?: string, // ✅ PHASE 2: Added prefillText
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
         const activeStrategy = getState().activeStrategy;
 
-        const isResuming = !!context.existingText && context.existingText.length > 0;
+        const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
 
         let borrowedModel: LanguageModel | null = null;
         if (requestBorrowedModel) {
@@ -100,23 +94,14 @@ export function useChatEngine(deps: EngineDependencies) {
             onExpression: (expr: string) => setSelectedCharacterExpression(expr),
         };
 
-        // Map the unified TurnContext to the Actor's specific execution params
         const outcome = await characterActor.executeTurn({
-            data, 
-            character, 
-            signal, 
-            selectedModel, 
-            runningModels, 
-            activeStrategy,
-            strategyOverride: context.strategyOverride, 
-            existingCharacterText: context.existingText, 
-            prefillText: context.prefillText,
-            allPromptBlocks: context.promptBlocks, 
+            data, character, signal, selectedModel, runningModels, activeStrategy,
+            strategyOverride, existingCharacterText, prefillText, allPromptBlocks, // ✅ Passed prefillText
             callbacks,
             borrowedModel,
-            metadata: context.metadata,
-            toolContext: context.toolContext,
-            voiceTracker: context.voiceTracker,
+            metadata,
+            toolContext: deps.getToolContext(),
+            voiceTracker,
         });
 
         if ('error' in outcome) {
@@ -127,6 +112,16 @@ export function useChatEngine(deps: EngineDependencies) {
             else if (error.type === 'budget') addToast(error.message, 'error');
             else addToast(`Inference Error: ${error.message}`, 'error');
             return null;
+        }
+
+        // ✅ In 'wait' mode, pause turn sequence progression until this character's voice narration finishes playing completely
+        const narrationBehaviour = data.profile?.textGenerationBehaviourOnNarration ?? 'wait';
+        if (voiceTracker && narrationBehaviour === 'wait') {
+            try {
+                await voiceTracker.waitForPlaybackCompletion();
+            } catch (e) {
+                console.warn('[useChatEngine] Voice playback completion error:', e);
+            }
         }
 
         const { result } = outcome;
@@ -148,6 +143,7 @@ export function useChatEngine(deps: EngineDependencies) {
             costWithoutCacheMisses: prev.costWithoutCacheMisses + result.statsDelta.costWithoutCacheMisses,
         }));
 
+        // PRESERVE LIVE PROFILE: Keep the current live profile from state (e.g. if autonomousMode was toggled off)
         const liveProfile = getState().interactionData?.profile;
         const baseUpdated = isResuming
             ? (getState().interactionData ?? result.updatedData)
@@ -158,22 +154,15 @@ export function useChatEngine(deps: EngineDependencies) {
             profile: liveProfile ?? baseUpdated.profile,
         };
         
+        // ✅ Commit the generated message to the UI state immediately
         setInteractionData(effectiveData);
 
+        // ✅ Clear the streaming overlay AND isLoading so the "Thinking..." indicator doesn't show up while audio plays.
         useSessionStore.setState({
             isLoading: false,
             streamingCharacter: null,
             streamingText: '',
         });
-
-        const narrationBehaviour = data.profile?.textGenerationBehaviourOnNarration ?? 'wait';
-        if (context.voiceTracker && narrationBehaviour === 'wait') {
-            try {
-                await context.voiceTracker.waitForPlaybackCompletion();
-            } catch (e) {
-                console.warn('[useChatEngine] Voice playback completion error:', e);
-            }
-        }
 
         return {
             interactionData: effectiveData,
@@ -182,18 +171,58 @@ export function useChatEngine(deps: EngineDependencies) {
             rawText: result.rawText,
             displayText: result.displayText,
         };
-    }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel]);
+    }, [getState, setStreamingState, setStats, setSelectedCharacterExpression, setBudgetData, setLastSelectedModelId, setInteractionData, addToast, requestBorrowedModel, deps.getToolContext]);
 
+    // ✅ PHASE 2: Directed Turn Execution (Bypasses Orchestrator)
+    const runDirectedTurn = useCallback(async (
+        initialData: InteractionData,
+        character: Character,
+        signal: AbortController,
+        promptBlocks: PromptBlock[],
+        metadata?: RequestMetadata,
+        existingCharacterText?: string,
+        voiceTracker?: StreamingVoiceTracker,
+        prefillText?: string,
+    ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
+        setStreamingState(character, '');
+        
+        const result = await handleServerResponse(
+            initialData, 
+            character, 
+            promptBlocks, 
+            signal.signal, 
+            undefined, 
+            undefined, 
+            existingCharacterText, 
+            metadata, 
+            voiceTracker,
+            prefillText
+        );
+
+        if (result) {
+            return {
+                interactionData: result.interactionData,
+                isCompleted: result.isCompleted,
+                promptText: result.promptText,
+            };
+        }
+        return { interactionData: initialData, isCompleted: false };
+    }, [handleServerResponse, setStreamingState]);
+
+    // Kept strictly for Autonomous Simulation Loop
     const runTurn = useCallback(async (
         initialData: InteractionData,
         signal: AbortController,
-        context: TurnContext,
+        promptBlocks: PromptBlock[],
+        metadata?: RequestMetadata,
+        existingCharacterText?: string,
+        voiceTracker?: StreamingVoiceTracker,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            const result = await handleServerResponse(d, c, s, context, onToken);
+            const result = await handleServerResponse(d, c, promptBlocks, s, onToken, undefined, existingCharacterText || '', metadata, voiceTracker);
             
             if (result?.promptText) {
                 lastPromptText = result.promptText;
@@ -206,10 +235,8 @@ export function useChatEngine(deps: EngineDependencies) {
             initialData,
             executor,
             signal, 
-            context, // ✅ Pass context to orchestrator
             (character) => setStreamingState(character ?? null, ''),
-            (data) => setInteractionData(data),
-            { forcedSpeakerId: context.forcedSpeakerId }
+            (data) => setInteractionData(data)
         );
 
         if (result) {
@@ -227,27 +254,19 @@ export function useChatEngine(deps: EngineDependencies) {
         checkCanAct: () => boolean,
         getData: () => InteractionData | null,
         setData: (data: InteractionData) => void,
-        resetStream: () => void,
-        toolContext: ToolExecutionContext
+        resetStream: () => void
     ) => {
-        const executor = async (d: InteractionData, c: Character, s: AbortSignal, ctx: TurnContext) => {
+        const executor = async (d: InteractionData, c: Character, s: AbortSignal) => {
             resetStream();
             setStreamingState(c, '');
-            return handleServerResponse(d, c, s, ctx);
+            return handleServerResponse(d, c, [], s, undefined, undefined, '', undefined);
         };
         
-        // Create a base context for autonomous mode
-        const autoContext: TurnContext = {
-            promptBlocks: [],
-            toolContext,
-        };
-
         characterSoul.start(
             executor, 
             checkCanAct, 
             getData, 
             setData,
-            autoContext,
             (character) => setStreamingState(character ?? null, ''),
             acquireLock,
             releaseLock
@@ -260,8 +279,9 @@ export function useChatEngine(deps: EngineDependencies) {
 
     return useMemo(() => ({
         handleServerResponse,
+        runDirectedTurn, // ✅ Exported
         runTurn,
         startAutonomousMode,
         stopAutonomousMode,
-    }), [handleServerResponse, runTurn, startAutonomousMode, stopAutonomousMode]);
+    }), [handleServerResponse, runDirectedTurn, runTurn, startAutonomousMode, stopAutonomousMode]);
 }
