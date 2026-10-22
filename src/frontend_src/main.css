@@ -1854,7 +1854,7 @@ height: 100%;
 }
 .vn-branch-indicator {
   position: absolute;
-  top: 100px;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 15;
@@ -1963,6 +1963,9 @@ min-height: 24px;
 .vn-nav-group:last-child { right: 8px; }
 .vn-reformat-grid { grid-template-columns: 1fr; }
 .vn-branch-button { font-size: 0.65rem; padding: 4px 12px; }
+.vn-branch-indicator {
+    top: 60px; /* Pushes below the stacked mobile header */
+  }
 }
 @media (max-width: 480px) {
 .vn-sprite { height: 35vh; width: calc(35vh * 9 / 16); }
