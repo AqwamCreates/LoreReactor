@@ -156,9 +156,13 @@ pointer-events: auto;
 overflow: visible;
 }
 .mode-vn .app-header {
-top: 0;
-left: 0;
-right: 0;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1; /* Keeps the buttons clickable over the VN stage */
+  background: transparent !important;
+  border-bottom: none !important;
 }
 .header-content {
 width: 100%;
@@ -4008,13 +4012,9 @@ max-width: 120px;
 ============================================================================= */
 .chat-container.has-location-bg {
   /* Native tint + image in a single layer: No ::before, no ::after, no child hacks */
-  background: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), var(--location-bg) center/cover no-repeat fixed !important;
+  background: linear-gradient(rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0.5)), var(--location-bg) center/cover no-repeat fixed !important;
 }
 
-/* In Visual Novel mode, let the stage handle its own background cleanly */
-.chat-container.mode-vn.has-location-bg {
-  background: #0a0a0f !important;
-}
 /* =============================================================================
 21. CHAT HISTORY & SEARCH PANEL (Top Bar Dropdown)
 ============================================================================= */
