@@ -69,11 +69,10 @@ html, body {
   height: -webkit-fill-available;
   min-height: 100vh;
   min-height: 100dvh;
-  width: 1126px;
+  width: 100%; /* Changed from 1126px */
   max-width: 100%;
   margin: 0 auto;
   text-align: center;
-  border-inline: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   box-sizing: border-box;
@@ -139,7 +138,7 @@ APP LAYOUT & HEADER (Shared)
     flex-direction: column;
     height: 100vh;
     height: 100dvh;
-    width: min(100%, 1200px);
+    width: 100%;
     margin: 0 auto;
     font-family: monospace;
     overflow: hidden;
@@ -199,7 +198,7 @@ APP LAYOUT & HEADER (Shared)
 
 .header-content {
     width: 100%;
-    max-width: 1200px;
+    max-width: 100%; /* Changed from 1200px */
     display: flex;
     flex-direction: column;
     gap: 6px;
