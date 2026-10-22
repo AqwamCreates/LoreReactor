@@ -781,7 +781,7 @@ function App() {
                     decorations: false,
                     alwaysOnTop: true,
                     shadow: false,     
-                    resizable: false,  
+                    resizable: true,  
                 });
                 setIsOverlayOpen(true);
             }

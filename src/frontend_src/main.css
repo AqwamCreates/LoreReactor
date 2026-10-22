@@ -5293,30 +5293,27 @@ REGEX TRIGGER EDITOR
 /* =============================================================================
 AI WAIFU / GAMER COMPANION OVERLAY (PiP & TAURI STANDALONE WINDOW)
 ============================================================================= */
-body.overlay-mode #root,
-.overlay-mode #root {
-    aspect-ratio: 340 / 540;
-    height: 100% !important;
-    max-height: 100% !important;
-    width: 100% !important;       /* <-- Change from 'auto' to '100%' */
-    max-width: 100% !important;
-    margin: 0 !important;          /* <-- Remove '0 auto' centering */
-    background: transparent !important;
-    border: none !important;
+html.overlay-mode,
+body.overlay-mode {
+    background: var(--bg, #16171d) !important; /* MATCHES APP BG - NO MORE BLACK EDGES */
+    margin: 0 !important;
+    padding: 0 !important;
     overflow: hidden !important;
+    width: 100% !important;
+    height: 100% !important;
 }
 
 body.overlay-mode #root,
 .overlay-mode #root {
-    aspect-ratio: 340 / 540; /* Directly set whatever ratio you want right here */
+    aspect-ratio: 340 / 540 !important; /* ✅ STRICT ASPECT RATIO LOCK RESTORED */
     height: 100% !important;
-    max-height: 100% !important;
-    width: auto !important;
-    max-width: 100% !important;
-    margin: 0 auto !important;
+    max-height: 100% !important;         /* ✅ MUST BE AUTO FOR ASPECT RATIO TO WORK */
+    margin: 0 auto !important;          /* ✅ Centers the locked ratio block */
     background: transparent !important;
     border: none !important;
     overflow: hidden !important;
+    box-shadow: none !important;
+    outline: none !important;
 }
 
 .pip-inapp-close {
