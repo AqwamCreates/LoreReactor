@@ -4671,7 +4671,7 @@ background: linear-gradient(to bottom, rgba(13, 13, 18, 0.05) 0%, rgba(13, 13, 1
 pointer-events: none;
 }
 .pip-avatar-img {
-height: 90%;
+max-height: 90%;
 width: 85%;
 object-fit: contain;
 object-position: center bottom;
