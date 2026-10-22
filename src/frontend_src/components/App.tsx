@@ -72,6 +72,8 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ChatMinimap } from './ChatMinimap';
+import { PriorityPlusToolbar } from './PriorityPlusToolbar';
+import type { ToolbarItem } from './PriorityPlusToolbar';
 import { ChatViewArea } from './views/ChatViewArea';
 import type { ViewModeProps, viewMode } from './views/types';
 import { defaultContextLength } from '../dictionaries/defaults';
@@ -1266,6 +1268,117 @@ function App() {
         }
     }, [getCompanionStateSnapshot]);
 
+    // ─── Header Toolbar (Priority+ Pattern) ────────────────────────────────
+    const viewModeIcon = viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖';
+    const viewModeLabel =
+        viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel';
+
+    const peerCount = mp.multiplayerSync.connectedPeers.length;
+
+    const headerToolbarItems: ToolbarItem[] = [
+        {
+            id: 'peers',
+            priority: 10,
+            label: `${peerCount} peer${peerCount !== 1 ? 's' : ''} connected`,
+            icon: '🟢',
+            isStatus: true,
+            hidden: !mp.multiplayerSync.isConnected,
+            render: () => (
+                <div className="peer-badge" title={`${peerCount} connected peer${peerCount !== 1 ? 's' : ''}`}>
+                    <span className="peer-badge-dot" />
+                    <span className="peer-badge-count">{peerCount}</span>
+                </div>
+            ),
+        },
+        {
+            id: 'viewMode',
+            priority: 20,
+            label: `Switch view (now: ${viewModeLabel})`,
+            icon: viewModeIcon,
+            onActivate: toggleViewMode,
+            render: () => (
+                <button
+                    type="button"
+                    onClick={toggleViewMode}
+                    className="view-mode-toggle"
+                    title="Switch View Mode"
+                >
+                    <span>{viewModeIcon}</span>
+                    <span className="view-mode-label">{viewModeLabel}</span>
+                </button>
+            ),
+        },
+        {
+            id: 'settings',
+            priority: 30,
+            label: 'Settings',
+            icon: '⚙️',
+            onActivate: modals.settings.open,
+            render: () => (
+                <button
+                    type="button"
+                    className="view-mode-toggle header-icon-button"
+                    onClick={modals.settings.open}
+                    title="Settings"
+                >
+                    <span>⚙️</span>
+                </button>
+            ),
+        },
+        {
+            id: 'overlay',
+            priority: 40,
+            label: isOverlayOpen ? 'Close Companion Overlay' : 'Open Companion Overlay',
+            icon: '🪟',
+            onActivate: handleToggleOverlay,
+            render: () => (
+                <button
+                    type="button"
+                    className={`view-mode-toggle header-icon-button ${isOverlayOpen ? 'active' : ''}`}
+                    onClick={handleToggleOverlay}
+                    title={isOverlayOpen ? 'Close Companion Overlay' : 'Open Companion Overlay'}
+                >
+                    <span>🪟</span>
+                </button>
+            ),
+        },
+        {
+            id: 'extensions',
+            priority: 50,
+            label: 'Extensions',
+            icon: '🧩',
+            onActivate: () => modals.extensionList.open(),
+            render: () => (
+                <button
+                    type="button"
+                    className="view-mode-toggle header-icon-button"
+                    onClick={() => modals.extensionList.open()}
+                    title="Extensions"
+                >
+                    <span>🧩</span>
+                </button>
+            ),
+        },
+        {
+            id: 'stats',
+            priority: 60,
+            label: 'Session Statistics',
+            icon: '📊',
+            isStatus: true,
+            render: () => (
+                <ChatStatisticsBar
+                    numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}
+                    maximumNumberOfTokens={maxContextLength}
+                    maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maxParticipantTokens}
+                    maximumNumberOfContextTokens={maxContextTokens}
+                    budgetSpent={budgetData?.budgetSpent}
+                    maximumBudget={activeStrategy?.maximumBudget}
+                    timeUntilReset={timeUntilReset}
+                />
+            ),
+        },
+    ];
+
     return (
         <>
             {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
@@ -1281,49 +1394,48 @@ function App() {
                             <div className="header-content">
                                 <div className="header-top">
                                     {viewMode === 'ladder' && safeMessages.length > 5 && (
-                                        <ChatMinimap messages={safeMessages.filter((m: HistoryMessage): m is ChatMessage => m.messageType === 'chat')} containerRef={chatHistoryRef} selectedCharacterId={currentCharacter?.id} />
-                                    )}
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                                        {interactionDataOperations.isEditingTitle
-                                            ? <input ref={el => el?.focus()} type="text" value={interactionDataOperations.editTitleValue} onChange={e => interactionDataOperations.setEditTitleValue(e.target.value)} onBlur={interactionDataOperations.handleSaveTitle} onKeyDown={e => { if (e.key === 'Enter') interactionDataOperations.handleSaveTitle(); if (e.key === 'Escape') interactionDataOperations.cancelEditTitle(); }} style={{ background: 'var(--social-bg)', border: '1px solid var(--accent)', color: 'var(--text-h)', padding: '4px 8px', borderRadius: '4px', fontSize: '1rem', fontWeight: 'bold', flexGrow: 1, maxWidth: '200px', outline: 'none' }} />
-                                            : <><span onClick={interactionDataOperations.handleStartEditTitle} title="Edit Title" style={{ fontSize: '0.9em', opacity: 0.3, cursor: 'pointer', transition: 'opacity 0.2s' }} onMouseEnter={e => e.currentTarget.style.opacity = '1'} onMouseLeave={e => e.currentTarget.style.opacity = '0.3'}>✎</span><div className="header-title" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'default' }}>{interactionData?.name || 'Untitled Session'}</div></>}
-                                    </div>
-                                    <div className="header-controls-group">
-                                        <button
-                                            type="button"
-                                            className={`view-mode-toggle ${isOverlayOpen ? 'active' : ''}`}
-                                            onClick={handleToggleOverlay}
-                                            title={isOverlayOpen ? "Close Companion Overlay" : "Open Companion Overlay"}
-                                            style={{ padding: '6px 10px' }}
-                                        >
-                                            <span>🪟</span>
-                                        </button>
-
-                                        <button type="button" className="view-mode-toggle" onClick={modals.settings.open} title="Settings" style={{ padding: '6px 10px' }}><span>⚙️</span></button>
-
-                                        <button type="button" className="view-mode-toggle" onClick={() => modals.extensionList.open()} title="Extensions" style={{ padding: '6px 10px' }}><span>🧩</span></button>
-
-                                        <button type="button" onClick={toggleViewMode} className="view-mode-toggle" title="Switch View Mode">
-                                            <span>{viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖'}</span>
-                                            <span>{viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel'}</span>
-                                        </button>
-
-                                        <ChatStatisticsBar
-                                            numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}
-                                            maximumNumberOfTokens={maxContextLength}
-                                            maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maxParticipantTokens}
-                                            maximumNumberOfContextTokens={maxContextTokens}
-                                            budgetSpent={budgetData?.budgetSpent}
-                                            maximumBudget={activeStrategy?.maximumBudget}
-                                            timeUntilReset={timeUntilReset}
+                                        <ChatMinimap
+                                            messages={safeMessages.filter((m: HistoryMessage): m is ChatMessage => m.messageType === 'chat')}
+                                            containerRef={chatHistoryRef}
+                                            selectedCharacterId={currentCharacter?.id}
                                         />
-                                        {mp.multiplayerSync.isConnected && (
-                                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', padding: '4px 8px', borderRadius: '12px', background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)', fontSize: '0.7rem', color: '#22c55e', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                                                <span>🟢</span>
-                                                <span>{mp.multiplayerSync.connectedPeers.length} Peer{mp.multiplayerSync.connectedPeers.length !== 1 ? 's' : ''}</span>
-                                            </div>
+                                    )}
+
+                                    <div className="header-title-block">
+                                        {interactionDataOperations.isEditingTitle ? (
+                                            <input
+                                                ref={(el) => el?.focus()}
+                                                type="text"
+                                                className="header-title-input"
+                                                value={interactionDataOperations.editTitleValue}
+                                                onChange={(e) => interactionDataOperations.setEditTitleValue(e.target.value)}
+                                                onBlur={interactionDataOperations.handleSaveTitle}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') interactionDataOperations.handleSaveTitle();
+                                                    if (e.key === 'Escape') interactionDataOperations.cancelEditTitle();
+                                                }}
+                                            />
+                                        ) : (
+                                            <>
+                                                <span
+                                                    className="header-title-edit-affordance"
+                                                    onClick={interactionDataOperations.handleStartEditTitle}
+                                                    title="Edit Title"
+                                                >
+                                                    ✎
+                                                </span>
+                                                <div className="header-title">
+                                                    {interactionData?.name || 'Untitled Session'}
+                                                </div>
+                                            </>
                                         )}
                                     </div>
+
+                                    <PriorityPlusToolbar
+                                        items={headerToolbarItems}
+                                        className="header-toolbar"
+                                        gap={6}
+                                    />
                                 </div>
                             </div>
                         </header>
