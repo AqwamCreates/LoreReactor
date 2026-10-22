@@ -40,6 +40,7 @@ interface CompanionState {
 
 export function CompanionOverlay() {
     const containerRef = useRef<HTMLDivElement>(null);
+    const hitCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
     const [state, setState] = useState<CompanionState>({
         avatarUrl: null, charName: 'Companion', isUser: false, isLoading: false,
@@ -103,9 +104,9 @@ export function CompanionOverlay() {
         if (displayedMessage) return displayedMessage.character;
         if (state.localProtagonist) return state.localProtagonist;
         if (state.interactionData?.participants?.[0]) return state.interactionData.participants[0];
-        const placeholderCharacter = {...defaultCharacter}
-        placeholderCharacter.id = 'conpanion'
-        placeholderCharacter.name = state.charName
+        const placeholderCharacter = {...defaultCharacter};
+        placeholderCharacter.id = 'conpanion';
+        placeholderCharacter.name = state.charName;
         return placeholderCharacter;
     }, [
         displayedMessage, state.localProtagonist, state.interactionData, 
@@ -134,8 +135,6 @@ export function CompanionOverlay() {
 
     const compiledDialogueText = useMemo(() => {
         if (!currentMessage) return '';
-        // ✅ FIX: compileMessageDisplayText expects the raw text string as the first argument, 
-        // followed by displayMode, placementMode, participants, character, and executionResults.
         const rawText = 'textContent' in currentMessage ? currentMessage.textContent : '';
         return compileMessageDisplayText(
             rawText, 
@@ -296,7 +295,87 @@ export function CompanionOverlay() {
     const [actionPunctuation, setActionPunctuation] = useState<ActionPunctuation>('.');
     const [isAutoFormat, setIsAutoFormat] = useState(false);
 
-    // Broadcast overlay closed event to synchronize button glow in App.tsx
+    // Hit-testing logic: limits click events strictly to the visible character pixels
+    const isPointOnCharacter = useCallback((img: HTMLImageElement, clientX: number, clientY: number): boolean => {
+        if (!img.naturalWidth || !img.naturalHeight) return true;
+
+        const rect = img.getBoundingClientRect();
+        const clickX = clientX - rect.left;
+        const clickY = clientY - rect.top;
+
+        const elemWidth = rect.width;
+        const elemHeight = rect.height;
+        const imgRatio = img.naturalWidth / img.naturalHeight;
+        const elemRatio = elemWidth / elemHeight;
+
+        let renderWidth: number;
+        let renderHeight: number;
+        let renderLeft: number;
+        let renderTop: number;
+
+        if (elemRatio > imgRatio) {
+            renderHeight = elemHeight;
+            renderWidth = elemHeight * imgRatio;
+            renderLeft = (elemWidth - renderWidth) / 2;
+            renderTop = 0;
+        } else {
+            renderWidth = elemWidth;
+            renderHeight = elemWidth / imgRatio;
+            renderLeft = 0;
+            renderTop = elemHeight - renderHeight;
+        }
+
+        // 1. Geometric bounds check: reject clicks outside the rendered image rect (e.g. empty space above)
+        if (
+            clickX < renderLeft ||
+            clickX > renderLeft + renderWidth ||
+            clickY < renderTop ||
+            clickY > renderTop + renderHeight
+        ) {
+            return false;
+        }
+
+        // 2. Pixel alpha check: reject transparent pixels above the head or silhouette
+        try {
+            if (!hitCanvasRef.current) {
+                hitCanvasRef.current = document.createElement('canvas');
+                hitCanvasRef.current.width = 1;
+                hitCanvasRef.current.height = 1;
+            }
+            const ctx = hitCanvasRef.current.getContext('2d', { willReadFrequently: true });
+            if (ctx) {
+                const normalizedX = (clickX - renderLeft) / renderWidth;
+                const normalizedY = (clickY - renderTop) / renderHeight;
+                const naturalX = Math.floor(normalizedX * img.naturalWidth);
+                const naturalY = Math.floor(normalizedY * img.naturalHeight);
+
+                ctx.clearRect(0, 0, 1, 1);
+                ctx.drawImage(img, naturalX, naturalY, 1, 1, 0, 0, 1, 1);
+                const pixel = ctx.getImageData(0, 0, 1, 1).data;
+                if (pixel[3] < 30) {
+                    return false;
+                }
+            }
+        } catch {
+            // If CORS restricts getImageData, geometric bounds check still blocks clicks above the image
+        }
+
+        return true;
+    }, []);
+
+    const handleAvatarClick = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+        if (!isPointOnCharacter(e.currentTarget, e.clientX, e.clientY)) {
+            return;
+        }
+        e.stopPropagation();
+        setActionMenuTarget((prev) => prev ? null : { x: e.clientX, y: e.clientY });
+    }, [isPointOnCharacter]);
+
+    const handleAvatarMouseMove = useCallback((e: React.MouseEvent<HTMLImageElement>) => {
+        const onChar = isPointOnCharacter(e.currentTarget, e.clientX, e.clientY);
+        e.currentTarget.style.cursor = onChar ? 'pointer' : 'default';
+    }, [isPointOnCharacter]);
+
     const handleClose = useCallback(async () => {
         try {
             const channel = new BroadcastChannel('lorereactor-companion-sync');
@@ -306,7 +385,6 @@ export function CompanionOverlay() {
         } catch {}
     }, []);
 
-    // Intercept Alt+F4 or window close requests so it hides and notifies App.tsx cleanly
     useEffect(() => {
         let unlisten: (() => void) | undefined;
         try {
@@ -321,7 +399,6 @@ export function CompanionOverlay() {
         };
     }, [handleClose]);
 
-    // Safety fallback for beforeunload
     useEffect(() => {
         const handleBeforeUnload = () => {
             try {
@@ -510,15 +587,19 @@ export function CompanionOverlay() {
             <div className="pip-avatar-stage">
                 {displayedAvatarUrl && state.locationBackgroundUrl && (
                     <>
-                        <div className="pip-location-bg" />
+                        <div className="pip-location-bg" style={{ backgroundImage: `url(${state.locationBackgroundUrl})` }} />
                         <div className="pip-location-vignette" />
                     </>
                 )}
                 {displayedAvatarUrl ? (
                     <img
-                        src={displayedAvatarUrl} alt={displayedSpeakerName} title="Click to interact"
+                        src={displayedAvatarUrl} 
+                        alt={displayedSpeakerName} 
+                        title="Click to interact"
+                        crossOrigin="anonymous"
                         className={`pip-avatar-img ${state.isLoading ? 'speaking' : ''}`}
-                        onClick={(e) => { e.stopPropagation(); setActionMenuTarget((prev) => prev ? null : { x: e.clientX, y: e.clientY }); }}
+                        onClick={handleAvatarClick}
+                        onMouseMove={handleAvatarMouseMove}
                     />
                 ) : (
                     <div
