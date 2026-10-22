@@ -279,7 +279,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     { tool: 'dialogue', label: 'Sample Dialogue Prompts', keywords: ['dialogue', 'speech style', 'mannerisms', 'quotes'], tier: 'in_world_readonly' },
     { tool: 'knowledge', label: 'Knowledge Base Access', keywords: ['knowledge', 'encyclopedia', 'archive', 'historian', 'wise', 'mentor'], tier: 'in_world_readonly' },
     { tool: 'memory', label: 'Long-Term Memory Management', keywords: ['memory', 'remember', 'recall', 'reminisce', 'nostalgia'], tier: 'in_world_readonly' },
-    { tool: 'narrate', label: 'Ambient Narration Injection', keywords: ['narrator', 'storyteller', 'dungeon master', 'author', 'chronicler'], tier: 'in_world_readonly' },
+    { tool: 'narrate', label: 'Narrate Things', keywords: ['narrator', 'storyteller', 'dungeon master', 'author', 'chronicler'], tier: 'in_world_readonly' },
     { tool: 'inspect', label: 'Inspect Character State', keywords: ['detective', 'inspector', 'analyst', 'investigator', 'scrutinizing', 'examine'], tier: 'in_world_readonly' },
 ];
 

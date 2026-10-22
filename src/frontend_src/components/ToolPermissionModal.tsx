@@ -11,6 +11,23 @@ interface ToolPermissionModalProps {
     onClose: () => void;
 }
 
+const actionButtonStyle: React.CSSProperties = {
+    fontSize: '0.65rem',
+    padding: '2px 8px',
+    height: '24px',
+    background: 'transparent',
+    border: '1px solid var(--border)',
+    borderRadius: '4px',
+    cursor: 'pointer',
+    fontWeight: 600,
+    fontFamily: 'inherit',
+    transition: 'all 0.15s',
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    color: 'var(--text-h)'
+};
+
 export function ToolPermissionModal({
     characterName,
     detectedTools,
@@ -178,17 +195,15 @@ export function ToolPermissionModal({
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('os_privileged', true)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px', color: '#ff6b6b' }}
+                                        style={{ ...actionButtonStyle, color: '#ff6b6b', borderColor: 'rgba(255, 68, 68, 0.3)' }}
                                     >
                                         Select All
                                     </button>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('os_privileged', false)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px' }}
+                                        style={actionButtonStyle}
                                     >
                                         Deselect All
                                     </button>
@@ -210,17 +225,15 @@ export function ToolPermissionModal({
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('entity_admin', true)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px', color: '#f59e0b' }}
+                                        style={{ ...actionButtonStyle, color: '#f59e0b', borderColor: 'rgba(245, 158, 11, 0.3)' }}
                                     >
                                         Select All
                                     </button>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('entity_admin', false)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px' }}
+                                        style={actionButtonStyle}
                                     >
                                         Deselect All
                                     </button>
@@ -242,17 +255,15 @@ export function ToolPermissionModal({
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('ambient', true)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px' }}
+                                        style={{ ...actionButtonStyle, color: 'var(--accent)', borderColor: 'var(--accent-border)' }}
                                     >
                                         Select All
                                     </button>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('ambient', false)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px' }}
+                                        style={actionButtonStyle}
                                     >
                                         Deselect All
                                     </button>
@@ -274,17 +285,15 @@ export function ToolPermissionModal({
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('in_world_mutating', true)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px', color: '#3b82f6' }}
+                                        style={{ ...actionButtonStyle, color: '#3b82f6', borderColor: 'rgba(59, 130, 246, 0.3)' }}
                                     >
                                         Select All
                                     </button>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('in_world_mutating', false)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px' }}
+                                        style={actionButtonStyle}
                                     >
                                         Deselect All
                                     </button>
@@ -306,17 +315,15 @@ export function ToolPermissionModal({
                                 <div style={{ display: 'flex', gap: '6px' }}>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('in_world_readonly', true)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px' }}
+                                        style={actionButtonStyle}
                                     >
                                         Select All
                                     </button>
                                     <button 
                                         type="button" 
-                                        className="toolbar-button" 
                                         onClick={() => handleSelectTier('in_world_readonly', false)}
-                                        style={{ fontSize: '0.6rem', padding: '1px 6px', height: '22px' }}
+                                        style={actionButtonStyle}
                                     >
                                         Deselect All
                                     </button>
