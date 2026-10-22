@@ -973,11 +973,9 @@ export interface Profile extends ObjectData {
   characterTextToSpeechModelSampler?: Sampler;
   webSummarizationSampler?: Sampler;
   interactionDataSummarizationSampler?: Sampler;
-  aiRecommendationSampler?: Sampler;
   characterStopPattern?: StopPattern;
   webSummarizationStopPattern?: StopPattern;
   interactionDataSummarizationStopPattern?: StopPattern;
-  aiRecommendationStopPattern?: StopPattern;
   characterDialogueRetrievalConfiguration?: RetrievalConfiguration
   characterStarterPromptRetrievalConfiguration?: RetrievalConfiguration
   characterKnowledgeRetrievalConfiguration?: RetrievalConfiguration
@@ -1041,11 +1039,9 @@ export interface RawProfile extends RawData {
   characterTextToSpeechModelSamplerId?: string;
   webSummarizationSamplerId?: string;
   interactionDataSummarizationSamplerId?: string;
-  aiRecommendationSamplerId?: string;
   characterStopPatternId?: string;
   webSummarizationStopPatternId?: string;
   interactionDataSummarizationStopPatternId?: string;
-  aiRecommendationStopPatternId?: string;
   characterDialogueRetrievalConfigurationId?: string
   characterStarterPromptRetrievalConfigurationId?: string
   characterKnowledgeRetrievalConfigurationId?: string

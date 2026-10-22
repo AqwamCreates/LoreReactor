@@ -1015,24 +1015,20 @@ const profileRepo = createRepository<Profile, RawProfile>({
     let characterTextToSpeechModelSampler: Sampler | undefined = undefined;
     let webSummarizationSampler: Sampler | undefined = undefined;
     let interactionDataSummarizationSampler: Sampler | undefined = undefined;
-    let aiRecommendationSampler: Sampler | undefined = undefined;
 
     if (raw.characterLanguageModelSamplerId) characterLanguageModelSampler = await loadRawSampler(raw.characterLanguageModelSamplerId) ?? undefined;
     if (raw.characterTextToSpeechModelSamplerId) characterTextToSpeechModelSampler = await loadRawSampler(raw.characterTextToSpeechModelSamplerId) ?? undefined;
     if (raw.webSummarizationSamplerId) webSummarizationSampler = await loadRawSampler(raw.webSummarizationSamplerId) ?? undefined;
     if (raw.interactionDataSummarizationSamplerId) interactionDataSummarizationSampler = await loadRawSampler(raw.interactionDataSummarizationSamplerId) ?? undefined;
-    if (raw.aiRecommendationSamplerId) aiRecommendationSampler = await loadRawSampler(raw.aiRecommendationSamplerId) ?? undefined;
 
     // Resolve Stop Patterns
     let characterStopPattern: StopPattern | undefined = undefined;
     let webSummarizationStopPattern: StopPattern | undefined = undefined;
     let interactionDataSummarizationStopPattern: StopPattern | undefined = undefined;
-    let aiRecommendationStopPattern: StopPattern | undefined = undefined;
 
     if (raw.characterStopPatternId) characterStopPattern = await loadRawStopPattern(raw.characterStopPatternId) ?? undefined;
     if (raw.webSummarizationStopPatternId) webSummarizationStopPattern = await loadRawStopPattern(raw.webSummarizationStopPatternId) ?? undefined;
     if (raw.interactionDataSummarizationStopPatternId) interactionDataSummarizationStopPattern = await loadRawStopPattern(raw.interactionDataSummarizationStopPatternId) ?? undefined;
-    if (raw.aiRecommendationStopPatternId) aiRecommendationStopPattern = await loadRawStopPattern(raw.aiRecommendationStopPatternId) ?? undefined;
 
     // Resolve Retrieval Configurations (Fixed to match RawProfile property names)
     let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
@@ -1100,11 +1096,9 @@ const profileRepo = createRepository<Profile, RawProfile>({
         characterTextToSpeechModelSampler: () => characterTextToSpeechModelSampler,
         webSummarizationSampler: () => webSummarizationSampler,
         interactionDataSummarizationSampler: () => interactionDataSummarizationSampler,
-        aiRecommendationSampler: () => aiRecommendationSampler,
         characterStopPattern: () => characterStopPattern,
         webSummarizationStopPattern: () => webSummarizationStopPattern,
         interactionDataSummarizationStopPattern: () => interactionDataSummarizationStopPattern,
-        aiRecommendationStopPattern: () => aiRecommendationStopPattern,
         characterDialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
         characterStarterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
         characterKnowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
@@ -1118,11 +1112,9 @@ const profileRepo = createRepository<Profile, RawProfile>({
       characterTextToSpeechModelSampler,
       webSummarizationSampler,
       interactionDataSummarizationSampler,
-      aiRecommendationSampler,
       characterStopPattern,
       webSummarizationStopPattern,
       interactionDataSummarizationStopPattern,
-      aiRecommendationStopPattern,
       characterDialogueRetrievalConfiguration,
       characterStarterPromptRetrievalConfiguration,
       characterKnowledgeRetrievalConfiguration,
@@ -1139,11 +1131,9 @@ const profileRepo = createRepository<Profile, RawProfile>({
       characterTextToSpeechModelSamplerId: characterTextToSpeechModelSampler?.id,
       webSummarizationSamplerId: webSummarizationSampler?.id,
       interactionDataSummarizationSamplerId: interactionDataSummarizationSampler?.id,
-      aiRecommendationSamplerId: aiRecommendationSampler?.id,
       characterStopPatternId: characterStopPattern?.id,
       webSummarizationStopPatternId: webSummarizationStopPattern?.id,
       interactionDataSummarizationStopPatternId: interactionDataSummarizationStopPattern?.id,
-      aiRecommendationStopPatternId: aiRecommendationStopPattern?.id,
       characterDialogueRetrievalConfigurationId: characterDialogueRetrievalConfiguration?.id,
       characterStarterPromptRetrievalConfigurationId: characterStarterPromptRetrievalConfiguration?.id,
       characterKnowledgeRetrievalConfigurationId: characterKnowledgeRetrievalConfiguration?.id,

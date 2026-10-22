@@ -39,9 +39,7 @@ interface AIRecommendationModalProps {
     allPromptBlocks: PromptBlock[];
     allEntityFolders: EntityFolder[];
     allLanguageModels: LanguageModel[];
-    selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning: boolean; port?: number }>;
-    aiRecommendationSampler: Sampler | undefined;
 }
 
 export function AIRecommendationModal({
@@ -49,7 +47,7 @@ export function AIRecommendationModal({
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
     allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], 
     allLanguageModels,
-    selectedModel, runningModels, aiRecommendationSampler
+    runningModels
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
@@ -65,11 +63,19 @@ export function AIRecommendationModal({
     
     const [localModelId, setLocalModelId] = useState<string>('');
     const [modelSearchQuery, setModelSearchQuery] = useState('');
+    
+    const [localSamplerId, setLocalSamplerId] = useState<string>('');
+    const [samplerSearchQuery, setSamplerSearchQuery] = useState('');
 
     const activeModel = useMemo(() => {
-        if (localModelId) return allLanguageModels.find(m => m.id === localModelId) || null;
-        return selectedModel;
-    }, [localModelId, allLanguageModels, selectedModel]);
+        if (!localModelId) return null;
+        return allLanguageModels.find(m => m.id === localModelId) || null;
+    }, [localModelId, allLanguageModels]);
+
+    const activeSampler = useMemo(() => {
+        if (!localSamplerId) return null;
+        return allSamplers.find(s => s.id === localSamplerId) || null;
+    }, [localSamplerId, allSamplers]);
 
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
@@ -141,6 +147,7 @@ export function AIRecommendationModal({
     const resetForm = useCallback(() => {
         setError(null); setUserPrompt(''); setMaxTokens(2048);
         setLocalModelId(''); setModelSearchQuery('');
+        setLocalSamplerId(''); setSamplerSearchQuery('');
         setImageInjectionPriority(['reference', 'character', 'context', 'location', 'promptBlock']);
         setDragIndex(null); setDragOverIndex(null);
         setJsonHistory([]); setEditingHistoryId(null); setEditingJsonText(''); setExpandedHistoryId(null);
@@ -316,7 +323,7 @@ export function AIRecommendationModal({
             const urp = userPrompt ? `\n\nUser Request: ${userPrompt}` : '\n\nUser Request: Generate freely.';
             const fp = `${sp}${urp}${imgDesc}${injBlock}`;
             let acc = '';
-            const requestBody = buildRequestBody(fp, maxTokens, aiRecommendationSampler, []);
+            const requestBody = buildRequestBody(fp, maxTokens, activeSampler ?? undefined, []);
             const res = await recommendationEngine.generateStream(
                 { ...requestBody, stream: true },
                 ctrl,
@@ -514,10 +521,24 @@ export function AIRecommendationModal({
                                 onSelect={setLocalModelId} 
                                 searchQuery={modelSearchQuery} 
                                 onSearchChange={setModelSearchQuery} 
-                                allowNone={true}
-                                noneLabel="Use Globally Selected Model"
-                                noneDescription={selectedModel ? `Default: ${selectedModel.name}` : 'No global model selected'}
                                 renderDescription={model => model.backend ? `${model.backend} • Context: ${model.contextLength}` : ''}
+                            />
+                        </div>
+
+                        <div className="editor-section">
+                            <span className="editor-section-title">Generation Sampler</span>
+                            <EntitySelect 
+                                label="Sampler" 
+                                description="Generation parameters used for the AI recommendation."
+                                items={allSamplers} 
+                                selectedId={localSamplerId} 
+                                onSelect={setLocalSamplerId} 
+                                searchQuery={samplerSearchQuery} 
+                                onSearchChange={setSamplerSearchQuery} 
+                                allowNone={true}
+                                noneLabel="No Sampler (Use Model Defaults)"
+                                noneDescription="Falls back to the language model's native generation settings."
+                                renderDescription={sampler => `Temp: ${sampler.parameters?.temperature ?? '?'}, TopP: ${sampler.parameters?.top_p ?? '?'}, Tokens: ${sampler.maximumNumberOfTokens ?? '?'}`}
                             />
                         </div>
 

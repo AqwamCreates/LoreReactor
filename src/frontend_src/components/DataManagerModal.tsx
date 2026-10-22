@@ -383,7 +383,6 @@ export function DataManagerModal({
                 p.characterTextToSpeechModelSampler?.id,
                 p.webSummarizationSampler?.id,
                 p.interactionDataSummarizationSampler?.id,
-                p.aiRecommendationSampler?.id
             ];
             for (const sId of samplerRefs) {
                 if (sId && samplerIdSet.has(sId)) referencedSamplerIds.add(sId);
@@ -393,7 +392,6 @@ export function DataManagerModal({
                 p.characterStopPattern?.id,
                 p.webSummarizationStopPattern?.id,
                 p.interactionDataSummarizationStopPattern?.id,
-                p.aiRecommendationStopPattern?.id
             ];
             for (const spId of stopPatternRefs) {
                 if (spId && stopPatternIdSet.has(spId)) referencedStopPatternIds.add(spId);
@@ -695,7 +693,6 @@ export function DataManagerModal({
                 { sampler: p.characterTextToSpeechModelSampler, label: 'TTS sampler' },
                 { sampler: p.webSummarizationSampler, label: 'web summarization sampler' },
                 { sampler: p.interactionDataSummarizationSampler, label: 'interaction data sampler' },
-                { sampler: p.aiRecommendationSampler, label: 'AI recommendation sampler' },
             ];
             for (const check of samplerChecks) {
                 if (check.sampler?.id && !samplerIdSet.has(check.sampler.id)) {
@@ -707,7 +704,6 @@ export function DataManagerModal({
                 { sp: p.characterStopPattern, label: 'character stop pattern' },
                 { sp: p.webSummarizationStopPattern, label: 'web summarization stop pattern' },
                 { sp: p.interactionDataSummarizationStopPattern, label: 'interaction data stop pattern' },
-                { sp: p.aiRecommendationStopPattern, label: 'AI recommendation stop pattern' },
             ];
             for (const check of stopPatternChecks) {
                 if (check.sp?.id && !stopPatternIdSet.has(check.sp.id)) {

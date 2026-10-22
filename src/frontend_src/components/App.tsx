@@ -1302,6 +1302,8 @@ function App() {
                 <button
                     type="button"
                     className={`view-mode-toggle header-icon-button ${isHistoryOpen ? 'active' : ''}`}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onTouchStart={(e) => e.stopPropagation()}
                     onClick={() => setIsHistoryOpen(prev => !prev)}
                     title="Chat History & Search"
                 >

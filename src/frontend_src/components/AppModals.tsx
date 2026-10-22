@@ -939,8 +939,7 @@ export function AppModals({
                     allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
                     allAudioTracks={allAudioTracks} allPromptBlocks={allPromptBlocks} allEntityFolders={allEntityFolders}
                     allLanguageModels={allLanguageModels} // ✅ PASS ALL LANGUAGE MODELS
-                    selectedModel={effectiveTokenizerModel} runningModels={runningModels}
-                    aiRecommendationSampler={interactionData?.profile?.aiRecommendationSampler}
+                    runningModels={runningModels}
                 />
             )}
 
