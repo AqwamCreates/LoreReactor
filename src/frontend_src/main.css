@@ -3996,10 +3996,12 @@ content: '';
 position: absolute;
 inset: 0;
 background: rgba(0, 0, 0, 0.45);
+z-index: 0; /* Restored */
 pointer-events: none;
 }
 .chat-container.has-location-bg > :not(.modal-overlay):not(.pip-modal-overlay) {
 position: relative;
+z-index: 1; /* Restored */
 }
 /* =============================================================================
 21. CHAT HISTORY & SEARCH PANEL (Top Bar Dropdown)
