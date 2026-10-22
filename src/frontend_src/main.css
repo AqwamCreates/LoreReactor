@@ -163,8 +163,6 @@ APP LAYOUT & HEADER (Shared)
 /* --- UNIFIED FROSTED-GLASS HEADER --- */
 .app-header {
     background: transparent !important;
-    backdrop-filter: blur(10px);
-    -webkit-backdrop-filter: blur(10px);
     border-bottom: 1px solid transparent !important;
     flex-shrink: 0;
     padding: 10px 20px;
