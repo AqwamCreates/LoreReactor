@@ -1355,6 +1355,14 @@ SHARED UI COMPONENTS (Context Bar, Input, Modals, etc.)
 MODE: LADDER (Standard Chat View)
 ============================================================================= */
 
+.mode-ladder .bubble-ai {
+    background: #1f2028; /* Solid opaque dark grey */
+}
+
+.mode-ladder .bubble-user {
+    background: #2b1f3d; /* Solid opaque dark purple */
+}
+
 .mode-ladder .bubble-ai .message-toolbar {
     left: -4px;
     right: auto;
@@ -4719,6 +4727,8 @@ EDITOR BULK ACTION BUTTONS (Tactile Feedback)
         rgba(0, 0, 0, 0.85) 100%
     );
 }
+
+
 
 /* =============================================================================
 21. CHAT MINIMAP
