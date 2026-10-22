@@ -1515,20 +1515,21 @@ background-position: center;
 background-repeat: no-repeat;
 }
 .vn-sprites-layer {
-position: absolute;
-top: 0;
-left: 0;
-right: 0;
-width: 100%;
-height: 75%;
-pointer-events: none;
-display: flex;
-align-items: flex-end;
-justify-content: center;
-box-sizing: border-box;
-padding: 0 15%;
-overflow-x: visible;
-overflow-y: hidden;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  width: 100%;
+  height: 75%;
+  pointer-events: none;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 1; /* <-- CRITICAL: Traps the inline zIndex (1-100) inside this layer */
+  box-sizing: border-box;
+  padding: 0 15%;
+  overflow-x: visible;
+  overflow-y: hidden;
 }
 .vn-character-layer {
 position: absolute;
@@ -1572,14 +1573,15 @@ transition: none !important;
 animation: none !important;
 }
 .vn-dialogue-layer {
-position: absolute;
-bottom: 80px;
-left: 0;
-right: 0;
-padding: 0 12px 12px 12px;
-pointer-events: auto;
-width: 100%;
-box-sizing: border-box;
+  position: absolute;
+  bottom: 80px;
+  left: 0;
+  right: 0;
+  z-index: 10; /* <-- Sits cleanly above the sprites layer (10 > 1) */
+  padding: 0 12px 12px 12px;
+  pointer-events: auto;
+  width: 100%;
+  box-sizing: border-box;
 }
 .vn-dialogue-box {
 background: rgba(10, 10, 20, 0.95);
@@ -1790,12 +1792,13 @@ font-style: italic;
 opacity: 0.85;
 }
 .vn-nav-arrows {
-position: absolute;
-top: 0;
-left: 0;
-right: 0;
-bottom: 20vh;
-pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 20vh;
+  pointer-events: none;
+  z-index: 15;
 }
 .vn-nav-group {
 position: absolute;
@@ -1850,11 +1853,12 @@ width: 100%;
 height: 100%;
 }
 .vn-branch-indicator {
-position: absolute;
-top: 100px;
-left: 50%;
-transform: translateX(-50%);
-pointer-events: auto;
+  position: absolute;
+  top: 100px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+  pointer-events: auto;
 }
 .vn-branch-button {
 background: rgba(10, 10, 20, 0.8);
