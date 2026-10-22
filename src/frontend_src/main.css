@@ -4004,31 +4004,16 @@ max-width: 120px;
 .budget-table th { font-size: 0.55rem; }
 }
 /* =============================================================================
-20. LOCATION BACKGROUND IMAGE
+20. LOCATION BACKGROUND IMAGE (Clean Native Multiple Backgrounds)
 ============================================================================= */
-.chat-container.has-location-bg { position: relative; }
-.chat-container.has-location-bg::before {
-content: '';
-position: absolute;
-inset: 0;
-background-image: var(--location-bg);
-background-size: cover;
-background-position: center;
-background-repeat: no-repeat;
-background-attachment: fixed;
-pointer-events: none;
+.chat-container.has-location-bg {
+  /* Native tint + image in a single layer: No ::before, no ::after, no child hacks */
+  background: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)), var(--location-bg) center/cover no-repeat fixed !important;
 }
-.chat-container.has-location-bg::after {
-content: '';
-position: absolute;
-inset: 0;
-background: rgba(0, 0, 0, 0.45);
-z-index: 0; /* Restored */
-pointer-events: none;
-}
-.chat-container.has-location-bg > :not(.modal-overlay):not(.pip-modal-overlay):not(.cinematic-stage) {
-  position: relative;
-  z-index: 1;
+
+/* In Visual Novel mode, let the stage handle its own background cleanly */
+.chat-container.mode-vn.has-location-bg {
+  background: #0a0a0f !important;
 }
 /* =============================================================================
 21. CHAT HISTORY & SEARCH PANEL (Top Bar Dropdown)
