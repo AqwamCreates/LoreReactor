@@ -212,21 +212,32 @@ function compileRawString(
     const unclosedCallRegex = new RegExp(`${callStartEsc}[\\s\\S]*$`, 'g');
     cleanText = cleanText.replace(unclosedCallRegex, '');
 
-    // 6. Re-inject tools based on placement mode
+    // ✅ Detect whether actual paragraph text (non-whitespace characters) exists
+    const hasParagraphText = /\S/.test(cleanText);
+
     let finalText = cleanText;
 
-    if (placementMode === 'top' || placementMode === 'bottom') {
+    // ── CASE 1: NO PARAGRAPH TEXT ──────────────────────────────────────
+    // If there is no dialogue text, the output is purely the tool icon(s).
+    // Zero newlines injected; no ghost lines above or below.
+    if (!hasParagraphText) {
+        extractedTools.sort((a, b) => a.originalIndex - b.originalIndex);
+        finalText = extractedTools.map(t => t.display).filter(Boolean).join(' ');
+    }
+    // ── CASE 2: PARAGRAPH TEXT DETECTED ────────────────────────────────
+    else if (placementMode === 'top' || placementMode === 'bottom') {
         extractedTools.sort((a, b) => a.originalIndex - b.originalIndex);
         const toolDisplays = extractedTools.map(t => t.display).filter(Boolean);
         
         if (toolDisplays.length > 0) {
-            // ✅ FIX: Join with a space so they accumulate inline on the same line.
             const joinedTools = toolDisplays.join(' ');
             
             if (placementMode === 'top') {
+                // Only append a newline before the paragraph text
                 const separator = finalText.startsWith('\n\n') ? '' : finalText.startsWith('\n') ? '\n' : '\n\n';
                 finalText = joinedTools + separator + finalText;
             } else {
+                // Paragraph text above tools: separate before joinedTools
                 const separator = finalText.endsWith('\n\n') ? '' : finalText.endsWith('\n') ? '\n' : '\n\n';
                 finalText = finalText + separator + joinedTools;
             }
@@ -245,10 +256,14 @@ function compileRawString(
         }
     }
 
-    // 7. Collapse "ghost paragraphs" (3+ newlines) left behind by extracted tools
+    // 7. Cleanup ghost formatting without using trim():
+    // Collapse 3+ newlines left by extracted tools into standard paragraph breaks
     finalText = finalText.replace(/(?:\r?\n[ \t]*){3,}/g, '\n\n');
+
+    // Remove leading/trailing newlines only (preserves indentation spaces & tabs)
+    finalText = finalText.replace(/^\r?\n+/, '').replace(/\r?\n+$/, '');
     
-    // Clean up multiple spaces
+    // Clean up multiple consecutive spaces
     finalText = finalText.replace(/ {2,}/g, ' ');
 
     if (character) {
