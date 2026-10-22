@@ -467,7 +467,7 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
 
 function executeThink(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const reasoning = pArgs.get(0, 'reasoning', 'thought', 'text') || pArgs.positional.join(' ');
+    const reasoning = pArgs.get(0, 'reasoning', 'thought', 'text', 'input') || pArgs.positional.join(' ');
 
     if (!reasoning) {
         return helpResult('think', 'reasoning="..."', 'evaluate context and plan next move internally');
