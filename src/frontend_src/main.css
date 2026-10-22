@@ -5306,8 +5306,7 @@ body.overlay-mode {
 body.overlay-mode #root,
 .overlay-mode #root {
     aspect-ratio: 340 / 540 !important; /* ✅ STRICT ASPECT RATIO LOCK RESTORED */
-    height: 100% !important;
-    max-height: 100% !important;         /* ✅ MUST BE AUTO FOR ASPECT RATIO TO WORK */
+    height: 100% !important;      /* ✅ MUST BE AUTO FOR ASPECT RATIO TO WORK */
     margin: 0 auto !important;          /* ✅ Centers the locked ratio block */
     background: transparent !important;
     border: none !important;
