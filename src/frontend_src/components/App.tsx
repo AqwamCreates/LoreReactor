@@ -71,7 +71,7 @@ import { ChatInput } from './ChatInput';
 import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
-import { ChatMinimap } from './ChatMinimap';
+import { ChatHistoryPanel } from './ChatHistoryPanel';
 import { PriorityPlusToolbar } from './PriorityPlusToolbar';
 import type { ToolbarItem } from './PriorityPlusToolbar';
 import { ChatViewArea } from './views/ChatViewArea';
@@ -492,6 +492,7 @@ function App() {
 
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [isOverlayOpen, setIsOverlayOpen] = useState(false);
+    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -1042,7 +1043,7 @@ function App() {
         displayNameCache,
         streamingText, 
         centerAvatar: viewAssets.centerAvatar,
-        locationBackgroundUrl: viewAssets.locationBackgroundUrl, // ✅ ADD THIS
+        locationBackgroundUrl: viewAssets.locationBackgroundUrl,
         parentMessageId: interactionData?.parentMessageId ?? null,
         parentInteractionDataName: parentChatName,
         chatHistoryRef, 
@@ -1292,6 +1293,24 @@ function App() {
             ),
         },
         {
+            id: 'history',
+            priority: 15,
+            label: 'Chat History & Search',
+            icon: '🔍',
+            onActivate: () => setIsHistoryOpen(prev => !prev),
+            render: () => (
+                <button
+                    type="button"
+                    className={`view-mode-toggle header-icon-button ${isHistoryOpen ? 'active' : ''}`}
+                    onClick={() => setIsHistoryOpen(prev => !prev)}
+                    title="Chat History & Search"
+                >
+                    <span>🔍</span>
+                    <span className="view-mode-label">History</span>
+                </button>
+            ),
+        },
+        {
             id: 'viewMode',
             priority: 20,
             label: `Switch view (now: ${viewModeLabel})`,
@@ -1392,16 +1411,8 @@ function App() {
                 {interactionData && (
                     <>
                         <header className="app-header">
-                            <div className="header-content">
+                            <div className="header-content" style={{ position: 'relative' }}>
                                 <div className="header-top">
-                                    {viewMode === 'ladder' && safeMessages.length > 5 && (
-                                        <ChatMinimap
-                                            messages={safeMessages.filter((m: HistoryMessage): m is ChatMessage => m.messageType === 'chat')}
-                                            containerRef={chatHistoryRef}
-                                            selectedCharacterId={currentCharacter?.id}
-                                        />
-                                    )}
-
                                     <div className="header-title-block">
                                         {interactionDataOperations.isEditingTitle ? (
                                             <input
@@ -1438,6 +1449,14 @@ function App() {
                                         gap={6}
                                     />
                                 </div>
+
+                                <ChatHistoryPanel
+                                    messages={safeMessages.filter((m: HistoryMessage): m is ChatMessage => m.messageType === 'chat')}
+                                    containerRef={chatHistoryRef}
+                                    selectedCharacterId={currentCharacter?.id}
+                                    isOpen={isHistoryOpen}
+                                    onClose={() => setIsHistoryOpen(false)}
+                                />
                             </div>
                         </header>
 

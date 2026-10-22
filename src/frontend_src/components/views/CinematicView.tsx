@@ -1,11 +1,9 @@
 // src/frontend_src/components/views/CinematicView.tsx
 import React, { useEffect, useCallback, useRef } from 'react';
 import type { ViewModeProps } from './types';
-import type { ChatMessage } from '../../types';
 import { MessageBubble } from '../MessageBubble';
 import { StreamingIndicators } from '../StreamingIndicators';
 import { ChatScrollButtons } from '../ChatScrollButtons';
-import { ChatMinimap } from '../ChatMinimap';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useGenerationStore } from '../../hooks/useGenerationStore';
@@ -142,14 +140,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                         onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
                     />
                 </div>
-            )}
-
-            {interactionData && displayMessages.length > 5 && (
-                <ChatMinimap
-                    messages={displayMessages.filter((m): m is ChatMessage => m.messageType === 'chat')}
-                    containerRef={chatHistoryRef}
-                    selectedCharacterId={selectedCharacterId ?? undefined}
-                />
             )}
 
             {interactionData && displayMessages.length > 3 && (
