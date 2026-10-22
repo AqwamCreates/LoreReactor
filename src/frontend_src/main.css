@@ -25,6 +25,14 @@ font-synthesis: none;
 text-rendering: optimizeLegibility;
 -webkit-font-smoothing: antialiased;
 -moz-osx-font-smoothing: grayscale;
+
+  --layer-base: 1;        /* Normal in-flow relative elements */
+  --layer-header: 10;     /* Sticky bars & headers */
+  --layer-dropdown: 20;   /* Slash command autocomplete, action menus */
+  --layer-stage: 30;      /* VN sprites, interactive avatars */
+  --layer-modal: 100;     /* Modal overlays & dialogs (must beat VN sprites) */
+  --layer-modal-nested: 110; /* Nested editors / top-level submodals */
+  --layer-toast: 200;     /* Toast notifications (must stay on top of everything) */
 }
 @media (max-width: 1024px) {
 :root {
@@ -1074,18 +1082,19 @@ opacity: 0.4;
 cursor: not-allowed;
 }
 .slash-autocomplete {
-position: absolute;
-bottom: 100%;
-left: 0;
-right: 0;
-background: var(--bg-secondary, #1e1e1e);
-border: 1px solid var(--border, #333);
-border-radius: 8px 8px 0 0;
-max-height: 400px;
-display: flex;
-flex-direction: column;
-box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
-overflow: hidden;
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  background: var(--bg-secondary, #1e1e1e);
+  border: 1px solid var(--border, #333);
+  border-radius: 8px 8px 0 0;
+  max-height: 400px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.4);
+  z-index: var(--layer-dropdown); /* 20 */
+  overflow: hidden;
 }
 .slash-autocomplete-breadcrumbs {
 display: flex;
@@ -1294,32 +1303,41 @@ height: 100vh;
 height: 100dvh;
 }
 .cinematic-stage {
-position: absolute;
-top: 45%;
-left: 50%;
-transform: translate(-50%, -50%);
-width: min(80vw, 50vh);
-height: min(80vw, 50vh);
-max-width: none;
-display: flex;
-flex-direction: column;
-align-items: center;
-justify-content: flex-end;
-pointer-events: auto;
-cursor: pointer;
-transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
-opacity: 0;
-filter: blur(25px) brightness(0.2) grayscale(1);
-overflow: hidden;
+  position: absolute !important; /* Forces it to remain absolute */
+  top: 50%;                      /* Change 45% -> 50% for true vertical center */
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(80vw, 50vh);
+  height: min(80vw, 50vh);
+  max-width: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;       /* Centers the image content inside the box */
+  pointer-events: auto;
+  cursor: pointer;
+  z-index: var(--layer-stage, 30);
+  transition: all 0.5s cubic-bezier(0.25, 0.8, 0.25, 1);
+  opacity: 0;
+  filter: blur(25px) brightness(0.2) grayscale(1);
+  overflow: hidden;
 }
 .cinematic-stage.active {
-opacity: 1;
-filter: blur(0px) brightness(1) grayscale(0);
-transform: translate(-50%, -50%) scale(1.0);
+  opacity: 1;
+  filter: blur(0px) brightness(1) grayscale(0);
+  transform: translate(-50%, -50%) scale(1.0);
 }
-.cinematic-stage:hover .cinematic-avatar-img {
-transform: scale(1.02);
-filter: brightness(1.1);
+.cinematic-avatar-img {
+  object-fit: contain;
+  object-position: center center; /* Ensures the portrait aligns dead-center */
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  max-width: none;
+  pointer-events: auto;
+  mask-image: linear-gradient(to bottom, black 20%, transparent 95%);
+  -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent 95%);
+  transition: transform 0.3s ease, filter 0.3s ease;
 }
 .cinematic-avatar-img {
 object-fit: contain;
@@ -1469,14 +1487,14 @@ overflow: hidden;
 margin: 0;
 }
 @media (max-width: 768px) and (orientation: portrait) {
-.cinematic-stage {
-width: min(90vw, 45vh);
-height: min(90vw, 45vh);
-top: 40%;
+  .cinematic-stage {
+    width: min(90vw, 45vh);
+    height: min(90vw, 45vh);
+    top: 50%; /* Keeps it centered on mobile portrait */
+  }
 }
 .mode-cinematic .chat-history { height: 35vh; }
 .mode-cinematic .message-bubble { padding: 16px 20px; max-width: 90%; }
-}
 /* =============================================================================
 MODE: VISUAL NOVEL (Sprite Stage View)
 ============================================================================= */
@@ -2191,28 +2209,28 @@ padding: 8px 12px;
 8. MODALS & MANAGER LISTS
 ============================================================================= */
 .modal-overlay {
-position: fixed;
-top: 0;
-left: 0;
-right: 0;
-bottom: 0;
-background: rgba(0, 0, 0, 0.6);
-display: flex;
-align-items: center;
-justify-content: center;
-backdrop-filter: blur(4px);
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: var(--layer-modal); /* Kept cleanly at 100 to beat page contents & VN sprites */
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 .modal-content {
-background: var(--bg);
-width: 90%;
-max-width: 600px;
-max-height: 80vh;
-border-radius: 12px;
-border: 1px solid var(--border);
-box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-display: flex;
-flex-direction: column;
-overflow: hidden;
+  background: var(--bg);
+  width: 90%;
+  max-width: 600px;
+  max-height: 85vh;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative; /* Establishes clean positioning boundary for inputs */
 }
 .modal-content-manager {
 max-width: 600px;
@@ -3242,14 +3260,15 @@ transition: opacity 0.15s;
 12. TOAST NOTIFICATIONS
 ============================================================================= */
 .toast-container {
-position: fixed;
-top: calc(20px + env(safe-area-inset-top, 0px));
-right: 20px;
-display: flex;
-flex-direction: column;
-gap: 10px;
-pointer-events: none;
-max-width: calc(100vw - 40px);
+  position: fixed;
+  top: calc(20px + env(safe-area-inset-top, 0px));
+  right: 20px;
+  z-index: var(--layer-toast); /* 200: Always visible over open modals */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+  max-width: calc(100vw - 40px);
 }
 .toast {
 pointer-events: auto;
@@ -3309,17 +3328,18 @@ to { transform: translateX(0); opacity: 1; }
 13. ACTION MENU
 ============================================================================= */
 .action-menu-container {
-position: fixed;
-background: var(--bg);
-border: 1px solid var(--border);
-border-radius: 8px;
-box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-display: flex;
-flex-direction: column;
-overflow: hidden;
-min-width: 180px;
-max-width: 200px;
-max-height: 400px;
+  position: fixed;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: var(--layer-dropdown); /* 20 */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 180px;
+  max-width: 200px;
+  max-height: 400px;
 }
 .action-menu-header {
 padding: 6px 12px;
@@ -3999,9 +4019,9 @@ background: rgba(0, 0, 0, 0.45);
 z-index: 0; /* Restored */
 pointer-events: none;
 }
-.chat-container.has-location-bg > :not(.modal-overlay):not(.pip-modal-overlay) {
-position: relative;
-z-index: 1; /* Restored */
+.chat-container.has-location-bg > :not(.modal-overlay):not(.pip-modal-overlay):not(.cinematic-stage) {
+  position: relative;
+  z-index: 1;
 }
 /* =============================================================================
 21. CHAT HISTORY & SEARCH PANEL (Top Bar Dropdown)
@@ -4995,22 +5015,19 @@ COMPANION OVERLAY: MODAL CONTAINMENT
 ============================================================================= */
 .pip-overlay-container .modal-overlay,
 .pip-overlay-container .pip-modal-overlay {
-position: absolute !important;
-inset: 0 !important;
-width: 100% !important;
-height: 100% !important;
-max-width: 100% !important;
-max-height: 100% !important;
-margin: 0 !important;
-padding: 0 !important;
-display: flex !important;
-align-items: stretch !important;
-justify-content: center !important;
-background: rgba(0, 0, 0, 0.6) !important;
-backdrop-filter: blur(4px) !important;
--webkit-backdrop-filter: blur(4px) !important;
-box-sizing: border-box !important;
-pointer-events: auto;
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  display: flex !important;
+  align-items: stretch !important;
+  justify-content: center !important;
+  z-index: var(--layer-modal) !important;
+  background: rgba(0, 0, 0, 0.6) !important;
+  backdrop-filter: blur(4px) !important;
+  -webkit-backdrop-filter: blur(4px) !important;
+  box-sizing: border-box !important;
+  pointer-events: auto;
 }
 .pip-overlay-container .modal-content,
 .pip-overlay-container .editor-modal-content,
@@ -6027,6 +6044,21 @@ min-height: 0;
 overflow-y: auto;
 overscroll-behavior: contain;
 padding: 10px 12px 12px;
+}
+.history-panel,
+.health-pill-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: var(--layer-dropdown); /* 20 */
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border);
+  overflow: hidden;
+  animation: ppMenuIn 0.16s ease-out;
 }
 .health-pill-section {
 margin-bottom: 12px;
