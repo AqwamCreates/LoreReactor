@@ -5,13 +5,17 @@
   "windows": ["*"],
   "permissions": [
     "core:default",
+    "core:event:default",
     "core:window:default",
     "core:window:allow-show",
     "core:window:allow-hide",
     "core:window:allow-close",
+    "core:window:allow-destroy",
     "core:window:allow-set-focus",
+    "core:window:allow-set-size",
     "core:window:allow-is-visible",
     "core:window:allow-start-dragging",
+    "core:webview:allow-create-webview-window",
     "shell:default",
     {
       "identifier": "shell:allow-execute",

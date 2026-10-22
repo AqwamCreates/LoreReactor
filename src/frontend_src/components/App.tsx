@@ -774,7 +774,7 @@ function App() {
                 }
             } else {
                 overlayWin = new WebviewWindow('companion-overlay', {
-                    url: 'index.html',
+                    url: 'index.html?overlay=true', // <-- Fixed here
                     title: 'LoreReactor Companion',
                     width: 340,
                     height: 540,

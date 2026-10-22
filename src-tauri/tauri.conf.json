@@ -22,7 +22,7 @@
       {
         "label": "companion-overlay",
         "title": "Companion Overlay",
-        "url": "/?overlay=true",
+        "url": "index.html?overlay=true",
         "width": 360,
         "height": 540,
         "transparent": true,
