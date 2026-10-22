@@ -4,6 +4,7 @@ import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock, EntityFolder, entityImageType } from '../types';
 import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
+import { EntitySelect } from './EntitySelect';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import type { EntityType, ViewTab, ImagePriorityItem, GeneratedOutput, JsonHistoryEntry } from '../utilities/dataTypes';
@@ -37,6 +38,7 @@ interface AIRecommendationModalProps {
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
     allEntityFolders: EntityFolder[];
+    allLanguageModels: LanguageModel[];
     selectedModel: LanguageModel | null;
     runningModels: Record<string, { isRunning: boolean; port?: number }>;
     aiRecommendationSampler: Sampler | undefined;
@@ -45,7 +47,9 @@ interface AIRecommendationModalProps {
 export function AIRecommendationModal({
     onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock, onSaveEntityFolder,
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
-    allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], selectedModel, runningModels, aiRecommendationSampler
+    allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], 
+    allLanguageModels,
+    selectedModel, runningModels, aiRecommendationSampler
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
@@ -59,7 +63,14 @@ export function AIRecommendationModal({
     const [editingJsonText, setEditingJsonText] = useState('');
     const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
     
-    // Existing entity selections for prompt reference
+    const [localModelId, setLocalModelId] = useState<string>('');
+    const [modelSearchQuery, setModelSearchQuery] = useState('');
+
+    const activeModel = useMemo(() => {
+        if (localModelId) return allLanguageModels.find(m => m.id === localModelId) || null;
+        return selectedModel;
+    }, [localModelId, allLanguageModels, selectedModel]);
+
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
     const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
@@ -87,7 +98,6 @@ export function AIRecommendationModal({
     const [isSaving, setIsSaving] = useState(false);
     const abortControllerRef = useRef<AbortController | null>(null);
 
-    // Entity options list ensuring EntityFolder is clearly labeled as "Entity Folder"
     const entityOptions = useMemo(() => {
         const hasFolderOption = ENTITY_OPTIONS.some(o => o.type === ('EntityFolder' as any));
         if (hasFolderOption) {
@@ -99,7 +109,6 @@ export function AIRecommendationModal({
         ];
     }, []);
 
-    // Token count for user prompt
     const [userPromptTokenCount, setUserPromptTokenCount] = useState(0);
     const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -131,6 +140,7 @@ export function AIRecommendationModal({
 
     const resetForm = useCallback(() => {
         setError(null); setUserPrompt(''); setMaxTokens(2048);
+        setLocalModelId(''); setModelSearchQuery('');
         setImageInjectionPriority(['reference', 'character', 'context', 'location', 'promptBlock']);
         setDragIndex(null); setDragOverIndex(null);
         setJsonHistory([]); setEditingHistoryId(null); setEditingJsonText(''); setExpandedHistoryId(null);
@@ -280,10 +290,10 @@ export function AIRecommendationModal({
 
     const handleGenerate = async () => {
         if (selectedEntities.length === 0) { setError('Select at least one entity type.'); return; }
-        if (!selectedModel) { setError('No model selected.'); return; }
+        if (!activeModel) { setError('No model selected. Please choose a language model for generation.'); return; }
 
         recommendationEngine.setRunningModels(runningModels);
-        recommendationEngine.setContext(selectedModel);
+        recommendationEngine.setContext(activeModel);
 
         let imgDesc = '';
         if (referenceImages.length > 0) { setIsUploadingImages(true); imgDesc = `\nREFERENCE IMAGES:\n${referenceImages.map((f, i) => `[Image ${i + 1}: ${f.name}]`).join('\n')}\n`; setIsUploadingImages(false); }
@@ -325,7 +335,6 @@ export function AIRecommendationModal({
         if (!parsedOutput) { setResultError('No parsed output to save.'); return; }
         setIsSaving(true); setResultError(null); const now = Date.now();
         
-        // ✅ CLEAN MAPPING: Filter out 'reference' and cast directly to the existing entityImageType
         const savedEntityImageTypes = imageInjectionPriority
             .filter((item): item is entityImageType => item !== 'reference');
 
@@ -366,7 +375,6 @@ export function AIRecommendationModal({
             }
             if (parsedOutput.profile) {
                 let profileToSave = parsedOutput.profile;
-                // ✅ Direct assignment using the existing type
                 profileToSave = { ...profileToSave, entityImageTypes: savedEntityImageTypes };
                 if (!await onSaveProfile(profileToSave)) throw new Error(`Failed to save profile "${profileToSave.name}".`);
             }
@@ -380,7 +388,6 @@ export function AIRecommendationModal({
                     : resolved.promptBlocks;
                 let profileToSave = resolved.profile;
                 if (profileToSave) {
-                    // ✅ Direct assignment using the existing type
                     profileToSave = { ...profileToSave, entityImageTypes: savedEntityImageTypes };
                 }
                 for (const ch of charsToSave) if (!await onSaveCharacter(ch)) throw new Error(`Failed to save "${ch.name}".`);
@@ -444,7 +451,6 @@ export function AIRecommendationModal({
     const editBtnStyle = { fontSize: '0.7rem', padding: '4px 14px', minHeight: '28px' };
     const worldEditBtnStyle = { fontSize: '0.65rem', padding: '3px 10px', minHeight: '24px', justifyContent: 'flex-start' as const };
 
-    // Safe accessors for parsed output tabs
     const characters = parsedOutput?.characters ?? [];
     const contexts = parsedOutput?.contexts ?? [];
     const locations = parsedOutput?.locations ?? [];
@@ -497,6 +503,24 @@ export function AIRecommendationModal({
                         <div className="editor-section"><span className="editor-section-title">Reference Images <span className="optional-label">(optional)</span></span><div className="entity-ref-hint">Upload images as visual reference.</div><div className="editor-image-grid">{referenceImagePreviews.map((p, i) => (<div key={p} className="editor-image-square active"><img src={p} alt={`Ref ${i + 1}`} /><button type="button" onClick={() => handleRemoveReferenceImage(i)} className="editor-image-remove-button">×</button></div>))}<div className={`editor-image-square editor-upload-square ${isUploadingImages ? 'disabled' : ''}`} onClick={() => !isUploadingImages && imageInputRef.current?.click()}><div className="context-image-placeholder"><div className="context-image-placeholder-icon">{isUploadingImages ? '⏳' : '📷'}</div><div className="context-image-placeholder-text">{isUploadingImages ? 'Processing...' : 'Upload'}</div></div></div></div><input ref={imageInputRef} type="file" accept="image/*" multiple hidden onChange={handleReferenceImageChange} disabled={isUploadingImages} /></div>
                         <div className="editor-section"><span className="editor-section-title">Image Injection Priority</span><div className="entity-ref-hint">Drag to reorder. × to disable.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>{imageInjectionPriority.map((item, index) => (<div key={item} draggable onDragStart={() => handleDragStart(index)} onDragOver={(e) => handleDragOver(e, index)} onDrop={() => handleDrop(index)} onDragEnd={handleDragEnd} style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '4px 8px', background: dragIndex === index ? 'var(--accent-dim, rgba(255,255,255,0.05))' : 'var(--social-bg)', border: dragOverIndex === index ? '2px dashed var(--accent)' : '1px solid var(--border)', borderRadius: '4px', fontSize: '0.75rem', cursor: 'grab', opacity: dragIndex === index ? 0.5 : 1, transition: 'border 0.15s, background 0.15s, opacity 0.15s', userSelect: 'none' }}><span style={{ opacity: 0.3, fontSize: '0.8rem', minWidth: '16px', textAlign: 'center' }}>☰</span><span style={{ opacity: 0.5, minWidth: '16px', textAlign: 'center' }}>{index + 1}</span><span style={{ flex: 1 }}>{IMAGE_LABELS[item]}</span><button type="button" onClick={() => toggleImagePriorityItem(item)} className="context-character-binding-remove" title="Remove">×</button></div>))}</div>{disabledImageItems.length > 0 && <div style={{ marginTop: '6px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>{disabledImageItems.map(item => (<button key={item} type="button" onClick={() => toggleImagePriorityItem(item)} className="editor-button editor-button-cancel" style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px', opacity: 0.6 }}>+ {IMAGE_SHORT_LABELS[item]}</button>))}</div>}</div>
                         {jsonHistory.length > 0 && <div className="editor-section"><span className="editor-section-title">Generated Output History ({jsonHistory.length})</span><div className="entity-ref-hint">Previous generations. Edit, refine, or preview.</div><div style={{ display: 'flex', flexDirection: 'column', gap: '6px', maxHeight: '400px', overflowY: 'auto' }}>{jsonHistory.map(entry => { const isEditing = editingHistoryId === entry.id; const isExpanded = expandedHistoryId === entry.id; return (<div key={entry.id} style={{ border: '1px solid var(--border)', borderRadius: '6px', background: 'var(--social-bg)', overflow: 'hidden' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 8px', cursor: 'pointer', background: isExpanded ? 'var(--accent-dim, rgba(255,255,255,0.03))' : undefined }} onClick={() => setExpandedHistoryId(isExpanded ? null : entry.id)}><span style={{ fontSize: '0.7rem', opacity: 0.5 }}>{isExpanded ? '▼' : '▶'}</span><span style={{ flex: 1, fontSize: '0.75rem', fontWeight: 600 }}>{entry.label}</span>{entry.isEdited && <span style={{ fontSize: '0.55rem', background: '#f59e0b', color: '#000', padding: '1px 4px', borderRadius: '3px' }}>Edited</span>}<span style={{ fontSize: '0.6rem', opacity: 0.4 }}>{new Date(entry.timestamp).toLocaleTimeString()}</span></div>{isExpanded && <div style={{ padding: '0 8px 8px' }}>{isEditing ? <><textarea value={editingJsonText} onChange={e => setEditingJsonText(e.target.value)} className="editor-textarea" style={{ fontFamily: 'monospace', fontSize: '0.65rem', minHeight: '120px', maxHeight: '300px' }} rows={8} /><div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}><button type="button" className="editor-button editor-button-save" onClick={saveHistoryEdit} style={{ fontSize: '0.65rem', padding: '3px 10px', minHeight: '24px' }}>✅ Save</button><button type="button" className="editor-button editor-button-cancel" onClick={cancelHistoryEdit} style={{ fontSize: '0.65rem', padding: '3px 10px', minHeight: '24px' }}>Cancel</button></div></> : <><pre style={{ background: 'var(--bg, #000)', border: '1px solid var(--border)', borderRadius: '4px', padding: '8px', fontSize: '0.6rem', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-word', maxHeight: '200px', overflowY: 'auto', color: 'var(--text-h)', margin: '4px 0' }}>{entry.jsonText.length > 2000 ? entry.jsonText.substring(0, 2000) + '\n...(truncated)' : entry.jsonText}</pre><div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}><button type="button" className="editor-button editor-button-cancel" onClick={() => startEditingHistory(entry)} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>✏️ Edit</button><button type="button" className="editor-button editor-button-save" onClick={() => refineFromHistory(entry)} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>🔄 Refine</button><button type="button" className="editor-button editor-button-cancel" onClick={() => loadHistoryToResult(entry)} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px' }}>👁️ Preview</button><button type="button" className="editor-button editor-button-cancel" onClick={() => deleteHistoryEntry(entry.id)} style={{ fontSize: '0.6rem', padding: '2px 8px', minHeight: '22px', color: '#ef4444' }}>🗑️</button></div></>}</div>}</div>); })}</div></div>}
+                        
+                        <div className="editor-section">
+                            <span className="editor-section-title">Generation Model</span>
+                            <EntitySelect 
+                                label="Language Model" 
+                                description="The model used to generate the AI recommendation."
+                                items={allLanguageModels} 
+                                selectedId={localModelId} 
+                                onSelect={setLocalModelId} 
+                                searchQuery={modelSearchQuery} 
+                                onSearchChange={setModelSearchQuery} 
+                                allowNone={true}
+                                noneLabel="Use Globally Selected Model"
+                                noneDescription={selectedModel ? `Default: ${selectedModel.name}` : 'No global model selected'}
+                                renderDescription={model => model.backend ? `${model.backend} • Context: ${model.contextLength}` : ''}
+                            />
+                        </div>
+
                         <div className="editor-section"><label className="editor-label editor-label-small">Max Tokens</label><input type="number" className="editor-input context-input-small" min={256} max={16384} step={256} value={maxTokens} onChange={e => setMaxTokens(Math.max(256, Math.min(16384, Number(e.target.value) || 2048)))} /><div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Default: 2048. Range: 256–16384.</div></div>
                         <button type="button" className="editor-button editor-button-save entity-generate-button" onClick={handleGenerate} disabled={selectedEntities.length === 0 || isUploadingImages}>✨ Generate Recommendation</button>
                         {error && <div className="editor-error-message editor-error-centered entity-error-below">{error}</div>}

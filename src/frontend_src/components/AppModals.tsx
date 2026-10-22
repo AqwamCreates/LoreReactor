@@ -937,7 +937,9 @@ export function AppModals({
                     onOpenPromptBlockEditor={(promptBlock, onApplyToRecommendation) => { setAiPromptBlockSaveRedirect(() => onApplyToRecommendation); promptBlockModalProperties.open(promptBlock ?? undefined); }}
                     onOpenProfileEditor={(profile, onApplyToRecommendation) => { setAiProfileSaveRedirect(() => onApplyToRecommendation); profileModalProperties.open(profile ?? undefined); }}
                     allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
-                    allAudioTracks={allAudioTracks} allPromptBlocks={allPromptBlocks} allEntityFolders={allEntityFolders} selectedModel={effectiveTokenizerModel} runningModels={runningModels}
+                    allAudioTracks={allAudioTracks} allPromptBlocks={allPromptBlocks} allEntityFolders={allEntityFolders}
+                    allLanguageModels={allLanguageModels} // ✅ PASS ALL LANGUAGE MODELS
+                    selectedModel={effectiveTokenizerModel} runningModels={runningModels}
                     aiRecommendationSampler={interactionData?.profile?.aiRecommendationSampler}
                 />
             )}
