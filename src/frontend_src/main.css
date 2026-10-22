@@ -156,7 +156,7 @@ APP LAYOUT & HEADER (Shared)
     max-width: none;
     margin: 0;
     border: none;
-    z-index: 9998;
+    z-index: 10;
     transition: none;
     transform-origin: center center;
 }
@@ -2217,7 +2217,7 @@ MODE: VISUAL NOVEL (Sprite Stage View)
     max-width: none !important;
     margin: 0 !important;
     border: none !important;
-    z-index: 9998;
+    z-index: 10;
     background: #0a0a0f;
     transform-origin: center center !important;
     transition: none !important;
@@ -2616,7 +2616,7 @@ SHARED UTILITIES & MODALS (Unchanged sections follow)
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 1000;
+    z-index: 10000;
     backdrop-filter: blur(4px);
 }
 
@@ -3835,7 +3835,7 @@ EDITOR BULK ACTION BUTTONS (Tactile Feedback)
     position: fixed;
     top: calc(20px + env(safe-area-inset-top, 0px));
     right: 20px;
-    z-index: 9999;
+    z-index: 11000; /* ✅ Changed from 9999 so toasts display over open modals */
     display: flex;
     flex-direction: column;
     gap: 10px;
@@ -4413,7 +4413,7 @@ EDITOR BULK ACTION BUTTONS (Tactile Feedback)
     background: var(--bg);
     color: var(--text-h);
     font-family: monospace;
-    z-index: 9999;
+    z-index: 12000; /* ✅ Changed from 9999 */
     transition: opacity 0.3s ease-out;
 }
 
@@ -4705,7 +4705,10 @@ EDITOR BULK ACTION BUTTONS (Tactile Feedback)
     pointer-events: none;
 }
 
-.chat-container.has-location-bg > * { position: relative; z-index: 1; }
+.chat-container.has-location-bg > :not(.modal-overlay):not(.pip-modal-overlay) {
+    position: relative;
+    z-index: 1;
+}
 
 .mode-cinematic.has-location-bg::after {
     background: linear-gradient(

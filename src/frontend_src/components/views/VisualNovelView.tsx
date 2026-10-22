@@ -23,6 +23,7 @@ import {
 
 export const VisualNovelView = React.memo(function VisualNovelView(props: ViewModeProps) {
     const {
+        locationBackgroundUrl,
         displayMessages,
         portraitUrlCache,
         streamingText,
@@ -315,7 +316,19 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         onSaveEdit();
     }, [displayedMessage, rawDraft, onSaveEdit]);
 
-    const bgStyle: React.CSSProperties = { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
+    // Dynamic background style: uses the active location background image when present
+    const bgStyle: React.CSSProperties = useMemo(() => {
+        if (locationBackgroundUrl) {
+            return {
+                backgroundImage: `linear-gradient(to bottom, rgba(10, 10, 20, 0.25) 0%, rgba(10, 10, 20, 0.65) 100%), url(${locationBackgroundUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+            };
+        }
+        return { background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' };
+    }, [locationBackgroundUrl]);
+
     const isMassDeletingThis = isMassActive && massDeleteId === displayedMessage?.id;
 
     const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
@@ -336,7 +349,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [interactionData]);
 
     if (hasMessages && chatMessages.length === 0 && !displayedMessage) {
-        return <div className="vn-stage-container" style={{ background: 'linear-gradient(to bottom, #1a1a2e, #16213e)' }} />;
+        return <div className="vn-stage-container" style={bgStyle} />;
     }
 
     return (
@@ -598,3 +611,5 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         </div>
     );
 });
+
+export default VisualNovelView;

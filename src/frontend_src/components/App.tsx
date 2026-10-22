@@ -1042,6 +1042,7 @@ function App() {
         displayNameCache,
         streamingText, 
         centerAvatar: viewAssets.centerAvatar,
+        locationBackgroundUrl: viewAssets.locationBackgroundUrl, // ✅ ADD THIS
         parentMessageId: interactionData?.parentMessageId ?? null,
         parentInteractionDataName: parentChatName,
         chatHistoryRef, 
@@ -1476,88 +1477,89 @@ function App() {
                         />
                     </>
                 )}
-
-                <AppModals
-                    isMultiplayerClient={mp.isMultiplayerClient}
-                    modals={modals} entityModals={entityModals}
-                    runningModels={languageModels.runningLanguageModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
-                    allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
-                    allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
-                    allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
-                    allRetrievalConfigurations={retrievalConfigurations.retrievalConfigurations}
-                    allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
-                    allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
-                    allEntityFolders={entityFolders.entityFolders} 
-                    onSaveEntityFolder={entityFolders.saveFolder} 
-                    onDeleteEntityFolder={entityFolders.deleteFolder} 
-                    onSwitchChat={interactionDataOperations.handleSwitchInteractionData} 
-                    onDeleteInteractionData={onDeleteInteractionDataForModals}
-                    onNewInteractionData={interactionDataOperations.handleNewInteractionData}
-                    onRenameInteractionData={handleRenameInteractionData}
-                    onDeleteCharacter={entityModals.getModalProperties('character').delete}
-                    onLoadFullCharacter={characters.loadFullCharacter} 
-                    onToggleParticipant={mpBroadcast.handleToggleParticipantAndBroadcast}
-                    onSetProtagonist={mpBroadcast.handleSetProtagonistAndBroadcast} 
-                    onSaveCharacter={characters.saveCharacter}
-                    onDeleteContext={entityModals.getModalProperties('context').delete} 
-                    onToggleContext={mpBroadcast.handleToggleContextAndBroadcast} 
-                    onSaveContext={contexts.saveContext}
-                    onDeleteLocation={entityModals.getModalProperties('location').delete} 
-                    onToggleLocation={mpBroadcast.handleToggleLocationAndBroadcast} 
-                    onSaveLocation={locations.saveLocation}
-                    onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} 
-                    onToggleAudioTrack={mpBroadcast.handleToggleAudioTrackAndBroadcast} 
-                    onSaveAudioTrack={audioTracks.saveAudioTrack}
-                    onSaveWorld={worlds.saveWorld} 
-                    onToggleWorlds={handleLoadWorlds} 
-                    onDeleteWorld={entityModals.getModalProperties('world').delete}
-                    onDeleteModel={entityModals.getModalProperties('model').delete} 
-                    onToggleModelLoad={languageModels.toggleLanguageModelLoad}
-                    onDeleteSampler={entityModals.getModalProperties('sampler').delete} 
-                    onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}
-                    onDeleteStopPattern={entityModals.getModalProperties('stopPattern').delete} 
-                    onDeleteRetrievalConfiguration={entityModals.getModalProperties('retrievalConfiguration').delete}
-                    onDeleteBudgetStrategy={entityModals.getModalProperties('budgetStrategy').delete}
-                    onActivateBudgetStrategy={entityToggles.handleActivateBudgetStrategy} 
-                    onDeleteProfile={entityModals.getModalProperties('profile').delete}
-                    onActivateProfile={mpBroadcast.handleActivateProfileAndBroadcast} 
-                    onSaveProfile={profiles.saveProfile}
-                    onDeleteExtension={extensions.deleteExtension} 
-                    onToggleExtension={entityToggles.handleToggleExtension}
-                    onDeleteMemory={memories.deleteMemory} 
-                    onDeleteAccount={entityModals.getModalProperties('account').delete}
-                    onToggleAccount={(id: string) => {
-                        const newId = mp.currentAccountId === id ? null : id;
-                        storeSetCurrentAccountId(newId);
-                        addToast(newId ? `Activated account "${accounts.accounts.find((a: Account) => a.id === newId)?.name || newId}"` : 'Deactivated account.', newId ? 'success' : 'info');
-                    }}
-                    onDeleteMultiplayerData={entityModals.getModalProperties('multiplayerData').delete}
-                    onJoinSession={mp.handleJoinSession}
-                    onUpdateInteractionData={(data: InteractionData) => { 
-                        const assigned = assignInitialLocationsIfNeeded(data);
-                        setInteractionData(assigned);
-                        if (canBroadcastState) {
-                            (mp.multiplayerSync as any).broadcastStateSync?.({
-                                participants: assigned.participants,
-                                contexts: assigned.contexts,
-                                locations: assigned.locations,
-                                audioTracks: assigned.audioTracks,
-                                profile: assigned.profile,
-                            });
-                        }
-                    }}
-                    onForceFirstMessage={handleForceFirstMessage} 
-                    onSendCustomMessage={handleSendCustom}
-                    onInjectCustomMessage={handleInjectCustom} 
-                    onInjectFirstMessage={handleInjectFirst}
-                    onImportComplete={handleImportComplete} 
-                    addToast={addToast} 
-                    ensureChatsLoaded={interactionDatas.load}
-                    pendingJoinRequests={mp.multiplayerSync.pendingJoinRequests}
-                    onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
-                    onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}
-                />
             </div>
+
+            {/* ─── Modals mounted at root to guarantee viewport-fixed overlay behavior ─── */}
+            <AppModals
+                isMultiplayerClient={mp.isMultiplayerClient}
+                modals={modals} entityModals={entityModals}
+                runningModels={languageModels.runningLanguageModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
+                allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
+                allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
+                allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
+                allRetrievalConfigurations={retrievalConfigurations.retrievalConfigurations}
+                allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
+                allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
+                allEntityFolders={entityFolders.entityFolders} 
+                onSaveEntityFolder={entityFolders.saveFolder} 
+                onDeleteEntityFolder={entityFolders.deleteFolder} 
+                onSwitchChat={interactionDataOperations.handleSwitchInteractionData} 
+                onDeleteInteractionData={onDeleteInteractionDataForModals}
+                onNewInteractionData={interactionDataOperations.handleNewInteractionData}
+                onRenameInteractionData={handleRenameInteractionData}
+                onDeleteCharacter={entityModals.getModalProperties('character').delete}
+                onLoadFullCharacter={characters.loadFullCharacter} 
+                onToggleParticipant={mpBroadcast.handleToggleParticipantAndBroadcast}
+                onSetProtagonist={mpBroadcast.handleSetProtagonistAndBroadcast} 
+                onSaveCharacter={characters.saveCharacter}
+                onDeleteContext={entityModals.getModalProperties('context').delete} 
+                onToggleContext={mpBroadcast.handleToggleContextAndBroadcast} 
+                onSaveContext={contexts.saveContext}
+                onDeleteLocation={entityModals.getModalProperties('location').delete} 
+                onToggleLocation={mpBroadcast.handleToggleLocationAndBroadcast} 
+                onSaveLocation={locations.saveLocation}
+                onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} 
+                onToggleAudioTrack={mpBroadcast.handleToggleAudioTrackAndBroadcast} 
+                onSaveAudioTrack={audioTracks.saveAudioTrack}
+                onSaveWorld={worlds.saveWorld} 
+                onToggleWorlds={handleLoadWorlds} 
+                onDeleteWorld={entityModals.getModalProperties('world').delete}
+                onDeleteModel={entityModals.getModalProperties('model').delete} 
+                onToggleModelLoad={languageModels.toggleLanguageModelLoad}
+                onDeleteSampler={entityModals.getModalProperties('sampler').delete} 
+                onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}
+                onDeleteStopPattern={entityModals.getModalProperties('stopPattern').delete} 
+                onDeleteRetrievalConfiguration={entityModals.getModalProperties('retrievalConfiguration').delete}
+                onDeleteBudgetStrategy={entityModals.getModalProperties('budgetStrategy').delete}
+                onActivateBudgetStrategy={entityToggles.handleActivateBudgetStrategy} 
+                onDeleteProfile={entityModals.getModalProperties('profile').delete}
+                onActivateProfile={mpBroadcast.handleActivateProfileAndBroadcast} 
+                onSaveProfile={profiles.saveProfile}
+                onDeleteExtension={extensions.deleteExtension} 
+                onToggleExtension={entityToggles.handleToggleExtension}
+                onDeleteMemory={memories.deleteMemory} 
+                onDeleteAccount={entityModals.getModalProperties('account').delete}
+                onToggleAccount={(id: string) => {
+                    const newId = mp.currentAccountId === id ? null : id;
+                    storeSetCurrentAccountId(newId);
+                    addToast(newId ? `Activated account "${accounts.accounts.find((a: Account) => a.id === newId)?.name || newId}"` : 'Deactivated account.', newId ? 'success' : 'info');
+                }}
+                onDeleteMultiplayerData={entityModals.getModalProperties('multiplayerData').delete}
+                onJoinSession={mp.handleJoinSession}
+                onUpdateInteractionData={(data: InteractionData) => { 
+                    const assigned = assignInitialLocationsIfNeeded(data);
+                    setInteractionData(assigned);
+                    if (canBroadcastState) {
+                        (mp.multiplayerSync as any).broadcastStateSync?.({
+                            participants: assigned.participants,
+                            contexts: assigned.contexts,
+                            locations: assigned.locations,
+                            audioTracks: assigned.audioTracks,
+                            profile: assigned.profile,
+                        });
+                    }
+                }}
+                onForceFirstMessage={handleForceFirstMessage} 
+                onSendCustomMessage={handleSendCustom}
+                onInjectCustomMessage={handleInjectCustom} 
+                onInjectFirstMessage={handleInjectFirst}
+                onImportComplete={handleImportComplete} 
+                addToast={addToast} 
+                ensureChatsLoaded={interactionDatas.load}
+                pendingJoinRequests={mp.multiplayerSync.pendingJoinRequests}
+                onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
+                onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}
+            />
 
             <ActionMenu
                 actionMenuTarget={actionMenu.actionMenuTarget} interactionDataExists={!!interactionData}
