@@ -6869,7 +6869,7 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 }
 
 /* =============================================================================
-   HEALTH PILL (Progressive-Disclosure Statistics)
+   HEALTH PILL (Progressive-Disclosure Statistics) - TOKEN MATCHED
    ============================================================================= */
 
 .health-pill-root {
@@ -6883,9 +6883,9 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     align-items: center;
     gap: 6px;
     height: 28px;
-    padding: 0 9px;
-    background: var(--social-bg, rgba(255, 255, 255, 0.05));
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    padding: 0 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
     border-radius: 999px;
     color: var(--text-h);
     font-family: inherit;
@@ -6895,13 +6895,15 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     cursor: pointer;
     white-space: nowrap;
     box-sizing: border-box;
-    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+    transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 
 .health-pill:hover {
     background: var(--accent-bg);
     border-color: var(--accent-border);
     transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.08);
 }
 
 .health-pill-warn     { border-color: rgba(255, 170, 0, 0.42); }
@@ -6916,33 +6918,16 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     background: var(--accent);
     border-color: var(--accent);
     color: #fff;
+    box-shadow: 0 4px 12px rgba(170, 59, 255, 0.3); /* Matches accent glow */
 }
 
-/* Force high contrast when the pill is open (purple background) */
-.health-pill-root-open .stats-gauge-track {
-    stroke: rgba(255, 255, 255, 0.35);
-}
-
-.health-pill-root-open .stats-gauge-fill {
-    stroke: #ffffff !important; /* Override inline severity color */
-}
-
-.health-pill-root-open .health-pill-percent {
-    color: #ffffff !important;
-}
-
-.health-pill-root-open .health-pill-budget {
-    color: #ffffff !important;
-    border-left-color: rgba(255, 255, 255, 0.4);
-}
-
-/* ── Inline Latency Indicator ── */
+/* Latency Indicator */
 .health-pill-latency {
     display: inline-flex;
     align-items: center;
     gap: 4px;
     padding-right: 6px;
-    border-right: 1px solid rgba(255, 255, 255, 0.14);
+    border-right: 1px solid var(--border);
 }
 
 .health-pill-latency-icon {
@@ -6951,27 +6936,28 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 }
 
 .health-pill-latency-value {
-    font-family: monospace;
+    font-family: var(--mono);
     font-size: 0.72rem;
     font-weight: bold;
     min-width: 3ch;
     text-align: right;
+    color: var(--text-h);
 }
 
-/* Force high contrast when the pill is open (purple background) */
 .health-pill-root-open .health-pill-latency {
-    border-right-color: rgba(255, 255, 255, 0.4);
+    border-right-color: rgba(255, 255, 255, 0.3);
 }
 
 .health-pill-root-open .health-pill-latency-value {
     color: #ffffff !important;
 }
 
+/* Gauge */
 .stats-gauge { flex: 0 0 auto; display: block; }
 
 .stats-gauge-track {
     fill: none;
-    stroke: rgba(255, 255, 255, 0.14);
+    stroke: var(--border); /* Uses app token instead of hardcoded grey */
     stroke-width: 2.5;
 }
 
@@ -6985,24 +6971,43 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 }
 
 .health-pill-percent {
-    font-family: monospace;
+    font-family: var(--mono);
     font-size: 0.72rem;
     min-width: 3ch;
     text-align: right;
+    color: var(--text-h);
 }
 
 .health-pill-budget {
-    font-family: monospace;
+    font-family: var(--mono);
     font-size: 0.66rem;
     opacity: 0.92;
     padding-left: 6px;
-    border-left: 1px solid rgba(255, 255, 255, 0.14);
+    border-left: 1px solid var(--border);
+    color: var(--text-h);
+}
+
+.health-pill-root-open .stats-gauge-track {
+    stroke: rgba(255, 255, 255, 0.35);
+}
+
+.health-pill-root-open .stats-gauge-fill {
+    stroke: #ffffff !important;
+}
+
+.health-pill-root-open .health-pill-percent {
+    color: #ffffff !important;
+}
+
+.health-pill-root-open .health-pill-budget {
+    color: #ffffff !important;
+    border-left-color: rgba(255, 255, 255, 0.3);
 }
 
 /* ── Deferred detail panel ── */
 .health-pill-panel {
     position: absolute;
-    top: calc(100% + 10px);
+    top: calc(100% + 20px);
     right: 0;
     z-index: 9000;
     width: 320px;
@@ -7010,10 +7015,10 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     max-height: min(70vh, 480px);
     display: flex;
     flex-direction: column;
-    background: var(--bg-secondary, #1e1e1e);
-    border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+    background: var(--bg); /* Uses app background instead of #1e1e1e */
+    border: 1px solid var(--border);
     border-radius: 12px;
-    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.55);
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border);
     overflow: hidden;
     animation: ppMenuIn 0.16s ease-out;
 }
@@ -7022,28 +7027,16 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     flex: 0 0 auto;
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: center; /* ✅ Changed from space-between */
     gap: 8px;
     padding: 10px 12px;
-    background: var(--social-bg, rgba(255, 255, 255, 0.04));
+    background: var(--code-bg);
     border-bottom: 1px solid var(--border);
     font-size: 0.78rem;
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 0.6px;
     color: var(--text-h);
-}
-
-.health-pill-panel-close {
-    background: transparent;
-    border: none;
-    color: var(--text-h);
-    font-size: 0.85rem;
-    line-height: 1;
-    cursor: pointer;
-    opacity: 0.55;
-    padding: 2px 4px;
-    transition: opacity 0.15s ease, color 0.15s ease;
 }
 
 .health-pill-panel-close:hover { opacity: 1; color: #ff4444; }
@@ -7074,8 +7067,8 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     font-weight: bold;
     text-transform: uppercase;
     letter-spacing: 0.9px;
-    color: var(--text-h);
-    opacity: 0.5;
+    color: var(--accent); /* Uses app accent color for section headers */
+    opacity: 0.9;
 }
 
 .health-pill-vitals {
@@ -7090,7 +7083,7 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     align-items: center;
     gap: 2px;
     padding: 7px 4px;
-    background: var(--social-bg, rgba(255, 255, 255, 0.04));
+    background: var(--code-bg);
     border: 1px solid var(--border);
     border-radius: 8px;
     box-sizing: border-box;
@@ -7099,7 +7092,7 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 .health-pill-vital-icon { font-size: 0.9rem; line-height: 1; }
 
 .health-pill-vital-value {
-    font-family: monospace;
+    font-family: var(--mono);
     font-size: 0.78rem;
     font-weight: bold;
     color: var(--text-h);
@@ -7110,8 +7103,8 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     font-size: 0.55rem;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--text-h);
-    opacity: 0.45;
+    color: var(--text);
+    opacity: 0.8;
 }
 
 .health-pill-vital.severity-warn     { border-color: rgba(255, 170, 0, 0.45); }
@@ -7131,8 +7124,8 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 .health-pill-row-label {
     flex: 0 1 auto;
     min-width: 0;
-    color: var(--text-h);
-    opacity: 0.62;
+    color: var(--text);
+    opacity: 0.85;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -7140,7 +7133,7 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 
 .health-pill-row-value {
     flex: 0 0 auto;
-    font-family: monospace;
+    font-family: var(--mono);
     font-weight: bold;
     color: var(--text-h);
     white-space: nowrap;
@@ -7149,7 +7142,7 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
 .health-pill-meter {
     height: 5px;
     margin: 2px 0 8px;
-    background: rgba(255, 255, 255, 0.09);
+    background: var(--border);
     border-radius: 999px;
     overflow: hidden;
 }
@@ -7158,25 +7151,4 @@ COMPANION OVERLAY: UPWARD SLASH AUTOCOMPLETE
     height: 100%;
     border-radius: 999px;
     transition: width 0.35s ease, background 0.35s ease;
-}
-
-/* ── Narrow viewports: tighten, never wrap ── */
-@media (max-width: 640px) {
-    .app-header .header-top { gap: 6px; }
-    .view-mode-label { display: none; }
-    .health-pill-budget { display: none; }
-    .health-pill-panel { width: min(320px, calc(100vw - 16px)); }
-}
-
-@media (max-width: 420px) {
-    .header-title-edit-affordance { display: none; }
-    .health-pill-percent { min-width: 0; }
-}
-
-/* ── Touch: larger hit targets (WCAG 2.5.8 minimum) ── */
-@media (hover: none), (pointer: coarse) {
-    .pp-overflow-button { height: 40px; padding: 0 12px; }
-    .health-pill { height: 38px; padding: 0 12px; }
-    .header-icon-button { padding: 10px 12px !important; }
-    .pp-overflow-menu-item { padding: 12px 12px; }
 }

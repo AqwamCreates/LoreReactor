@@ -193,7 +193,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 aria-expanded={showDetails}
                 aria-haspopup="dialog"
             >
-                {/* ✅ NEW: Latency Indicator at the front */}
+                {/* Latency Indicator at the front */}
                 <span className="health-pill-latency" title={`Latency: ${latency.toFixed(2)} ms/token`}>
                     <span className="health-pill-latency-icon">{speedIcon}</span>
                     <span className="health-pill-latency-value" style={{ color: SEVERITY_COLOR[speedSeverity] }}>
@@ -244,16 +244,9 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
 
             {showDetails && (
                 <div className="health-pill-panel" role="dialog" aria-label="Session statistics">
+                    {/* ✅ REMOVED: Close button. Panel now relies purely on outside-click/Escape */}
                     <div className="health-pill-panel-header">
                         <span>Session Statistics</span>
-                        <button
-                            type="button"
-                            className="health-pill-panel-close"
-                            onClick={() => setShowDetails(false)}
-                            title="Close"
-                        >
-                            ✕
-                        </button>
                     </div>
 
                     <div className="health-pill-panel-body">
