@@ -39,7 +39,7 @@ export function ContextBar({
     return (
         <div className={`context-bar ${expanded ? 'expanded' : ''}`}>
             {/* Extended configuration buttons — collapsible grid wrapper for smooth slide */}
-            <div className="context-bar-extended-wrapper">
+            <div className="context-bar-extended-wrapper" style={{height: (expanded ? 'auto' : 0)}}>
                 <div className="context-bar-extended-row">
                     <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
                     <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />

@@ -829,8 +829,6 @@ position: relative;
 .context-bar-extended-wrapper {
 display: grid;
 grid-template-rows: 0fr;
-transition: grid-template-rows 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-overflow: hidden;
 position: relative;
 }
 .context-bar.expanded .context-bar-extended-wrapper {
