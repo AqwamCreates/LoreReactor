@@ -1386,14 +1386,16 @@ function App() {
                                             <span>⚙️</span>
                                         </button>
 
-                                        <button
-                                            type="button"
-                                            className={`view-mode-toggle header-icon-button ${isOverlayOpen ? 'active' : ''}`}
-                                            onClick={handleToggleOverlay}
-                                            title={isOverlayOpen ? 'Close Companion Overlay' : 'Open Companion Overlay'}
-                                        >
-                                            <span>🪟</span>
-                                        </button>
+                                        {isRunningInTauri && (
+                                            <button
+                                                type="button"
+                                                className={`view-mode-toggle header-icon-button ${isOverlayOpen ? 'active' : ''}`}
+                                                onClick={handleToggleOverlay}
+                                                title={isOverlayOpen ? 'Close Companion Overlay' : 'Open Companion Overlay'}
+                                            >
+                                                <span>🪟</span>
+                                            </button>
+                                        )}
 
                                         <button
                                             type="button"
@@ -1563,4 +1565,4 @@ function App() {
     );
 }
 
-export default App;
+export default App

@@ -160,7 +160,7 @@ overflow: visible;
   top: 0;
   left: 0;
   right: 0;
-  z-index: var(--layer-dropdown);
+  z-index: var(--layer-header);
   background: transparent !important;
   border-bottom: none !important;
 }

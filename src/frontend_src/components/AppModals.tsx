@@ -593,7 +593,6 @@ export function AppModals({
                     onSaveEntityFolder={onSaveEntityFolder}
                     onDeleteEntityFolder={onDeleteEntityFolder}
                     addToast={addToast}
-                    selectedId={findLatestMessage(interactionData, localProtagonistId)}
                 />
             )}
 
