@@ -281,7 +281,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     { tool: 'memory', label: 'Long-Term Memory Management', keywords: ['memory', 'remember', 'recall', 'reminisce', 'nostalgia'], tier: 'in_world_readonly' },
     { tool: 'narrate', label: 'Narrate Things', keywords: ['narrator', 'storyteller', 'dungeon master', 'author', 'chronicler'], tier: 'in_world_readonly' },
     { tool: 'inspect', label: 'Inspect Character State', keywords: ['detective', 'inspector', 'analyst', 'investigator', 'scrutinizing', 'examine'], tier: 'in_world_readonly' },
-    { tool: 'mind_reader', label: 'Telepathic Mind Reader', keywords: ['telepathy', 'mind reader', 'read minds', 'empath', 'psychoanalyze', 'mind read', 'thoughts', 'secrets', 'telepath', 'mind reading'], tier: 'in_world_readonly', riskDescription: 'Reads the hidden internal thoughts and chain-of-thought reasoning of other characters.' },
+    { tool: 'mind_reader', label: 'Telepathic Mind Reader', keywords: ['telepathy', 'mind reader', 'read minds', 'psychoanalyze', 'mind read', 'telepath', 'mind reading'], tier: 'in_world_readonly'},
 ];
 
 export interface DetectedToolsResult {
