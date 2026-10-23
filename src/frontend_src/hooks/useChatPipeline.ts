@@ -418,19 +418,30 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
                 // ─── TOOL EXECUTION AUDITOR & AUTO-RESUME ─────────────────
                 const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                
                 const callRegex = new RegExp(`${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}`, 'g');
+                const resultRegex = new RegExp(`${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`, 'g');
                 
                 const calls = (text.match(callRegex) || []).length;
+                const resultsInText = (text.match(resultRegex) || []).length;
                 
-                // ✅ FIX: Check the actual executed results array on the message object, 
-                // not the raw text for ⟦...⟧ markers (which the stream parser might not save to textContent).
-                const executedResults = (hasTextContent(lastMsg) && (lastMsg as ChatMessage).toolExecutionResults?.length) || 0;
-                const hasUnexecutedTools = calls > executedResults;
+                // ✅ FIX: Count results stored in the message's toolExecutionResults array
+                // The streaming parser often saves results to the array rather than injecting ⟦...⟧ into the raw textContent.
+                const resultsInArray = (hasTextContent(lastMsg) && (lastMsg as ChatMessage).toolExecutionResults) 
+                    ? (lastMsg as ChatMessage).toolExecutionResults!.length 
+                    : 0;
                 
+                const totalResults = resultsInText + resultsInArray;
+                
+                // 1. Did the LLM race ahead and generate narrative without waiting for the tool result?
+                const hasUnexecutedTools = calls > totalResults;
+                
+                // 2. Is there an unclosed tool call at the very end of the text?
                 const lastCallStart = text.lastIndexOf(toolCallStartString);
                 const lastCallEnd = text.lastIndexOf(toolCallEndString);
                 const hasUnclosedCall = lastCallStart !== -1 && lastCallStart > lastCallEnd;
 
+                // 3. Strip all tool syntax to check for pure tool-only responses
                 const stripRegex = new RegExp(
                     `${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|` +
                     `${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`,
@@ -497,6 +508,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
                             const started = await ambientTracker.start().catch(() => false);
                             if (started) {
                                 ambientTracker.feed(lastMsg.textContent);
+                                // Do not await. Let it play in background.
                             }
                         }
                     }
@@ -587,6 +599,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
             
+            // Do not await. Let it play in background.
         } catch (e) {
             console.error('Delayed response error:', e);
         } finally {
@@ -771,13 +784,21 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
             // ─── TOOL EXECUTION AUDITOR & AUTO-RESUME (IN RESUME) ───────────
             const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            
             const callRegex = new RegExp(`${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}`, 'g');
+            const resultRegex = new RegExp(`${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`, 'g');
             
             const calls = (finalText.match(callRegex) || []).length;
+            const resultsInText = (finalText.match(resultRegex) || []).length;
             
-            // ✅ FIX: Check the actual executed results array on the message object
-            const executedResults = (finalizedMsg && hasTextContent(finalizedMsg) && (finalizedMsg as ChatMessage).toolExecutionResults?.length) || 0;
-            const hasUnexecutedTools = calls > executedResults;
+            // ✅ FIX: Count results stored in the message's toolExecutionResults array
+            const resultsInArray = (finalizedMsg && hasTextContent(finalizedMsg) && (finalizedMsg as ChatMessage).toolExecutionResults) 
+                ? (finalizedMsg as ChatMessage).toolExecutionResults!.length 
+                : 0;
+            
+            const totalResults = resultsInText + resultsInArray;
+            
+            const hasUnexecutedTools = calls > totalResults;
             
             const lastCallStart = finalText.lastIndexOf(toolCallStartString);
             const lastCallEnd = finalText.lastIndexOf(toolCallEndString);
