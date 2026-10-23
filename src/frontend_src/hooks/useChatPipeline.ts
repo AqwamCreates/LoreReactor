@@ -352,8 +352,22 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 return;
             }
 
+            // ✅ FIX: Check if voice narration is actually enabled in the profile before waiting.
+            // If all narrateTexts are false, the audio queue is empty, and waiting for it will hang the promise indefinitely.
+            const isVoiceEnabledInProfile = profile?.narrateTexts 
+                ? Object.values(profile.narrateTexts).some(v => v === true) 
+                : false;
+
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
+
+            if (voiceTracker && narrationBehaviour === 'wait' && isVoiceEnabledInProfile) {
+                try {
+                    await voiceTracker.waitForPlaybackCompletion();
+                } catch (e) {
+                    console.warn('[useChatPipeline] Voice playback completion error:', e);
+                }
+            }
 
             let ud = turnResult.interactionData;
             if (ud === data) ud = { ...ud, interactionHistories: { ...ud.interactionHistories }, lastUpdatedTimestamp: Date.now() };
