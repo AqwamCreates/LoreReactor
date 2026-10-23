@@ -265,10 +265,6 @@ export async function branchMessage(interactionData: InteractionData, messageId:
 
 /**
  * Clones the chat up to the target message.
- * Automatically resolves the locationId from the messageId.
- */
-/**
- * Clones the chat up to the target message.
  * Uses the global timeline to ensure all locations are cloned chronologically,
  * and properly remaps parentMessageIds so the UI timeline chain isn't severed.
  */

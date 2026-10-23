@@ -361,7 +361,7 @@ export async function runTurnSequence(
                 let postRegenMsg: HistoryMessage | undefined = undefined;
                 if (previousMessage) {
                     for (const msgs of Object.values(workingData.interactionHistories || {})) {
-                        const idx = msgs.findIndex(m => m.id === previousMessage!.id);
+                        const idx = msgs.findIndex(m => m.id === previousMessage.id);
                         if (idx !== -1) {
                             postRegenMsg = msgs[idx];
                             if (postRegenMsg.remainingActionStamina !== undefined) {

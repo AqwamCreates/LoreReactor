@@ -52,6 +52,8 @@ import { SuperSearchModal } from './SuperSearchModal';
 import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
 import { voiceTranscriptionEngine } from '../services/VoiceTranscriptionEngine';
 import { embeddingQueue } from '../services/EmbeddingQueue';
+import { findLatestMessage } from '../utilities/messageLogic';
+import { getCurrentLocationId, getReachableLocationsByCharacter } from '../utilities/locationLogic';
 
 interface EntityModalController {
     isOpen: boolean;
@@ -107,6 +109,7 @@ interface ApplicationModalsProperties {
     onDeleteLocation: (identifier: string) => void;
     onToggleLocation: (identifier: string) => void;
     onSaveLocation: (location: Location) => void;
+    onMoveProtagonist?: (location: Location) => void;
     onDeleteAudioTrack: (identifier: string) => void;
     onToggleAudioTrack: (identifier: string) => void;
     onSaveAudioTrack: (audioTrack: AudioTrack) => void;
@@ -209,6 +212,7 @@ export function AppModals({
     onDeleteLocation,
     onToggleLocation,
     onSaveLocation,
+    onMoveProtagonist,
     onDeleteAudioTrack,
     onToggleAudioTrack,
     onSaveAudioTrack,
@@ -272,6 +276,24 @@ export function AppModals({
         [interactionData, multiplayerData, currentAccountId],
     );
 
+    const localProtagonist = useMemo(() => {
+        if (!interactionData || !localProtagonistId) return null;
+        return interactionData.participants?.find(p => p.id === localProtagonistId)
+            ?? allCharacters.find(c => c.id === localProtagonistId)
+            ?? null;
+    }, [interactionData, localProtagonistId, allCharacters]);
+
+    const localProtagonistLocationId = useMemo(() => {
+        if (!interactionData || !localProtagonist) return undefined;
+        return getCurrentLocationId(interactionData, localProtagonist);
+    }, [interactionData, localProtagonist]);
+
+    const reachableLocationIds = useMemo(() => {
+        if (!interactionData || !localProtagonist) return undefined;
+        const reachable = getReachableLocationsByCharacter(interactionData, localProtagonist);
+        return new Set(reachable.map(l => l.id));
+    }, [interactionData, localProtagonist]);
+
     const effectiveTokenizerModel = useMemo(() => {
         if (selectedModelId) return allLanguageModels.find(model => model.id === selectedModelId) ?? null;
         return null;
@@ -322,7 +344,7 @@ export function AppModals({
         addToast(`🧠 Generating ${tasks.length} embeddings in background...`, 'info');
         
         // 3. Deep clone to safely mutate without affecting the Zustand store reference mid-flight
-        let updatedCharacter = JSON.parse(JSON.stringify(character)) as Character;
+        const updatedCharacter = JSON.parse(JSON.stringify(character)) as Character;
         let completed = 0;
         
         for (const task of tasks) {
@@ -571,6 +593,7 @@ export function AppModals({
                     onSaveEntityFolder={onSaveEntityFolder}
                     onDeleteEntityFolder={onDeleteEntityFolder}
                     addToast={addToast}
+                    selectedId={findLatestMessage(interactionData, localProtagonistId)}
                 />
             )}
 
@@ -585,12 +608,33 @@ export function AppModals({
                     onSelect={(location: Location, isHosterItem: boolean) => locationModalProperties.open(location, isHosterItem)} 
                     onDelete={onDeleteLocation} 
                     onCreateNew={() => locationModalProperties.open()}
-                    renderSubtext={renderLocationSubtext} 
+                    renderSubtext={(location: Location) => {
+                        const isCurrent = location.id === localProtagonistLocationId;
+                        const isReachable = reachableLocationIds?.has(location.id);
+                        const presentCharacters = interactionData?.participants.filter(
+                            p => getCurrentLocationId(interactionData, p) === location.id
+                        ) || [];
+                        
+                        const prefix = isCurrent 
+                            ? '🚩 (You are here) ' 
+                            : isReachable 
+                                ? '🚶 (Reachable) ' 
+                                : '';
+                        
+                        const charsText = presentCharacters.length > 0 
+                            ? `👥 ${presentCharacters.map(c => c.name).join(', ')} • ` 
+                            : '';
+                        
+                        return `${prefix}${charsText}${renderLocationSubtext(location)}`;
+                    }}
                     emptyMessage="No locations found." 
                     actionLabel="Delete" 
                     orderedListMode={true} 
                     currentOrderIds={interactionData?.locations?.map(location => location.id) || []} 
                     onToggleOrder={onToggleLocation} 
+                    selectedId={localProtagonistLocationId}
+                    secondaryActiveIds={reachableLocationIds}
+                    onSelectItem={onMoveProtagonist ? (location: Location) => onMoveProtagonist(location) : undefined}
                     allEntityFolders={allEntityFolders}
                     onSaveEntityFolder={onSaveEntityFolder}
                     onDeleteEntityFolder={onDeleteEntityFolder}
@@ -1145,7 +1189,7 @@ export function AppModals({
                     onSave={(context: Context) => { 
                         if (aiContextSaveRedirect) { 
                             aiContextSaveRedirect(context); 
-                            addToast('Applied context changes to AI recommendation.', 'success');
+                            addToast('Applied context changes to AI recommendation.', 'success'); 
                         } else { 
                             contextModalProperties.save(context); 
                         } 
@@ -1236,7 +1280,7 @@ export function AppModals({
                         if (aiPromptBlockSaveRedirect) { 
                             aiPromptBlockSaveRedirect(promptBlock); 
                             addToast('Applied prompt block changes to AI recommendation.', 'success'); 
-                        } else {
+                        } else { 
                             promptBlockModalProperties.save(promptBlock); 
                         } 
                     }}

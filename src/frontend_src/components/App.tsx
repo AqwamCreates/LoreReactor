@@ -5,7 +5,12 @@ import { useToast } from '../context/ToastContext';
 import { saveRawInteractionData, loadRawInteractionData, flushSaveQueue, getCharacterImageUrl } from '../storages/serverStorage';
 import { addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { createMessage } from '../utilities/messageLogic';
-import { assignInitialLocationsIfNeeded } from '../utilities/locationLogic';
+import { 
+    assignInitialLocationsIfNeeded, 
+    getCurrentLocationId, 
+    getReachableLocationsByCharacter, 
+    isCharacterLockedFromLocation 
+} from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
 import { getCharacterStarterMessage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -1033,6 +1038,40 @@ function App() {
         setInteractionData, canBroadcastState, mp.multiplayerSync
     ]);
 
+    const handleMoveProtagonist = useCallback(async (location: Location) => {
+        if (!interactionData) return;
+
+        if (!localProtagonist) {
+            addToast('No local protagonist selected to move.', 'error');
+            return;
+        }
+
+        const currentLocId = getCurrentLocationId(interactionData, localProtagonist);
+
+        // 1. Check if already at this location
+        if (currentLocId === location.id) {
+            addToast(`Already at "${location.name}".`, 'info');
+            return;
+        }
+
+        // 2. Validate reachability & locked status
+        const reachable = getReachableLocationsByCharacter(interactionData, localProtagonist);
+        const isAdjacent = reachable.some(l => l.id === location.id);
+
+        if (!isAdjacent) {
+            if (isCharacterLockedFromLocation(interactionData, localProtagonist.id, location.id)) {
+                addToast(`Location "${location.name}" is locked.`, 'error');
+            } else {
+                addToast(`Location "${location.name}" is not adjacent to current location.`, 'error');
+            }
+            return;
+        }
+
+        // 3. Close the modal and execute the move tool
+        modals.locationList.close();
+        await sendMessage(`/move location_id="${location.id}"`);
+    }, [interactionData, localProtagonist, addToast, modals.locationList, sendMessage]);
+
     const baseViewProps: ViewModeProps = {
         displayMessages: committedMessages as TextMessage[],
         portraitUrlCache: viewAssets.portraitUrlCache, 
@@ -1454,6 +1493,7 @@ function App() {
                 onDeleteLocation={entityModals.getModalProperties('location').delete} 
                 onToggleLocation={mpBroadcast.handleToggleLocationAndBroadcast} 
                 onSaveLocation={locations.saveLocation}
+                onMoveProtagonist={handleMoveProtagonist}
                 onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} 
                 onToggleAudioTrack={mpBroadcast.handleToggleAudioTrackAndBroadcast} 
                 onSaveAudioTrack={audioTracks.saveAudioTrack}
