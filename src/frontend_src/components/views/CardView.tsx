@@ -1,5 +1,5 @@
 // src/frontend_src/components/views/CardView.tsx
-import React, { useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import type { ViewModeProps } from './types';
 import type { Character, TextMessage } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
@@ -108,6 +108,47 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
         prevCountRef.current = allCards.length;
     }, [allCards.length, focusedMessageId, setFocusedMessageId]);
 
+    // ── Dealing Animation Tracker ──────────────────────────────────────────
+    const [enteringIds, setEnteringIds] = useState<Set<string>>(new Set());
+    const prevIdsRef = useRef<Set<string>>(new Set());
+
+    useEffect(() => {
+        const currentIds = new Set(allCards.map(c => c.id));
+        const newIds = new Set<string>();
+        
+        currentIds.forEach(id => {
+            // If it's a new ID and we aren't on the very first initial mount
+            if (!prevIdsRef.current.has(id) && prevIdsRef.current.size > 0) {
+                newIds.add(id);
+            }
+        });
+        
+        let raf1: number;
+        let raf2: number;
+        let timeout: ReturnType<typeof setTimeout>;
+
+        if (newIds.size > 0) {
+            setEnteringIds(newIds);
+            // Double rAF + timeout ensures the browser paints the off-screen state 
+            // before we remove the class to trigger the CSS transition
+            raf1 = requestAnimationFrame(() => {
+                raf2 = requestAnimationFrame(() => {
+                    timeout = setTimeout(() => {
+                        setEnteringIds(new Set());
+                    }, 50);
+                });
+            });
+        }
+        
+        prevIdsRef.current = currentIds;
+
+        return () => {
+            if (raf1) cancelAnimationFrame(raf1);
+            if (raf2) cancelAnimationFrame(raf2);
+            if (timeout) clearTimeout(timeout);
+        };
+    }, [allCards]);
+
     const activeTextBodyRef = useRef<HTMLDivElement>(null);
     useEffect(() => {
         if (isLoading && viewIndex === allCards.length - 1 && activeTextBodyRef.current) {
@@ -164,12 +205,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
 
     const bgStyle: React.CSSProperties = useMemo(() => {
         if (locationBackgroundUrl) {
-            return {
-                backgroundImage: `linear-gradient(to bottom, rgba(10, 10, 20, 0.45) 0%, rgba(10, 10, 20, 0.8) 100%), url(${locationBackgroundUrl})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center',
-                backgroundRepeat: 'no-repeat',
-            };
+            return { background: 'transparent' };
         }
         return {
             background: 'radial-gradient(ellipse at 50% 40%, #1e1b2e 0%, #0c0b12 100%)',
@@ -247,9 +283,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
             {/* 3D Deck Viewport */}
             <div className="card-deck-viewport">
                 {allCards.length === 0 ? (
-                    <div className="fate-card fate-card-active fate-card-empty">
-                        <p className="fate-empty-text">The deck rests. Speak to Fate to begin...</p>
-                    </div>
+                    <div className="fate-card fate-card-active fate-card-empty" />
                 ) : (
                     renderedCards.map(({ card, index }) => {
                         const isCurrent = index === viewIndex;
@@ -304,6 +338,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
                                 onMassDeleteConfirm={onMassDeleteConfirm}
                                 onCancelMassDelete={onCancelMassDelete}
                                 canDelete={canDelete}
+                                isEntering={enteringIds.has(card.id)}
                             />
                         );
                     })
@@ -345,6 +380,7 @@ interface SingleCardProps {
     onMassDeleteConfirm: () => void;
     onCancelMassDelete: () => void;
     canDelete: boolean;
+    isEntering: boolean;
 }
 
 const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
@@ -357,7 +393,7 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
         onRegenerateFromMessage, onResumeGeneration, onPlayVoice,
         onBranch, onClone, onDelete, onCopyText, onStopGeneration,
         massDeleteId, onSetMassDelete, onMassDeleteConfirm, onCancelMassDelete,
-        canDelete,
+        canDelete, isEntering,
     } = props;
 
     const interactionData = useChatStore(s => s.interactionData);
@@ -381,19 +417,20 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
         positionClass,
         isUserCard ? 'fate-card-user' : 'fate-card-fate',
         isStreamingThis && !renderedText ? 'fate-card-blank-waiting' : '',
+        isEntering ? 'fate-card-entering' : '',
     ].filter(Boolean).join(' ');
 
     return (
         <div className={cardClasses}>
-            {/* Centered Name Plate - NO STAR, NO PORTRAIT */}
+            {/* Centered Name Plate */}
             <div className="fate-card-header">
                 <span className="fate-card-name-plate">
                     {displayName}
                 </span>
             </div>
 
-            {/* Card Body - CENTERED TEXT */}
-            <div className="fate-card-body" ref={textBodyRef}>
+            {/* Plain Card Body: Blank when waiting, renders text when generating */}
+            <div className={`fate-card-body ${isEditing ? 'is-editing' : ''}`} ref={textBodyRef}>
                 {isEditing ? (
                     <textarea
                         ref={editTextAreaRef}
@@ -402,18 +439,14 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
                         onChange={(e) => setEditDraft(e.target.value)}
                         placeholder="Inscribe edits..."
                     />
-                ) : isStreamingThis && !renderedText ? (
-                    <div className="fate-blank-casting-seal">
-                        <div className="fate-casting-subtitle">Fate inscribes destiny...</div>
-                    </div>
                 ) : (
                     <div className="fate-card-text">
-                        <MemoizedMessageText text={renderedText} />
+                        {renderedText ? <MemoizedMessageText text={renderedText} /> : null}
                     </div>
                 )}
             </div>
 
-            {/* Card Footer Toolbar */}
+            {/* Footer Toolbar Buttons */}
             <div className="fate-card-footer">
                 {isCurrent && (
                     <div className="fate-card-actions">
@@ -425,7 +458,7 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
                         ) : (
                             <>
                                 {isLoading && isStreamingThis && (
-                                    <button type="button" className="fate-card-btn fate-card-btn-danger" onClick={onStopGeneration} title="Stop Inscribing">⏹</button>
+                                    <button type="button" className="fate-card-btn fate-card-btn-danger" onClick={onStopGeneration} title="Stop">⏹</button>
                                 )}
                                 <button type="button" className="fate-card-btn" onClick={() => onCopyText(renderedText)} title="Copy Text">📋</button>
                                 

@@ -72,10 +72,9 @@ import { ContextBar } from './ContextBar';
 import { LoadingScreen } from './LoadingScreen';
 import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ChatHistoryPanel } from './ChatHistoryPanel';
-import { PriorityPlusToolbar } from './PriorityPlusToolbar';
-import type { ToolbarItem } from './PriorityPlusToolbar';
 import { ChatViewArea } from './views/ChatViewArea';
 import type { ViewModeProps, viewMode } from './views/types';
+import { ViewModeDropdown } from './ViewModeDropdown';
 import { defaultContextLength } from '../dictionaries/defaults';
 import '../main.css';
 import { useWorldManager } from '../hooks/useWorldManager';
@@ -793,12 +792,8 @@ function App() {
         }
     };
 
-    const toggleViewMode = () => {
-        setViewMode(prev => 
-            prev === 'ladder' ? 'cinematic' : 
-            prev === 'cinematic' ? 'visual novel' :
-             prev === 'visual novel' ? 'card' : 'ladder'
-        );
+    const handleChangeViewMode = useCallback((newMode: viewMode) => {
+        setViewMode(newMode);
 
         const container = chatHistoryRef.current;
         let targetIdx = -1;
@@ -835,7 +830,7 @@ function App() {
             messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             setTimeout(() => { suppressAutoScrollRef.current = false; }, 400);
         }, 50);
-    };
+    }, [interactionData, safeMessages]);
 
     const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); interactionDatas.refresh(); }, [interactionDatas]);
 
@@ -1072,6 +1067,7 @@ function App() {
         viewMode === 'cinematic' ? 'mode-cinematic' : '',
         viewMode === 'visual novel' ? 'mode-vn' : '',
         viewMode === 'ladder' ? 'mode-ladder' : '',
+        viewMode === 'card' ? 'mode-card' : '',
         viewAssets.locationBackgroundUrl ? 'has-location-bg' : '',
     ].filter(Boolean).join(' ');
 
@@ -1271,136 +1267,7 @@ function App() {
         }
     }, [getCompanionStateSnapshot]);
 
-    // ─── Header Toolbar (Priority+ Pattern) ────────────────────────────────
-    const viewModeIcon = viewMode === 'ladder' ? '📜' : viewMode === 'cinematic' ? '🎥' : '📖';
-    const viewModeLabel =
-        viewMode === 'ladder' ? 'Ladder' : viewMode === 'cinematic' ? 'Cinematic' : 'Visual Novel';
-
     const peerCount = mp.multiplayerSync.connectedPeers.length;
-
-    const headerToolbarItems: ToolbarItem[] = [
-        {
-            id: 'peers',
-            priority: 10,
-            label: `${peerCount} peer${peerCount !== 1 ? 's' : ''} connected`,
-            icon: '🟢',
-            isStatus: true,
-            hidden: !mp.multiplayerSync.isConnected,
-            render: () => (
-                <div className="peer-badge" title={`${peerCount} connected peer${peerCount !== 1 ? 's' : ''}`}>
-                    <span className="peer-badge-dot" />
-                    <span className="peer-badge-count">{peerCount}</span>
-                </div>
-            ),
-        },
-        {
-            id: 'history',
-            priority: 15,
-            label: 'Chat History & Search',
-            icon: '🔍',
-            onActivate: () => setIsHistoryOpen(prev => !prev),
-            render: () => (
-                <button
-                    type="button"
-                    className={`view-mode-toggle header-icon-button ${isHistoryOpen ? 'active' : ''}`}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onTouchStart={(e) => e.stopPropagation()}
-                    onClick={() => setIsHistoryOpen(prev => !prev)}
-                    title="Chat History & Search"
-                >
-                    <span>🔍</span>
-                    <span className="view-mode-label">History</span>
-                </button>
-            ),
-        },
-        {
-            id: 'viewMode',
-            priority: 20,
-            label: `Switch view (now: ${viewModeLabel})`,
-            icon: viewModeIcon,
-            onActivate: toggleViewMode,
-            render: () => (
-                <button
-                    type="button"
-                    onClick={toggleViewMode}
-                    className="view-mode-toggle"
-                    title="Switch View Mode"
-                >
-                    <span>{viewModeIcon}</span>
-                    <span className="view-mode-label">{viewModeLabel}</span>
-                </button>
-            ),
-        },
-        {
-            id: 'settings',
-            priority: 30,
-            label: 'Settings',
-            icon: '⚙️',
-            onActivate: modals.settings.open,
-            render: () => (
-                <button
-                    type="button"
-                    className="view-mode-toggle header-icon-button"
-                    onClick={modals.settings.open}
-                    title="Settings"
-                >
-                    <span>⚙️</span>
-                </button>
-            ),
-        },
-        {
-            id: 'overlay',
-            priority: 40,
-            label: isOverlayOpen ? 'Close Companion Overlay' : 'Open Companion Overlay',
-            icon: '🪟',
-            onActivate: handleToggleOverlay,
-            render: () => (
-                <button
-                    type="button"
-                    className={`view-mode-toggle header-icon-button ${isOverlayOpen ? 'active' : ''}`}
-                    onClick={handleToggleOverlay}
-                    title={isOverlayOpen ? 'Close Companion Overlay' : 'Open Companion Overlay'}
-                >
-                    <span>🪟</span>
-                </button>
-            ),
-        },
-        {
-            id: 'extensions',
-            priority: 50,
-            label: 'Extensions',
-            icon: '🧩',
-            onActivate: () => modals.extensionList.open(),
-            render: () => (
-                <button
-                    type="button"
-                    className="view-mode-toggle header-icon-button"
-                    onClick={() => modals.extensionList.open()}
-                    title="Extensions"
-                >
-                    <span>🧩</span>
-                </button>
-            ),
-        },
-        {
-            id: 'stats',
-            priority: 60,
-            label: 'Session Statistics',
-            icon: '📊',
-            isStatus: true,
-            render: () => (
-                <ChatStatisticsBar
-                    numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}
-                    maximumNumberOfTokens={maxContextLength}
-                    maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maxParticipantTokens}
-                    maximumNumberOfContextTokens={maxContextTokens}
-                    budgetSpent={budgetData?.budgetSpent}
-                    maximumBudget={activeStrategy?.maximumBudget}
-                    timeUntilReset={timeUntilReset}
-                />
-            ),
-        },
-    ];
 
     return (
         <>
@@ -1446,11 +1313,68 @@ function App() {
                                         )}
                                     </div>
 
-                                    <PriorityPlusToolbar
-                                        items={headerToolbarItems}
-                                        className="header-toolbar"
-                                        gap={6}
-                                    />
+                                    <div className="header-toolbar pp-toolbar" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: 6, justifyContent: 'flex-end', flex: '0 1 auto', minWidth: 0, overflow: 'visible' }}>
+                                        {mp.multiplayerSync.isConnected && (
+                                            <div className="peer-badge" title={`${peerCount} connected peer${peerCount !== 1 ? 's' : ''}`}>
+                                                <span className="peer-badge-dot" />
+                                                <span className="peer-badge-count">{peerCount}</span>
+                                            </div>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            className={`view-mode-toggle header-icon-button ${isHistoryOpen ? 'active' : ''}`}
+                                            onMouseDown={(e) => e.stopPropagation()}
+                                            onTouchStart={(e) => e.stopPropagation()}
+                                            onClick={() => setIsHistoryOpen(prev => !prev)}
+                                            title="Chat History & Search"
+                                        >
+                                            <span>🔍</span>
+                                            <span className="view-mode-label">History</span>
+                                        </button>
+
+                                        <ViewModeDropdown
+                                            currentMode={viewMode}
+                                            onSelectMode={handleChangeViewMode}
+                                        />
+
+                                        <button
+                                            type="button"
+                                            className="view-mode-toggle header-icon-button"
+                                            onClick={modals.settings.open}
+                                            title="Settings"
+                                        >
+                                            <span>⚙️</span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            className={`view-mode-toggle header-icon-button ${isOverlayOpen ? 'active' : ''}`}
+                                            onClick={handleToggleOverlay}
+                                            title={isOverlayOpen ? 'Close Companion Overlay' : 'Open Companion Overlay'}
+                                        >
+                                            <span>🪟</span>
+                                        </button>
+
+                                        <button
+                                            type="button"
+                                            className="view-mode-toggle header-icon-button"
+                                            onClick={() => modals.extensionList.open()}
+                                            title="Extensions"
+                                        >
+                                            <span>🧩</span>
+                                        </button>
+
+                                        <ChatStatisticsBar
+                                            numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}
+                                            maximumNumberOfTokens={maxContextLength}
+                                            maximumNumberOfTokensUsedByTheParticipantWithHighestNumberOfTokens={maxParticipantTokens}
+                                            maximumNumberOfContextTokens={maxContextTokens}
+                                            budgetSpent={budgetData?.budgetSpent}
+                                            maximumBudget={activeStrategy?.maximumBudget}
+                                            timeUntilReset={timeUntilReset}
+                                        />
+                                    </div>
                                 </div>
 
                                 <ChatHistoryPanel

@@ -2012,11 +2012,14 @@ min-height: 24px;
 /* =============================================================================
 MODE: CARD (Fate Deck & Stack View)
 ============================================================================= */
-.chat-container.mode-card,
-.mode-card {
-  background: #0d0c14 !important;
+.chat-container.mode-card {
+  background: #0d0c14;
   transition: none !important;
   overflow: hidden;
+}
+
+.chat-container.mode-card.has-location-bg {
+  background: linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.75)), var(--location-bg) center/cover no-repeat fixed !important;
 }
 
 .mode-card .chat-history { 
@@ -2027,24 +2030,22 @@ MODE: CARD (Fate Deck & Stack View)
   display: none !important; 
 }
 
-/* Invisible Top Bar: Fully transparent & borderless over the stage */
+/* ── Top Bar: 100% Invisible & Transparent ── */
 .chat-container.mode-card .app-header,
 .mode-card .app-header {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  right: 0 !important;
-  z-index: 10 !important;
   background: transparent !important;
   background-color: transparent !important;
   border: none !important;
   border-bottom: none !important;
   box-shadow: none !important;
+  flex-shrink: 0;
+  width: 100%;
 }
 
-.mode-card .header-content,
-.mode-card .header-top {
+.chat-container.mode-card .header-content,
+.chat-container.mode-card .header-top {
   background: transparent !important;
+  background-color: transparent !important;
   border: none !important;
   box-shadow: none !important;
 }
@@ -2075,10 +2076,10 @@ MODE: CARD (Fate Deck & Stack View)
   color: #fff;
 }
 
-/* ── Stage with strict top & bottom clearance gaps ── */
+/* ── Stage with exact 12px gap from Top Bar and Chat Input ── */
 .card-stage-container {
   position: relative;
-  flex: 1;
+  flex: 1 1 0;
   width: 100%;
   min-height: 0;
   display: flex;
@@ -2086,7 +2087,7 @@ MODE: CARD (Fate Deck & Stack View)
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  padding: calc(65px + env(safe-area-inset-top, 0px)) 16px 20px 16px;
+  padding: 12px 16px;
   box-sizing: border-box;
 }
 
@@ -2100,10 +2101,10 @@ MODE: CARD (Fate Deck & Stack View)
   perspective: 1200px;
 }
 
-/* ── Timeline Branch Indicator ── */
+/* ── Branch Indicator ── */
 .card-branch-indicator {
   position: absolute;
-  top: 60px;
+  top: 12px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 15;
@@ -2113,9 +2114,9 @@ MODE: CARD (Fate Deck & Stack View)
   background: rgba(13, 12, 20, 0.85);
   border: 1px solid var(--accent-border);
   color: var(--accent);
-  padding: 6px 16px;
+  padding: 5px 14px;
   border-radius: 20px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: bold;
   cursor: pointer;
   backdrop-filter: blur(8px);
@@ -2135,7 +2136,7 @@ MODE: CARD (Fate Deck & Stack View)
 /* ── Navigation HUD ── */
 .card-nav-hud {
   position: absolute;
-  right: 24px;
+  right: 20px;
   top: 50%;
   transform: translateY(-50%);
   z-index: 15;
@@ -2193,12 +2194,12 @@ MODE: CARD (Fate Deck & Stack View)
   user-select: none;
 }
 
-/* ── Card Structure with bounded height & clearance ── */
+/* ── Card: Tall, fills stage height, leaves small gap ── */
 .fate-card {
   position: absolute;
-  width: min(88vw, 480px);
-  height: min(65vh, 600px);
-  max-height: calc(100% - 24px);
+  width: min(88vw, 500px);
+  height: min(100%, 820px);
+  max-height: 100%;
   border-radius: 18px;
   background: rgba(18, 16, 28, 0.94);
   backdrop-filter: blur(16px);
@@ -2219,7 +2220,7 @@ MODE: CARD (Fate Deck & Stack View)
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 25px rgba(59, 130, 246, 0.15);
 }
 
-/* ── Card Stack Positioning ── */
+/* ── Card Stack Transitions ── */
 .fate-card-active {
   transform: translateY(0) scale(1);
   opacity: 1;
@@ -2257,7 +2258,7 @@ MODE: CARD (Fate Deck & Stack View)
   pointer-events: none;
 }
 
-/* ── Centered Name Plate (No Portraits, No Stars) ── */
+/* ── Header: Centered Name Plate (No Stars) ── */
 .fate-card-header {
   display: flex;
   align-items: center;
@@ -2269,11 +2270,11 @@ MODE: CARD (Fate Deck & Stack View)
 }
 
 .fate-card-name-plate {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 1.5px;
-  padding: 4px 16px;
+  padding: 4px 18px;
   border-radius: 20px;
   background: linear-gradient(135deg, var(--accent), #e879f9);
   color: #fff;
@@ -2285,18 +2286,18 @@ MODE: CARD (Fate Deck & Stack View)
   background: linear-gradient(135deg, #2563eb, #38bdf8);
 }
 
-/* ── Card Body (Centered Text) ── */
+/* ── Card Body: Centered Text ── */
 .fate-card-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 16px;
+  padding: 16px 10px;
   margin: 4px 0;
   font-size: 0.85rem;
   line-height: 1.65;
   color: #f1f5f9;
-  text-align: center; /* Centered */
+  text-align: center;
   white-space: pre-wrap;
   word-break: break-word;
   -webkit-overflow-scrolling: touch;
@@ -2318,46 +2319,67 @@ MODE: CARD (Fate Deck & Stack View)
   width: 100%;
 }
 
-/* ── Blank Card Waiting State ── */
-.fate-blank-casting-seal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  gap: 12px;
-  opacity: 0.85;
+/* ─── Card Body: Scroll Mode (Viewing) ─── */
+.fate-card-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 16px 10px;
+    margin: 4px 0;
+    font-size: 0.85rem;
+    line-height: 1.65;
+    color: #f1f5f9;
+    text-align: center;
+    white-space: pre-wrap;
+    word-break: break-word;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(192, 132, 252, 0.3) transparent;
+    position: relative; /* Anchor for the textarea */
+    box-sizing: border-box;
 }
 
-.fate-casting-subtitle {
-  font-size: 0.78rem;
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-  color: var(--accent);
-  font-style: italic;
-  text-align: center;
+/* HARD SWITCH: Kill parent scrollbar completely when editing */
+.fate-card-body.is-editing {
+    overflow: hidden !important;
 }
 
-/* ── Edit Textarea (Centered) ── */
+.fate-card-body::-webkit-scrollbar { width: 4px; }
+.fate-card-body::-webkit-scrollbar-thumb { background: rgba(192, 132, 252, 0.3); border-radius: 4px; }
+
+.fate-card-text {
+    text-align: center;
+    width: 100%;
+}
+
+/* ─── Edit Textarea: Editing Mode (Absolute Overlay) ─── */
 .fate-card-edit-textarea {
-  width: 100%;
-  height: 100%;
-  min-height: 160px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid var(--accent-border);
-  border-radius: 8px;
-  color: #fff;
-  font-size: 0.85rem;
-  line-height: 1.6;
-  padding: 12px;
-  font-family: inherit;
-  resize: none;
-  outline: none;
-  text-align: center;
-  box-sizing: border-box;
+    position: absolute;
+    inset: 0; /* Locks perfectly to the parent's boundaries, ignoring flexbox math */
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.35);
+    border: 1px solid var(--accent-border);
+    border-radius: 8px;
+    color: #fff;
+    font-size: 0.85rem;
+    line-height: 1.6;
+    padding: 12px;
+    font-family: inherit;
+    resize: none;
+    outline: none;
+    text-align: center;
+    box-sizing: border-box;
+    overflow-y: auto; /* Textarea handles its own scrolling now */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(192, 132, 252, 0.3) transparent;
 }
 
-/* ── Footer Toolbar ── */
+.fate-card-edit-textarea::-webkit-scrollbar { width: 4px; }
+.fate-card-edit-textarea::-webkit-scrollbar-thumb { background: rgba(192, 132, 252, 0.3); border-radius: 4px; }
+
+/* ── Card Footer Toolbar ── */
 .fate-card-footer {
   display: flex;
   align-items: center;
@@ -2412,31 +2434,20 @@ MODE: CARD (Fate Deck & Stack View)
   color: #f87171; 
 }
 
-/* ── Empty Deck State ── */
+/* ── Empty State ── */
 .fate-card-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 16px;
-  text-align: center;
 }
 
-.fate-empty-text {
-  font-size: 0.85rem;
-  color: rgba(255, 255, 255, 0.5);
-  font-style: italic;
-  max-width: 280px;
-  line-height: 1.5;
-  text-align: center;
-}
-
-/* ── Responsive Mobile ── */
+/* ── Mobile Responsive ── */
 @media (max-width: 768px) {
   .fate-card {
     width: 92vw;
-    height: min(60vh, 520px);
-    padding: 14px 16px;
+    height: 100%;
+    padding: 12px 14px;
   }
   .fate-card-body {
     font-size: 0.82rem;
@@ -6148,195 +6159,7 @@ font-family: inherit;
 outline: none;
 box-sizing: border-box;
 }
-/* =============================================================================
-PRIORITY+ TOOLBAR
-============================================================================= */
-.pp-measure {
-position: absolute;
-top: 0;
-left: -99999px;
-display: flex;
-flex-wrap: nowrap;
-align-items: center;
-height: 0;
-overflow: hidden;
-visibility: hidden;
-pointer-events: none;
-contain: layout size style;
-}
-.pp-measure-item {
-flex: 0 0 auto;
-display: inline-flex;
-align-items: center;
-white-space: nowrap;
-}
-.pp-toolbar {
-display: flex;
-flex-wrap: nowrap;
-align-items: center;
-justify-content: flex-end;
-flex: 0 1 auto;
-min-width: 0;
-overflow: visible;
-}
-.pp-toolbar-measuring {
-visibility: hidden;
-overflow: hidden;
-}
-.pp-toolbar-slot {
-display: flex;
-align-items: center;
-flex: 0 0 auto;
-min-width: 0;
-}
-.pp-overflow-wrap {
-position: relative;
-display: flex;
-align-items: center;
-flex: 0 0 auto;
-}
-.pp-overflow-button {
-display: inline-flex;
-align-items: center;
-gap: 4px;
-height: 30px;
-padding: 0 8px;
-background: var(--social-bg, rgba(255, 255, 255, 0.06));
-border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-border-radius: 8px;
-color: var(--text-h);
-cursor: pointer;
-font-family: inherit;
-line-height: 1;
-transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-}
-.pp-overflow-button:hover {
-background: var(--accent-bg);
-border-color: var(--accent-border);
-color: var(--accent);
-}
-.pp-overflow-button-active {
-background: var(--accent);
-border-color: var(--accent);
-color: #fff;
-}
-.pp-overflow-glyph {
-font-size: 1rem;
-font-weight: bold;
-letter-spacing: 1px;
-line-height: 1;
-}
-.pp-overflow-count {
-min-width: 15px;
-height: 15px;
-padding: 0 4px;
-display: inline-flex;
-align-items: center;
-justify-content: center;
-border-radius: 999px;
-background: var(--accent);
-color: #fff;
-font-size: 0.6rem;
-font-weight: bold;
-font-family: monospace;
-box-sizing: border-box;
-}
-.pp-overflow-button-active .pp-overflow-count {
-background: rgba(0, 0, 0, 0.35);
-}
-.pp-overflow-menu {
-position: absolute;
-top: calc(100% + 8px);
-right: 0;
-min-width: 210px;
-max-width: 300px;
-max-height: min(60vh, 420px);
-overflow-y: auto;
-overscroll-behavior: contain;
-display: flex;
-flex-direction: column;
-gap: 2px;
-padding: 6px;
-background: var(--bg-secondary, #1e1e1e);
-border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
-border-radius: 10px;
-box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
-animation: ppMenuIn 0.14s ease-out;
-}
-@keyframes ppMenuIn {
-from { opacity: 0; transform: translateY(-4px); }
-to   { opacity: 1; transform: translateY(0); }
-}
-.pp-overflow-menu-row { display: block; }
-.pp-overflow-menu-item {
-width: 100%;
-display: flex;
-align-items: center;
-gap: 10px;
-padding: 8px 10px;
-background: transparent;
-border: none;
-border-radius: 6px;
-color: var(--text-h);
-font-family: inherit;
-font-size: 0.82rem;
-text-align: left;
-cursor: pointer;
-transition: background 0.12s ease, color 0.12s ease;
-box-sizing: border-box;
-}
-.pp-overflow-menu-item:hover {
-background: var(--accent-bg);
-color: var(--accent);
-}
-.pp-overflow-menu-icon {
-flex: 0 0 auto;
-width: 18px;
-text-align: center;
-font-size: 0.95rem;
-}
-.pp-overflow-menu-label {
-flex: 1 1 auto;
-min-width: 0;
-overflow: hidden;
-text-overflow: ellipsis;
-white-space: nowrap;
-}
-.pp-overflow-menu-status { padding: 4px 6px; }
-.header-icon-button {
-padding: 6px 10px !important;
-flex: 0 0 auto;
-}
-.view-mode-label {
-white-space: nowrap;
-}
-.peer-badge {
-display: inline-flex;
-align-items: center;
-gap: 5px;
-height: 26px;
-padding: 0 9px;
-border-radius: 999px;
-background: rgba(34, 197, 94, 0.14);
-border: 1px solid rgba(34, 197, 94, 0.34);
-color: #22c55e;
-font-size: 0.7rem;
-font-weight: bold;
-white-space: nowrap;
-box-sizing: border-box;
-}
-.peer-badge-dot {
-width: 7px;
-height: 7px;
-border-radius: 50%;
-background: #22c55e;
-box-shadow: 0 0 7px #22c55e;
-animation: peerPulse 2s ease-in-out infinite;
-}
-@keyframes peerPulse {
-0%, 100% { opacity: 1; }
-50%      { opacity: 0.45; }
-}
+
 /* =============================================================================
 HEALTH PILL (Progressive-Disclosure Statistics) - TOKEN MATCHED
 ============================================================================= */
@@ -6593,4 +6416,108 @@ overflow: hidden;
 height: 100%;
 border-radius: 999px;
 transition: width 0.35s ease, background 0.35s ease;
+}
+
+/* =============================================================================
+VIEW MODE DROPDOWN
+============================================================================= */
+.view-mode-dropdown-root {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.view-mode-caret {
+  font-size: 0.65rem;
+  margin-left: 2px;
+  opacity: 0.7;
+  transition: transform 0.2s ease;
+  line-height: 1;
+}
+
+.view-mode-dropdown-root.open .view-mode-caret {
+  transform: rotate(180deg);
+}
+
+.view-mode-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--border);
+  z-index: var(--layer-dropdown, 20);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  animation: ppMenuIn 0.14s ease-out;
+}
+
+.view-mode-dropdown-item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--text-h);
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+.view-mode-dropdown-item:hover {
+  background: var(--social-bg);
+  color: var(--accent);
+}
+
+.view-mode-dropdown-item.selected {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.view-mode-dropdown-item-icon {
+  font-size: 1.15rem;
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.view-mode-dropdown-item-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.view-mode-dropdown-item-label {
+  font-size: 0.8rem;
+  font-weight: bold;
+  line-height: 1.2;
+}
+
+.view-mode-dropdown-item-desc {
+  font-size: 0.65rem;
+  color: var(--text);
+  opacity: 0.7;
+  margin-top: 2px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.view-mode-dropdown-item-check {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--accent);
+  flex-shrink: 0;
+  margin-left: 4px;
 }
