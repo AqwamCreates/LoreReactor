@@ -267,6 +267,11 @@ export async function branchMessage(interactionData: InteractionData, messageId:
  * Clones the chat up to the target message.
  * Automatically resolves the locationId from the messageId.
  */
+/**
+ * Clones the chat up to the target message.
+ * Uses the global timeline to ensure all locations are cloned chronologically,
+ * and properly remaps parentMessageIds so the UI timeline chain isn't severed.
+ */
 export async function cloneChatUpToMessage(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
     const globalHistory = getGlobalMessageHistory(interactionData);
     const targetGlobalIndex = globalHistory.findIndex(m => m.id === messageId);
@@ -277,23 +282,39 @@ export async function cloneChatUpToMessage(interactionData: InteractionData, mes
 
     const now = Date.now();
     const clonedHistories: Record<string, HistoryMessage[]> = {};
+    
+    // 1. Filter messages chronologically and map old IDs to new UUIDs
+    const idMapping: Record<string, string> = {};
+    const keptMessagesByLocation: Record<string, HistoryMessage[]> = {};
 
-    // Filter all locations based on the global chronological index
     for (const [locId, messages] of Object.entries(interactionData.interactionHistories || {})) {
         const keptMsgs = messages.filter(m => {
             const globalIdx = globalHistory.findIndex(hm => hm.id === m.id);
             return globalIdx !== -1 && globalIdx <= targetGlobalIndex;
         });
-        
-        // Generate new IDs and timestamps for the independent clone
-        clonedHistories[locId] = keptMsgs.map(msg => ({
-            ...msg,
-            id: uuidv4(),
-            character: { ...msg.character },
-            firstCreatedTimestamp: now,
-            lastUpdatedTimestamp: now,
-            parentMessageId: null,
-        }));
+        keptMessagesByLocation[locId] = keptMsgs;
+        for (const msg of keptMsgs) {
+            idMapping[msg.id] = uuidv4();
+        }
+    }
+
+    // 2. Rebuild histories with new IDs and remapped parentMessageIds
+    for (const [locId, keptMsgs] of Object.entries(keptMessagesByLocation)) {
+        clonedHistories[locId] = keptMsgs.map(msg => {
+            // Remap parentMessageId to the new UUID if the parent was also cloned
+            const newParentId = msg.parentMessageId && idMapping[msg.parentMessageId] 
+                ? idMapping[msg.parentMessageId] 
+                : null;
+
+            return {
+                ...msg,
+                id: idMapping[msg.id],
+                character: { ...msg.character },
+                firstCreatedTimestamp: now,
+                lastUpdatedTimestamp: now,
+                parentMessageId: newParentId,
+            };
+        });
     }
 
     const clonedChat: InteractionData = {
