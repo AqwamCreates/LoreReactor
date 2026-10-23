@@ -835,7 +835,7 @@ function App() {
             messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             setTimeout(() => { suppressAutoScrollRef.current = false; }, 400);
         }, 50);
-    }, [interactionData, safeMessages]);
+    }, [chatHistoryRef, interactionData, messageEndRef, safeMessages]);
 
     const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); interactionDatas.refresh(); }, [interactionDatas]);
 

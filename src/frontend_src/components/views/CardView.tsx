@@ -108,7 +108,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
         prevCountRef.current = allCards.length;
     }, [allCards.length, focusedMessageId, setFocusedMessageId]);
 
-    // ── Dealing Animation Tracker (STABILIZED) ─────────────────────────────
+    // ── Dealing Animation Tracker ──────────────────────────────────────────
     const [enteringIds, setEnteringIds] = useState<Set<string>>(new Set());
     const prevIdsRef = useRef<Set<string>>(new Set());
 
@@ -122,18 +122,13 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
                 let isReplacement = false;
 
                 if (newCard) {
-                    // 1. Real card replacing a streaming card (Prevents double animation when AI finishes)
                     if (!newCard.id.startsWith('streaming-') && newCard.id !== '__pending_blank_card__') {
                         const hadStreaming = Array.from(prevIdsRef.current).some(pid => pid === `streaming-${newCard.character.id}`);
                         if (hadStreaming) isReplacement = true;
                     }
-                    
-                    // 2. Streaming card replacing a pending blank card (Prevents double animation when text starts)
                     if (newCard.id.startsWith('streaming-')) {
                         if (prevIdsRef.current.has('__pending_blank_card__')) isReplacement = true;
                     }
-                    
-                    // 3. Pending blank card replacing a streaming card (e.g. if generation restarts)
                     if (newCard.id === '__pending_blank_card__') {
                         const hadStreaming = Array.from(prevIdsRef.current).some(pid => pid.startsWith('streaming-'));
                         if (hadStreaming) isReplacement = true;
@@ -254,53 +249,6 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
                 </div>
             )}
 
-            {/* Navigation HUD */}
-            {allCards.length > 1 && (
-                <div className="card-nav-hud">
-                    <div className="card-nav-arrows">
-                        <button
-                            type="button"
-                            className="card-nav-btn"
-                            onClick={handleSkipToFirst}
-                            disabled={viewIndex === 0}
-                            title="Skip to first card"
-                        >
-                            ⏮
-                        </button>
-                        <button
-                            type="button"
-                            className="card-nav-btn"
-                            onClick={handleGoBack}
-                            disabled={!canGoBack}
-                            title="Previous card (Lift current card up)"
-                        >
-                            ▲ Older
-                        </button>
-                        <div className="card-nav-counter">
-                            {viewIndex + 1} / {allCards.length}
-                        </div>
-                        <button
-                            type="button"
-                            className="card-nav-btn"
-                            onClick={handleGoForward}
-                            disabled={!canGoForward}
-                            title="Next card (Pull card down from top)"
-                        >
-                            ▼ Newer
-                        </button>
-                        <button
-                            type="button"
-                            className="card-nav-btn"
-                            onClick={handleSkipToLatest}
-                            disabled={!canGoForward}
-                            title="Skip to latest card"
-                        >
-                            ⏭
-                        </button>
-                    </div>
-                </div>
-            )}
-
             {/* 3D Deck Viewport */}
             <div className="card-deck-viewport">
                 {allCards.length === 0 ? (
@@ -331,6 +279,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
                                 key={card.id}
                                 card={card}
                                 index={index}
+                                allCardsCount={allCards.length}
                                 isCurrent={isCurrent}
                                 positionClass={positionClass}
                                 isUserCard={isUserCard}
@@ -360,6 +309,12 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
                                 onCancelMassDelete={onCancelMassDelete}
                                 canDelete={canDelete}
                                 isEntering={enteringIds.has(card.id)}
+                                onGoBack={handleGoBack}
+                                onGoForward={handleGoForward}
+                                onSkipToFirst={handleSkipToFirst}
+                                onSkipToLatest={handleSkipToLatest}
+                                canGoBack={canGoBack}
+                                canGoForward={canGoForward}
                             />
                         );
                     })
@@ -373,6 +328,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
 interface SingleCardProps {
     card: TextMessage;
     index: number;
+    allCardsCount: number;
     isCurrent: boolean;
     positionClass: string;
     isUserCard: boolean;
@@ -402,11 +358,17 @@ interface SingleCardProps {
     onCancelMassDelete: () => void;
     canDelete: boolean;
     isEntering: boolean;
+    onGoBack: () => void;
+    onGoForward: () => void;
+    onSkipToFirst: () => void;
+    onSkipToLatest: () => void;
+    canGoBack: boolean;
+    canGoForward: boolean;
 }
 
 const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
     const {
-        card, index, isCurrent, positionClass, isUserCard, isStreamingThis,
+        card, index, allCardsCount, isCurrent, positionClass, isUserCard, isStreamingThis,
         isLoading, streamingText, textBodyRef,
         displayNameCache,
         editingId, editDraft, setEditDraft, editTextAreaRef,
@@ -415,6 +377,8 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
         onBranch, onClone, onDelete, onCopyText, onStopGeneration,
         massDeleteId, onSetMassDelete, onMassDeleteConfirm, onCancelMassDelete,
         canDelete, isEntering,
+        onGoBack, onGoForward, onSkipToFirst, onSkipToLatest,
+        canGoBack, canGoForward,
     } = props;
 
     const interactionData = useChatStore(s => s.interactionData);
@@ -441,16 +405,76 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
         isEntering ? 'fate-card-entering' : '',
     ].filter(Boolean).join(' ');
 
+    const isFirst = index === 0;
+    const isLatest = index === allCardsCount - 1;
+
     return (
         <div className={cardClasses}>
-            {/* Centered Name Plate */}
+            {/* ── Header: Navigation Flanking the Centered Name Plate ── */}
             <div className="fate-card-header">
-                <span className="fate-card-name-plate">
-                    {displayName}
-                </span>
+                {allCardsCount > 1 ? (
+                    <div className="fate-card-header-nav fate-card-header-nav-left">
+                        <button
+                            type="button"
+                            className="fate-card-nav-btn"
+                            onClick={onSkipToFirst}
+                            disabled={!isCurrent || isFirst}
+                            title="Skip to first card (⏮)"
+                        >
+                            ⏮
+                        </button>
+                        <button
+                            type="button"
+                            className="fate-card-nav-btn"
+                            onClick={onGoBack}
+                            disabled={!isCurrent || !canGoBack}
+                            title="Previous older card (▲)"
+                        >
+                            ▲
+                        </button>
+                    </div>
+                ) : (
+                    <div className="fate-card-header-nav-spacer" />
+                )}
+
+                <div className="fate-card-header-center">
+                    <span className="fate-card-name-plate">
+                        {displayName}
+                    </span>
+                    {allCardsCount > 1 && (
+                        <span className="fate-card-nav-counter">
+                            {index + 1} / {allCardsCount}
+                        </span>
+                    )}
+                </div>
+
+                {allCardsCount > 1 ? (
+                    <div className="fate-card-header-nav fate-card-header-nav-right">
+                        <button
+                            type="button"
+                            className="fate-card-nav-btn"
+                            onClick={onGoForward}
+                            disabled={!isCurrent || !canGoForward}
+                            title="Next newer card (▼)"
+                        >
+                            ▼
+                        </button>
+                        <button
+                            type="button"
+                            className="fate-card-nav-btn"
+                            onClick={onSkipToLatest}
+                            disabled={!isCurrent || isLatest}
+                            title="Skip to latest card (⏭)"
+                        >
+                            ⏭
+                        </button>
+                    </div>
+                ) : (
+                    <div className="fate-card-header-nav-spacer" />
+                )}
             </div>
 
-            {/* Plain Card Body: Blank when waiting, renders text when generating */}
+            {/* Card Body */}
             <div className={`fate-card-body ${isEditing ? 'is-editing' : ''}`} ref={textBodyRef}>
                 {isEditing ? (
                     <textarea

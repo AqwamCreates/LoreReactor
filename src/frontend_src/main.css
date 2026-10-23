@@ -182,25 +182,40 @@ background: #0a0a0f;
     flex-wrap: wrap !important;
   }
 
-  /* Compact button sizes on phone screens */
-  .view-mode-toggle {
-    padding: 6px 10px;
-    min-height: 32px;
-    font-size: 0.7rem;
-    gap: 4px;
-  }
-
+  /* Unified identical 36x36px circle buttons on mobile */
+  .view-mode-toggle,
   .view-mode-toggle.header-icon-button {
-    min-width: 32px;
-    min-height: 32px;
-    padding: 6px;
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    min-height: 36px !important;
+    max-width: 36px !important;
+    max-height: 36px !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 50% !important; /* Perfect circle */
+    padding: 0 !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+    box-sizing: border-box !important;
   }
 
-  /* Hide textual label on History button for mobile, keeping the 🔍 icon */
-  .view-mode-toggle .view-mode-label {
-    display: none;
+  .view-mode-toggle span:first-child {
+    font-size: 1rem !important;
+    line-height: 1 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
   }
-}
+
+  /* Safely hide text labels & carets on mobile without hiding single-child icons */
+  .view-mode-toggle .view-mode-label,
+  .view-mode-toggle .view-mode-caret {
+    display: none !important;
+  }
+} /* <-- ADD THIS CLOSING BRACE */
+
 .mode-vn .app-header {
   position: absolute;
   top: 0;
@@ -296,19 +311,10 @@ align-items: center;
 }
 }
 @media (max-width: 768px) {
-.header-controls-group {
-gap: 4px;
-padding: 2px;
-}
-.view-mode-toggle span:last-child {
-display: none;
-}
-.view-mode-toggle {
-padding: 8px;
-min-width: 40px;
-min-height: 40px;
-justify-content: center;
-}
+  .header-controls-group {
+    gap: 4px;
+    padding: 2px;
+  }
 }
 /* =============================================================================
 SHARED CHAT COMPONENTS (Used by Ladder & Cinematic)
@@ -2158,67 +2164,6 @@ MODE: CARD (Fate Deck & Stack View)
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* ── Navigation HUD ── */
-.card-nav-hud {
-  position: absolute;
-  right: 20px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 15;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.card-nav-arrows {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  background: rgba(15, 14, 24, 0.75);
-  padding: 8px 6px;
-  border-radius: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-}
-
-.card-nav-btn {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #fff;
-  padding: 6px 12px;
-  border-radius: 6px;
-  font-size: 0.72rem;
-  font-weight: bold;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  font-family: inherit;
-  min-width: 72px;
-  text-align: center;
-}
-
-.card-nav-btn:hover:not(:disabled) {
-  background: var(--accent);
-  border-color: var(--accent);
-  transform: scale(1.05);
-}
-
-.card-nav-btn:disabled {
-  opacity: 0.25;
-  cursor: not-allowed;
-}
-
-.card-nav-counter {
-  font-size: 0.7rem;
-  color: var(--accent);
-  font-family: monospace;
-  font-weight: bold;
-  padding: 4px 0;
-  user-select: none;
-}
-
 /* ── Card: Tall, fills stage height, leaves small gap ── */
 .fate-card {
   position: absolute;
@@ -2254,10 +2199,10 @@ MODE: CARD (Fate Deck & Stack View)
 }
 
 .fate-card.fate-card-entering {
-    transform: translateY(-130vh) scale(0.92) !important;
-    opacity: 0 !important;
-    z-index: 6 !important;
-    pointer-events: none !important;
+  transform: translateY(-130vh) scale(0.92) !important;
+  opacity: 0 !important;
+  z-index: 6 !important;
+  pointer-events: none !important;
 }
 
 .fate-card-discarded-up {
@@ -2290,35 +2235,119 @@ MODE: CARD (Fate Deck & Stack View)
   pointer-events: none;
 }
 
-/* ── Header: Centered Name Plate (No Stars) ── */
+/* ── Header: Name Plate Flanked by Navigation Controls ── */
 .fate-card-header {
   display: flex;
   align-items: center;
-  justify-content: center;
-  padding-bottom: 12px;
+  justify-content: space-between;
+  padding-bottom: 12px; /* Increased breathing room above card body */
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   flex-shrink: 0;
   width: 100%;
+  gap: 8px;
+  box-sizing: border-box;
+}
+
+.fate-card-header-nav {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.fate-card-header-nav-spacer {
+  width: 66px;
+  flex: 0 0 auto;
+}
+
+.fate-card-nav-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  width: 30px;
+  height: 28px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+  padding: 0;
+  line-height: 1;
+  user-select: none;
+}
+
+.fate-card-nav-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(170, 59, 255, 0.35);
+}
+
+.fate-card-nav-btn:disabled {
+  opacity: 0.2;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.fate-card-header-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px; /* Increased from 3px to 8px to eliminate collision */
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .fate-card-name-plate {
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 1.5px;
-  padding: 4px 18px;
+  letter-spacing: 1.2px;
+  padding: 4px 14px;
   border-radius: 20px;
   background: linear-gradient(135deg, var(--accent), #e879f9);
   color: #fff;
   text-align: center;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  line-height: 1.3;
 }
 
 .fate-card.fate-card-user .fate-card-name-plate {
   background: linear-gradient(135deg, #2563eb, #38bdf8);
 }
 
-/* ── Card Body: Centered Text ── */
+.fate-card-nav-counter {
+  font-size: 0.68rem;
+  color: var(--accent);
+  font-family: var(--mono, monospace);
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  opacity: 0.9;
+  user-select: none;
+  line-height: 1;
+  margin-top: 1px;
+}
+
+.fate-card.fate-card-user .fate-card-nav-counter {
+  color: #60a5fa; /* Cool blue matching the protagonist's outline */
+}
+
+.fate-card.fate-card-user .fate-card-nav-btn:hover:not(:disabled) {
+  background: #2563eb;
+  border-color: #60a5fa;
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
+}
+
+/* ─── Card Body: Scroll Mode (Viewing) ─── */
 .fate-card-body {
   flex: 1;
   min-height: 0;
@@ -2335,77 +2364,43 @@ MODE: CARD (Fate Deck & Stack View)
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
   scrollbar-color: rgba(192, 132, 252, 0.3) transparent;
+  position: relative;
+  box-sizing: border-box;
 }
 
-.fate-card-body::-webkit-scrollbar { 
-  width: 4px; 
-}
-
-.fate-card-body::-webkit-scrollbar-thumb {
-  background: rgba(192, 132, 252, 0.3);
-  border-radius: 4px;
-}
-
-.fate-card-text {
-  text-align: center;
-  width: 100%;
-}
-
-/* ─── Card Body: Scroll Mode (Viewing) ─── */
-.fate-card-body {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 16px 10px;
-    margin: 4px 0;
-    font-size: 0.85rem;
-    line-height: 1.65;
-    color: #f1f5f9;
-    text-align: center;
-    white-space: pre-wrap;
-    word-break: break-word;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
-    scrollbar-color: rgba(192, 132, 252, 0.3) transparent;
-    position: relative; /* Anchor for the textarea */
-    box-sizing: border-box;
-}
-
-/* HARD SWITCH: Kill parent scrollbar completely when editing */
 .fate-card-body.is-editing {
-    overflow: hidden !important;
+  overflow: hidden !important;
 }
 
 .fate-card-body::-webkit-scrollbar { width: 4px; }
 .fate-card-body::-webkit-scrollbar-thumb { background: rgba(192, 132, 252, 0.3); border-radius: 4px; }
 
 .fate-card-text {
-    text-align: center;
-    width: 100%;
+  text-align: center;
+  width: 100%;
 }
 
 /* ─── Edit Textarea: Editing Mode (Absolute Overlay) ─── */
 .fate-card-edit-textarea {
-    position: absolute;
-    inset: 0; /* Locks perfectly to the parent's boundaries, ignoring flexbox math */
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 0, 0.35);
-    border: 1px solid var(--accent-border);
-    border-radius: 8px;
-    color: #fff;
-    font-size: 0.85rem;
-    line-height: 1.6;
-    padding: 12px;
-    font-family: inherit;
-    resize: none;
-    outline: none;
-    text-align: center;
-    box-sizing: border-box;
-    overflow-y: auto; /* Textarea handles its own scrolling now */
-    scrollbar-width: thin;
-    scrollbar-color: rgba(192, 132, 252, 0.3) transparent;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  padding: 12px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  text-align: center;
+  box-sizing: border-box;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(192, 132, 252, 0.3) transparent;
 }
 
 .fate-card-edit-textarea::-webkit-scrollbar { width: 4px; }
@@ -2419,7 +2414,8 @@ MODE: CARD (Fate Deck & Stack View)
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   flex-shrink: 0;
-  min-height: 42px;
+  min-height: 44px;
+  width: 100%;
   box-sizing: border-box;
 }
 
@@ -2429,22 +2425,28 @@ MODE: CARD (Fate Deck & Stack View)
   justify-content: center;
   gap: 6px;
   flex-wrap: wrap;
+  width: 100%; /* Stretch across the full card width */
 }
 
 .fate-card-btn {
   background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.14);
   color: #fff;
-  width: 32px;
-  height: 32px;
-  border-radius: 6px;
+  /* Fluid stretching: expands to fill the row, minimum 32px */
+  flex: 1 1 32px;
+  width: auto;
+  min-width: 32px;
+  max-width: 58px; /* Prevents 1 or 2 isolated buttons from becoming excessively wide */
+  height: 36px;    /* Taller for comfortable mobile touch targets */
+  border-radius: 8px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.85rem;
+  font-size: 0.9rem;
   transition: all 0.15s ease;
   padding: 0;
+  box-sizing: border-box;
 }
 
 .fate-card-btn:hover {
@@ -2458,12 +2460,20 @@ MODE: CARD (Fate Deck & Stack View)
   border-color: #ef4444;
 }
 
+.fate-card-btn-save,
+.fate-card-btn-cancel {
+  max-width: 140px;
+  font-weight: bold;
+}
+
 .fate-card-btn-save { 
   color: #34d399; 
+  border-color: rgba(52, 211, 153, 0.3);
 }
 
 .fate-card-btn-cancel { 
   color: #f87171; 
+  border-color: rgba(248, 113, 113, 0.3);
 }
 
 /* ── Empty State ── */
@@ -2484,23 +2494,41 @@ MODE: CARD (Fate Deck & Stack View)
   .fate-card-body {
     font-size: 0.82rem;
   }
-  .card-nav-hud {
-    right: 8px;
-    top: auto;
-    bottom: 80px;
-    transform: none;
+  .fate-card-name-plate {
+    font-size: 0.74rem;
+    padding: 3px 10px;
   }
-  .card-nav-arrows {
-    flex-direction: row;
-    padding: 4px 8px;
-  }
-  .card-nav-btn {
-    min-width: 44px;
-    padding: 4px 8px;
+  .fate-card-nav-btn {
+    width: 26px;
+    height: 26px;
     font-size: 0.68rem;
+  }
+  .fate-card-header-nav-spacer {
+    width: 56px;
   }
   .card-branch-indicator {
     top: 50px;
+  }
+    .fate-card-footer {
+    padding-top: 8px;
+    min-height: 42px;
+  }
+
+  .fate-card-actions {
+    gap: 4px;
+  }
+
+  .fate-card-btn {
+    flex: 1 1 30px;
+    min-width: 30px;
+    height: 36px;
+    font-size: 0.85rem;
+    border-radius: 6px;
+  }
+
+  .fate-card-btn-save,
+  .fate-card-btn-cancel {
+    max-width: 120px;
   }
 }
 
