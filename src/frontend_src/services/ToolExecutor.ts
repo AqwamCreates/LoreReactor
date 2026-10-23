@@ -28,6 +28,7 @@ import { localURL } from '../../configurations';
 import { embeddingEngine } from './EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from './RetrievalEngine';
 import { retrieveEligibleMemories, detokenizeMemoryContent } from '../utilities/memoryLogic';
+import { toolResultEndString, toolResultStartString } from '../dictionaries/stringList';
 
 // Re-export so consumers importing from ToolExecutor remain compatible
 export type {
@@ -370,24 +371,24 @@ export async function executeTool(
     const args = invocation.args;
 
     if (nextMessage.character.tools && nextMessage.character.tools[toolType] === false) {
-        return { toolType, args, textContent: "Tool disabled", displayReplacement: "" };
+        return { toolType, args, textContent: `${toolResultStartString}Tool disabled${toolResultEndString}`, displayReplacement: "" };
     }
 
     const executeFunction = toolFunctions[toolType as tool];
     if (!executeFunction) {
         console.warn(`Unknown tool type: ${toolType}`);
-        return { toolType, args, textContent: "Something went wrong", displayReplacement: "" };
+        return { toolType, args, textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`, displayReplacement: "" };
     }
 
     try {
         const result = await executeFunction(args, nextMessage, interactionData, context, displayMode);
         if (!result || !result.textContent) {
-            return { toolType, args, textContent: "Something went wrong", displayReplacement: result?.displayReplacement || "" };
+            return { toolType, args, textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`, displayReplacement: result?.displayReplacement || "" };
         }
         return result;
     } catch (error) {
         console.error(`Tool "${toolType}" execution error:`, error);
-        return { toolType, args, textContent: "Something went wrong", displayReplacement: "" };
+        return { toolType, args, textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`, displayReplacement: "" };
     }
 }
 

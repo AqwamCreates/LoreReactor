@@ -780,14 +780,6 @@ export function applySlashSelection(
         targetIndex = 1;
     }
 
-    if (!isTypingNewToken && targetIndex < currentParts.length) {
-        const currentPart = currentParts[targetIndex];
-        const lastComma = currentPart.lastIndexOf(',');
-        if (lastComma !== -1) {
-            newValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
-        }
-    }
-
     const cmd = COMMAND_TREE.find(c => c.name === currentParts[0]);
     if (cmd) {
         const pastCommand = isTypingNewToken || targetIndex > 0;
@@ -802,7 +794,40 @@ export function applySlashSelection(
     }
 
     if (isTargetsArg) {
-        newValue += ',';
+        const argOffset = cmd?.subs?.find(s => s.name === currentParts[1]) ? 2 : 1;
+        
+        // Determine which token holds the current comma-separated list
+        let baseIndex = -1;
+        if (!isTypingNewToken && targetIndex < currentParts.length) {
+            baseIndex = targetIndex;
+        } else if (isTypingNewToken || targetIndex >= currentParts.length) {
+            baseIndex = currentParts.length - 1;
+        }
+
+        // Only append if the baseIndex is actually part of the arguments (not the command/subcommand)
+        if (baseIndex >= argOffset && baseIndex < currentParts.length) {
+            const currentPart = currentParts[baseIndex];
+            const lastComma = currentPart.lastIndexOf(',');
+            
+            if (lastComma !== -1) {
+                // Append after the last comma (replacing any partial typing)
+                newValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
+            } else {
+                // No comma yet, append one now that a second entity is being added
+                newValue = `${currentPart},${opt.value}`;
+            }
+            
+            currentParts[baseIndex] = newValue;
+            return `/${currentParts.join(' ')}`;
+        }
+    }
+
+    if (!isTypingNewToken && targetIndex < currentParts.length) {
+        const currentPart = currentParts[targetIndex];
+        const lastComma = currentPart.lastIndexOf(',');
+        if (lastComma !== -1) {
+            newValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
+        }
     }
 
     if (isTypingNewToken || targetIndex >= currentParts.length) {
@@ -811,7 +836,5 @@ export function applySlashSelection(
         currentParts[targetIndex] = newValue;
     }
 
-    // Return the command and values joined cleanly with spaces. 
-    // No forced trailing space at the end of the string.
     return `/${currentParts.join(' ')}`;
 }

@@ -119,7 +119,7 @@ async function processToolInvocations(
             toolResult = {
                 toolType: inv.toolType,
                 args: inv.args,
-                textContent: "Tool disabled",
+                textContent: `${toolResultStartString}Tool is currently disabled${toolResultEndString}`,
                 displayReplacement: ""
             };
         } else {
@@ -128,7 +128,7 @@ async function processToolInvocations(
                 toolResult = results[0] || {
                     toolType: inv.toolType,
                     args: inv.args,
-                    textContent: 'Something went wrong',
+                    textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`,
                     displayReplacement: ''
                 };
             } catch (e) {
@@ -136,7 +136,7 @@ async function processToolInvocations(
                 toolResult = {
                     toolType: inv.toolType,
                     args: inv.args,
-                    textContent: 'Something went wrong',
+                    textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`,
                     displayReplacement: ''
                 };
             }
