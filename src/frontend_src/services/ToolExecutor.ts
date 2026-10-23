@@ -370,6 +370,8 @@ export async function executeTool(
     const toolType = invocation.toolType as tool;
     const args = invocation.args;
 
+    // ✅ FIX: Wrap system-level meta-errors in observation markers so sanitizeToolSyntax 
+    // strips them from the AI's context, preventing fourth-wall breaks.
     if (nextMessage.character.tools && nextMessage.character.tools[toolType] === false) {
         return { toolType, args, textContent: `${toolResultStartString}Tool disabled${toolResultEndString}`, displayReplacement: "" };
     }
@@ -1363,7 +1365,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
             });
         }
         await saveRawCharacter(character as any).catch(console.warn);
-        context.addToast(`🧠 Memory saved for ${character.name}`, 'success');
+        context.addToast?.(`🧠 Memory saved for ${character.name}`, 'success');
         return { toolType: 'memory', args, textContent: `Saved memory: ${summary}`, displayReplacement: '[🧠 Memory saved]' };
     }
 
@@ -2005,7 +2007,7 @@ function executeAdministrator(
         const targetId = item ? item.id : entityId;
         const targetName = item?.name || item?.username || entityId;
         appendPendingAction(nextMessage, { type: 'administrator_edit_entity', payload: { entityType: resolvedType, entityId: targetId, field, value } });
-        context.addToast(`Administrator: Edit ${resolvedType} "${targetName}" [${field}] initiated.`, 'info');
+        context.addToast?.(`Administrator: Edit ${resolvedType} "${targetName}" [${field}] initiated.`, 'info');
         return { toolType: 'administrator', args, textContent: `Requested edit on ${resolvedType} "${targetName}": set ${field} = "${value}".`, displayReplacement: `[🔧 Edit: ${targetName}.${field}]` };
     }
 
@@ -2101,7 +2103,7 @@ function executeCreator(args: string, nextMessage: BaseMessage, _interactionData
     }
 
     appendPendingAction(nextMessage, { type: 'creator', payload: { entityType: resolvedType, entityName } });
-    context.addToast(`Creator: ${resolvedType} "${entityName}" initiated.`, 'info');
+    context.addToast?.(`Creator: ${resolvedType} "${entityName}" initiated.`, 'info');
     return { toolType: 'creator', args, textContent: `Created ${resolvedType} "${entityName}".`, displayReplacement: `[🛠️ ${resolvedType}: "${entityName}"]` };
 }
 
@@ -2121,7 +2123,7 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
     }
 
     appendPendingAction(nextMessage, { type: 'destroyer', payload: { entityType: resolvedType, entityId, entityName: entityId } });
-    context.addToast(`Destroyer: ${resolvedType} "${entityId}" initiated.`, 'info');
+    context.addToast?.(`Destroyer: ${resolvedType} "${entityId}" initiated.`, 'info');
     return { toolType: 'destroyer', args, textContent: `Destroyed ${resolvedType} "${entityId}".`, displayReplacement: `[💀 Destroyed: "${entityId}"]` };
 }
 
@@ -2226,7 +2228,7 @@ async function executeNotify(args: string, _nextMessage: BaseMessage, _interacti
     if (!res.success) {
         return { toolType: 'notify', args, textContent: `[Error: ${res.error || 'Failed to send notification'}]`, displayReplacement: '[❌ Notification failed]' };
     }
-    context.addToast(`Notification sent: ${title}`, 'success');
+    context.addToast?.(`Notification sent: ${title}`, 'success');
     return { toolType: 'notify', args, textContent: `Sent OS notification "${title}": ${message}`, displayReplacement: `[🔔 Notification sent]` };
 }
 
@@ -2258,7 +2260,7 @@ async function executeLockScreen(args: string, _nextMessage: BaseMessage, _inter
     if (!res.success) {
         return { toolType: 'lock_screen', args, textContent: `[Error: ${res.error}]`, displayReplacement: '[❌ Lock failed]' };
     }
-    context.addToast('Screen locked', 'info');
+    context.addToast?.('Screen locked', 'info');
     return { toolType: 'lock_screen', args, textContent: 'Host workstation locked successfully.', displayReplacement: '[🔒 Screen Locked]' };
 }
 
@@ -2269,7 +2271,7 @@ function executePower(action: 'sleep' | 'shutdown' | 'restart') {
         if (!res.success) {
             return { toolType: action, args, textContent: `[Error: ${res.error || `Failed to execute ${action}`}]`, displayReplacement: `[❌ System ${action} failed]` };
         }
-        context.addToast(`⚠️ System power command executed: ${action}`, 'error');
+        context.addToast?.(`⚠️ System power command executed: ${action}`, 'error');
         return { toolType: action, args, textContent: `Successfully triggered operating system ${action}.`, displayReplacement: `[⚡ SYSTEM ${action.toUpperCase()}]` };
     };
 }
@@ -2291,7 +2293,7 @@ async function executeClipboard(args: string, _nextMessage: BaseMessage, _intera
     if (action === 'read') {
         return { toolType: 'clipboard', args, textContent: res.content || '', displayReplacement: `[📋 Clipboard read]` };
     } else {
-        context.addToast('Text copied to clipboard', 'success');
+        context.addToast?.('Text copied to clipboard', 'success');
         return { toolType: 'clipboard', args, textContent: `Successfully wrote text to host clipboard.`, displayReplacement: `[📋 Copied to clipboard]` };
     }
 }
@@ -2308,7 +2310,7 @@ async function executeScreenshot(args: string, nextMessage: BaseMessage, _intera
         if (!msg.files) msg.files = [];
         msg.files.push(dataUrl);
     }
-    context.addToast('Screenshot captured and sent to the language model', 'success');
+    context.addToast?.('Screenshot captured and sent to the language model', 'success');
     return { toolType: 'screenshot', args, textContent: `Screenshot captured and attached to visual input.`, displayReplacement: `[📸 Screenshot captured]` };
 }
 
@@ -2326,7 +2328,7 @@ async function executeFrontCamera(args: string, nextMessage: BaseMessage, _inter
         if (!msg.files) msg.files = [];
         msg.files.push(dataUrl);
     }
-    context.addToast('Front camera snapshot captured and sent to language model', 'success');
+    context.addToast?.('Front camera snapshot captured and sent to language model', 'success');
     return { toolType: 'front_camera', args, textContent: 'Front camera snapshot captured and attached to visual input.', displayReplacement: '[📷 Front Camera Snapshot]' };
 }
 
@@ -2351,7 +2353,7 @@ async function executeTrash(args: string, _nextMessage: BaseMessage, _interactio
     if (!res.success) {
         return { toolType: 'trash', args, textContent: `[Error: ${res.error}]`, displayReplacement: '[❌ Trash error]' };
     }
-    context.addToast(`Moved to Recycle Bin: ${targetPath}`, 'info');
+    context.addToast?.(`Moved to Recycle Bin: ${targetPath}`, 'info');
     return { toolType: 'trash', args, textContent: `Moved "${res.path || targetPath}" to the operating system recycle bin.`, displayReplacement: `[🗑️ Trashed: "${targetPath}"]` };
 }
 
@@ -2413,7 +2415,7 @@ async function executeBrowser(args: string, _nextMessage: BaseMessage, _interact
     if (!res.success) {
         return { toolType: 'browser', args, textContent: `[Error: ${res.error || 'Failed to open browser'}]`, displayReplacement: '[❌ Browser failed]' };
     }
-    context.addToast(`Browser: ${input}`, 'info');
+    context.addToast?.(`Browser: ${input}`, 'info');
     return { toolType: 'browser', args, textContent: `Opened browser to: "${finalUrl}".`, displayReplacement: `[🌐 Browser: "${input}"]` };
 }
 
@@ -2427,7 +2429,7 @@ async function executeReadFile(args: string, _nextMessage: BaseMessage, _interac
     if (!res.success) {
         return { toolType: 'read_file', args, textContent: `[Error: ${res.error || 'Failed to open target'}]`, displayReplacement: '[❌ Open failed]' };
     }
-    context.addToast(`Opened: ${target}`, 'info');
+    context.addToast?.(`Opened: ${target}`, 'info');
     return { toolType: 'read_file', args, textContent: `Opened: "${res.target || target}".`, displayReplacement: `[🔗 Opened: "${target}"]` };
 }
 
@@ -2447,7 +2449,7 @@ async function executeWriteFile(args: string, _nextMessage: BaseMessage, _intera
     if (!res.success) {
         return { toolType: 'write_file', args, textContent: `[Error: ${res.error || 'Failed to write file'}]`, displayReplacement: '[❌ Write failed]' };
     }
-    context.addToast(`File written: ${filePath}`, 'success');
+    context.addToast?.(`File written: ${filePath}`, 'success');
     return { toolType: 'write_file', args, textContent: `Successfully wrote file to "${res.path || filePath}".`, displayReplacement: `[📁 Saved: "${filePath}"]` };
 }
 
@@ -2463,7 +2465,7 @@ async function executeShell(args: string, _nextMessage: BaseMessage, _interactio
     if (!res.success) {
         return { toolType: 'shell', args, textContent: `[Error: ${res.error || res.stderr || 'Command failed'}]`, displayReplacement: '[❌ Shell failed]' };
     }
-    context.addToast(`Shell executed: ${command}`, 'success');
+    context.addToast?.(`Shell executed: ${command}`, 'success');
     const output = res.stdout || res.stderr || '[Command executed with no output]';
     return { toolType: 'shell', args, textContent: output, displayReplacement: `[💻 Shell: "${command}"]` };
 }
@@ -2482,11 +2484,11 @@ async function executeVirtualHearing(args: string, _nextMessage: BaseMessage, _i
     }
 
     if (action === 'start') {
-        context.addToast('🎧 Virtual hearing: Ears opened on server', 'info');
+        context.addToast?.('🎧 Virtual hearing: Ears opened on server', 'info');
         return { toolType: 'virtual_hearing', args, textContent: res.message || `Virtual hearing started on host server (${duration}s).`, displayReplacement: `[🎧 Hearing Started (${duration}s)]` };
     }
     if (action === 'stop') {
-        context.addToast('🎧 Virtual hearing: Ears closed & audio analyzed', 'info');
+        context.addToast?.('🎧 Virtual hearing: Ears closed & audio analyzed', 'info');
         const badgeText = res.melody?.length ? `🎵 ${res.melody[0]}` : res.events?.length ? res.events[0] : 'Analyzed';
         return { toolType: 'virtual_hearing', args, textContent: res.rawObservation || '[Virtual Hearing Perception]\n- Ambient silence.', displayReplacement: `[🎧 ${badgeText}]` };
     }
@@ -2508,7 +2510,7 @@ async function executeVirtualVision(args: string, _nextMessage: BaseMessage, _in
     if (!res.success || !res.base64) {
         return { toolType: 'virtual_vision', args, textContent: `[Error: ${res.error || 'Failed to capture targeted vision'}]`, displayReplacement: '[❌ Vision failed]' };
     }
-    context.addToast(`Captured target: ${res.target}`, 'info');
+    context.addToast?.(`Captured target: ${res.target}`, 'info');
     return { toolType: 'virtual_vision', args, textContent: `[Vision Captured: ${res.target} | Base64 Length: ${res.base64.length} bytes]`, displayReplacement: `[👁️ Vision: ${res.target}]` };
 }
 
@@ -2540,7 +2542,7 @@ async function executeVirtualInput(args: string, _nextMessage: BaseMessage, _int
         return { toolType: 'virtual_input', args, textContent: `Current Mouse Position: (${res.x}, ${res.y})`, displayReplacement: `[🖱️ Cursor: (${res.x}, ${res.y})]` };
     }
 
-    context.addToast(`Input executed: ${res.message}`, 'info');
+    context.addToast?.(`Input executed: ${res.message}`, 'info');
     return { toolType: 'virtual_input', args, textContent: res.message || 'Action executed successfully.', displayReplacement: `[🖱️ ${action.toUpperCase()}]` };
 }
 
@@ -2609,7 +2611,7 @@ async function executeVirtualController(args: string, _nextMessage: BaseMessage,
         : action === 'trigger' ? `TRIGGER ${trigger.toUpperCase()} (${value ?? 1.0})`
         : button ? `${action.toUpperCase()} ${button}` : action.toUpperCase();
 
-    context.addToast(`Gamepad: ${label}`, 'info');
+    context.addToast?.(`Gamepad: ${label}`, 'info');
     return { toolType: 'virtual_controller', args, textContent: res.message || `Controller action ${label} executed successfully.`, displayReplacement: `[🎮 ${label}]` };
 }
 
@@ -2909,7 +2911,7 @@ export function processPendingToolActions(
                 case 'administrator_switch_model': options?.onToast?.(`🔧 Switch to "${action.payload.modelName}" requested.`, 'info'); break;
                 case 'administrator_toggle_account': options?.onToast?.(`🔑 Toggle account "${action.payload.accountId}" requested.`, 'info'); break;
                 case 'administrator_join_session': options?.onToast?.(`👥 Join session "${action.payload.sessionId}" requested.`, 'info'); break;
-                case 'administrator_leave_session': options?.onToast?.(`👥 Leave session "${action.payload.sessionId}" requested.`, 'info'); break;
+                case 'administrator_leave_session': options?.onToast?.(`👥 Leave session requested.`, 'info'); break;
                 case 'administrator_accept_join': options?.onToast?.(`👥 Accept join for "${action.payload.accountId}" requested.`, 'info'); break;
                 case 'administrator_reject_join': options?.onToast?.(`👥 Reject join for "${action.payload.accountId}" requested.`, 'info'); break;
                 case 'administrator_edit_entity': options?.onToast?.(`🔧 Edit ${action.payload.entityType} "${action.payload.entityId}" (${action.payload.field}) requested.`, 'info'); break;
