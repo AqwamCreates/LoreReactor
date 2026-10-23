@@ -849,10 +849,8 @@ export type promptBlockType =
   | 'Memory Prompt'
   | 'Starter Prompt'
   | 'Text Injection'
-  | 'Model Chat Template'
-  | 'Model Instruction Template'
-  | 'Model Chat-Instruction Template';
 
+export type promptFormatMode = 'none' | 'instruction' | 'chat' | 'chat-instruction';
 export interface PromptBlock extends ObjectData {
   textContent: string
   images: string[]
@@ -959,6 +957,7 @@ export interface Profile extends ObjectData {
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
+  promptFormatMode: promptFormatMode;
   entityImageTypes: entityImageType[];
   summarizationSteps: SummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
@@ -1025,6 +1024,7 @@ export interface RawProfile extends RawData {
   stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
+  promptFormatMode: promptFormatMode;
   entityImageTypes: entityImageType[];
   summarizationSteps: RawSummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.

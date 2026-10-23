@@ -8,6 +8,7 @@ import { useChatStore } from '../hooks/useChatStore';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import { FileDropArea } from './FileDropArea';
 import { ImageList, type ImageEntry } from './ImageList';
+import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
 const tokenEngine = getLanguageModelEngine();
@@ -83,6 +84,11 @@ function PromptBlockEditorModalInner({
     const [characterBindings, setCharacterBindings] = useState<string[]>(existingBlock?.characterBindings ?? []);
     const [contextBindings, setContextBindings] = useState<string[]>(existingBlock?.contextBindings ?? []);
     const [locationBindings, setLocationBindings] = useState<string[]>(existingBlock?.locationBindings ?? []);
+
+    // ✅ ADDED SEARCH STATES FOR ENTITY SELECTORS
+    const [charBindSearch, setCharBindSearch] = useState('');
+    const [ctxBindSearch, setCtxBindSearch] = useState('');
+    const [locBindSearch, setLocBindSearch] = useState('');
 
     const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
@@ -265,10 +271,6 @@ function PromptBlockEditorModalInner({
     const textRequiresAsterisk = !hasImages;
     const imagesRequiresAsterisk = !hasText;
 
-    const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
-    const getContextById = (id: string) => allContexts.find(c => c.id === id);
-    const getLocationById = (id: string) => allLocations.find(l => l.id === id);
-
     const promptBlockTabs: { id: PromptBlockTabId; label: string; icon: string }[] = [
         { id: 'general', label: 'General', icon: '📝' },
         { id: 'detection', label: 'Detection', icon: '🔍' },
@@ -421,72 +423,75 @@ function PromptBlockEditorModalInner({
                         {/* ─── BINDINGS TAB ─── */}
                         {activeTab === 'bindings' && (
                             <>
+                                {/* ✅ REPLACED: Character Bindings */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Character Bindings</span>
                                     <div className="context-field-group">
                                         <div className="context-binding-hint">Only inject when these characters are present. Empty = all characters.</div>
-                                        <div className="context-character-binding-list">
-                                            {characterBindings.map(id => {
-                                                const char = getCharacterById(id);
-                                                if (!char) return null;
-                                                return (
-                                                    <div key={id} className="context-character-binding-chip">
-                                                        <span className="context-character-binding-name">{char.name}</span>
-                                                        <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                            <option value="" disabled>+ Bind to a character</option>
-                                            {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                        </select>
+                                        
+                                        <EntitySelectList
+                                            label="Bound Characters"
+                                            items={allCharacters}
+                                            selectedIds={characterBindings}
+                                            onToggle={(id) => {
+                                                if (characterBindings.includes(id)) {
+                                                    setCharacterBindings(prev => prev.filter(cid => cid !== id));
+                                                } else {
+                                                    setCharacterBindings(prev => [...prev, id]);
+                                                }
+                                            }}
+                                            searchQuery={charBindSearch}
+                                            onSearchChange={setCharBindSearch}
+                                            disabled={isUploading}
+                                        />
                                     </div>
                                 </div>
 
+                                {/* ✅ REPLACED: Context Bindings */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Context Bindings</span>
                                     <div className="context-field-group">
                                         <div className="context-binding-hint">Only inject when these contexts are active. Empty = always.</div>
-                                        <div className="context-character-binding-list">
-                                            {contextBindings.map(id => {
-                                                const context = getContextById(id);
-                                                if (!context) return null;
-                                                return (
-                                                    <div key={id} className="context-character-binding-chip">
-                                                        <span className="context-character-binding-name">{context.name}</span>
-                                                        <button type="button" onClick={() => setContextBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        <select onChange={(e) => { const val = e.target.value; if (val && !contextBindings.includes(val)) setContextBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                            <option value="" disabled>+ Bind to a context</option>
-                                            {allContexts.filter(c => !contextBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                        </select>
+                                        
+                                        <EntitySelectList
+                                            label="Bound Contexts"
+                                            items={allContexts}
+                                            selectedIds={contextBindings}
+                                            onToggle={(id) => {
+                                                if (contextBindings.includes(id)) {
+                                                    setContextBindings(prev => prev.filter(cid => cid !== id));
+                                                } else {
+                                                    setContextBindings(prev => [...prev, id]);
+                                                }
+                                            }}
+                                            searchQuery={ctxBindSearch}
+                                            onSearchChange={setCtxBindSearch}
+                                            disabled={isUploading}
+                                        />
                                     </div>
                                 </div>
 
+                                {/* ✅ REPLACED: Location Bindings */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Location Bindings</span>
                                     <div className="context-field-group">
                                         <div className="context-binding-hint">Only inject at these locations. Empty = all locations.</div>
-                                        <div className="context-character-binding-list">
-                                            {locationBindings.map(id => {
-                                                const loc = getLocationById(id);
-                                                if (!loc) return null;
-                                                return (
-                                                    <div key={id} className="context-character-binding-chip">
-                                                        <span className="context-character-binding-name">{loc.name}</span>
-                                                        <button type="button" onClick={() => setLocationBindings(prev => prev.filter(lid => lid !== id))} className="context-character-binding-remove" title="Remove binding" disabled={isUploading}>×</button>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                            <option value="" disabled>+ Bind to a location</option>
-                                            {allLocations.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                                        </select>
+                                        
+                                        <EntitySelectList
+                                            label="Bound Locations"
+                                            items={allLocations}
+                                            selectedIds={locationBindings}
+                                            onToggle={(id) => {
+                                                if (locationBindings.includes(id)) {
+                                                    setLocationBindings(prev => prev.filter(lid => lid !== id));
+                                                } else {
+                                                    setLocationBindings(prev => [...prev, id]);
+                                                }
+                                            }}
+                                            searchQuery={locBindSearch}
+                                            onSearchChange={setLocBindSearch}
+                                            disabled={isUploading}
+                                        />
                                     </div>
                                 </div>
                             </>
