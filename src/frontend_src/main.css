@@ -6435,3 +6435,171 @@ VIEW MODE DROPDOWN
   flex-shrink: 0;
   margin-left: 4px;
 }
+
+/* =============================================================================
+DROPDOWN PANEL BASE (With Max-Height Constraints)
+============================================================================= */
+.dropdown-panel {
+  position: absolute;
+  top: calc(100% + 20px);
+  right: 0;
+  z-index: var(--layer-dropdown, 30);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border);
+  overflow: hidden;
+  animation: ppMenuIn 0.16s ease-out;
+  box-sizing: border-box;
+  width: 300px;
+  max-width: calc(100vw - 20px);
+  max-height: min(70vh, 520px); /* CRITICAL: Enables inner list scrolling */
+}
+
+.dropdown-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--code-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-h);
+  box-sizing: border-box;
+}
+
+.dropdown-panel-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 768px) {
+  .dropdown-panel {
+    position: fixed !important;
+    top: calc(max(8px, env(safe-area-inset-top, 8px)) + 85px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: 360px !important;
+    margin: 0 auto !important;
+    max-height: 70vh !important;
+  }
+}
+
+/* =============================================================================
+CHAT HISTORY ITEMS & SEARCH INPUT STYLES
+============================================================================= */
+.history-panel-title {
+  font-size: 0.85rem;
+  font-weight: bold;
+  color: var(--text-h);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.history-panel-count {
+  font-size: 0.7rem;
+  color: var(--text);
+  opacity: 0.7;
+  font-family: var(--mono);
+}
+
+.history-search-wrapper {
+  flex: 0 0 auto;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+  box-sizing: border-box;
+}
+
+.history-search-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--social-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-h);
+  font-size: 0.82rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.history-search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.history-item {
+  padding: 10px 14px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+  text-align: left;
+}
+
+.history-item:last-child {
+  border-bottom: none;
+}
+
+.history-item:hover {
+  background: var(--social-bg);
+}
+
+.history-item-protagonist {
+  border-left: 3px solid var(--accent);
+  padding-left: 11px;
+}
+
+.history-item-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.history-item-name {
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: var(--accent);
+}
+
+.history-item-time {
+  font-size: 0.65rem;
+  color: var(--text);
+  opacity: 0.6;
+  font-family: var(--mono);
+}
+
+.history-item-text {
+  font-size: 0.8rem;
+  color: var(--text-h);
+  line-height: 1.4;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.history-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text);
+  opacity: 0.5;
+  font-style: italic;
+  font-size: 0.85rem;
+}
