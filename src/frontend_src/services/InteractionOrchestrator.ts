@@ -32,6 +32,7 @@ type TurnExecutor = (data: InteractionData, character: Character, signal: AbortS
 
 export interface TurnSequenceOptions {
     singleTurn?: boolean; // True in Autonomous mode, false in manual chat
+    excludeFromSequence?: Set<string>; // ✅ Hard timeline exclusions for regeneration cascades
 }
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
@@ -114,8 +115,10 @@ export async function runTurnSequence(
     const lastChatEntry = [...allMessages].reverse().find(m => hasTextContent(m));
     const triggeringMessageText = lastChatEntry && hasTextContent(lastChatEntry) ? (lastChatEntry as ChatMessage).textContent : undefined;
 
-    const spokenThisSequence = new Set<string>();
-    const actedThisSequence = new Set<string>();
+    // ✅ PRE-FILL EXCLUSIONS: Characters in this set are treated as if they already spoke/acted
+    // in this sequence, preventing them from taking a turn during the cascade.
+    const spokenThisSequence = new Set<string>(options?.excludeFromSequence || []);
+    const actedThisSequence = new Set<string>(options?.excludeFromSequence || []);
     let sequenceCompleted = true;
 
     while (!abortController.signal.aborted) {

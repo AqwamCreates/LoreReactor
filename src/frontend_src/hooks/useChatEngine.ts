@@ -43,7 +43,6 @@ export function useChatEngine(deps: EngineDependencies) {
         acquireLock, releaseLock,
     } = deps;
 
-    // ✅ PHASE 4: Pure Engine. No useSessionStore imports. No direct UI mutations.
     const handleServerResponse = useCallback(async (
         data: InteractionData, 
         character: Character,
@@ -145,9 +144,6 @@ export function useChatEngine(deps: EngineDependencies) {
         
         setInteractionData(effectiveData);
 
-        // ✅ PHASE 4: Removed useSessionStore.setState and voiceTracker.waitForPlaybackCompletion.
-        // The Pipeline is now responsible for clearing the UI and awaiting audio.
-
         return {
             interactionData: effectiveData,
             isCompleted: result.isCompleted,
@@ -199,12 +195,21 @@ export function useChatEngine(deps: EngineDependencies) {
         metadata?: RequestMetadata,
         existingCharacterText?: string,
         voiceTracker?: StreamingVoiceTracker,
+        prefillText?: string,
+        excludeFromSequence?: Set<string>,
     ): Promise<{ interactionData: InteractionData; isCompleted: boolean; promptText?: string }> => {
         let lastPromptText: string | undefined = undefined;
+        let isFirstTurn = true;
 
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
-            const result = await handleServerResponse(d, c, promptBlocks, s, onToken, undefined, existingCharacterText || '', metadata, voiceTracker);
+            
+            // ✅ FIX: Only pass existing text to the very first character in the sequence
+            // to prevent context leakage into subsequent characters' prompts.
+            const textForThisChar = isFirstTurn ? (existingCharacterText || '') : '';
+            isFirstTurn = false;
+
+            const result = await handleServerResponse(d, c, promptBlocks, s, onToken, undefined, textForThisChar, metadata, voiceTracker, prefillText);
             
             if (result?.promptText) {
                 lastPromptText = result.promptText;
@@ -218,7 +223,8 @@ export function useChatEngine(deps: EngineDependencies) {
             executor,
             signal, 
             (character) => setStreamingState(character ?? null, ''),
-            (data) => setInteractionData(data)
+            (data) => setInteractionData(data),
+            { excludeFromSequence }
         );
 
         if (result) {

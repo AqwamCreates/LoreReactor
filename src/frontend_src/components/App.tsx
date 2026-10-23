@@ -582,7 +582,7 @@ function App() {
 
     const committedMessages = useMemo(() => {
         let base = safeMessages.filter((m): m is TextMessage => m.messageType === 'chat' || m.messageType === 'whisper');
-        if (isMultiplayerChat && localProtagonist) {
+        if (localProtagonist) {
             base = base.filter((msg) => {
                 if (msg.messageType === 'whisper') {
                     const w = msg as WhisperMessage;
@@ -592,7 +592,7 @@ function App() {
             });
         }
         return base;
-    }, [safeMessages, isMultiplayerChat, localProtagonist]);
+    }, [safeMessages, localProtagonist]);
 
     const timeUntilResetRef = useRef<number | undefined>(undefined);
     const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);

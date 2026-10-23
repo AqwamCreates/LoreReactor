@@ -10,7 +10,7 @@ import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/ti
 import { deleteRawMessage, saveRawInteractionData } from '../storages/serverStorage';
 import { useChatStore } from './useChatStore';
 import { useGenerationStore } from './useGenerationStore';
-import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
+import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import type { RequestMetadata } from '../services/BudgetStrategyEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -239,7 +239,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
     const executeTurnPipeline = useCallback(async ({
         data, protagonistId, existingCharacterText = '', respondingCharacter,
         isProtagonistCharId, errorPrefix = 'Generation failed', lockAlreadyAcquired = false, prefillText = '',
-    }: GenerationTurnOptions & { prefillText?: string }) => {
+        excludeFromSequence,
+    }: GenerationTurnOptions & { prefillText?: string; excludeFromSequence?: Set<string> }) => {
         if (!lockAlreadyAcquired && !acquireLock()) return;
         if (!data.profile || !data.profile?.enableCharacterExpression) sentimentEngine.unload();
 
@@ -322,18 +323,32 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 );
             }
 
-            let turnResult: Awaited<ReturnType<typeof chatEngine.runDirectedTurn>> | null = null;
+            let turnResult: { interactionData: InteractionData; isCompleted: boolean; promptText?: string } | null = null;
+            
             try {
-                turnResult = await chatEngine.runDirectedTurn(
-                    data, 
-                    respondingChar, 
-                    ctrl, 
-                    promptBlocks, 
-                    metadata, 
-                    existingCharacterText, 
-                    voiceTracker,
-                    prefillText
-                );
+                if (respondingCharacter) {
+                    turnResult = await chatEngine.runDirectedTurn(
+                        data, 
+                        respondingChar, 
+                        ctrl, 
+                        promptBlocks, 
+                        metadata, 
+                        existingCharacterText, 
+                        voiceTracker,
+                        prefillText
+                    );
+                } else {
+                    turnResult = await chatEngine.runTurn(
+                        data, 
+                        ctrl, 
+                        promptBlocks, 
+                        metadata, 
+                        existingCharacterText, 
+                        voiceTracker,
+                        prefillText,
+                        excludeFromSequence
+                    );
+                }
             } catch (e) {
                 if ((e as Error).name === 'AbortError') turnResult = { interactionData: data, isCompleted: false };
                 else throw e;
@@ -352,22 +367,8 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 return;
             }
 
-            // ✅ FIX: Check if voice narration is actually enabled in the profile before waiting.
-            // If all narrateTexts are false, the audio queue is empty, and waiting for it will hang the promise indefinitely.
-            const isVoiceEnabledInProfile = profile?.narrateTexts 
-                ? Object.values(profile.narrateTexts).some(v => v === true) 
-                : false;
-
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
-
-            if (voiceTracker && narrationBehaviour === 'wait' && isVoiceEnabledInProfile) {
-                try {
-                    await voiceTracker.waitForPlaybackCompletion();
-                } catch (e) {
-                    console.warn('[useChatPipeline] Voice playback completion error:', e);
-                }
-            }
 
             let ud = turnResult.interactionData;
             if (ud === data) ud = { ...ud, interactionHistories: { ...ud.interactionHistories }, lastUpdatedTimestamp: Date.now() };
@@ -414,7 +415,36 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 const history = getGlobalMessageHistory(ud);
                 const lastMsg = history[history.length - 1];
                 const text = hasTextContent(lastMsg) ? lastMsg.textContent : '';
-                const evaluation = evaluateAutoResumeSignals(ud.profile, text, autoResumeCountRef.current);
+
+                // ─── TOOL EXECUTION AUDITOR & AUTO-RESUME ─────────────────
+                const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const callRegex = new RegExp(`${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}`, 'g');
+                
+                const calls = (text.match(callRegex) || []).length;
+                
+                // ✅ FIX: Check the actual executed results array on the message object, 
+                // not the raw text for ⟦...⟧ markers (which the stream parser might not save to textContent).
+                const executedResults = (hasTextContent(lastMsg) && (lastMsg as ChatMessage).toolExecutionResults?.length) || 0;
+                const hasUnexecutedTools = calls > executedResults;
+                
+                const lastCallStart = text.lastIndexOf(toolCallStartString);
+                const lastCallEnd = text.lastIndexOf(toolCallEndString);
+                const hasUnclosedCall = lastCallStart !== -1 && lastCallStart > lastCallEnd;
+
+                const stripRegex = new RegExp(
+                    `${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|` +
+                    `${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`,
+                    'g'
+                );
+                const narrativeText = text.replace(stripRegex, '').trim();
+                const isToolOnlyResponse = (calls > 0) && narrativeText.length === 0;
+
+                let evaluation = evaluateAutoResumeSignals(ud.profile, text, autoResumeCountRef.current);
+                
+                if ((isToolOnlyResponse || hasUnexecutedTools || hasUnclosedCall) && !wasStoppedRef.current) {
+                    evaluation = { ...evaluation, shouldResume: true };
+                }
+                // ────────────────────────────────────────────────────────────────
 
                 if (evaluation.shouldResume && !wasStoppedRef.current) {
                     autoResumeCountRef.current += 1;
@@ -424,6 +454,20 @@ export function useChatPipeline(deps: PipelineDependencies) {
                     autoResumeOnCutoff(injectedData, protagonistId);
                     return;
                 }
+
+                // ─── WAIT FOR VOICE (Only if turn is complete) ──────────────
+                const isVoiceEnabledInProfile = profile?.narrateTexts 
+                    ? Object.values(profile.narrateTexts).some(v => v === true) 
+                    : false;
+
+                if (voiceTracker && narrationBehaviour === 'wait' && isVoiceEnabledInProfile) {
+                    try {
+                        await voiceTracker.waitForPlaybackCompletion();
+                    } catch (e) {
+                        console.warn('[useChatPipeline] Voice playback completion error:', e);
+                    }
+                }
+                // ────────────────────────────────────────────────────────────────
 
                 runSummarization({ data: ud, character: respondingChar, promptBlocks, setInteractionData, addToast });
             } else {
@@ -453,7 +497,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
                             const started = await ambientTracker.start().catch(() => false);
                             if (started) {
                                 ambientTracker.feed(lastMsg.textContent);
-                                // Do not await. Let it play in background.
                             }
                         }
                     }
@@ -486,9 +529,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             isSpeculatingRef.current = false;
             streamingCharacterRef.current = null;
             streamingMessageIdRef.current = null;
-
-            // Do not stop the voice tracker here. Let it finish playing.
-            // It will be stopped if the user presses Stop or if a new generation interrupts it.
 
             resetStream();
             useGenerationStore.setState({ isLoading: false, streamingCharacter: null, streamingText: '' });
@@ -547,7 +587,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
             
-            // Do not await. Let it play in background.
         } catch (e) {
             console.error('Delayed response error:', e);
         } finally {
@@ -717,8 +756,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             useGenerationStore.setState({ streamingText: '' });
             releaseLock();
 
-            // Do not await. Let it play in background.
-
             const liveStreamedText = streamingTextRef.current || existingText;
             const dataToFinalize = result?.interactionData || currentInteractionData;
             const finalized = finalizeMessageById(dataToFinalize, messageId, wasStoppedRef.current, result?.rawText || liveStreamedText);
@@ -729,8 +766,35 @@ export function useChatPipeline(deps: PipelineDependencies) {
             resumingExistingTextRef.current = '';
 
             const finalText = finalizedMsg && hasTextContent(finalizedMsg) ? finalizedMsg.textContent : liveStreamedText;
-            const evaluation = evaluateAutoResumeSignals(finalized.profile, finalText, autoResumeCountRef.current);
+            let evaluation = evaluateAutoResumeSignals(finalized.profile, finalText, autoResumeCountRef.current);
             let dataToSave = finalized;
+
+            // ─── TOOL EXECUTION AUDITOR & AUTO-RESUME (IN RESUME) ───────────
+            const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const callRegex = new RegExp(`${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}`, 'g');
+            
+            const calls = (finalText.match(callRegex) || []).length;
+            
+            // ✅ FIX: Check the actual executed results array on the message object
+            const executedResults = (finalizedMsg && hasTextContent(finalizedMsg) && (finalizedMsg as ChatMessage).toolExecutionResults?.length) || 0;
+            const hasUnexecutedTools = calls > executedResults;
+            
+            const lastCallStart = finalText.lastIndexOf(toolCallStartString);
+            const lastCallEnd = finalText.lastIndexOf(toolCallEndString);
+            const hasUnclosedCall = lastCallStart !== -1 && lastCallStart > lastCallEnd;
+
+            const stripRegex = new RegExp(
+                `${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|` +
+                `${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`,
+                'g'
+            );
+            const narrativeText = finalText.replace(stripRegex, '').trim();
+            const isToolOnlyResponse = (calls > 0) && narrativeText.length === 0;
+
+            if ((isToolOnlyResponse || hasUnexecutedTools || hasUnclosedCall) && !wasStoppedRef.current) {
+                evaluation = { ...evaluation, shouldResume: true };
+            }
+            // ────────────────────────────────────────────────────────────────
 
             if (evaluation.shouldResume && !wasStoppedRef.current) {
                 autoResumeCountRef.current += 1;
@@ -789,6 +853,24 @@ export function useChatPipeline(deps: PipelineDependencies) {
 
         const tm = sortedHistory[ti];
         const isProtagonistMessage = protagonistIdSet.has(tm.character.id);
+
+        let lastProtagonistIdx = -1;
+        for (let i = ti - 1; i >= 0; i--) {
+            if (protagonistIdSet.has(sortedHistory[i].character.id)) {
+                lastProtagonistIdx = i;
+                break;
+            }
+        }
+
+        const keptAIs = new Set<string>();
+        if (!isProtagonistMessage && lastProtagonistIdx !== -1) {
+            for (let i = lastProtagonistIdx + 1; i < ti; i++) {
+                if (!protagonistIdSet.has(sortedHistory[i].character.id)) {
+                    keptAIs.add(sortedHistory[i].character.id);
+                }
+            }
+        }
+
         const trimIdx = isProtagonistMessage ? ti + 1 : ti;
         const toDelete = sortedHistory.slice(trimIdx);
 
@@ -812,14 +894,37 @@ export function useChatPipeline(deps: PipelineDependencies) {
         await saveRawInteractionData(td).catch(e => console.error('Failed to save trimmed chat before regeneration:', e));
 
         const primaryProtagonistId = protagonistIds[0] ?? '';
-        const respondingChar = td.participants.find(p => !protagonistIdSet.has(p.id)) 
-            || td.participants.find(p => p.id === primaryProtagonistId) 
-            || td.participants[0];
 
-        await executeTurnPipeline({
-            data: td, protagonistId: primaryProtagonistId, respondingCharacter: respondingChar,
-            isProtagonistCharId: (id: string) => protagonistIdSet.has(id), errorPrefix: 'Regeneration failed', lockAlreadyAcquired: true,
-        });
+        if (isProtagonistMessage) {
+            await executeTurnPipeline({
+                data: td, protagonistId: primaryProtagonistId, 
+                respondingCharacter: undefined, 
+                isProtagonistCharId: (id: string) => protagonistIdSet.has(id), 
+                errorPrefix: 'Regeneration failed', lockAlreadyAcquired: true,
+            });
+        } else {
+            const forcedChar = td.participants.find(p => p.id === tm.character.id) || tm.character;
+            
+            await executeTurnPipeline({
+                data: td, protagonistId: primaryProtagonistId, 
+                respondingCharacter: forcedChar, 
+                isProtagonistCharId: (id: string) => protagonistIdSet.has(id), 
+                errorPrefix: 'Regeneration failed', lockAlreadyAcquired: true,
+            });
+
+            const currentDataAfterSniper = getState().interactionData;
+            if (currentDataAfterSniper && !abortControllerRef.current?.signal.aborted) {
+                await executeTurnPipeline({
+                    data: currentDataAfterSniper, 
+                    protagonistId: primaryProtagonistId,
+                    respondingCharacter: undefined,
+                    isProtagonistCharId: (id: string) => protagonistIdSet.has(id),
+                    errorPrefix: 'Cascade failed',
+                    lockAlreadyAcquired: true,
+                    excludeFromSequence: keptAIs,
+                });
+            }
+        }
     }, [getState, isMultiplayerClient, addToast, acquireLock, releaseLock, setInteractionData, executeTurnPipeline]);
 
     const startNewChat = useCallback((char: Character) => {
