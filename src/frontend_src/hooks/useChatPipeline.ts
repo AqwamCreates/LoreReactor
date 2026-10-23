@@ -10,7 +10,7 @@ import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/ti
 import { deleteRawMessage, saveRawInteractionData } from '../storages/serverStorage';
 import { useChatStore } from './useChatStore';
 import { useGenerationStore } from './useGenerationStore';
-import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
+import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import type { RequestMetadata } from '../services/BudgetStrategyEngine';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
@@ -400,7 +400,25 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 const history = getGlobalMessageHistory(ud);
                 const lastMsg = history[history.length - 1];
                 const text = hasTextContent(lastMsg) ? lastMsg.textContent : '';
-                const evaluation = evaluateAutoResumeSignals(ud.profile, text, autoResumeCountRef.current);
+
+                // ─── FORCE RESUME ON TOOL-ONLY RESPONSES ───────────────────────
+                const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const stripRegex = new RegExp(
+                    `${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|` +
+                    `${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`,
+                    'g'
+                );
+                
+                const narrativeText = text.replace(stripRegex, '').trim();
+                const hasTools = text.includes(toolCallStartString) || text.includes(toolResultStartString);
+                const isToolOnlyResponse = hasTools && narrativeText.length < 15;
+
+                let evaluation = evaluateAutoResumeSignals(ud.profile, text, autoResumeCountRef.current);
+                
+                if (isToolOnlyResponse && !wasStoppedRef.current) {
+                    evaluation = { ...evaluation, shouldResume: true };
+                }
+                // ────────────────────────────────────────────────────────────────
 
                 if (evaluation.shouldResume && !wasStoppedRef.current) {
                     autoResumeCountRef.current += 1;
@@ -715,7 +733,26 @@ export function useChatPipeline(deps: PipelineDependencies) {
             resumingExistingTextRef.current = '';
 
             const finalText = finalizedMsg && hasTextContent(finalizedMsg) ? finalizedMsg.textContent : liveStreamedText;
-            const evaluation = evaluateAutoResumeSignals(finalized.profile, finalText, autoResumeCountRef.current);
+
+            // ─── FORCE RESUME ON TOOL-ONLY RESPONSES ───────────────────────
+            const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            const stripRegex = new RegExp(
+                `${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|` +
+                `${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`,
+                'g'
+            );
+            
+            const narrativeText = finalText.replace(stripRegex, '').trim();
+            const hasTools = finalText.includes(toolCallStartString) || finalText.includes(toolResultStartString);
+            const isToolOnlyResponse = hasTools && narrativeText.length < 15;
+
+            let evaluation = evaluateAutoResumeSignals(finalized.profile, finalText, autoResumeCountRef.current);
+            
+            if (isToolOnlyResponse && !wasStoppedRef.current) {
+                evaluation = { ...evaluation, shouldResume: true };
+            }
+            // ────────────────────────────────────────────────────────────────
+
             let dataToSave = finalized;
 
             if (evaluation.shouldResume && !wasStoppedRef.current) {

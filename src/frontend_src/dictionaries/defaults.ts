@@ -34,6 +34,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     trade: false,
     invite: false,
     kick: false,
+    mind_reader: false,
     oracle: false,
     teleport: false,
     key: false,

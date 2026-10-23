@@ -6000,7 +6000,7 @@ border-left-color: rgba(255, 255, 255, 0.3);
 }
 .health-pill-panel {
 position: absolute;
-top: calc(100% + 8px);
+top: calc(100% + 20px);
 right: 0;
 width: 320px;
 max-width: calc(100vw - 24px);
