@@ -355,7 +355,7 @@ ${profileToolsSchema}
   }`);
     }
 
-    if (includeEntityFolder) {
+  if (includeEntityFolder) {
         parts.push(`  "entityFolders": [{
     "id": "string (UUID)",
     "name": "string (required, entity folder name)",
