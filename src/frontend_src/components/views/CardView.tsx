@@ -1,0 +1,469 @@
+// src/frontend_src/components/views/CardView.tsx
+import React, { useMemo, useCallback, useRef, useEffect } from 'react';
+import type { ViewModeProps } from './types';
+import type { Character, TextMessage } from '../../types';
+import { MemoizedMessageText } from '../MemoizedMessageText';
+import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
+import { useChatStore } from '../../hooks/useChatStore';
+import { useGenerationStore } from '../../hooks/useGenerationStore';
+import { useUIStore } from '../../hooks/useUIStore';
+import { useCompiledMessageText } from '../../hooks/useMessageDisplay';
+
+export const CardView = React.memo(function CardView(props: ViewModeProps) {
+    const {
+        locationBackgroundUrl,
+        displayMessages,
+        displayNameCache,
+        streamingText,
+        editTextAreaRef,
+        onSaveEdit,
+        onResumeGeneration,
+        onRegenerateFromMessage,
+        onPlayVoice,
+        onMassDeleteConfirm,
+        onNavigateToBranchSource,
+        parentInteractionDataName,
+        focusedMessageId,
+        setFocusedMessageId,
+        canDelete,
+    } = props;
+
+    const interactionData = useChatStore(s => s.interactionData);
+    const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
+    const isLoading = useGenerationStore(s => s.isLoading);
+    const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
+    const stopGeneration = useGenerationStore(s => s.stopGeneration);
+
+    const editingId = useUIStore(s => s.editingId);
+    const editDraft = useUIStore(s => s.editDraft);
+    const setEditDraft = useUIStore(s => s.setEditDraft);
+    const setEditingState = useUIStore(s => s.setEditingState);
+
+    const massDeleteId = useUIStore(s => s.massDeleteId);
+    const setMassDeleteId = useUIStore(s => s.setMassDeleteId);
+
+    const copyToClipboard = useChatStore(s => s.copyToClipboard);
+    const deleteMessage = useChatStore(s => s.deleteMessage);
+    const branchChat = useChatStore(s => s.branchChat);
+    const cloneChat = useChatStore(s => s.cloneChat);
+
+    const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
+    const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
+    const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
+    const onCancelMassDelete = useCallback(() => setMassDeleteId(null), [setMassDeleteId]);
+
+    // ── Build message cards list ───────────────────────────────────────────
+    const committedCards = useMemo(() => {
+        const all = displayMessages.filter((m): m is TextMessage => m.messageType === 'chat' || m.messageType === 'whisper');
+        const seen = new Set<string>();
+        return all.filter(m => {
+            if (seen.has(m.id)) return false;
+            seen.add(m.id);
+            return true;
+        });
+    }, [displayMessages]);
+
+    const hasStreamingInList = committedCards.some(m => m.id.startsWith('streaming-'));
+
+    const allCards = useMemo(() => {
+        const list = [...committedCards];
+        if (isLoading && !hasStreamingInList) {
+            const now = Date.now();
+            const fallbackChar = streamingCharacter || { id: 'fate', name: 'Fate' } as Character;
+            list.push({
+                id: '__pending_blank_card__',
+                messageType: 'chat',
+                character: fallbackChar,
+                textContent: streamingText || '',
+                files: [],
+                isPresent: true,
+                parentMessageId: null,
+                firstCreatedTimestamp: now,
+                lastUpdatedTimestamp: now,
+                modelTextContentSummaries: {},
+                modelInteractionTextContentSummaries: {},
+                kvCacheTextContentPaths: {},
+                kvCacheTextContentSummaryPaths: {},
+                kvCacheInteractionTextContentSummaries: {},
+                characterClothingWearingStatuses: {},
+                characterLockedLocations: {},
+                doNotRespond: false,
+            } as TextMessage);
+        }
+        return list;
+    }, [committedCards, isLoading, hasStreamingInList, streamingCharacter, streamingText]);
+
+    // ── View index resolution ──────────────────────────────────────────────
+    const viewIndex = useMemo(() => {
+        if (!focusedMessageId) return allCards.length - 1;
+        const idx = allCards.findIndex(m => m.id === focusedMessageId);
+        return idx !== -1 ? idx : allCards.length - 1;
+    }, [focusedMessageId, allCards]);
+
+    const prevCountRef = useRef(allCards.length);
+    useEffect(() => {
+        if (allCards.length > prevCountRef.current && focusedMessageId) {
+            setFocusedMessageId(null);
+        }
+        prevCountRef.current = allCards.length;
+    }, [allCards.length, focusedMessageId, setFocusedMessageId]);
+
+    const activeTextBodyRef = useRef<HTMLDivElement>(null);
+    useEffect(() => {
+        if (isLoading && viewIndex === allCards.length - 1 && activeTextBodyRef.current) {
+            activeTextBodyRef.current.scrollTop = activeTextBodyRef.current.scrollHeight;
+        }
+    }, [isLoading, streamingText, viewIndex, allCards.length]);
+
+    // ── Navigation handlers ────────────────────────────────────────────────
+    const canGoBack = viewIndex > 0;
+    const canGoForward = viewIndex < allCards.length - 1;
+
+    const handleGoBack = useCallback(() => {
+        if (viewIndex > 0) {
+            setFocusedMessageId(allCards[viewIndex - 1].id);
+        }
+    }, [viewIndex, allCards, setFocusedMessageId]);
+
+    const handleGoForward = useCallback(() => {
+        if (viewIndex < allCards.length - 1) {
+            if (viewIndex + 1 === allCards.length - 1) {
+                setFocusedMessageId(null);
+            } else {
+                setFocusedMessageId(allCards[viewIndex + 1].id);
+            }
+        }
+    }, [viewIndex, allCards, setFocusedMessageId]);
+
+    const handleSkipToFirst = useCallback(() => {
+        if (allCards.length > 0) setFocusedMessageId(allCards[0].id);
+    }, [allCards, setFocusedMessageId]);
+
+    const handleSkipToLatest = useCallback(() => {
+        setFocusedMessageId(null);
+    }, [setFocusedMessageId]);
+
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            const target = e.target as HTMLElement | null;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+                return;
+            }
+            if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+                e.preventDefault();
+                handleGoBack();
+            } else if (e.key === 'ArrowDown' || e.key === 'PageDown') {
+                e.preventDefault();
+                handleGoForward();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [handleGoBack, handleGoForward]);
+
+    const bgStyle: React.CSSProperties = useMemo(() => {
+        if (locationBackgroundUrl) {
+            return {
+                backgroundImage: `linear-gradient(to bottom, rgba(10, 10, 20, 0.45) 0%, rgba(10, 10, 20, 0.8) 100%), url(${locationBackgroundUrl})`,
+                backgroundSize: 'cover',
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+            };
+        }
+        return {
+            background: 'radial-gradient(ellipse at 50% 40%, #1e1b2e 0%, #0c0b12 100%)',
+        };
+    }, [locationBackgroundUrl]);
+
+    const hasParentBranch = !!interactionData?.parentInteractionDataId;
+
+    const renderedCards = useMemo(() => {
+        const minIdx = Math.max(0, viewIndex - 3);
+        const maxIdx = Math.min(allCards.length - 1, viewIndex + 2);
+        return allCards.slice(minIdx, maxIdx + 1).map(c => ({
+            card: c,
+            index: allCards.indexOf(c),
+        }));
+    }, [allCards, viewIndex]);
+
+    return (
+        <div className="card-stage-container" style={bgStyle}>
+            {hasParentBranch && onNavigateToBranchSource && (
+                <div className="card-branch-indicator">
+                    <button type="button" className="card-branch-btn" onClick={onNavigateToBranchSource}>
+                        🌿 Timeline branches from {parentInteractionDataName || 'Source'}
+                    </button>
+                </div>
+            )}
+
+            {/* Navigation HUD */}
+            {allCards.length > 1 && (
+                <div className="card-nav-hud">
+                    <div className="card-nav-arrows">
+                        <button
+                            type="button"
+                            className="card-nav-btn"
+                            onClick={handleSkipToFirst}
+                            disabled={viewIndex === 0}
+                            title="Skip to first card"
+                        >
+                            ⏮
+                        </button>
+                        <button
+                            type="button"
+                            className="card-nav-btn"
+                            onClick={handleGoBack}
+                            disabled={!canGoBack}
+                            title="Previous card (Lift current card up)"
+                        >
+                            ▲ Older
+                        </button>
+                        <div className="card-nav-counter">
+                            {viewIndex + 1} / {allCards.length}
+                        </div>
+                        <button
+                            type="button"
+                            className="card-nav-btn"
+                            onClick={handleGoForward}
+                            disabled={!canGoForward}
+                            title="Next card (Pull card down from top)"
+                        >
+                            ▼ Newer
+                        </button>
+                        <button
+                            type="button"
+                            className="card-nav-btn"
+                            onClick={handleSkipToLatest}
+                            disabled={!canGoForward}
+                            title="Skip to latest card"
+                        >
+                            ⏭
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* 3D Deck Viewport */}
+            <div className="card-deck-viewport">
+                {allCards.length === 0 ? (
+                    <div className="fate-card fate-card-active fate-card-empty">
+                        <p className="fate-empty-text">The deck rests. Speak to Fate to begin...</p>
+                    </div>
+                ) : (
+                    renderedCards.map(({ card, index }) => {
+                        const isCurrent = index === viewIndex;
+                        const isDiscardedUp = index > viewIndex;
+                        const depthBelow = viewIndex - index;
+
+                        let positionClass = 'fate-card-active';
+                        if (isDiscardedUp) {
+                            positionClass = 'fate-card-discarded-up';
+                        } else if (depthBelow === 1) {
+                            positionClass = 'fate-card-stack-1';
+                        } else if (depthBelow === 2) {
+                            positionClass = 'fate-card-stack-2';
+                        } else if (depthBelow > 2) {
+                            positionClass = 'fate-card-buried';
+                        }
+
+                        const isUserCard = localProtagonistId ? card.character.id === localProtagonistId : false;
+                        const isPendingBlank = card.id === '__pending_blank_card__';
+                        const isStreamingThis = isCurrent && isLoading && (isPendingBlank || card.id.startsWith('streaming-'));
+
+                        return (
+                            <SingleCard
+                                key={card.id}
+                                card={card}
+                                index={index}
+                                isCurrent={isCurrent}
+                                positionClass={positionClass}
+                                isUserCard={isUserCard}
+                                isStreamingThis={isStreamingThis}
+                                isLoading={isLoading}
+                                streamingText={streamingText}
+                                textBodyRef={isCurrent ? activeTextBodyRef : undefined}
+                                displayNameCache={displayNameCache}
+                                editingId={editingId}
+                                editDraft={editDraft}
+                                setEditDraft={setEditDraft}
+                                editTextAreaRef={editTextAreaRef}
+                                onStartEditing={onStartEditing}
+                                onCancelEditing={onCancelEditing}
+                                onSaveEdit={onSaveEdit}
+                                onRegenerateFromMessage={onRegenerateFromMessage}
+                                onResumeGeneration={onResumeGeneration}
+                                onPlayVoice={onPlayVoice}
+                                onBranch={branchChat}
+                                onClone={cloneChat}
+                                onDelete={deleteMessage}
+                                onCopyText={copyToClipboard}
+                                onStopGeneration={stopGeneration}
+                                massDeleteId={massDeleteId}
+                                onSetMassDelete={onSetMassDelete}
+                                onMassDeleteConfirm={onMassDeleteConfirm}
+                                onCancelMassDelete={onCancelMassDelete}
+                                canDelete={canDelete}
+                            />
+                        );
+                    })
+                )}
+            </div>
+        </div>
+    );
+});
+
+// ── Single Card Face ───────────────────────────────────────────────────────
+interface SingleCardProps {
+    card: TextMessage;
+    index: number;
+    isCurrent: boolean;
+    positionClass: string;
+    isUserCard: boolean;
+    isStreamingThis: boolean;
+    isLoading: boolean;
+    streamingText: string | null;
+    textBodyRef?: React.RefObject<HTMLDivElement | null>;
+    displayNameCache: any;
+    editingId: string | null;
+    editDraft: string;
+    setEditDraft: (val: string) => void;
+    editTextAreaRef: React.RefObject<HTMLTextAreaElement | null>;
+    onStartEditing: (id: string, text: string) => void;
+    onCancelEditing: () => void;
+    onSaveEdit: () => void;
+    onRegenerateFromMessage: (id: string, protagonistIds: string[]) => void;
+    onResumeGeneration: (id: string) => void;
+    onPlayVoice?: (text: string, character: Character) => void;
+    onBranch: (id: string) => void;
+    onClone: (id: string) => void;
+    onDelete: (id: string) => void;
+    onCopyText: (text: string) => void;
+    onStopGeneration: () => void;
+    massDeleteId: string | null;
+    onSetMassDelete: (id: string) => void;
+    onMassDeleteConfirm: () => void;
+    onCancelMassDelete: () => void;
+    canDelete: boolean;
+}
+
+const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
+    const {
+        card, index, isCurrent, positionClass, isUserCard, isStreamingThis,
+        isLoading, streamingText, textBodyRef,
+        displayNameCache,
+        editingId, editDraft, setEditDraft, editTextAreaRef,
+        onStartEditing, onCancelEditing, onSaveEdit,
+        onRegenerateFromMessage, onResumeGeneration, onPlayVoice,
+        onBranch, onClone, onDelete, onCopyText, onStopGeneration,
+        massDeleteId, onSetMassDelete, onMassDeleteConfirm, onCancelMassDelete,
+        canDelete,
+    } = props;
+
+    const interactionData = useChatStore(s => s.interactionData);
+    const compiledContent = useCompiledMessageText(card);
+
+    const displayName = useMemo(() => {
+        if (!card.character) return 'Unknown';
+        return resolveDelayedDisplayNameFromCache(displayNameCache, index, card.character.id);
+    }, [displayNameCache, index, card.character]);
+
+    const isEditing = editingId === card.id;
+    const isMassDeleting = massDeleteId === card.id;
+
+    const renderedText = useMemo(() => {
+        if (isStreamingThis && streamingText !== null) return streamingText;
+        return compiledContent || card.textContent || '';
+    }, [isStreamingThis, streamingText, compiledContent, card.textContent]);
+
+    const cardClasses = [
+        'fate-card',
+        positionClass,
+        isUserCard ? 'fate-card-user' : 'fate-card-fate',
+        isStreamingThis && !renderedText ? 'fate-card-blank-waiting' : '',
+    ].filter(Boolean).join(' ');
+
+    return (
+        <div className={cardClasses}>
+            {/* Centered Name Plate - NO STAR, NO PORTRAIT */}
+            <div className="fate-card-header">
+                <span className="fate-card-name-plate">
+                    {displayName}
+                </span>
+            </div>
+
+            {/* Card Body - CENTERED TEXT */}
+            <div className="fate-card-body" ref={textBodyRef}>
+                {isEditing ? (
+                    <textarea
+                        ref={editTextAreaRef}
+                        className="fate-card-edit-textarea"
+                        value={editDraft}
+                        onChange={(e) => setEditDraft(e.target.value)}
+                        placeholder="Inscribe edits..."
+                    />
+                ) : isStreamingThis && !renderedText ? (
+                    <div className="fate-blank-casting-seal">
+                        <div className="fate-casting-subtitle">Fate inscribes destiny...</div>
+                    </div>
+                ) : (
+                    <div className="fate-card-text">
+                        <MemoizedMessageText text={renderedText} />
+                    </div>
+                )}
+            </div>
+
+            {/* Card Footer Toolbar */}
+            <div className="fate-card-footer">
+                {isCurrent && (
+                    <div className="fate-card-actions">
+                        {isEditing ? (
+                            <>
+                                <button type="button" className="fate-card-btn fate-card-btn-cancel" onClick={onCancelEditing} title="Cancel Edit">✕</button>
+                                <button type="button" className="fate-card-btn fate-card-btn-save" onClick={onSaveEdit} title="Save Edit">💾</button>
+                            </>
+                        ) : (
+                            <>
+                                {isLoading && isStreamingThis && (
+                                    <button type="button" className="fate-card-btn fate-card-btn-danger" onClick={onStopGeneration} title="Stop Inscribing">⏹</button>
+                                )}
+                                <button type="button" className="fate-card-btn" onClick={() => onCopyText(renderedText)} title="Copy Text">📋</button>
+                                
+                                {onPlayVoice && card.character && (
+                                    <button type="button" className="fate-card-btn" onClick={() => onPlayVoice(renderedText, card.character)} title="Narrate with Voice">🔊</button>
+                                )}
+
+                                {!isStreamingThis && (
+                                    <>
+                                        <button type="button" className="fate-card-btn" onClick={() => onResumeGeneration(card.id)} title="Continue Generation">▶</button>
+                                        <button type="button" className="fate-card-btn" onClick={() => onRegenerateFromMessage(card.id, interactionData?.protagonistIds || [])} title="Regenerate">↻</button>
+                                        <button type="button" className="fate-card-btn" onClick={() => onStartEditing(card.id, card.textContent)} disabled={isLoading} title="Edit Message">✎</button>
+                                        <button type="button" className="fate-card-btn" onClick={() => onBranch(card.id)} title="Branch Timeline">🌿</button>
+                                        <button type="button" className="fate-card-btn" onClick={() => onClone(card.id)} title="Clone Session">⑂</button>
+                                        
+                                        {canDelete && (
+                                            <button type="button" className="fate-card-btn fate-card-btn-danger" onClick={() => onDelete(card.id)} title="Delete Card">🗑</button>
+                                        )}
+
+                                        {isMassDeleting ? (
+                                            <>
+                                                <button type="button" className="fate-card-btn fate-card-btn-save" onClick={onMassDeleteConfirm} title="Confirm Mass Delete">✓</button>
+                                                <button type="button" className="fate-card-btn fate-card-btn-cancel" onClick={onCancelMassDelete} title="Cancel Mass Delete">✕</button>
+                                            </>
+                                        ) : (
+                                            canDelete && (
+                                                <button type="button" className="fate-card-btn" onClick={() => onSetMassDelete(card.id)} title="Mass Delete From Here">🗑️↓</button>
+                                            )
+                                        )}
+                                    </>
+                                )}
+                            </>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+});
+
+export default CardView;

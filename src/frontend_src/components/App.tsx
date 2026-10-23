@@ -796,7 +796,8 @@ function App() {
     const toggleViewMode = () => {
         setViewMode(prev => 
             prev === 'ladder' ? 'cinematic' : 
-            prev === 'cinematic' ? 'visual novel' : 'ladder'
+            prev === 'cinematic' ? 'visual novel' :
+             prev === 'visual novel' ? 'card' : 'ladder'
         );
 
         const container = chatHistoryRef.current;

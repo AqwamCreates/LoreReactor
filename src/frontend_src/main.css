@@ -2008,6 +2008,459 @@ min-height: 24px;
 .vn-breathe-subtle { animation: vn-breathe-subtle 6s ease-in-out infinite; }
 .vn-breathe-tremble { animation: vn-breathe-tremble 0.6s ease-in-out infinite; }
 .vn-breathe-none { animation: none !important; }
+
+/* =============================================================================
+MODE: CARD (Fate Deck & Stack View)
+============================================================================= */
+.chat-container.mode-card,
+.mode-card {
+  background: #0d0c14 !important;
+  transition: none !important;
+  overflow: hidden;
+}
+
+.mode-card .chat-history { 
+  display: none !important; 
+}
+
+.mode-card .context-bar { 
+  display: none !important; 
+}
+
+/* Invisible Top Bar: Fully transparent & borderless over the stage */
+.chat-container.mode-card .app-header,
+.mode-card .app-header {
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  z-index: 10 !important;
+  background: transparent !important;
+  background-color: transparent !important;
+  border: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+
+.mode-card .header-content,
+.mode-card .header-top {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.mode-card .input-wrapper {
+  position: relative !important;
+  background: rgba(13, 12, 20, 0.85) !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom, 0px)) 12px !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.mode-card .chat-input {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.mode-card .send-button {
+  background: var(--accent);
+  color: #fff;
+}
+
+/* ── Stage with strict top & bottom clearance gaps ── */
+.card-stage-container {
+  position: relative;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: calc(65px + env(safe-area-inset-top, 0px)) 16px 20px 16px;
+  box-sizing: border-box;
+}
+
+.card-deck-viewport {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  perspective: 1200px;
+}
+
+/* ── Timeline Branch Indicator ── */
+.card-branch-indicator {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 15;
+}
+
+.card-branch-btn {
+  background: rgba(13, 12, 20, 0.85);
+  border: 1px solid var(--accent-border);
+  color: var(--accent);
+  padding: 6px 16px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: bold;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+  font-family: inherit;
+  white-space: nowrap;
+}
+
+.card-branch-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ── Navigation HUD ── */
+.card-nav-hud {
+  position: absolute;
+  right: 24px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card-nav-arrows {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 14, 24, 0.75);
+  padding: 8px 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.card-nav-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #fff;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-family: inherit;
+  min-width: 72px;
+  text-align: center;
+}
+
+.card-nav-btn:hover:not(:disabled) {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.05);
+}
+
+.card-nav-btn:disabled {
+  opacity: 0.25;
+  cursor: not-allowed;
+}
+
+.card-nav-counter {
+  font-size: 0.7rem;
+  color: var(--accent);
+  font-family: monospace;
+  font-weight: bold;
+  padding: 4px 0;
+  user-select: none;
+}
+
+/* ── Card Structure with bounded height & clearance ── */
+.fate-card {
+  position: absolute;
+  width: min(88vw, 480px);
+  height: min(65vh, 600px);
+  max-height: calc(100% - 24px);
+  border-radius: 18px;
+  background: rgba(18, 16, 28, 0.94);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 2px solid rgba(192, 132, 252, 0.35);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 25px rgba(170, 59, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  padding: 16px 20px;
+  transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.35s ease, filter 0.35s ease;
+  user-select: text;
+  will-change: transform, opacity;
+}
+
+.fate-card.fate-card-user {
+  border-color: rgba(96, 165, 250, 0.45);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7), 0 0 25px rgba(59, 130, 246, 0.15);
+}
+
+/* ── Card Stack Positioning ── */
+.fate-card-active {
+  transform: translateY(0) scale(1);
+  opacity: 1;
+  z-index: 5;
+  pointer-events: auto;
+}
+
+.fate-card-discarded-up {
+  transform: translateY(-130vh) scale(0.92);
+  opacity: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.fate-card-stack-1 {
+  transform: translateY(14px) scale(0.96);
+  opacity: 0.7;
+  filter: brightness(0.7);
+  z-index: 4;
+  pointer-events: none;
+}
+
+.fate-card-stack-2 {
+  transform: translateY(28px) scale(0.92);
+  opacity: 0.4;
+  filter: brightness(0.45);
+  z-index: 3;
+  pointer-events: none;
+}
+
+.fate-card-buried {
+  transform: translateY(40px) scale(0.88);
+  opacity: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ── Centered Name Plate (No Portraits, No Stars) ── */
+.fate-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+  width: 100%;
+}
+
+.fate-card-name-plate {
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 4px 16px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, var(--accent), #e879f9);
+  color: #fff;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+.fate-card.fate-card-user .fate-card-name-plate {
+  background: linear-gradient(135deg, #2563eb, #38bdf8);
+}
+
+/* ── Card Body (Centered Text) ── */
+.fate-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  margin: 4px 0;
+  font-size: 0.85rem;
+  line-height: 1.65;
+  color: #f1f5f9;
+  text-align: center; /* Centered */
+  white-space: pre-wrap;
+  word-break: break-word;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(192, 132, 252, 0.3) transparent;
+}
+
+.fate-card-body::-webkit-scrollbar { 
+  width: 4px; 
+}
+
+.fate-card-body::-webkit-scrollbar-thumb {
+  background: rgba(192, 132, 252, 0.3);
+  border-radius: 4px;
+}
+
+.fate-card-text {
+  text-align: center;
+  width: 100%;
+}
+
+/* ── Blank Card Waiting State ── */
+.fate-blank-casting-seal {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 12px;
+  opacity: 0.85;
+}
+
+.fate-casting-subtitle {
+  font-size: 0.78rem;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--accent);
+  font-style: italic;
+  text-align: center;
+}
+
+/* ── Edit Textarea (Centered) ── */
+.fate-card-edit-textarea {
+  width: 100%;
+  height: 100%;
+  min-height: 160px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  padding: 12px;
+  font-family: inherit;
+  resize: none;
+  outline: none;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+/* ── Footer Toolbar ── */
+.fate-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+  min-height: 42px;
+  box-sizing: border-box;
+}
+
+.fate-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fate-card-btn {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.fate-card-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.fate-card-btn-danger:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+}
+
+.fate-card-btn-save { 
+  color: #34d399; 
+}
+
+.fate-card-btn-cancel { 
+  color: #f87171; 
+}
+
+/* ── Empty Deck State ── */
+.fate-card-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+}
+
+.fate-empty-text {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+  font-style: italic;
+  max-width: 280px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+/* ── Responsive Mobile ── */
+@media (max-width: 768px) {
+  .fate-card {
+    width: 92vw;
+    height: min(60vh, 520px);
+    padding: 14px 16px;
+  }
+  .fate-card-body {
+    font-size: 0.82rem;
+  }
+  .card-nav-hud {
+    right: 8px;
+    top: auto;
+    bottom: 80px;
+    transform: none;
+  }
+  .card-nav-arrows {
+    flex-direction: row;
+    padding: 4px 8px;
+  }
+  .card-nav-btn {
+    min-width: 44px;
+    padding: 4px 8px;
+    font-size: 0.68rem;
+  }
+  .card-branch-indicator {
+    top: 50px;
+  }
+}
+
 /* =============================================================================
 6. MODEL READINESS INDICATOR
 ============================================================================= */

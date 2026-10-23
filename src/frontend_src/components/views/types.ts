@@ -3,7 +3,7 @@ import type React from 'react';
 import type { TextMessage, Character, NarrationMessage } from '../../types';
 import type { DisplayNameCache } from '../../utilities/immersionLogic';
 
-export type viewMode = 'ladder' | 'cinematic' | 'visual novel';
+export type viewMode = 'ladder' | 'cinematic' | 'visual novel' | 'card';
 
 export interface ViewModeProps {
     displayMessages: (TextMessage | NarrationMessage)[];
@@ -11,7 +11,7 @@ export interface ViewModeProps {
     displayNameCache: DisplayNameCache | null;
     streamingText: string | null; 
     centerAvatar: Character | null;
-    locationBackgroundUrl?: string | null; // ✅ ADD THIS
+    locationBackgroundUrl?: string | null;
     parentMessageId: string | null;
     parentInteractionDataName: string | null;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;

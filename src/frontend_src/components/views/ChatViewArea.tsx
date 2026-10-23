@@ -8,6 +8,7 @@ import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLog
 import { LadderView } from './LadderView';
 import { CinematicView } from './CinematicView';
 import { VisualNovelView } from './VisualNovelView';
+import { CardView } from './CardView'; // ✅ ADD THIS
 
 interface ChatViewAreaProps {
     viewMode: viewMode;
@@ -77,6 +78,7 @@ export function ChatViewArea({
             {viewMode === 'ladder' && <LadderView {...activeViewProps} />}
             {viewMode === 'cinematic' && <CinematicView {...activeViewProps} />}
             {viewMode === 'visual novel' && <VisualNovelView {...activeViewProps} />}
+            {viewMode === 'card' && <CardView {...activeViewProps} />} {/* ✅ ADD THIS */}
         </>
     );
 }
