@@ -2228,6 +2228,13 @@ MODE: CARD (Fate Deck & Stack View)
   pointer-events: auto;
 }
 
+.fate-card.fate-card-entering {
+    transform: translateY(-130vh) scale(0.92) !important;
+    opacity: 0 !important;
+    z-index: 6 !important;
+    pointer-events: none !important;
+}
+
 .fate-card-discarded-up {
   transform: translateY(-130vh) scale(0.92);
   opacity: 0;

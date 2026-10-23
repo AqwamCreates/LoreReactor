@@ -108,7 +108,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
         prevCountRef.current = allCards.length;
     }, [allCards.length, focusedMessageId, setFocusedMessageId]);
 
-    // ── Dealing Animation Tracker ──────────────────────────────────────────
+    // ── Dealing Animation Tracker (STABILIZED) ─────────────────────────────
     const [enteringIds, setEnteringIds] = useState<Set<string>>(new Set());
     const prevIdsRef = useRef<Set<string>>(new Set());
 
@@ -117,9 +117,32 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
         const newIds = new Set<string>();
         
         currentIds.forEach(id => {
-            // If it's a new ID and we aren't on the very first initial mount
             if (!prevIdsRef.current.has(id) && prevIdsRef.current.size > 0) {
-                newIds.add(id);
+                const newCard = allCards.find(c => c.id === id);
+                let isReplacement = false;
+
+                if (newCard) {
+                    // 1. Real card replacing a streaming card (Prevents double animation when AI finishes)
+                    if (!newCard.id.startsWith('streaming-') && newCard.id !== '__pending_blank_card__') {
+                        const hadStreaming = Array.from(prevIdsRef.current).some(pid => pid === `streaming-${newCard.character.id}`);
+                        if (hadStreaming) isReplacement = true;
+                    }
+                    
+                    // 2. Streaming card replacing a pending blank card (Prevents double animation when text starts)
+                    if (newCard.id.startsWith('streaming-')) {
+                        if (prevIdsRef.current.has('__pending_blank_card__')) isReplacement = true;
+                    }
+                    
+                    // 3. Pending blank card replacing a streaming card (e.g. if generation restarts)
+                    if (newCard.id === '__pending_blank_card__') {
+                        const hadStreaming = Array.from(prevIdsRef.current).some(pid => pid.startsWith('streaming-'));
+                        if (hadStreaming) isReplacement = true;
+                    }
+                }
+
+                if (!isReplacement) {
+                    newIds.add(id);
+                }
             }
         });
         
@@ -129,8 +152,6 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
 
         if (newIds.size > 0) {
             setEnteringIds(newIds);
-            // Double rAF + timeout ensures the browser paints the off-screen state 
-            // before we remove the class to trigger the CSS transition
             raf1 = requestAnimationFrame(() => {
                 raf2 = requestAnimationFrame(() => {
                     timeout = setTimeout(() => {
