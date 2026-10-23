@@ -1,7 +1,7 @@
 // src/frontend_src/components/ToolPermissionModal.tsx
 import { useState } from 'react';
 import type { tool } from '../types';
-import type { DetectedToolsResult, ToolRule, ToolSecurityTier } from '../utilities/toolDetection';
+import type { DetectedToolsResult, ToolRule, toolSecurityTier } from '../utilities/toolDetection';
 import '../main.css';
 
 interface ToolPermissionModalProps {
@@ -49,7 +49,7 @@ export function ToolPermissionModal({
         setSelectedTools(prev => ({ ...prev, [t]: !prev[t] }));
     };
 
-    const handleSelectTier = (tier: ToolSecurityTier, enable: boolean) => {
+    const handleSelectTier = (tier: toolSecurityTier, enable: boolean) => {
         setSelectedTools(prev => {
             const next = { ...prev };
             const list = tier === 'os_privileged' ? detectedTools.osPrivileged 
@@ -84,7 +84,7 @@ export function ToolPermissionModal({
     const hasInWorldMutating = detectedTools.inWorldMutating.length > 0;
     const hasInWorldReadonly = detectedTools.inWorldReadonly.length > 0;
 
-    const renderToolItem = (rule: ToolRule, tier: ToolSecurityTier) => {
+    const renderToolItem = (rule: ToolRule, tier: toolSecurityTier) => {
         const isChecked = !!selectedTools[rule.tool];
         
         let highlightBorder: string | undefined;
