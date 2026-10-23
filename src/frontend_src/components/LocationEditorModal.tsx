@@ -8,6 +8,8 @@ import { useChatStore } from '../hooks/useChatStore';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import { FileDropArea } from './FileDropArea';
 import { ImageList, type ImageEntry } from './ImageList';
+import { EntitySelect } from './EntitySelect';
+import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
 const tokenEngine = getLanguageModelEngine();
@@ -106,6 +108,14 @@ function LocationEditorModalInner({
 
     const [bgImageTestTexts, setBgImageTestTexts] = useState<Record<number, string>>({});
     const [bgImageTestResults, setBgImageTestResults] = useState<Record<number, boolean | null>>({});
+
+    // ✅ ADDED SEARCH STATES FOR ENTITY SELECTORS
+    const [audioTrackSearch, setAudioTrackSearch] = useState('');
+    const [charWeightSearch, setCharWeightSearch] = useState('');
+    const [distanceLocSearch, setDistanceLocSearch] = useState('');
+    const [bindingLocSearch, setBindingLocSearch] = useState('');
+    const [charBindSearch, setCharBindSearch] = useState('');
+    const [ownerSearch, setOwnerSearch] = useState('');
 
     const [errors, setErrors] = useState<Record<string, any>>({});
 
@@ -380,7 +390,6 @@ function LocationEditorModalInner({
 
     const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
     const getLocationById = (id: string) => allLocations.find(l => l.id === id);
-    const getAudioTrackById = (id: string) => allAudioTracks.find(t => t.id === id);
     const availableLocationsForBinding = allLocations.filter(l => l.id !== existingLocation?.id);
     const availableLocationsForDistance = allLocations.filter(l => l.id !== existingLocation?.id);
 
@@ -510,28 +519,38 @@ function LocationEditorModalInner({
                                     </div>
                                 )}
 
-                                {/* Audio On Enter */}
+                                {/* ✅ REPLACED: Audio On Enter */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Audio On Enter</span>
                                     <div className="context-binding-hint">When a character enters this location, an audio track is randomly selected by weight. Only tracks listed here will play. Empty = no automatic audio.</div>
-                                    <div className="context-character-binding-list">
-                                        {Object.entries(playAudioTrackOnEnterWeights).map(([trackId, weight]) => {
-                                            const track = getAudioTrackById(trackId);
-                                            if (!track) return null;
-                                            return (
-                                                <div key={trackId} className="context-character-binding-chip" style={{ gap: '6px' }}>
-                                                    <span className="context-character-binding-name">🔊 {track.filename || track.name}</span>
-                                                    <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [trackId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
-                                                    {!isReadOnly && <button type="button" onClick={() => setPlayAudioTrackOnEnterWeights(prev => { const next = { ...prev }; delete next[trackId]; return next; })} className="context-character-binding-remove" title="Remove audio track">×</button>}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                                    
+                                    {Object.keys(playAudioTrackOnEnterWeights).length > 0 && (
+                                        <div className="context-character-binding-list" style={{ marginBottom: '8px' }}>
+                                            {Object.entries(playAudioTrackOnEnterWeights).map(([trackId, weight]) => {
+                                                const track = allAudioTracks.find(t => t.id === trackId);
+                                                if (!track) return null;
+                                                return (
+                                                    <div key={trackId} className="context-character-binding-chip" style={{ gap: '6px' }}>
+                                                        <span className="context-character-binding-name">🔊 {track.filename || track.name}</span>
+                                                        <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [trackId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
+                                                        {!isReadOnly && <button type="button" onClick={() => setPlayAudioTrackOnEnterWeights(prev => { const next = { ...prev }; delete next[trackId]; return next; })} className="context-character-binding-remove" title="Remove audio track">×</button>}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
                                     {!isReadOnly && (
-                                        <select onChange={(e) => { const val = e.target.value; if (val && !(val in playAudioTrackOnEnterWeights)) setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [val]: 1 })); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                            <option value="" disabled>+ Add audio track on enter</option>
-                                            {allAudioTracks.filter(t => !(t.id in playAudioTrackOnEnterWeights)).map(t => (<option key={t.id} value={t.id}>{t.filename || t.name}</option>))}
-                                        </select>
+                                        <EntitySelect
+                                            label="Add Audio Track"
+                                            items={allAudioTracks.filter(t => !(t.id in playAudioTrackOnEnterWeights))}
+                                            selectedId={null}
+                                            onSelect={(id) => setPlayAudioTrackOnEnterWeights(prev => ({ ...prev, [id]: 1 }))}
+                                            searchQuery={audioTrackSearch}
+                                            onSearchChange={setAudioTrackSearch}
+                                            disabled={isUploading}
+                                            renderDescription={(track) => `${track.audioCategory || 'ambient'} • ${track.filename || 'No file'}`}
+                                        />
                                     )}
                                 </div>
 
@@ -651,53 +670,74 @@ function LocationEditorModalInner({
                                         <input type="number" step="0.1" min="0" value={globalWeight} onChange={(e) => setGlobalWeight(Math.max(0, Number(e.target.value) || 0))} className="editor-input context-input-small" disabled={isUploading || isReadOnly} />
                                         <div className="context-field-hint">Base likelihood for any character to enter. Higher = more likely.</div>
                                     </div>
+                                    
+                                    {/* ✅ REPLACED: Character-Specific Weights */}
                                     <div className="context-field-group">
                                         <span className="editor-label editor-label-small">Character-Specific Weights</span>
                                         <div className="context-binding-hint">Override global weight per character. Characters not listed use the global weight.</div>
-                                        <div className="context-character-binding-list">
-                                            {Object.entries(characterWeights).map(([charId, weight]) => { 
-                                                const char = getCharacterById(charId); 
-                                                if (!char) return null; 
-                                                return (
-                                                    <div key={charId} className="context-character-binding-chip" style={{ gap: '6px' }}>
-                                                        <span className="context-character-binding-name">{char.name}</span>
-                                                        <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setCharacterWeights(prev => ({ ...prev, [charId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
-                                                        {!isReadOnly && <button type="button" onClick={() => setCharacterWeights(prev => { const next = { ...prev }; delete next[charId]; return next; })} className="context-character-binding-remove" title="Remove weight override">×</button>}
-                                                    </div>
-                                                ); 
-                                            })}
-                                        </div>
+                                        
+                                        {Object.keys(characterWeights).length > 0 && (
+                                            <div className="context-character-binding-list">
+                                                {Object.entries(characterWeights).map(([charId, weight]) => { 
+                                                    const char = getCharacterById(charId); 
+                                                    if (!char) return null; 
+                                                    return (
+                                                        <div key={charId} className="context-character-binding-chip" style={{ gap: '6px' }}>
+                                                            <span className="context-character-binding-name">{char.name}</span>
+                                                            <input type="number" step="0.1" min="0" value={weight} onChange={(e) => setCharacterWeights(prev => ({ ...prev, [charId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '60px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
+                                                            {!isReadOnly && <button type="button" onClick={() => setCharacterWeights(prev => { const next = { ...prev }; delete next[charId]; return next; })} className="context-character-binding-remove" title="Remove weight override">×</button>}
+                                                        </div>
+                                                    ); 
+                                                })}
+                                            </div>
+                                        )}
+
                                         {!isReadOnly && (
-                                            <select onChange={(e) => { const val = e.target.value; if (val && !(val in characterWeights)) setCharacterWeights(prev => ({ ...prev, [val]: globalWeight })); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                                <option value="" disabled>+ Add character weight override</option>
-                                                {allCharacters.filter(c => !(c.id in characterWeights)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                            </select>
+                                            <EntitySelect
+                                                label="Add Character Weight Override"
+                                                items={allCharacters.filter(c => !(c.id in characterWeights))}
+                                                selectedId={null}
+                                                onSelect={(id) => setCharacterWeights(prev => ({ ...prev, [id]: globalWeight }))}
+                                                searchQuery={charWeightSearch}
+                                                onSearchChange={setCharWeightSearch}
+                                                disabled={isUploading}
+                                            />
                                         )}
                                     </div>
                                 </div>
 
+                                {/* ✅ REPLACED: Location Distances */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Location Distances</span>
                                     <div className="context-binding-hint">Manual distance overrides in km between this location and others. Used by the map tool. Empty = auto-calculated from coordinates.</div>
-                                    <div className="context-character-binding-list">
-                                        {Object.entries(locationDistances).map(([locId, distance]) => {
-                                            const loc = getLocationById(locId);
-                                            if (!loc) return null;
-                                            return (
-                                                <div key={locId} className="context-character-binding-chip" style={{ gap: '6px' }}>
-                                                    <span className="context-character-binding-name">{loc.name}</span>
-                                                    <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setLocationDistances(prev => ({ ...prev, [locId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '70px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
-                                                    <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>km</span>
-                                                    {!isReadOnly && <button type="button" onClick={() => setLocationDistances(prev => { const next = { ...prev }; delete next[locId]; return next; })} className="context-character-binding-remove" title="Remove distance override">×</button>}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
+                                    
+                                    {Object.keys(locationDistances).length > 0 && (
+                                        <div className="context-character-binding-list">
+                                            {Object.entries(locationDistances).map(([locId, distance]) => {
+                                                const loc = getLocationById(locId);
+                                                if (!loc) return null;
+                                                return (
+                                                    <div key={locId} className="context-character-binding-chip" style={{ gap: '6px' }}>
+                                                        <span className="context-character-binding-name">{loc.name}</span>
+                                                        <input type="number" step="0.1" min="0" value={distance} onChange={(e) => setLocationDistances(prev => ({ ...prev, [locId]: Math.max(0, Number(e.target.value) || 0) }))} className="editor-input" style={{ width: '70px', padding: '2px 4px', fontSize: '0.75rem' }} disabled={isUploading || isReadOnly} />
+                                                        <span style={{ fontSize: '0.65rem', opacity: 0.5 }}>km</span>
+                                                        {!isReadOnly && <button type="button" onClick={() => setLocationDistances(prev => { const next = { ...prev }; delete next[locId]; return next; })} className="context-character-binding-remove" title="Remove distance override">×</button>}
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+
                                     {!isReadOnly && (
-                                        <select onChange={(e) => { const val = e.target.value; if (val && !(val in locationDistances)) setLocationDistances(prev => ({ ...prev, [val]: 0 })); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                            <option value="" disabled>+ Add distance to a location</option>
-                                            {availableLocationsForDistance.filter(l => !(l.id in locationDistances)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                                        </select>
+                                        <EntitySelect
+                                            label="Add Distance to Location"
+                                            items={availableLocationsForDistance.filter(l => !(l.id in locationDistances))}
+                                            selectedId={null}
+                                            onSelect={(id) => setLocationDistances(prev => ({ ...prev, [id]: 0 }))}
+                                            searchQuery={distanceLocSearch}
+                                            onSearchChange={setDistanceLocSearch}
+                                            disabled={isUploading}
+                                        />
                                     )}
                                 </div>
                             </fieldset>
@@ -759,6 +799,7 @@ function LocationEditorModalInner({
                         {/* ─── BINDINGS TAB ─── */}
                         {activeTab === 'bindings' && (
                             <>
+                                {/* ✅ REPLACED: Location Bindings */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Location Bindings</span>
                                     <div className="context-field-group">
@@ -767,25 +808,25 @@ function LocationEditorModalInner({
                                             Each entry declares: "From [listed location], this location is reachable."
                                             Empty = this location is reachable from anywhere.
                                         </div>
-                                        <div className="context-character-binding-list">
-                                            {locationBindings.map(id => {
-                                                const loc = getLocationById(id);
-                                                if (!loc) return null;
-                                                return (
-                                                    <div key={id} className="context-character-binding-chip">
-                                                        <span className="context-character-binding-name">← {loc.name}</span>
-                                                        {!isReadOnly && <button type="button" onClick={() => { setLocationBindings(prev => prev.filter(lid => lid !== id)); setLocationBindingRegexTriggers(prev => { const next = { ...prev }; delete next[id]; return next; }); }} className="context-character-binding-remove" title="Remove binding">×</button>}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                        {!isReadOnly && (
-                                            <select onChange={(e) => { const val = e.target.value; if (val && !locationBindings.includes(val)) setLocationBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                                <option value="" disabled>+ Accessible from a location</option>
-                                                {availableLocationsForBinding.filter(l => !locationBindings.includes(l.id)).map(l => (<option key={l.id} value={l.id}>{l.name}</option>))}
-                                            </select>
-                                        )}
+                                        
+                                        <EntitySelectList
+                                            label="Accessible From Locations"
+                                            items={availableLocationsForBinding}
+                                            selectedIds={locationBindings}
+                                            onToggle={(id) => {
+                                                if (locationBindings.includes(id)) {
+                                                    setLocationBindings(prev => prev.filter(lid => lid !== id));
+                                                    setLocationBindingRegexTriggers(prev => { const next = { ...prev }; delete next[id]; return next; });
+                                                } else {
+                                                    setLocationBindings(prev => [...prev, id]);
+                                                }
+                                            }}
+                                            searchQuery={bindingLocSearch}
+                                            onSearchChange={setBindingLocSearch}
+                                            disabled={isUploading || isReadOnly}
+                                        />
                                     </div>
+                                    
                                     {locationBindings.length > 0 && (
                                         <div className="context-field-group" style={{ marginTop: '8px' }}>
                                             <span className="editor-label editor-label-small">Conditional Access Triggers</span>
@@ -816,35 +857,52 @@ function LocationEditorModalInner({
                                     )}
                                 </div>
 
+                                {/* ✅ REPLACED: Character Bindings */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Character Bindings</span>
                                     <div className="context-field-group">
                                         <div className="context-binding-hint">Only these characters can enter this location. Empty = all characters can enter.</div>
-                                        <div className="context-character-binding-list">
-                                            {characterBindings.map(id => { const char = getCharacterById(id); if (!char) return null; return (<div key={id} className="context-character-binding-chip"><span className="context-character-binding-name">{char.name}</span>{!isReadOnly && <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>}</div>); })}
-                                        </div>
-                                        {!isReadOnly && (
-                                            <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                                <option value="" disabled>+ Restrict to a character</option>
-                                                {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                            </select>
-                                        )}
+                                        
+                                        <EntitySelectList
+                                            label="Restricted Characters"
+                                            description="Selected characters are allowed entry. Leave empty to allow everyone."
+                                            items={allCharacters}
+                                            selectedIds={characterBindings}
+                                            onToggle={(id) => {
+                                                if (characterBindings.includes(id)) {
+                                                    setCharacterBindings(prev => prev.filter(cid => cid !== id));
+                                                } else {
+                                                    setCharacterBindings(prev => [...prev, id]);
+                                                }
+                                            }}
+                                            searchQuery={charBindSearch}
+                                            onSearchChange={setCharBindSearch}
+                                            disabled={isUploading || isReadOnly}
+                                        />
                                     </div>
                                 </div>
 
+                                {/* ✅ REPLACED: Owner Bindings */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Owner Bindings</span>
                                     <div className="context-field-group">
                                         <div className="context-binding-hint">Characters that own this location. Owners receive exclusivity bonuses during turn selection, faster stamina regen, reduced speech cost, and always feel at home. Empty = no owners.</div>
-                                        <div className="context-character-binding-list">
-                                            {ownerBindings.map(id => { const char = getCharacterById(id); if (!char) return null; return (<div key={id} className="context-character-binding-chip"><span className="context-character-binding-name">👑 {char.name}</span>{!isReadOnly && <button type="button" onClick={() => setOwnerBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove owner">×</button>}</div>); })}
-                                        </div>
-                                        {!isReadOnly && (
-                                            <select onChange={(e) => { const val = e.target.value; if (val && !ownerBindings.includes(val)) setOwnerBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                                <option value="" disabled>+ Add an owner</option>
-                                                {allCharacters.filter(c => !ownerBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                            </select>
-                                        )}
+                                        
+                                        <EntitySelectList
+                                            label="Location Owners"
+                                            items={allCharacters}
+                                            selectedIds={ownerBindings}
+                                            onToggle={(id) => {
+                                                if (ownerBindings.includes(id)) {
+                                                    setOwnerBindings(prev => prev.filter(cid => cid !== id));
+                                                } else {
+                                                    setOwnerBindings(prev => [...prev, id]);
+                                                }
+                                            }}
+                                            searchQuery={ownerSearch}
+                                            onSearchChange={setOwnerSearch}
+                                            disabled={isUploading || isReadOnly}
+                                        />
                                     </div>
                                 </div>
                             </>
