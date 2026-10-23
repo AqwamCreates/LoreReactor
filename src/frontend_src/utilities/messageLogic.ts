@@ -268,42 +268,32 @@ export async function branchMessage(interactionData: InteractionData, messageId:
  * Automatically resolves the locationId from the messageId.
  */
 export async function cloneChatUpToMessage(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
-    const target = getMessageById(interactionData, messageId);
-    if (!target) {
-        throw new Error("Message not found");
-    }
+    const globalHistory = getGlobalMessageHistory(interactionData);
+    const targetGlobalIndex = globalHistory.findIndex(m => m.id === messageId);
     
-    const locationId = target.locationId;
-    const messages = interactionData.interactionHistories[locationId] || [];
-    const cloneIndex = messages.findIndex(m => m.id === messageId);
-    
-    if (cloneIndex === -1) {
-        throw new Error("Message not found in this location");
+    if (targetGlobalIndex === -1) {
+        throw new Error("Message not found in global timeline.");
     }
 
     const now = Date.now();
     const clonedHistories: Record<string, HistoryMessage[]> = {};
 
-    for (const [locId, msgs] of Object.entries(interactionData.interactionHistories)) {
-        if (locId === locationId) {
-            clonedHistories[locId] = msgs.slice(0, cloneIndex + 1).map(msg => ({
-                ...msg,
-                id: uuidv4(),
-                character: { ...msg.character },
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
-                parentMessageId: null,
-            }));
-        } else {
-            clonedHistories[locId] = msgs.map(msg => ({
-                ...msg,
-                id: uuidv4(),
-                character: { ...msg.character },
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
-                parentMessageId: null,
-            }));
-        }
+    // Filter all locations based on the global chronological index
+    for (const [locId, messages] of Object.entries(interactionData.interactionHistories || {})) {
+        const keptMsgs = messages.filter(m => {
+            const globalIdx = globalHistory.findIndex(hm => hm.id === m.id);
+            return globalIdx !== -1 && globalIdx <= targetGlobalIndex;
+        });
+        
+        // Generate new IDs and timestamps for the independent clone
+        clonedHistories[locId] = keptMsgs.map(msg => ({
+            ...msg,
+            id: uuidv4(),
+            character: { ...msg.character },
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+            parentMessageId: null,
+        }));
     }
 
     const clonedChat: InteractionData = {
