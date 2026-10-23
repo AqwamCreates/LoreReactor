@@ -52,7 +52,6 @@ import { SuperSearchModal } from './SuperSearchModal';
 import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
 import { voiceTranscriptionEngine } from '../services/VoiceTranscriptionEngine';
 import { embeddingQueue } from '../services/EmbeddingQueue';
-import { findLatestMessage } from '../utilities/messageLogic';
 import { getCurrentLocationId, getReachableLocationsByCharacter } from '../utilities/locationLogic';
 
 interface EntityModalController {
@@ -607,25 +606,7 @@ export function AppModals({
                     onSelect={(location: Location, isHosterItem: boolean) => locationModalProperties.open(location, isHosterItem)} 
                     onDelete={onDeleteLocation} 
                     onCreateNew={() => locationModalProperties.open()}
-                    renderSubtext={(location: Location) => {
-                        const isCurrent = location.id === localProtagonistLocationId;
-                        const isReachable = reachableLocationIds?.has(location.id);
-                        const presentCharacters = interactionData?.participants.filter(
-                            p => getCurrentLocationId(interactionData, p) === location.id
-                        ) || [];
-                        
-                        const prefix = isCurrent 
-                            ? '🚩 (You are here) ' 
-                            : isReachable 
-                                ? '🚶 (Reachable) ' 
-                                : '';
-                        
-                        const charsText = presentCharacters.length > 0 
-                            ? `👥 ${presentCharacters.map(c => c.name).join(', ')} • ` 
-                            : '';
-                        
-                        return `${prefix}${charsText}${renderLocationSubtext(location)}`;
-                    }}
+                    renderSubtext={renderLocationSubtext}
                     emptyMessage="No locations found." 
                     actionLabel="Delete" 
                     orderedListMode={true} 

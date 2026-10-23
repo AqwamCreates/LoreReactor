@@ -53,8 +53,8 @@ export function useChatSender(opts: UseChatSenderOptions) {
 
     const sendMessage = useCallback(async (
         text: string,
-        files: File[] | undefined,
-        frontCameraImageBase64: string | undefined
+        files?: File[],
+        frontCameraImageBase64?: string
     ) => {
         const currentState = getState();
         const currentInteractionData = currentState.interactionData;
