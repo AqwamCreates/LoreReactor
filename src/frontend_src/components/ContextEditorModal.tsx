@@ -10,6 +10,7 @@ import { useChatStore } from '../hooks/useChatStore';
 import { RegularExpressionTriggerEditor } from './RegularExpressionTriggerEditor';
 import { FileDropArea } from './FileDropArea';
 import { ImageList, type ImageEntry } from './ImageList';
+import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
 
 const tokenEngine = getLanguageModelEngine();
@@ -78,7 +79,7 @@ function ContextEditorModalInner({
     const [messageFilterActivationTriggers, setMessageFilterActivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionActivationTriggers ?? []);
     const [messageFilterDeactivationTriggers, setMessageFilterDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionDeactivationTriggers ?? []);
     const [messageFilterExclusionActivationTriggers, setMessageFilterExclusionActivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionExclusionActivationTriggers ?? []);
-    const [messageFilterExclusionDeactivationTriggers, setMessageFilterExclusionDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionExclusionActivationTriggers ?? []);
+    const [messageFilterExclusionDeactivationTriggers, setMessageFilterExclusionDeactivationTriggers] = useState<RegularExpressionTrigger[]>(existingContext?.messageFilterRegularExpressionExclusionDeactivationTriggers ?? []);
 
     const [errors, setErrors] = useState<Record<string, string | undefined>>({});
     const cardImportRef = useRef<HTMLInputElement>(null);
@@ -90,6 +91,7 @@ function ContextEditorModalInner({
     const [maximumRecursionDepth, setMaximumRecursionDepth] = useState<number>(existingContext?.maximumRecursionDepth ?? 5);
     const [insertionDepth, setInsertionDepth] = useState<number>(existingContext?.insertionDepth ?? 0);
     const [characterBindings, setCharacterBindings] = useState<string[]>(existingContext?.characterBindings ?? []);
+    const [charBindSearch, setCharBindSearch] = useState('');
 
     const [urls, setUrls] = useState<string[]>(existingContext?.urls ?? []);
     const [newUrlInput, setNewUrlInput] = useState('');
@@ -363,7 +365,6 @@ function ContextEditorModalInner({
     const hasWebContent = hasUrls || hasSearchTerms;
     const textRequiresAsterisk = !hasImages && !hasWebContent;
     const imagesRequiresAsterisk = !hasText && !hasWebContent;
-    const getCharacterById = (id: string) => allCharacters.find(c => c.id === id);
 
     const contextTabs: { id: ContextTabId; label: string; icon: string }[] = [
         { id: 'general', label: 'General', icon: '📝' },
@@ -664,27 +665,27 @@ function ContextEditorModalInner({
                                     </div>
                                 </div>
 
+                                {/* ✅ REPLACED: Character Bindings */}
                                 <div className="editor-section">
                                     <span className="editor-section-title">Character Bindings</span>
                                     <div className="context-binding-hint">Only inject when these characters speak. Empty = all characters.</div>
-                                    <div className="context-character-binding-list">
-                                        {characterBindings.map(id => {
-                                            const char = getCharacterById(id);
-                                            if (!char) return null;
-                                            return (
-                                                <div key={id} className="context-character-binding-chip">
-                                                    <span className="context-character-binding-name">{char.name}</span>
-                                                    {!isReadOnly && <button type="button" onClick={() => setCharacterBindings(prev => prev.filter(cid => cid !== id))} className="context-character-binding-remove" title="Remove binding">×</button>}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                    {!isReadOnly && (
-                                        <select onChange={(e) => { const val = e.target.value; if (val && !characterBindings.includes(val)) setCharacterBindings(prev => [...prev, val]); e.target.value = ""; }} className="editor-select" defaultValue="" disabled={isUploading}>
-                                            <option value="" disabled>+ Bind to a character</option>
-                                            {allCharacters.filter(c => !characterBindings.includes(c.id)).map(c => (<option key={c.id} value={c.id}>{c.name}</option>))}
-                                        </select>
-                                    )}
+                                    
+                                    <EntitySelectList
+                                        label="Bound Characters"
+                                        description="Selected characters will trigger this context entry when they speak."
+                                        items={allCharacters}
+                                        selectedIds={characterBindings}
+                                        onToggle={(id) => {
+                                            if (characterBindings.includes(id)) {
+                                                setCharacterBindings(prev => prev.filter(cid => cid !== id));
+                                            } else {
+                                                setCharacterBindings(prev => [...prev, id]);
+                                            }
+                                        }}
+                                        searchQuery={charBindSearch}
+                                        onSearchChange={setCharBindSearch}
+                                        disabled={isUploading || isReadOnly}
+                                    />
                                 </div>
                             </>
                         )}
