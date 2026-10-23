@@ -81,7 +81,7 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
         const el = container.querySelector(`[data-message-id="${msg.id}"]`) as HTMLElement | null;
         if (el) {
             el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Optional: Add a brief highlight animation to the message bubble
+            // Brief highlight animation to the message bubble
             el.classList.add('history-jump-highlight');
             setTimeout(() => el.classList.remove('history-jump-highlight'), 2000);
         }
@@ -91,8 +91,8 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
     if (!isOpen) return null;
 
     return (
-        <div ref={panelRef} className="history-panel" role="dialog" aria-label="Chat History">
-            <div className="history-panel-header">
+        <div ref={panelRef} className="dropdown-panel" role="dialog" aria-label="Chat History" style={{ width: 360 }}>
+            <div className="dropdown-panel-header" style={{ justifyContent: 'space-between' }}>
                 <span className="history-panel-title">Chat History</span>
                 <span className="history-panel-count">{messages.length} messages</span>
             </div>
@@ -108,7 +108,7 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
                 />
             </div>
 
-            <div className="history-list">
+            <div className="dropdown-panel-body history-list" style={{ padding: '8px 0' }}>
                 {filteredMessages.length === 0 ? (
                     <div className="history-empty">No messages found.</div>
                 ) : (
@@ -126,3 +126,5 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
         </div>
     );
 });
+
+export default ChatHistoryPanel;

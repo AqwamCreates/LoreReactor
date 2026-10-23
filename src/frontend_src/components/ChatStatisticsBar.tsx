@@ -243,13 +243,12 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
             </button>
 
             {showDetails && (
-                <div className="health-pill-panel" role="dialog" aria-label="Session statistics">
-                    {/* ✅ REMOVED: Close button. Panel now relies purely on outside-click/Escape */}
-                    <div className="health-pill-panel-header">
+                <div className="dropdown-panel" role="dialog" aria-label="Session statistics">
+                    <div className="dropdown-panel-header">
                         <span>Session Statistics</span>
                     </div>
 
-                    <div className="health-pill-panel-body">
+                    <div className="dropdown-panel-body">
                         {/* ── Live vitals ── */}
                         <section className="health-pill-section">
                             <h4 className="health-pill-section-title">Performance</h4>

@@ -1352,7 +1352,7 @@ function App() {
                                         )}
                                     </div>
 
-                                    <div className="header-toolbar pp-toolbar" style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: 6, justifyContent: 'flex-end', flex: '0 1 auto', minWidth: 0, overflow: 'visible' }}>
+                                    <div className="header-toolbar pp-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', flex: '0 1 auto', minWidth: 0, overflow: 'visible' }}>
                                         {mp.multiplayerSync.isConnected && (
                                             <div className="peer-badge" title={`${peerCount} connected peer${peerCount !== 1 ? 's' : ''}`}>
                                                 <span className="peer-badge-dot" />
@@ -1565,4 +1565,4 @@ function App() {
     );
 }
 
-export default App
+export default App;

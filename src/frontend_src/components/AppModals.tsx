@@ -609,7 +609,7 @@ export function AppModals({
                     renderSubtext={renderLocationSubtext}
                     emptyMessage="No locations found." 
                     actionLabel="Delete" 
-                    orderedListMode={true} 
+                    orderedListMode={true}
                     currentOrderIds={interactionData?.locations?.map(location => location.id) || []} 
                     onToggleOrder={onToggleLocation} 
                     selectedId={localProtagonistLocationId}

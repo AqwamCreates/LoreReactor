@@ -143,17 +143,63 @@ background: #0a0a0f;
 }
 
 .app-header {
-background: transparent !important;
-border-bottom: 1px solid transparent !important;
-flex-shrink: 0;
-padding: 10px 20px;
-display: flex;
-justify-content: center;
-transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-box-sizing: border-box;
-width: 100%;
-pointer-events: auto;
-overflow: visible;
+  background: transparent !important;
+  border-bottom: 1px solid transparent !important;
+  flex-shrink: 0;
+  padding: max(8px, env(safe-area-inset-top, 8px)) 12px 6px 12px;
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 100%;
+  pointer-events: auto;
+  overflow: visible;
+}
+@media (max-width: 768px) {
+  .app-header .header-top {
+    flex-direction: column !important;
+    align-items: center !important;
+    gap: 6px !important;
+    width: 100% !important;
+  }
+
+  .header-title-block {
+    justify-content: center;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .header-title {
+    font-size: 0.9rem;
+    max-width: 80vw;
+    text-align: center;
+  }
+
+  /* Allow toolbar items to wrap naturally or remain compact */
+  .header-toolbar.pp-toolbar {
+    width: 100%;
+    justify-content: center !important;
+    gap: 4px !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* Compact button sizes on phone screens */
+  .view-mode-toggle {
+    padding: 6px 10px;
+    min-height: 32px;
+    font-size: 0.7rem;
+    gap: 4px;
+  }
+
+  .view-mode-toggle.header-icon-button {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 6px;
+  }
+
+  /* Hide textual label on History button for mobile, keeping the 🔍 icon */
+  .view-mode-toggle .view-mode-label {
+    display: none;
+  }
 }
 .mode-vn .app-header {
   position: absolute;
@@ -172,16 +218,6 @@ flex-direction: column;
 gap: 6px;
 align-items: center;
 min-width: 0;
-}
-.header-top {
-display: flex;
-flex-wrap: nowrap;
-align-items: center;
-gap: 10px;
-width: 100%;
-transition: all 0.4s ease;
-min-width: 0;
-overflow: visible;
 }
 @media (max-width: 768px) {
 .header-top {
@@ -1340,17 +1376,6 @@ height: 100dvh;
   mask-image: linear-gradient(to bottom, black 20%, transparent 95%);
   -webkit-mask-image: linear-gradient(to bottom, black 20%, transparent 95%);
   transition: transform 0.3s ease, filter 0.3s ease;
-}
-.cinematic-avatar-img {
-object-fit: contain;
-width: 100%;
-height: 100%;
-max-height: none;
-max-width: none;
-pointer-events: auto;
-mask-image: linear-gradient(to bottom, black 20%, transparent 90%);
--webkit-mask-image: linear-gradient(to bottom, black 20%, transparent 90%);
-transition: transform 0.3s ease, filter 0.3s ease;
 }
 .mode-cinematic .chat-history {
 display: flex;
@@ -4485,130 +4510,66 @@ max-width: 120px;
 }
 
 /* =============================================================================
-21. CHAT HISTORY & SEARCH PANEL (Top Bar Dropdown)
+REUSABLE DROPDOWN PANEL (Used by History, Stats, View Mode)
 ============================================================================= */
-.history-panel {
-    position: absolute;
-    top: calc(100% + 8px);
-    right: 20px;
-    width: 360px;
-    max-width: calc(100vw - 40px);
-    max-height: min(70vh, 500px);
-    display: flex;
-    flex-direction: column;
-    background: var(--bg);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border);
-    overflow: hidden;
-    animation: ppMenuIn 0.16s ease-out;
+.dropdown-panel {
+  position: absolute;
+  top: calc(100% + 20px);
+  right: 0;
+  z-index: var(--layer-dropdown, 30);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border);
+  overflow: hidden;
+  animation: ppMenuIn 0.16s ease-out;
+  box-sizing: border-box;
+  width: 300px;
+  max-width: calc(100vw - 20px);
 }
-.history-panel-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 16px;
-    background: var(--code-bg);
-    border-bottom: 1px solid var(--border);
+
+.dropdown-panel-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--code-bg);
+  border-bottom: 1px solid var(--border);
+  font-size: 0.78rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-h);
+  box-sizing: border-box;
 }
-.history-panel-title {
-    font-size: 0.85rem;
-    font-weight: bold;
-    color: var(--text-h);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+
+.dropdown-panel-body {
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
-.history-panel-count {
-    font-size: 0.7rem;
-    color: var(--text);
-    opacity: 0.7;
-    font-family: var(--mono);
+
+/* ── Mobile: Centered across all panels ── */
+@media (max-width: 768px) {
+  .dropdown-panel {
+    position: fixed !important;
+    top: calc(max(8px, env(safe-area-inset-top, 8px)) + 85px) !important;
+    left: 12px !important;
+    right: 12px !important;
+    width: auto !important;
+    max-width: 360px !important;
+    margin: 0 auto !important;
+    max-height: 70vh !important;
+  }
 }
-.history-search-wrapper {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--border);
-}
-.history-search-input {
-    width: 100%;
-    padding: 8px 12px;
-    background: var(--social-bg);
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    color: var(--text-h);
-    font-size: 0.85rem;
-    outline: none;
-    transition: border-color 0.2s;
-    font-family: inherit;
-    box-sizing: border-box;
-}
-.history-search-input:focus {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-bg);
-}
-.history-list {
-    flex: 1;
-    overflow-y: auto;
-    overscroll-behavior: contain;
-    padding: 8px 0;
-}
-.history-item {
-    padding: 10px 16px;
-    cursor: pointer;
-    border-bottom: 1px solid var(--border);
-    transition: background 0.15s;
-}
-.history-item:last-child {
-    border-bottom: none;
-}
-.history-item:hover {
-    background: var(--social-bg);
-}
-.history-item-protagonist {
-    border-left: 3px solid var(--accent);
-    padding-left: 13px;
-}
-.history-item-meta {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 4px;
-}
-.history-item-name {
-    font-size: 0.75rem;
-    font-weight: bold;
-    color: var(--accent);
-}
-.history-item-time {
-    font-size: 0.65rem;
-    color: var(--text);
-    opacity: 0.6;
-    font-family: var(--mono);
-}
-.history-item-text {
-    font-size: 0.8rem;
-    color: var(--text-h);
-    line-height: 1.4;
-    opacity: 0.85;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-.history-empty {
-    padding: 40px 20px;
-    text-align: center;
-    color: var(--text);
-    opacity: 0.5;
-    font-style: italic;
-    font-size: 0.85rem;
-}
-@keyframes historyJumpFlash {
-    0% { background: rgba(170, 59, 255, 0.3); box-shadow: 0 0 0 4px rgba(170, 59, 255, 0.2); }
-    100% { background: transparent; box-shadow: none; }
-}
-.history-jump-highlight {
-    animation: historyJumpFlash 2s ease-out forwards;
-    border-radius: 12px;
-}
+
 /* =============================================================================
 22. CHAT SCROLL BUTTONS
 ============================================================================= */
@@ -6281,59 +6242,21 @@ color: #ffffff !important;
 color: #ffffff !important;
 border-left-color: rgba(255, 255, 255, 0.3);
 }
-.health-pill-panel {
-position: absolute;
-top: calc(100% + 20px);
-right: 0;
-width: 320px;
-max-width: calc(100vw - 24px);
-max-height: min(70vh, 480px);
-display: flex;
-flex-direction: column;
-background: var(--bg);
-border: 1px solid var(--border);
-border-radius: 12px;
-box-shadow: 0 16px 44px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border);
-overflow: hidden;
-animation: ppMenuIn 0.16s ease-out;
-}
-.health-pill-panel-header {
-flex: 0 0 auto;
-display: flex;
-align-items: center;
-justify-content: center;
-gap: 8px;
-padding: 10px 12px;
-background: var(--code-bg);
-border-bottom: 1px solid var(--border);
-font-size: 0.78rem;
-font-weight: bold;
-text-transform: uppercase;
-letter-spacing: 0.6px;
-color: var(--text-h);
-}
-.health-pill-panel-close:hover { opacity: 1; color: #ff4444; }
-.health-pill-panel-body {
-flex: 1 1 auto;
-min-height: 0;
-overflow-y: auto;
-overscroll-behavior: contain;
-padding: 10px 12px 12px;
-}
-.history-panel,
-.health-pill-panel {
+.chat-stats-details {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 4px);
   right: 0;
-  z-index: var(--layer-dropdown); /* 20 */
-  display: flex;
-  flex-direction: column;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border);
-  overflow: hidden;
-  animation: ppMenuIn 0.16s ease-out;
+  width: 280px;
+  max-width: calc(100vw - 20px);
+}
+@media (max-width: 768px) {
+  /* FIX: Do NOT use left: 0 here; it pushes right-aligned elements off the viewport */
+  .chat-stats-details {
+    right: 0 !important;
+    left: auto !important;
+    min-width: 0 !important;
+    max-width: calc(100vw - 20px) !important;
+  }
 }
 .health-pill-section {
 margin-bottom: 12px;
@@ -6445,23 +6368,6 @@ VIEW MODE DROPDOWN
 
 .view-mode-dropdown-root.open .view-mode-caret {
   transform: rotate(180deg);
-}
-
-.view-mode-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 8px);
-  right: 0;
-  min-width: 200px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  box-shadow: 0 16px 44px rgba(0, 0, 0, 0.3), 0 0 0 1px var(--border);
-  z-index: var(--layer-dropdown, 20);
-  padding: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  animation: ppMenuIn 0.14s ease-out;
 }
 
 .view-mode-dropdown-item {
