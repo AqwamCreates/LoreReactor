@@ -27,12 +27,12 @@ text-rendering: optimizeLegibility;
 -moz-osx-font-smoothing: grayscale;
 
   --layer-base: 1;        /* Normal in-flow relative elements */
-  --layer-header: 10;     /* Sticky bars & headers */
-  --layer-dropdown: 20;   /* Slash command autocomplete, action menus */
-  --layer-stage: 30;      /* VN sprites, interactive avatars */
-  --layer-modal: 100;     /* Modal overlays & dialogs (must beat VN sprites) */
-  --layer-modal-nested: 110; /* Nested editors / top-level submodals */
-  --layer-toast: 200;     /* Toast notifications (must stay on top of everything) */
+  --layer-header: 5;     /* Sticky bars & headers */
+  --layer-dropdown: 30;   /* Slash command autocomplete, action menus */
+  --layer-stage: 15;      /* VN sprites, interactive avatars */
+  --layer-modal: 20;     /* Modal overlays & dialogs (must beat VN sprites) */
+  --layer-modal-nested: 25; /* Nested editors / top-level submodals */
+  --layer-toast: 30;     /* Toast notifications (must stay on top of everything) */
 }
 @media (max-width: 1024px) {
 :root {
@@ -160,7 +160,7 @@ overflow: visible;
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1; /* Keeps the buttons clickable over the VN stage */
+  z-index: var(--layer-dropdown);
   background: transparent !important;
   border-bottom: none !important;
 }
@@ -4250,6 +4250,7 @@ background: var(--bg);
 color: var(--text-h);
 font-family: monospace;
 transition: opacity 0.3s ease-out;
+z-index: 50;
 }
 .loading-screen.fade-out { opacity: 0; pointer-events: none; }
 .loading-screen-title {
