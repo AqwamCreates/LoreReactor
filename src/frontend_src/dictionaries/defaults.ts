@@ -202,9 +202,6 @@ export const defaultInputStrategyPositions: promptBlockType[] = [
     'Memory Prompt',
     'Starter Prompt',
     'Text Injection',
-    'Model Instruction Template', 
-    'Model Chat Template', 
-    'Model Chat-Instruction Template'
 ];
 
 export const defaultInputStrategy: promptBlockType[] = [

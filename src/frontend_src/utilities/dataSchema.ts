@@ -302,7 +302,7 @@ ${characterToolsSchema}
     "speechToTextDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "voiceActivityDetectionDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "embeddingDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
-    "textGenerationBehaviourOnNarration": "'wait' | 'continue' | 'interrupt' (default 'wait')"
+    "textGenerationBehaviourOnNarration": "'wait' | 'continue' | 'interrupt' (default 'wait')",
     "narrateTexts": {
 ${narrateTextsSchema}
     },
@@ -314,6 +314,7 @@ ${narrateTextCharacterIdsSchema}
 ${profileToolsSchema}
     },
     "inputStrategy": ["array of promptBlockType strings and/or custom prompt block UUIDs. Built-in types: ${defaultInputStrategy.join(', ')}. Custom prompt blocks are referenced by their UUID string."],
+    "promptFormatMode": "'none' | 'instruction' | 'chat' | 'chat-instruction' (default 'none'). Controls how the assembled prompt blocks are structurally wrapped before being sent to the language model API.",
     "summarizationSteps": [{
       "strategyType": "'Sliding Window Replace' | 'Periodic Compression' | 'Recursive Summary' | 'Observation Masking' | 'Entropy Pruning'",
       "enabled": "boolean (default true)",

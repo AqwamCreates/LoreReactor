@@ -12,7 +12,8 @@ import type {
     entityImageType,
     RetrievalConfiguration,
     SummarizationStrategyType,
-    textGenerationBehaviourOnNarration
+    textGenerationBehaviourOnNarration,
+    promptFormatMode
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
@@ -178,6 +179,15 @@ const VALID_TOOL_USAGE_DISPLAY_MODES: toolUsageDisplayMode[] = ['none', 'icon', 
 function parseToolUsageDisplayMode(raw: unknown): toolUsageDisplayMode {
     if (typeof raw === 'string' && VALID_TOOL_USAGE_DISPLAY_MODES.includes(raw as toolUsageDisplayMode)) {
         return raw as toolUsageDisplayMode;
+    }
+    return 'none';
+}
+
+const VALID_PROMPT_FORMAT_MODES: promptFormatMode[] = ['none', 'instruction', 'chat', 'chat-instruction'];
+
+function parsePromptFormatMode(raw: unknown): promptFormatMode {
+    if (typeof raw === 'string' && VALID_PROMPT_FORMAT_MODES.includes(raw as promptFormatMode)) {
+        return raw as promptFormatMode;
     }
     return 'none';
 }
@@ -643,6 +653,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || [...defaultInputStrategy],
+        promptFormatMode: parsePromptFormatMode(p.promptFormatMode),
         entityImageTypes: Array.isArray(p.entityImageTypes) 
             ? (p.entityImageTypes as string[]).filter((t): t is entityImageType => ['promptBlock', 'context', 'location', 'character'].includes(t)) 
             : [...defaultEntityImageTypes],

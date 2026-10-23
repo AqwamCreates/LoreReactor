@@ -1,6 +1,6 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelect } from './EntitySelect';
 import '../main.css';
@@ -64,6 +64,13 @@ const ALL_ENTITY_IMAGE_TYPES: { value: entityImageType; label: string; hint: str
     { value: 'context', label: 'Context Images', hint: 'Inject images attached to active contexts.' },
     { value: 'location', label: 'Location Images', hint: 'Inject images attached to the current location.' },
     { value: 'character', label: 'Character Images', hint: 'Inject current character and co-located participants appearance.' },
+];
+
+const PROMPT_FORMAT_MODES: { value: promptFormatMode; label: string; description: string }[] = [
+    { value: 'none', label: 'None (Standard Messages)', description: 'Send blocks as separate system/user/assistant messages. Best for most modern APIs.' },
+    { value: 'instruction', label: 'Instruction Template', description: 'Wrap all blocks into the model\'s native single-turn instruction template.' },
+    { value: 'chat', label: 'Chat Template', description: 'Format chat history using the model\'s native chat template, prepended with context blocks.' },
+    { value: 'chat-instruction', label: 'Chat + Instruction Template', description: 'Wrap the natively formatted chat history inside the model\'s instruction template.' },
 ];
 
 // ─── Helpers & Constants ────────────────────────────────────────────
@@ -293,6 +300,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>(ep?.narrateTexts ? { ...ep.narrateTexts } : { ...defaultNarrateTexts });
     const [narrateTextCharacterIds, setNarrateTextCharacterIds] = useState<Record<textType, string>>(ep?.narrateTextCharacterIds ?? ({} as Record<textType, string>));
     const [inputStrategy, setInputStrategy] = useState<(promptBlockType | string)[]>(ep?.inputStrategy?.length ? ep.inputStrategy : [...defaultInputStrategy]);
+    const [promptFormatMode, setPromptFormatMode] = useState<promptFormatMode>(ep?.promptFormatMode ?? 'none');
     const [summarizationSteps, setSummarizationSteps] = useState<SummarizationStep[]>(ep?.summarizationSteps != null ? [...ep.summarizationSteps].sort((a, b) => a.order - b.order) : getDefaultSummarizationSteps());
     const [summarizationInstruction, setSummarizationInstruction] = useState<string>(ep?.summarizationInstruction || '');
     const [autoResumeSignals, setAutoResumeSignals] = useState<AutoResumeSignal[]>(ep?.autoResumeSignals ?? []);
@@ -358,7 +366,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         const getStopPattern = (spId: string) => allStopPatterns.find(sp => sp.id === spId);
         const getRetrievalConfiguration = (rcId: string) => allRetrievalConfigurations.find(rc => rc.id === rcId);
         return {
-            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, textGenerationBehaviourOnNarration, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, entityImageTypes: [...entityImageTypes], numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, cacheEfficiencyLevels: { ...cacheEfficiencyLevels }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, stripThinkTokens, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
+            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, textGenerationBehaviourOnNarration, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, entityImageTypes: [...entityImageTypes], numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, cacheEfficiencyLevels: { ...cacheEfficiencyLevels }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, stripThinkTokens, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], promptFormatMode, summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
         };
     };
 
@@ -401,6 +409,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const narrateTextKeys = Object.keys(narrateTextLabels) as textType[];
     const selectedToolUsageDisplayMode = TOOL_USAGE_DISPLAY_MODES.find(m => m.value === toolUsageDisplayMode) ?? TOOL_USAGE_DISPLAY_MODES[0];
     const selectedToolUsageDisplayPlacementMode = TOOL_USAGE_DISPLAY_PLACEMENT_MODES.find(m => m.value === toolUsageDisplayPlacementMode) ?? TOOL_USAGE_DISPLAY_PLACEMENT_MODES[1];
+    const selectedPromptFormatMode = PROMPT_FORMAT_MODES.find(m => m.value === promptFormatMode) ?? PROMPT_FORMAT_MODES[0];
     const filteredToolKeys = useMemo(() => { const q = toolSearchQuery.toLowerCase(); if (!q) return allToolKeys; return allToolKeys.filter(toolName => { const label = (toolLabels[toolName] ?? toolName).toLowerCase(); return label.includes(q) || toolName.toLowerCase().includes(q); }); }, [allToolKeys, toolSearchQuery]);
     const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
@@ -691,7 +700,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                     {activeTab === 'pipeline' && (
                         <>
                             <div className="editor-section">
-                                <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Prompt Block Order</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div>
+                                <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Prompt Block Order (Payload)</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div>
                                 <div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled. Includes built-in blocks and custom prompt blocks.</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                     {inputStrategy.map((blockEntry, index) => (
@@ -715,6 +724,17 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                         </select>
                                     </div>
                                 )}
+                            </div>
+
+                            <div className="editor-section">
+                                <span className="editor-section-title">Prompt Format Mode (Envelope)</span>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>Controls how the assembled prompt blocks are structurally wrapped before being sent to the language model API.</div>
+                                <select value={promptFormatMode} onChange={(e) => setPromptFormatMode(e.target.value as promptFormatMode)} className="editor-select" style={{ width: '100%' }}>
+                                    {PROMPT_FORMAT_MODES.map(mode => (
+                                        <option key={mode.value} value={mode.value}>{mode.label}</option>
+                                    ))}
+                                </select>
+                                <div style={FIELD_HINT_STYLE}>{selectedPromptFormatMode.description}</div>
                             </div>
 
                             <div className="editor-section">

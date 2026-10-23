@@ -613,13 +613,6 @@ function isPromptBlockCharacterBound(block: PromptBlock, selectedCharacterId: st
   return block.characterBindings.includes(selectedCharacterId);
 }
 
-function isBuiltInBlockType(value: string): value is promptBlockType {
-  return (defaultInputStrategy as string[]).includes(value)
-    || value === 'Model Chat Template'
-    || value === 'Model Instruction Template'
-    || value === 'Model Chat-Instruction Template';
-}
-
 type WithMessageFilterExclusionTriggers = {
   messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
   messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
@@ -2085,7 +2078,7 @@ function buildStructuredMessages(
   const volatileEntries: string[] = [];
   for (const entry of inputStrategy) {
     if (
-      entry === 'Model Instruction Template' ||
+      entry === 'Model InstructionTemplate' ||
       entry === 'Model Chat Template' ||
       entry === 'Model Chat-Instruction Template'
     ) {
@@ -2672,111 +2665,125 @@ export async function buildPrompt(
       if (!inputStrategy.includes(block.id)) regexActivatedBlocks.push(block.id);
     }
   }
-  const hasTemplateOverride = inputStrategy.some(e =>
-    e === 'Model Chat Template' ||
-    e === 'Model Instruction Template' ||
-    e === 'Model Chat-Instruction Template'
-  );
+  
+  const promptFormatMode = profile?.promptFormatMode ?? 'none';
   let messages: OpenAIMessage[];
-  if (hasTemplateOverride) {
-    const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
-    const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
-    const promptLines: string[] = [];
-    const protagonistIdSet = ctx.protagonistIds;
+
+  if (promptFormatMode !== 'none') {
+    // 1. Assemble all content lines (the payload)
+    const contentLines: string[] = [];
     for (const entry of inputStrategy) {
-      if (entry === 'Model Instruction Template' && resolvedInstructionTemplate?.instructionTemplate) {
-        const assembledSoFar = promptLines.join('\n');
-        promptLines.length = 0;
-        promptLines.push(
-          resolvedInstructionTemplate.instructionTemplate
-            .replace(/{instruction}/g, assembledSoFar)
-            .replace(/{input}/g, '')
-            .replace(/{system}/g, ctx.character.systemPrompt || '')
-        );
-      } else if (entry === 'Model Chat Template' && resolvedChatTemplate?.chatTemplate) {
-        const chatHistoryForTemplate = ctx.localHistory.filter(
-          (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
-        );
-        for (const msg of chatHistoryForTemplate) {
-          const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
-          let content = selectModelSummary(msg, modelId);
-          if (msg.character.id !== ctx.characterId) {
-              content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
-          }
-          content = replacePlaceholders(
-            content,
-            ctx.characterParticipantTag,
-            ctx.characterName,
-            ctx.coLocatedProtagonists,
-            ctx.participants,
-            ctx.knownNames,
-            ctx.tools
-          );
-          promptLines.push(
-            resolvedChatTemplate.chatTemplate
-              .replace(/{role}/gi, role)
-              .replace(/{content}/g, content)
-          );
-        }
-        promptLines.push(
-          resolvedChatTemplate.chatTemplate
-            .replace(/{role}/gi, 'assistant')
-            .replace(/{content}/g, '')
-        );
-      } else if (entry === 'Model Chat-Instruction Template' && resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
-        const assembledSoFar = promptLines.join('\n');
-        promptLines.length = 0;
-        promptLines.push(
-          resolvedInstructionTemplate.instructionTemplate
-            .replace(/{instruction}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n${assembledSoFar}`)
-            .replace(/{input}/g, '')
-            .replace(/{system}/g, ctx.character.systemPrompt || '')
-        );
-        const chatHistoryForTemplate = ctx.localHistory.filter(
-          (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
-        );
-        for (const msg of chatHistoryForTemplate) {
-          const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
-          let content = selectModelSummary(msg, modelId);
-          if (msg.character.id !== ctx.characterId) {
-              content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
-          }
-          content = replacePlaceholders(
-            content,
-            ctx.characterParticipantTag,
-            ctx.characterName,
-            ctx.coLocatedProtagonists,
-            ctx.participants,
-            ctx.knownNames,
-            ctx.tools
-          );
-          promptLines.push(
-            resolvedChatTemplate.chatTemplate
-              .replace(/{role}/gi, role)
-              .replace(/{content}/g, content)
-          );
-        }
-        promptLines.push(
-          resolvedChatTemplate.chatTemplate
-            .replace(/{role}/gi, 'assistant')
-            .replace(/{content}/g, '')
-        );
-      } else if (isBuiltInBlockType(entry)) {
-        const lines = blockMap[entry];
-        if (lines?.length) promptLines.push(...lines);
-      } else {
-        const block = promptBlockById.get(entry);
-        if (!block) continue;
-        const lines = blockMap[block.id];
-        if (lines?.length) promptLines.push(...lines);
-      }
+      // Ignore legacy template strings if they somehow still exist in the array
+      if (
+        entry === 'Model Chat Template' ||
+        entry === 'Model Instruction Template' ||
+        entry === 'Model Chat-Instruction Template'
+      ) continue;
+      
+      const lines = blockMap[entry];
+      if (lines?.length) contentLines.push(...lines);
     }
+    
+    // Add regex-activated blocks
     for (const blockId of regexActivatedBlocks) {
       const lines = blockMap[blockId];
-      if (lines?.length) promptLines.push(...lines);
+      if (lines?.length) contentLines.push(...lines);
+    }
+
+    const assembledContent = contentLines.join('\n');
+    const promptLines: string[] = [];
+
+    const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
+    const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
+
+    // 2. Apply Envelope based on promptFormatMode
+    if (promptFormatMode === 'instruction' && resolvedInstructionTemplate?.instructionTemplate) {
+      promptLines.push(
+        resolvedInstructionTemplate.instructionTemplate
+          .replace(/{instruction}/g, assembledContent)
+          .replace(/{input}/g, '')
+          .replace(/{system}/g, ctx.character.systemPrompt || '')
+      );
+    } else if (promptFormatMode === 'chat' && resolvedChatTemplate?.chatTemplate) {
+      const protagonistIdSet = ctx.protagonistIds;
+      const chatHistoryForTemplate = ctx.localHistory.filter(
+        (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
+      );
+      
+      // Prepend non-history assembled content
+      promptLines.push(assembledContent);
+      
+      for (const msg of chatHistoryForTemplate) {
+        const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
+        let content = selectModelSummary(msg, modelId);
+        if (msg.character.id !== ctx.characterId) {
+            content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
+        }
+        content = replacePlaceholders(
+          content,
+          ctx.characterParticipantTag,
+          ctx.characterName,
+          ctx.coLocatedProtagonists,
+          ctx.participants,
+          ctx.knownNames,
+          ctx.tools
+        );
+        promptLines.push(
+          resolvedChatTemplate.chatTemplate
+            .replace(/{role}/gi, role)
+            .replace(/{content}/g, content)
+        );
+      }
+      promptLines.push(
+        resolvedChatTemplate.chatTemplate
+          .replace(/{role}/gi, 'assistant')
+          .replace(/{content}/g, '')
+      );
+    } else if (promptFormatMode === 'chat-instruction' && resolvedInstructionTemplate?.instructionTemplate && resolvedChatTemplate?.chatTemplate) {
+      promptLines.push(
+        resolvedInstructionTemplate.instructionTemplate
+          .replace(/{instruction}/g, `Continue the chat dialogue below. Write a single reply for the character "${ctx.characterName}".\n${assembledContent}`)
+          .replace(/{input}/g, '')
+          .replace(/{system}/g, ctx.character.systemPrompt || '')
+      );
+      
+      const protagonistIdSet = ctx.protagonistIds;
+      const chatHistoryForTemplate = ctx.localHistory.filter(
+        (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
+      );
+      for (const msg of chatHistoryForTemplate) {
+        const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
+        let content = selectModelSummary(msg, modelId);
+        if (msg.character.id !== ctx.characterId) {
+            content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
+        }
+        content = replacePlaceholders(
+          content,
+          ctx.characterParticipantTag,
+          ctx.characterName,
+          ctx.coLocatedProtagonists,
+          ctx.participants,
+          ctx.knownNames,
+          ctx.tools
+        );
+        promptLines.push(
+          resolvedChatTemplate.chatTemplate
+            .replace(/{role}/gi, role)
+            .replace(/{content}/g, content)
+        );
+      }
+      promptLines.push(
+        resolvedChatTemplate.chatTemplate
+          .replace(/{role}/gi, 'assistant')
+          .replace(/{content}/g, '')
+      );
+    } else {
+      // Fallback if templates are missing but mode is set
+      promptLines.push(assembledContent);
     }
     messages = [{ role: 'user', content: promptLines.join('\n') }];
   } else {
+    // 'none' mode (Standard OpenAI-style system/user/assistant messages)
     messages = buildStructuredMessages(blockMap, inputStrategy, ctx.minimalVolatileCacheMode);
     if (regexActivatedBlocks.length > 0) {
       const extraLines: string[] = [];
@@ -2794,6 +2801,7 @@ export async function buildPrompt(
       }
     }
   }
+
   let defaultStops: string[] = [];
   if (!profile?.doNotInjectDefaultStopTokens) {
     const templateStops = resolvedChatTemplate?.stopPatterns || [];
