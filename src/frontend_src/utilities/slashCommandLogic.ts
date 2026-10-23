@@ -158,6 +158,10 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'character', type: 'colocated_character', desc: 'Character in current room to kick' },
         { name: 'location', type: 'reachable_location', desc: 'Destination exit (optional)', optional: true }
     ]},
+    { name: 'mind_reader', desc: 'Read a character\'s hidden thoughts', args: [
+        { name: 'target', type: 'session_character', desc: 'Character to read minds of' },
+        { name: 'limit', type: 'text', desc: 'Max thoughts to retrieve (default 1)', example: '1', optional: true }
+    ]},
     { name: 'oracle', desc: 'Scry remote locations', args: [{ name: 'location', type: 'session_location', desc: 'Target location to peer into' }] },
     { name: 'teleport', desc: 'Instant movement', args: [{ name: 'location', type: 'session_location', desc: 'Any session location' }] },
     { name: 'key', desc: 'Lock/unlock locations', subs: [
@@ -225,7 +229,7 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'write', desc: 'Write text to clipboard', args: [{ name: 'text', type: 'text', desc: 'Text to copy', example: 'Copied text' }] },
     ]},
     { name: 'screenshot', desc: 'Capture screenshot' },
-    { name: 'webcam', desc: 'Capture webcam image' },
+    { name: 'front_camera', desc: 'Capture front camera / webcam snapshot' },
     { name: 'network_scanner', desc: 'Scan local network devices' },
     { name: 'file_watcher', desc: 'Watch workspace folders', subs: [
         { name: 'start', desc: 'Start watching path', args: [{ name: 'path', type: 'text', desc: 'Directory path', example: './src' }] },
@@ -810,11 +814,20 @@ export function applySlashSelection(
             const lastComma = currentPart.lastIndexOf(',');
             
             if (lastComma !== -1) {
-                // Append after the last comma (replacing any partial typing)
-                newValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
-            } else {
-                // No comma yet, append one now that a second entity is being added
+                const afterLastComma = currentPart.substring(lastComma + 1);
+                if (afterLastComma.length === 0) {
+                    // Empty after comma, append new value
+                    newValue = `${currentPart}${opt.value}`;
+                } else {
+                    // Non-empty after comma, replace it
+                    newValue = `${currentPart.substring(0, lastComma + 1)}${opt.value}`;
+                }
+            } else if (currentPart.length > 0) {
+                // No comma yet, but there's content - append with comma
                 newValue = `${currentPart},${opt.value}`;
+            } else {
+                // Empty, just add the value
+                newValue = opt.value;
             }
             
             currentParts[baseIndex] = newValue;

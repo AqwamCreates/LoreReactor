@@ -519,7 +519,7 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
 function executeMindReader(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'target', 'character', 'character_id', 'name') || pArgs.positional.join(' ');
-    const limit = pArgs.getNumber(1, 'limit', 'count', 'depth') ?? 3;
+    const limit = pArgs.getNumber(1, 'limit', 'count', 'depth') ?? 1;
 
     if (!targetQuery) {
         return helpResult('mind_reader', 'target="...", limit=3', 'read the recent internal thoughts (think tool calls) of a target character');
