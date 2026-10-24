@@ -38,8 +38,8 @@ export function ContextBar({
 
     return (
         <div className={`context-bar ${expanded ? 'expanded' : ''}`}>
-            {/* Extended configuration buttons — collapsible grid wrapper for smooth slide */}
-            <div className="context-bar-extended-wrapper" style={{height: (expanded ? 'auto' : 0)}}>
+            {/* Extended configuration buttons (Top row) — solely tool buttons */}
+            <div className="context-bar-extended-wrapper">
                 <div className="context-bar-extended-row">
                     <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
                     <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
@@ -48,20 +48,10 @@ export function ContextBar({
                     <NavButton icon="🧭" label="Retrieval Configurations" onClick={onOpenRetrievalConfigurations} />
                     <NavButton icon="💰" label="Budgets" onClick={onOpenBudgets} />
                     <NavButton icon="👤" label="Profiles" onClick={onOpenProfiles} />
-                    {/* Toggle lives here when expanded */}
-                    <button
-                        type="button"
-                        className="nav-button nav-button-icon-only context-bar-toggle context-bar-toggle-expanded"
-                        onClick={() => setExpanded(false)}
-                        title="Hide advanced panels"
-                        tabIndex={expanded ? 0 : -1}
-                    >
-                        <span>⚙️</span>
-                    </button>
                 </div>
             </div>
 
-            {/* Core narrative buttons — always visible */}
+            {/* Core narrative buttons (Bottom row) — always visible */}
             <div className="context-bar-core-row">
                 <NavButton icon="💬" label="Chat List" onClick={onOpenInteractionDataList} />
                 <NavButton icon="🎭" label="Characters" onClick={onOpenCharacters} />
@@ -70,17 +60,15 @@ export function ContextBar({
                 <NavButton icon="🔊" label="Audio Tracks" onClick={onOpenAudioTracks} />
                 <NavButton icon="🌍" label="Worlds" onClick={onOpenWorlds} />
 
-                {/* Toggle only shown here when collapsed */}
-                {!expanded && (
-                    <button
-                        type="button"
-                        className="nav-button nav-button-icon-only context-bar-toggle"
-                        onClick={() => setExpanded(true)}
-                        title="Show advanced panels"
-                    >
-                        <span>⚙️</span>
-                    </button>
-                )}
+                {/* Permanent Chevron Toggle at the bottom */}
+                <button
+                    type="button"
+                    className={`nav-button nav-button-icon-only context-bar-toggle ${expanded ? 'context-bar-toggle-expanded' : ''}`}
+                    onClick={() => setExpanded(prev => !prev)}
+                    title={expanded ? 'Collapse advanced tools (▼)' : 'Expand advanced tools (▲)'}
+                >
+                    <span>{expanded ? '▼' : '▲'}</span>
+                </button>
             </div>
         </div>
     );
