@@ -152,9 +152,9 @@ export function useChatEngine(deps: EngineDependencies) {
         }));
 
         const liveProfile = getState().interactionData?.profile;
-        const baseUpdated = isResuming
-            ? (getState().interactionData ?? result.updatedData)
-            : result.updatedData;
+        
+        // ✅ Always use the actor's finalized data to preserve tool results, inventory, etc.
+        const baseUpdated = result.updatedData; 
 
         const effectiveData: InteractionData = {
             ...baseUpdated,

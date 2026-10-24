@@ -260,10 +260,9 @@ export function ParticipantControlModal({
                             <option value="">Select character...</option>
                             {interactionData.participants.map(p => {
                                 // ✅ FIX: Use protagonistIds string array instead of protagonists Character array
-                                const isProtag = interactionData.protagonistIds?.includes(p.id) ?? false;
                                 return (
                                     <option key={p.id} value={p.id}>
-                                        {p.name} {isProtag ? '★ (Protagonist)' : '(NPC)'}
+                                        {p.name}
                                     </option>
                                 );
                             })}

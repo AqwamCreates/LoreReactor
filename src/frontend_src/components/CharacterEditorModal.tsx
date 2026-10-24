@@ -1455,6 +1455,13 @@ export function CharacterEditorModal({
                             {activeTab === 'stats' && (
                                 <>
                                     <div className="editor-section">
+                                        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectStats} disabled={isUploading || isReadOnly} title="Re-run auto-detection on name + description + system prompt" style={{ flex: 1, fontSize: '0.75rem', padding: '8px 12px', minHeight: '36px' }}>🔍 Auto-Detect Stats from Prompts</button>
+                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleResetStatsToDefaults} disabled={isUploading || isReadOnly} title="Reset all stats to their default values" style={{ flex: 1, fontSize: '0.75rem', padding: '8px 12px', minHeight: '36px' }}>↩️ Reset Stats to Defaults</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="editor-section">
                                         <span className="editor-section-title">Turn Order & Output</span>
                                         <div className="editor-stats-grid">
                                             <div>
@@ -1716,15 +1723,6 @@ export function CharacterEditorModal({
                                             <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowCoLocatedParticipants} disabled={isUploading || isReadOnly || !hasSession || coLocatedParticipantCount === 0} title={!hasSession ? 'No active session' : coLocatedParticipantCount === 0 ? 'No co-located participants' : `Add ${coLocatedParticipantCount} co-located participant(s) names`} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>📍 Know Co-Located Participants' Names {coLocatedParticipantCount > 0 && `(${coLocatedParticipantCount})`}</button>
                                             <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllParticipants} disabled={isUploading || isReadOnly || !hasSession || !hasParticipants} title={!hasSession ? 'No active session' : 'Add all session participants names + aliases'} style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🎭 Know All Participants' Names</button>
                                             <button type="button" className="editor-button editor-button-cancel" onClick={handleKnowAllCharacters} disabled={isUploading || isReadOnly || allCharacters.length === 0} title="Add every character in the global registry" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🌐 Know All Characters' Names</button>
-                                        </div>
-                                    </div>
-
-                                    <div className="editor-section" style={{ margin: 0 }}>
-                                        <span className="editor-section-title">Automated Utilities</span>
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectStats} disabled={isUploading || isReadOnly} title="Re-run auto-detection on name + description + system prompt" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🔍 Auto-Detect Stats from Prompts</button>
-                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleAutoDetectTools} disabled={isUploading || isReadOnly} title="Auto-detect tools and configure permissions based on character prompts" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>🛡️ Auto-Detect Tools & Permissions</button>
-                                            <button type="button" className="editor-button editor-button-cancel" onClick={handleResetStatsToDefaults} disabled={isUploading || isReadOnly} title="Reset all stats to their default values" style={{ fontSize: '0.7rem', textAlign: 'left', padding: '6px 10px' }}>↩️ Reset Stats to Defaults</button>
                                         </div>
                                     </div>
                                 </div>

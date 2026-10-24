@@ -720,9 +720,12 @@ export class CharacterActor {
                 // ✅ Uses original `data` to preserve future messages!
                 const newHistories = { ...data.interactionHistories };
                 for (const [locId, msgs] of Object.entries(newHistories)) {
+                    // ✅ STRICT TARGETING: If latestMsg is missing, targetIdx is -1. 
+                    // NEVER fallback to the first message in the array.
                     const targetIdx = latestMsg 
                         ? msgs.findIndex(m => m.id === latestMsg.id)
-                        : msgs.findIndex(m => m.character.id === character.id && (m.messageType === 'chat' || m.messageType === 'whisper'));
+                        : -1; 
+                        
                     if (targetIdx !== -1) {
                         newHistories[locId] = [...msgs];
                         const targetMsg = { ...msgs[targetIdx] } as ChatMessage | WhisperMessage | ToolMessage | NarrationMessage;
