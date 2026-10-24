@@ -546,8 +546,8 @@ function executeMindReader(args: string, _nextMessage: BaseMessage, interactionD
             const rawArgs = m[1] || m[2];
             const thinkPAArgs = parsePythonArgs(rawArgs);
             const reasoning = thinkPAArgs.get(0, 'reasoning', 'thought', 'text', 'input', 'reason') || thinkPAArgs.positional.join(' ');
-            if (reasoning && reasoning.trim()) {
-                extractedThoughts.unshift(reasoning.trim());
+            if (reasoning) {
+                extractedThoughts.unshift(reasoning);
             }
         }
         

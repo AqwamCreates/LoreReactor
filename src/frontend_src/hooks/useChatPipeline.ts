@@ -368,7 +368,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             }
 
             useGenerationStore.setState({ streamingText: '' });
-            releaseLock();
 
             let ud = turnResult.interactionData;
             if (ud === data) ud = { ...ud, interactionHistories: { ...ud.interactionHistories }, lastUpdatedTimestamp: Date.now() };
@@ -425,29 +424,23 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 const calls = (text.match(callRegex) || []).length;
                 const resultsInText = (text.match(resultRegex) || []).length;
                 
-                // ✅ FIX: Count results stored in the message's toolExecutionResults array
-                // The streaming parser often saves results to the array rather than injecting ⟦...⟧ into the raw textContent.
                 const resultsInArray = (hasTextContent(lastMsg) && (lastMsg as ChatMessage).toolExecutionResults) 
                     ? (lastMsg as ChatMessage).toolExecutionResults!.length 
                     : 0;
                 
                 const totalResults = resultsInText + resultsInArray;
-                
-                // 1. Did the LLM race ahead and generate narrative without waiting for the tool result?
                 const hasUnexecutedTools = calls > totalResults;
                 
-                // 2. Is there an unclosed tool call at the very end of the text?
                 const lastCallStart = text.lastIndexOf(toolCallStartString);
                 const lastCallEnd = text.lastIndexOf(toolCallEndString);
                 const hasUnclosedCall = lastCallStart !== -1 && lastCallStart > lastCallEnd;
 
-                // 3. Strip all tool syntax to check for pure tool-only responses
                 const stripRegex = new RegExp(
                     `${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}|` +
                     `${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`,
                     'g'
                 );
-                const narrativeText = text.replace(stripRegex, '').trim();
+                const narrativeText = text.replace(stripRegex, '');
                 const isToolOnlyResponse = (calls > 0) && narrativeText.length === 0;
 
                 let evaluation = evaluateAutoResumeSignals(ud.profile, text, autoResumeCountRef.current);
@@ -455,7 +448,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 if ((isToolOnlyResponse || hasUnexecutedTools || hasUnclosedCall) && !wasStoppedRef.current) {
                     evaluation = { ...evaluation, shouldResume: true };
                 }
-                // ────────────────────────────────────────────────────────────────
 
                 if (evaluation.shouldResume && !wasStoppedRef.current) {
                     autoResumeCountRef.current += 1;
@@ -466,7 +458,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
                     return;
                 }
 
-                // ─── WAIT FOR VOICE (Only if turn is complete) ──────────────
                 const isVoiceEnabledInProfile = profile?.narrateTexts 
                     ? Object.values(profile.narrateTexts).some(v => v === true) 
                     : false;
@@ -478,7 +469,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
                         console.warn('[useChatPipeline] Voice playback completion error:', e);
                     }
                 }
-                // ────────────────────────────────────────────────────────────────
 
                 runSummarization({ data: ud, character: respondingChar, promptBlocks, setInteractionData, addToast });
             } else {
@@ -508,7 +498,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
                             const started = await ambientTracker.start().catch(() => false);
                             if (started) {
                                 ambientTracker.feed(lastMsg.textContent);
-                                // Do not await. Let it play in background.
                             }
                         }
                     }
@@ -597,9 +586,7 @@ export function useChatPipeline(deps: PipelineDependencies) {
             );
 
             useGenerationStore.setState({ streamingText: '' });
-            releaseLock();
             
-            // Do not await. Let it play in background.
         } catch (e) {
             console.error('Delayed response error:', e);
         } finally {
@@ -763,11 +750,12 @@ export function useChatPipeline(deps: PipelineDependencies) {
             const promptBlocks = getActivePromptBlocks(currentInteractionData);
             const result = await chatEngine.handleServerResponse(
                 currentInteractionData, char, promptBlocks, ctrl.signal,
-                throttledSetStreamingTextWithBroadcast, undefined, existingText, undefined, voiceTracker
+                throttledSetStreamingTextWithBroadcast, undefined, existingText, undefined, voiceTracker,
+                undefined,
+                messageId
             );
 
             useGenerationStore.setState({ streamingText: '' });
-            releaseLock();
 
             const liveStreamedText = streamingTextRef.current || existingText;
             const dataToFinalize = result?.interactionData || currentInteractionData;
@@ -782,7 +770,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             let evaluation = evaluateAutoResumeSignals(finalized.profile, finalText, autoResumeCountRef.current);
             let dataToSave = finalized;
 
-            // ─── TOOL EXECUTION AUDITOR & AUTO-RESUME (IN RESUME) ───────────
             const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
             
             const callRegex = new RegExp(`${escapeRegex(toolCallStartString)}[\\s\\S]*?${escapeRegex(toolCallEndString)}`, 'g');
@@ -791,7 +778,6 @@ export function useChatPipeline(deps: PipelineDependencies) {
             const calls = (finalText.match(callRegex) || []).length;
             const resultsInText = (finalText.match(resultRegex) || []).length;
             
-            // ✅ FIX: Count results stored in the message's toolExecutionResults array
             const resultsInArray = (finalizedMsg && hasTextContent(finalizedMsg) && (finalizedMsg as ChatMessage).toolExecutionResults) 
                 ? (finalizedMsg as ChatMessage).toolExecutionResults!.length 
                 : 0;
@@ -809,13 +795,12 @@ export function useChatPipeline(deps: PipelineDependencies) {
                 `${escapeRegex(toolResultStartString)}[\\s\\S]*?${escapeRegex(toolResultEndString)}`,
                 'g'
             );
-            const narrativeText = finalText.replace(stripRegex, '').trim();
+            const narrativeText = finalText.replace(stripRegex, '');
             const isToolOnlyResponse = (calls > 0) && narrativeText.length === 0;
 
             if ((isToolOnlyResponse || hasUnexecutedTools || hasUnclosedCall) && !wasStoppedRef.current) {
                 evaluation = { ...evaluation, shouldResume: true };
             }
-            // ────────────────────────────────────────────────────────────────
 
             if (evaluation.shouldResume && !wasStoppedRef.current) {
                 autoResumeCountRef.current += 1;

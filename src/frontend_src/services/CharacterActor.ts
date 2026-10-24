@@ -6,7 +6,8 @@ import type {
     ActiveToolActions, PendingToolAction, Inventory,
     WhisperMessage,
     NarrationMessage,
-    ToolMessage
+    ToolMessage,
+    HistoryMessage
 } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildRequestBody, addMessageToInteractionData } from '../utilities/interactionDataLogic';
@@ -20,8 +21,9 @@ import { getLanguageModelEngine, type StreamCallbacks } from './LanguageModelEng
 import { ToolInvocationParser, type ToolInvocation } from './ToolInvocationParser';
 import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools, formatToolDisplay, type ToolExecutionContext, type ToolResult } from './ToolExecutor';
-import { findLatestMessage, createMessage } from '../utilities/messageLogic';
+import { findLatestMessage, createMessage, getMessageById } from '../utilities/messageLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
+import { getLocalMessageHistory } from '../utilities/timelineLogic';
 import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import type { StreamingVoiceTracker } from './StreamingVoiceTracker';
 import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
@@ -77,6 +79,7 @@ export interface TurnExecutionParams {
     metadata?: RequestMetadata;
     toolContext: ToolExecutionContext;
     voiceTracker?: StreamingVoiceTracker;
+    resumingMessageId?: string;
 }
 
 export interface ProcessedReplacements {
@@ -278,6 +281,7 @@ export class CharacterActor {
             strategyOverride, existingCharacterText, prefillText, allPromptBlocks, callbacks,
             isMultiplayerClient, borrowedModel, metadata,
             toolContext,
+            resumingMessageId,
         } = params;
 
         if (isMultiplayerClient) {
@@ -302,10 +306,33 @@ export class CharacterActor {
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
         const seedText = existingCharacterText || prefillText || '';
 
-        const filteredMessages = getFilteredTextMessages(data, character.id, allPromptBlocks);
+        // ✅ THE CAUSAL SHADOW CONTEXT FIX:
+        // Create a shadow clone of the data that HIDES future causal messages strictly for the prompt builder.
+        let dataForPrompt = data;
+        if (resumingMessageId) {
+            const localThread = getLocalMessageHistory(data, character);
+            const targetIdx = localThread.findIndex(m => m.id === resumingMessageId);
+
+            if (targetIdx !== -1) {
+                const validLocalIds = new Set(localThread.slice(0, targetIdx + 1).map(m => m.id));
+
+                const truncatedHistories: Record<string, HistoryMessage[]> = {};
+                for (const [locId, msgs] of Object.entries(data.interactionHistories || {})) {
+                    truncatedHistories[locId] = msgs.filter(m => validLocalIds.has(m.id));
+                }
+                dataForPrompt = { ...data, interactionHistories: truncatedHistories };
+            }
+        }
+
+        // ✅ USE dataForPrompt FOR PROMPT BUILDING
+        const filteredMessages = getFilteredTextMessages(dataForPrompt, character.id, allPromptBlocks);
         const knownCharacterNames = detectName(character, filteredMessages);
 
-        const latestMsg = findLatestMessage(data, character)?.message;
+        // ✅ USE ORIGINAL data OR target ID TO FIND latestMsg FOR STATE INHERITANCE
+        const latestMsg = resumingMessageId
+            ? getMessageById(data, resumingMessageId)?.message
+            : findLatestMessage(data, character)?.message;
+            
         const isToolMessage = latestMsg?.messageType === 'tool';
 
         const displayContext: DisplayContext = {
@@ -329,7 +356,7 @@ export class CharacterActor {
                     : (selectedModel?.id || '');
             if (probeModelId) {
                 try {
-                    const probeResult = await buildRequestBody(data, character, knownCharacterNames, '', allPromptBlocks, probeModelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    const probeResult = await buildRequestBody(dataForPrompt, character, knownCharacterNames, '', allPromptBlocks, probeModelId, isToolMessage, toolContext.allRawInteractionDataShells);
                     resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
                 } catch { /* non-critical */ }
             }
@@ -488,7 +515,7 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    const { body } = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
@@ -502,11 +529,11 @@ export class CharacterActor {
                         pendingToolActions: accumulatedPendingActions,
                         inventory: accumulatedInventory,
                         characterLockedLocations: accumulatedLockedLocations,
-                        interactionData: data,
+                        interactionData: dataForPrompt,
                         previousMessage: latestMsg,
                     }) as ChatMessage;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, dataForPrompt, toolContext);
                     if (!toolResult) break;
 
                     if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
@@ -546,7 +573,7 @@ export class CharacterActor {
 
                     accState.get().setLastRawLen(0);
                     const { body: probeBody } = await buildRequestBody(
-                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, '', isToolMessage, toolContext.allRawInteractionDataShells
+                        dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, '', isToolMessage, toolContext.allRawInteractionDataShells
                     );
                     let promptText = '';
                     if (typeof probeBody.prompt === 'string') {
@@ -562,7 +589,7 @@ export class CharacterActor {
                     const activeModelId = selection?.modelId || '';
 
                     const { body } = await buildRequestBody(
-                        data, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage, toolContext.allRawInteractionDataShells
+                        dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage, toolContext.allRawInteractionDataShells
                     );
 
                     await runSingleStreamPass(body, true);
@@ -585,11 +612,11 @@ export class CharacterActor {
                         pendingToolActions: accumulatedPendingActions,
                         inventory: accumulatedInventory,
                         characterLockedLocations: accumulatedLockedLocations,
-                        interactionData: data,
+                        interactionData: dataForPrompt,
                         previousMessage: latestMsg,
                     }) as ChatMessage;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, dataForPrompt, toolContext);
                     if (!toolResult) break;
 
                     if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
@@ -631,7 +658,7 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildRequestBody(data, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    const { body } = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
@@ -645,11 +672,11 @@ export class CharacterActor {
                         pendingToolActions: accumulatedPendingActions,
                         inventory: accumulatedInventory,
                         characterLockedLocations: accumulatedLockedLocations,
-                        interactionData: data,
+                        interactionData: dataForPrompt,
                         previousMessage: latestMsg,
                     }) as ChatMessage;
 
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, data, toolContext);
+                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, dataForPrompt, toolContext);
                     if (!toolResult) break;
 
                     if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
@@ -690,6 +717,7 @@ export class CharacterActor {
 
             if (isResuming) {
                 const allExecutionResults = accState.getCollectedExecutionResults();
+                // ✅ Uses original `data` to preserve future messages!
                 const newHistories = { ...data.interactionHistories };
                 for (const [locId, msgs] of Object.entries(newHistories)) {
                     const targetIdx = latestMsg 

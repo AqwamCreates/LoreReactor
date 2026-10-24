@@ -84,7 +84,7 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
     }, [isOpen, onClose]);
 
     const filteredMessages = useMemo(() => {
-        if (!searchQuery.trim()) return messages;
+        if (!searchQuery) return messages;
         const q = searchQuery.toLowerCase();
         return messages.filter(m => {
             const compiled = m.textContent?.toLowerCase() || '';

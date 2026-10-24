@@ -54,6 +54,7 @@ export function useChatEngine(deps: EngineDependencies) {
         metadata?: RequestMetadata,
         voiceTracker?: StreamingVoiceTracker,
         prefillText?: string,
+        resumingMessageId?: string,
     ): Promise<HandleServerResponseResult | null> => {
         const selectedModel = getState().selectedModel;
         const runningModels = getState().runningModels;
@@ -79,11 +80,28 @@ export function useChatEngine(deps: EngineDependencies) {
                     const currentState = getState();
                     const currentData = currentState.interactionData;
                     if (currentData) {
-                        const updated = updatePartialMessageInInteractionData(
-                            currentData, character.id, text
-                        );
-                        if (updated !== currentData) {
-                            setInteractionData(updated);
+                        if (resumingMessageId) {
+                            const newHistories = { ...currentData.interactionHistories };
+                            let found = false;
+                            for (const [locId, msgs] of Object.entries(newHistories)) {
+                                const idx = msgs.findIndex(m => m.id === resumingMessageId);
+                                if (idx !== -1) {
+                                    newHistories[locId] = [...msgs];
+                                    newHistories[locId][idx] = { ...msgs[idx], textContent: text, lastUpdatedTimestamp: Date.now() } as any;
+                                    found = true;
+                                    break;
+                                }
+                            }
+                            if (found) {
+                                setInteractionData({ ...currentData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() });
+                            }
+                        } else {
+                            const updated = updatePartialMessageInInteractionData(
+                                currentData, character.id, text
+                            );
+                            if (updated !== currentData) {
+                                setInteractionData(updated);
+                            }
                         }
                     }
                 }
@@ -101,6 +119,7 @@ export function useChatEngine(deps: EngineDependencies) {
             metadata,
             toolContext: deps.getToolContext(),
             voiceTracker,
+            resumingMessageId,
         });
 
         if ('error' in outcome) {
