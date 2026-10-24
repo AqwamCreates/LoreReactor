@@ -1,6 +1,6 @@
 // src/frontend_src/components/ChatStatisticsBar.tsx
-import type React from 'react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React from 'react';
+import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useChatStore } from '../hooks/useChatStore';
 import { useGenerationStore } from '../hooks/useGenerationStore';
 import { defaultContextLength } from '../dictionaries/defaults';
@@ -14,6 +14,9 @@ interface ChatStatisticsBarProps {
     budgetSpent?: number;
     maximumBudget?: number;
     timeUntilReset?: number | null;
+    isOpen: boolean;
+    onToggle: () => void;
+    onClose: () => void;
 }
 
 type Severity = 'ok' | 'warn' | 'critical';
@@ -67,8 +70,10 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     budgetSpent,
     maximumBudget,
     timeUntilReset,
+    isOpen,
+    onToggle,
+    onClose,
 }) => {
-    const [showDetails, setShowDetails] = useState(false);
     const rootRef = useRef<HTMLDivElement>(null);
 
     const latency = useGenerationStore((s) => s.latency);
@@ -141,23 +146,23 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     }, [contextSeverity, budgetSeverity, hasBudget]);
 
     // ── Live session duration (only ticks while the panel is open) ──────────
-    const [liveDuration, setLiveDuration] = useState(0);
+    const [liveDuration, setLiveDuration] = React.useState(0);
     useEffect(() => {
-        if (!showDetails || !sessionStartTimestamp) return;
+        if (!isOpen || !sessionStartTimestamp) return;
         const tick = () => setLiveDuration(Date.now() - sessionStartTimestamp);
         tick();
         const interval = setInterval(tick, 1000);
         return () => clearInterval(interval);
-    }, [showDetails, sessionStartTimestamp]);
+    }, [isOpen, sessionStartTimestamp]);
 
     // ── Dismiss the panel on outside click / Escape ─────────────────────────
     useEffect(() => {
-        if (!showDetails) return;
+        if (!isOpen) return;
         const onPointerDown = (e: MouseEvent | TouchEvent) => {
-            if (!rootRef.current?.contains(e.target as Node)) setShowDetails(false);
+            if (!rootRef.current?.contains(e.target as Node)) onClose();
         };
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setShowDetails(false);
+            if (e.key === 'Escape') onClose();
         };
         document.addEventListener('mousedown', onPointerDown);
         document.addEventListener('touchstart', onPointerDown, { passive: true });
@@ -167,7 +172,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
             document.removeEventListener('touchstart', onPointerDown);
             document.removeEventListener('keydown', onKeyDown);
         };
-    }, [showDetails]);
+    }, [isOpen, onClose]);
 
     // ── Donut gauge geometry ────────────────────────────────────────────────
     const GAUGE_R = 6.5;
@@ -180,18 +185,18 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
     return (
         <div
             ref={rootRef}
-            className={`health-pill-root ${showDetails ? 'health-pill-root-open' : ''} ${className}`}
+            className={`health-pill-root ${isOpen ? 'health-pill-root-open' : ''} ${className}`}
         >
             <button
                 type="button"
                 className={`health-pill health-pill-${overallSeverity}`}
                 onClick={(e) => {
                     e.stopPropagation();
-                    setShowDetails((prev) => !prev);
+                    onToggle();
                 }}
                 title={pillTitle}
-                aria-expanded={showDetails}
-                aria-haspopup="dialog"
+                aria-expanded={isOpen}
+                aria-controls={isOpen ? 'chat-stats-panel' : undefined}
             >
                 {/* Latency Indicator at the front */}
                 <span className="health-pill-latency" title={`Latency: ${latency.toFixed(2)} ms/token`}>
@@ -242,8 +247,12 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                 )}
             </button>
 
-            {showDetails && (
-                <div className="dropdown-panel" role="dialog" aria-label="Session statistics">
+            {isOpen && (
+                <section 
+                    id="chat-stats-panel"
+                    className="dropdown-panel" 
+                    aria-label="Session statistics"
+                >
                     <div className="dropdown-panel-header">
                         <span>Session Statistics</span>
                     </div>
@@ -462,7 +471,7 @@ export const ChatStatisticsBar: React.FC<ChatStatisticsBarProps> = ({
                             </section>
                         )}
                     </div>
-                </div>
+                </section>
             )}
         </div>
     );

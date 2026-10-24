@@ -511,7 +511,29 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
         const isExpanded = expandedFolderIds.has(folder.id);
         const isRenaming = renamingId === folder.id;
         const isConfirmingDelete = confirmDeleteId === folder.id && confirmDeleteType === 'folder';
-        const itemsToRender = filteredItems ?? folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
+        
+        const rawItems = filteredItems ?? folder.itemIds.map(id => itemMap.get(id)).filter((i): i is T => !!i);
+        
+        // ✅ FIX: Sort folder children so selected items (in currentOrderIds) push to the top, 
+        // and fallback to timestamp sorting for the rest.
+        const itemsToRender = [...rawItems].sort((a, b) => {
+            if (orderedListMode && currentOrderIds.length > 0) {
+                const aIdx = currentOrderIds.indexOf(a.id);
+                const bIdx = currentOrderIds.indexOf(b.id);
+                const aInOrder = aIdx !== -1;
+                const bInOrder = bIdx !== -1;
+                
+                if (aInOrder && bInOrder) return aIdx - bIdx;
+                if (aInOrder && !bInOrder) return -1;
+                if (!aInOrder && bInOrder) return 1;
+            }
+            
+            // Fallback to timestamp sorting for unselected items
+            const aUpdated = a.lastUpdatedTimestamp ?? a.firstCreatedTimestamp ?? 0;
+            const bUpdated = b.lastUpdatedTimestamp ?? b.firstCreatedTimestamp ?? 0;
+            if (aUpdated !== bUpdated) return bUpdated - aUpdated;
+            return (b.firstCreatedTimestamp ?? 0) - (a.firstCreatedTimestamp ?? 0);
+        });
 
         return (
             <li key={folder.id} className="folder-container">

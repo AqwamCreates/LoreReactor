@@ -496,7 +496,16 @@ function App() {
 
     const [viewMode, setViewMode] = useState<viewMode>('ladder');
     const [isOverlayOpen, setIsOverlayOpen] = useState(false);
-    const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+    
+    type HeaderPanel = 'history' | 'viewMode' | 'stats' | null;
+    const [activeHeaderPanel, setActiveHeaderPanel] = useState<HeaderPanel>(null);
+
+    const isHistoryOpen = activeHeaderPanel === 'history';
+
+    const toggleHistory = () => setActiveHeaderPanel(prev => prev === 'history' ? null : 'history');
+    const toggleViewMode = () => setActiveHeaderPanel(prev => prev === 'viewMode' ? null : 'viewMode');
+    const toggleStats = () => setActiveHeaderPanel(prev => prev === 'stats' ? null : 'stats');
+    const closeHeaderPanel = () => setActiveHeaderPanel(null);
 
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -1365,7 +1374,7 @@ function App() {
                                             className={`view-mode-toggle header-icon-button ${isHistoryOpen ? 'active' : ''}`}
                                             onMouseDown={(e) => e.stopPropagation()}
                                             onTouchStart={(e) => e.stopPropagation()}
-                                            onClick={() => setIsHistoryOpen(prev => !prev)}
+                                            onClick={toggleHistory}
                                             title="Chat History & Search"
                                         >
                                             <span>🔍</span>
@@ -1375,6 +1384,9 @@ function App() {
                                         <ViewModeDropdown
                                             currentMode={viewMode}
                                             onSelectMode={handleChangeViewMode}
+                                            isOpen={activeHeaderPanel === 'viewMode'}
+                                            onToggle={toggleViewMode}
+                                            onClose={closeHeaderPanel}
                                         />
 
                                         <button
@@ -1414,6 +1426,9 @@ function App() {
                                             budgetSpent={budgetData?.budgetSpent}
                                             maximumBudget={activeStrategy?.maximumBudget}
                                             timeUntilReset={timeUntilReset}
+                                            isOpen={activeHeaderPanel === 'stats'}
+                                            onToggle={toggleStats}
+                                            onClose={closeHeaderPanel}
                                         />
                                     </div>
                                 </div>
@@ -1423,7 +1438,7 @@ function App() {
                                     containerRef={chatHistoryRef}
                                     selectedCharacterId={currentCharacter?.id}
                                     isOpen={isHistoryOpen}
-                                    onClose={() => setIsHistoryOpen(false)}
+                                    onClose={closeHeaderPanel}
                                 />
                             </div>
                         </header>

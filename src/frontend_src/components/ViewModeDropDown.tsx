@@ -1,5 +1,6 @@
 // src/frontend_src/components/ViewModeDropdown.tsx
-import React, { useState, useRef, useEffect } from 'react';
+import type React from 'react';
+import { useRef, useEffect } from 'react';
 import type { viewMode } from './views/types';
 
 interface ViewModeOption {
@@ -19,10 +20,18 @@ const VIEW_MODE_OPTIONS: ViewModeOption[] = [
 interface ViewModeDropdownProps {
     currentMode: viewMode;
     onSelectMode: (mode: viewMode) => void;
+    isOpen: boolean;
+    onToggle: () => void;
+    onClose: () => void;
 }
 
-export const ViewModeDropdown: React.FC<ViewModeDropdownProps> = ({ currentMode, onSelectMode }) => {
-    const [isOpen, setIsOpen] = useState(false);
+export const ViewModeDropdown: React.FC<ViewModeDropdownProps> = ({ 
+    currentMode, 
+    onSelectMode, 
+    isOpen, 
+    onToggle, 
+    onClose 
+}) => {
     const rootRef = useRef<HTMLDivElement>(null);
 
     const activeOption = VIEW_MODE_OPTIONS.find((o) => o.id === currentMode) || VIEW_MODE_OPTIONS[0];
@@ -30,10 +39,10 @@ export const ViewModeDropdown: React.FC<ViewModeDropdownProps> = ({ currentMode,
     useEffect(() => {
         if (!isOpen) return;
         const onPointerDown = (e: MouseEvent | TouchEvent) => {
-            if (!rootRef.current?.contains(e.target as Node)) setIsOpen(false);
+            if (!rootRef.current?.contains(e.target as Node)) onClose();
         };
         const onKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setIsOpen(false);
+            if (e.key === 'Escape') onClose();
         };
         document.addEventListener('mousedown', onPointerDown);
         document.addEventListener('touchstart', onPointerDown, { passive: true });
@@ -43,7 +52,7 @@ export const ViewModeDropdown: React.FC<ViewModeDropdownProps> = ({ currentMode,
             document.removeEventListener('touchstart', onPointerDown);
             document.removeEventListener('keydown', onKeyDown);
         };
-    }, [isOpen]);
+    }, [isOpen, onClose]);
 
     return (
         <div ref={rootRef} className={`view-mode-dropdown-root ${isOpen ? 'open' : ''}`}>
@@ -52,10 +61,10 @@ export const ViewModeDropdown: React.FC<ViewModeDropdownProps> = ({ currentMode,
                 className={`view-mode-toggle ${isOpen ? 'active' : ''}`}
                 onClick={(e) => {
                     e.stopPropagation();
-                    setIsOpen((prev) => !prev);
+                    onToggle();
                 }}
                 title={`Current view: ${activeOption.label}. Click to switch view mode`}
-                aria-haspopup="listbox"
+                aria-haspopup="menu"
                 aria-expanded={isOpen}
             >
                 <span>{activeOption.icon}</span>
@@ -64,7 +73,7 @@ export const ViewModeDropdown: React.FC<ViewModeDropdownProps> = ({ currentMode,
             </button>
 
             {isOpen && (
-                <div className="dropdown-panel" role="listbox" aria-label="View Modes" style={{ width: 250 }}>
+                <div className="dropdown-panel" role="menu" aria-label="View Modes" style={{ width: 250 }}>
                     <div className="dropdown-panel-header">
                         <span>View Mode</span>
                     </div>
@@ -80,10 +89,10 @@ export const ViewModeDropdown: React.FC<ViewModeDropdownProps> = ({ currentMode,
                                     onClick={(e) => {
                                         e.stopPropagation();
                                         onSelectMode(option.id);
-                                        setIsOpen(false);
+                                        onClose(); 
                                     }}
-                                    role="option"
-                                    aria-selected={isSelected}
+                                    role="menuitemradio"
+                                    aria-checked={isSelected}
                                 >
                                     <span className="view-mode-dropdown-item-icon">{option.icon}</span>
                                     <div className="view-mode-dropdown-item-info">

@@ -25,6 +25,14 @@ const HistoryItem = React.memo(function HistoryItem({
         <div 
             className={`history-item ${isProtagonist ? 'history-item-protagonist' : ''}`}
             onClick={(e) => { e.stopPropagation(); onClick(index); }}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    onClick(index);
+                }
+            }}
         >
             <div className="history-item-meta">
                 <span className="history-item-name">{msg.character.name}</span>
@@ -42,7 +50,7 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
 }: ChatHistoryPanelProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
-    const panelRef = useRef<HTMLDivElement>(null);
+    const panelRef = useRef<HTMLElement>(null);
 
     // Auto-focus search when opened
     useEffect(() => {
@@ -51,16 +59,28 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
         }
     }, [isOpen]);
 
-    // Close on outside click
+    // Close on outside click or Escape key
     useEffect(() => {
         if (!isOpen) return;
+        
         const handleClickOutside = (e: MouseEvent) => {
             if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
                 onClose();
             }
         };
+        
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') {
+                onClose();
+            }
+        };
+
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
     }, [isOpen, onClose]);
 
     const filteredMessages = useMemo(() => {
@@ -91,7 +111,12 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
     if (!isOpen) return null;
 
     return (
-        <div ref={panelRef} className="dropdown-panel" role="dialog" aria-label="Chat History" style={{ width: 360 }}>
+        <section 
+            ref={panelRef} 
+            className="dropdown-panel" 
+            aria-label="Chat History" 
+            style={{ width: 360 }}
+        >
             <div className="dropdown-panel-header" style={{ justifyContent: 'space-between' }}>
                 <span className="history-panel-title">Chat History</span>
                 <span className="history-panel-count">{messages.length} messages</span>
@@ -105,10 +130,11 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
                     placeholder="Search messages or characters..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    aria-label="Search chat history"
                 />
             </div>
 
-            <div className="dropdown-panel-body history-list" style={{ padding: '8px 0' }}>
+            <div className="dropdown-panel-body history-list" style={{ padding: '8px 0' }} role="list">
                 {filteredMessages.length === 0 ? (
                     <div className="history-empty">No messages found.</div>
                 ) : (
@@ -123,7 +149,7 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
                     ))
                 )}
             </div>
-        </div>
+        </section>
     );
 });
 
