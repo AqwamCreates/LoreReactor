@@ -871,17 +871,18 @@ position: relative;
 .context-bar-extended-wrapper {
 display: grid;
 grid-template-rows: 0fr;
+transition: grid-template-rows 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
 position: relative;
-transition: grid-template-rows 0.2s ease-out;
-}
-/* FIX: Forcefully crush the height when closed so the inner padding doesn't create ghost space */
-.context-bar:not(.expanded) .context-bar-extended-wrapper {
-height: 0;
-overflow: hidden;
 }
 .context-bar.expanded .context-bar-extended-wrapper {
 grid-template-rows: 1fr;
 }
+/* Forcefully crush the height when closed so padding doesn't create ghost space */
+.context-bar:not(.expanded) .context-bar-extended-wrapper {
+height: 0;
+overflow: hidden;
+}
+
 .context-bar-core-row {
 position: relative;
 background: var(--bg);
@@ -898,6 +899,7 @@ scrollbar-width: none;
 -webkit-overflow-scrolling: touch;
 }
 .context-bar-core-row::-webkit-scrollbar { display: none; }
+
 .context-bar-extended-row {
 min-height: 0;
 display: flex;
@@ -910,17 +912,21 @@ overflow-y: hidden;
 scrollbar-width: none;
 -ms-overflow-style: none;
 -webkit-overflow-scrolling: touch;
-transform: translateY(100%);
 opacity: 0;
-transition:
-transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1),
-opacity 0.2s ease;
+visibility: hidden;
+transition: opacity 0.2s ease, visibility 0.2s;
 }
 .context-bar.expanded .context-bar-extended-row {
-transform: translateY(0);
 opacity: 1;
+visibility: visible;
+}
+/* Strip padding when closed to stop CSS grid flash artifacts */
+.context-bar:not(.expanded) .context-bar-extended-row {
+padding-top: 0 !important;
+padding-bottom: 0 !important;
 }
 .context-bar-extended-row::-webkit-scrollbar { display: none; }
+
 .context-bar-toggle {
 flex-shrink: 0 !important;
 flex-grow: 0 !important;
@@ -928,35 +934,12 @@ min-width: clamp(26px, 3.5vw, 36px) !important;
 max-width: clamp(26px, 3.5vw, 36px) !important;
 height: clamp(26px, 3.5vw, 36px);
 opacity: 0.6;
-transition: opacity 0.15s, transform 0.2s, background 0.15s, border-color 0.15s, height 0.2s ease, min-height 0.2s ease, min-width 0.2s ease, max-width 0.2s ease;
+transition: opacity 0.15s, transform 0.2s, background 0.15s, border-color 0.15s, color 0.15s, height 0.2s ease, min-height 0.2s ease, min-width 0.2s ease, max-width 0.2s ease;
 }
 .context-bar-toggle:hover {
 opacity: 1;
 }
-.context-bar .context-bar-toggle[title="Hide advanced panels"] {
-height: clamp(24px, 3vw, 32px);
-min-height: clamp(24px, 3vw, 32px);
-min-width: clamp(24px, 3vw, 32px) !important;
-max-width: clamp(24px, 3vw, 32px) !important;
-}
-.context-bar .context-bar-toggle[title="Hide advanced panels"] span {
-display: inline-block;
-transform: rotate(180deg);
-transition: transform 0.2s ease;
-}
-.context-bar .context-bar-toggle[title="Show advanced panels"] span {
-display: inline-block;
-transform: rotate(0deg);
-transition: transform 0.2s ease;
-}
-.context-bar-extended-row .nav-button {
-height: clamp(24px, 3vw, 32px);
-font-size: clamp(0.4rem, 0.9vw, 0.7rem);
-opacity: 0.85;
-}
-.context-bar-extended-row .nav-button:hover:not(:disabled) {
-opacity: 1;
-}
+
 .context-bar .nav-button {
 flex: 1 1 0;
 background: var(--social-bg);
@@ -1342,60 +1325,50 @@ width: 48px !important;
     box-sizing: border-box !important;
   }
 
-  /* Fix excessive vertical spacing between rows on mobile */
-  .mode-ladder .context-bar-extended-row {
-    padding: 10px 12px 2px 12px !important; /* Extra space at top, tightly packed at bottom */
+  .mode-ladder .context-bar-core-row::-webkit-scrollbar,
+  .mode-ladder .context-bar-extended-row::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  /* Apply mobile padding ONLY when expanded to prevent 0fr layout blocking */
+  .mode-ladder .context-bar.expanded .context-bar-extended-row {
+    padding: 10px 12px 2px 12px !important; 
   }
   .mode-ladder .context-bar-core-row {
-    padding: 6px 12px 10px 12px !important; /* Meets the top row tightly, extra space at bottom */
+    padding: 6px 12px 10px 12px !important; 
   }
 
-.mode-ladder .context-bar-core-row::-webkit-scrollbar,
-.mode-ladder .context-bar-extended-row::-webkit-scrollbar {
-  display: none !important;
-}
+  /* Fixed comfortable 44px touch targets */
+  .mode-ladder .context-bar-core-row .nav-button,
+  .mode-ladder .context-bar-extended-row .nav-button {
+    flex: 0 0 44px !important;
+    width: 44px !important;
+    min-width: 44px !important;
+    max-width: 44px !important;
+    height: 36px !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 1.1rem !important;
+  }
 
-/* Fixed comfortable 44px touch targets — never shrinks or crushes */
-.mode-ladder .context-bar-core-row .nav-button,
-.mode-ladder .context-bar-extended-row .nav-button {
-  flex: 0 0 44px !important;
-  width: 44px !important;
-  min-width: 44px !important;
-  max-width: 44px !important;
-  height: 36px !important;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  font-size: 1.1rem !important;
-}
-
-/* Keep the Gear Toggle pinned to the right edge so it never scrolls away */
-.mode-ladder .context-bar-toggle {
-  flex: 0 0 44px !important;
-  width: 44px !important;
-  min-width: 44px !important;
-  max-width: 44px !important;
-  height: 36px !important;
-  padding: 0 !important;
-  display: flex !important;
-  align-items: center !important;
-  justify-content: center !important;
-  font-size: 0.9rem !important;
-  background: var(--social-bg) !important;
-  border: 1px solid var(--border) !important;
-  border-radius: clamp(6px, 1vw, 10px) !important;
-  box-shadow: none !important;
-  position: static !important;
-  margin: 0 !important;
-  color: var(--text-h) !important;
-}
-
-.mode-ladder .context-bar-toggle-expanded {
-  background: var(--accent-bg) !important;
-  border-color: var(--accent-border) !important;
-  color: var(--accent) !important;
-}
+  /* Clean, non-glowing pinned toggle button */
+  .mode-ladder .context-bar-toggle {
+    flex: 0 0 40px !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    max-width: 40px !important;
+    height: 36px !important;
+    font-size: 0.85rem !important;
+    background: var(--social-bg) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: clamp(6px, 1vw, 10px) !important;
+    box-shadow: none !important;
+    position: static !important;
+    margin: 0 !important;
+    color: var(--text-h) !important;
+  }
 }
 /* =============================================================================
 MODE: CINEMATIC (Centered Avatar View)
