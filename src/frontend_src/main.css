@@ -856,126 +856,105 @@ transform: translateY(0);
 3. CONTEXT BAR
 ============================================================================= */
 .context-bar {
-display: flex;
-flex-direction: column;
-gap: 0;
-padding: 0;
-background: var(--bg);
-border-top: 1px solid var(--border);
-flex-shrink: 0;
-align-items: stretch;
-box-sizing: border-box;
-overflow: hidden;
-position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  padding: 0;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  align-items: stretch;
+  box-sizing: border-box;
+  position: relative;
 }
+
+/* ── Bulletproof Accordion Wrapper ── */
 .context-bar-extended-wrapper {
-display: grid;
-grid-template-rows: 0fr;
-transition: grid-template-rows 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
-position: relative;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  visibility: hidden;
+  transition: max-height 0.25s ease-out, opacity 0.2s ease-out, visibility 0.25s;
 }
 .context-bar.expanded .context-bar-extended-wrapper {
-grid-template-rows: 1fr;
-}
-/* Forcefully crush the height when closed so padding doesn't create ghost space */
-.context-bar:not(.expanded) .context-bar-extended-wrapper {
-height: 0;
-overflow: hidden;
+  max-height: 80px; /* Safe upper bound for buttons + padding */
+  opacity: 1;
+  visibility: visible;
 }
 
 .context-bar-core-row {
-position: relative;
-background: var(--bg);
-display: flex;
-gap: clamp(4px, 0.6vw, 8px);
-padding: clamp(6px, 1vw, 10px) clamp(10px, 1.5vw, 16px) 5px clamp(10px, 1.5vw, 16px);
-align-items: center;
-min-height: clamp(30px, 4vw, 44px);
-box-sizing: border-box;
-overflow-x: auto;
-overflow-y: hidden;
-scrollbar-width: none;
--ms-overflow-style: none;
--webkit-overflow-scrolling: touch;
+  position: relative;
+  background: var(--bg);
+  display: flex;
+  gap: clamp(4px, 0.6vw, 8px);
+  padding: clamp(6px, 1vw, 10px) clamp(10px, 1.5vw, 16px) 5px clamp(10px, 1.5vw, 16px);
+  align-items: center;
+  min-height: clamp(30px, 4vw, 44px);
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
 }
 .context-bar-core-row::-webkit-scrollbar { display: none; }
 
 .context-bar-extended-row {
-min-height: 0;
-display: flex;
-gap: clamp(4px, 0.6vw, 8px);
-padding: 10px clamp(10px, 1.5vw, 16px) 0 clamp(10px, 1.5vw, 16px);
-align-items: center;
-box-sizing: border-box;
-overflow-x: auto;
-overflow-y: hidden;
-scrollbar-width: none;
--ms-overflow-style: none;
--webkit-overflow-scrolling: touch;
-opacity: 0;
-visibility: hidden;
-transition: opacity 0.2s ease, visibility 0.2s;
-}
-.context-bar.expanded .context-bar-extended-row {
-opacity: 1;
-visibility: visible;
-}
-/* Strip padding when closed to stop CSS grid flash artifacts */
-.context-bar:not(.expanded) .context-bar-extended-row {
-padding-top: 0 !important;
-padding-bottom: 0 !important;
+  display: flex;
+  gap: clamp(4px, 0.6vw, 8px);
+  padding: 10px clamp(10px, 1.5vw, 16px) 6px clamp(10px, 1.5vw, 16px);
+  align-items: center;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 0;
 }
 .context-bar-extended-row::-webkit-scrollbar { display: none; }
 
 .context-bar-toggle {
-flex-shrink: 0 !important;
-flex-grow: 0 !important;
-min-width: clamp(26px, 3.5vw, 36px) !important;
-max-width: clamp(26px, 3.5vw, 36px) !important;
-height: clamp(26px, 3.5vw, 36px);
-opacity: 0.6;
-transition: opacity 0.15s, transform 0.2s, background 0.15s, border-color 0.15s, color 0.15s, height 0.2s ease, min-height 0.2s ease, min-width 0.2s ease, max-width 0.2s ease;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  min-width: clamp(26px, 3.5vw, 36px) !important;
+  max-width: clamp(26px, 3.5vw, 36px) !important;
+  height: clamp(26px, 3.5vw, 36px);
+  opacity: 0.6;
+  transition: all 0.15s ease;
 }
-.context-bar-toggle:hover {
-opacity: 1;
-}
+.context-bar-toggle:hover { opacity: 1; }
 
 .context-bar .nav-button {
-flex: 1 1 0;
-background: var(--social-bg);
-border: 1px solid var(--border);
-border-radius: clamp(6px, 1vw, 10px);
-padding: 0 clamp(6px, 1vw, 12px);
-font-size: clamp(0.45rem, 1vw, 0.75rem);
-height: clamp(26px, 3.5vw, 36px);
-display: flex;
-align-items: center;
-justify-content: center;
-gap: clamp(3px, 0.5vw, 6px);
-white-space: nowrap;
-overflow: hidden;
-text-overflow: ellipsis;
-transition: all 0.2s;
-cursor: pointer;
-font-family: inherit;
-color: var(--text-h);
-line-height: 1;
+  flex: 1 1 0;
+  background: var(--social-bg);
+  border: 1px solid var(--border);
+  border-radius: clamp(6px, 1vw, 10px);
+  padding: 0 clamp(6px, 1vw, 12px);
+  font-size: clamp(0.45rem, 1vw, 0.75rem);
+  height: clamp(26px, 3.5vw, 36px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(3px, 0.5vw, 6px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: all 0.2s;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-h);
+  line-height: 1;
 }
 .context-bar .nav-button:hover:not(:disabled) {
-background: var(--bg);
-border-color: var(--accent-border);
-color: var(--accent);
-transform: translateY(-1px);
-box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  background: var(--bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
 }
-.context-bar .nav-button:disabled {
-opacity: 0.5;
-cursor: not-allowed;
-}
-.context-bar .nav-button span:first-child {
-font-size: clamp(0.7rem, 1.2vw, 1rem);
-flex-shrink: 0;
-}
+.context-bar .nav-button:disabled { opacity: 0.5; cursor: not-allowed; }
+.context-bar .nav-button span:first-child { font-size: clamp(0.7rem, 1.2vw, 1rem); flex-shrink: 0; }
 /* =============================================================================
 4. INPUT AREA
 ============================================================================= */
@@ -1330,13 +1309,9 @@ width: 48px !important;
     display: none !important;
   }
 
-  /* Apply mobile padding ONLY when expanded to prevent 0fr layout blocking */
-  .mode-ladder .context-bar.expanded .context-bar-extended-row {
-    padding: 10px 12px 2px 12px !important; 
-  }
-  .mode-ladder .context-bar-core-row {
-    padding: 6px 12px 10px 12px !important; 
-  }
+  /* Padding perfectly balanced for an 8px vertical gap between rows */
+  .mode-ladder .context-bar-extended-row { padding: 10px 12px 2px 12px !important; }
+  .mode-ladder .context-bar-core-row { padding: 6px 12px 10px 12px !important; }
 
   /* Fixed comfortable 44px touch targets */
   .mode-ladder .context-bar-core-row .nav-button,
