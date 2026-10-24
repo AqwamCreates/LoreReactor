@@ -452,7 +452,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                 <div className={`manager-item-main ${isSelectable ? 'manager-item-main-clickable' : ''}`} onClick={() => { if (isSelectable) onSelectItem?.(item); }}>
                     <div className="manager-item-info">
                         <div className="manager-item-title">{item.name || 'Untitled'}</div>
-                        <div className="manager-item-sub" style={{ minHeight: '1.2em', fontSize: '0.75rem', opacity: 0.8, lineHeight: '1.2' }}>
+                        <div className="manager-item-sub">
                             {showIds ? (
                                 <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', wordBreak: 'break-all' }}>{item.id}</span>
                             ) : (
@@ -548,7 +548,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                             ) : (
                                 <>
                                     <div className="manager-item-title">📁 {folder.name}</div>
-                                    <div className="manager-item-sub" style={{ minHeight: '1.2em', fontSize: '0.75rem', opacity: 0.8, lineHeight: '1.2' }}>
+                                    <div className="manager-item-sub">
                                         {showIds ? (
                                             <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', wordBreak: 'break-all' }}>{folder.id}</span>
                                         ) : (
