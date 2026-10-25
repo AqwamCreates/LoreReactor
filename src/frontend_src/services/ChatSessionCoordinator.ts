@@ -580,7 +580,10 @@ class ChatSessionCoordinator {
 
         if (!this.acquireLock()) { this.deps.addToast('Already generating...', 'info'); return; }
         try {
-            const protagonistIdSet = new Set(protagonistIds);
+            const protagonistIdSet = new Set([
+                ...(protagonistIds || []),
+                ...(currentData.protagonistIds || [])
+            ]);
             const history = getGlobalMessageHistory(currentData);
             const targetIdx = history.findIndex(m => m.id === messageId);
             if (targetIdx === -1) { this.deps.addToast('Message not found.', 'error'); return; }
@@ -605,8 +608,33 @@ class ChatSessionCoordinator {
                 await this.runSequence(updatedData);
             } else {
                 const char = this.deps.allCharacters.find(c => c.id === targetMsg.character.id) || targetMsg.character;
+
+                // 1. Locate the nearest protagonist message that came before targetIdx
+                let lastProtagonistIdx = -1;
+                for (let i = targetIdx - 1; i >= 0; i--) {
+                    if (protagonistIdSet.has(history[i].character.id)) {
+                        lastProtagonistIdx = i;
+                        break;
+                    }
+                }
+
+                // 2. Collect all AI characters who already took their turn between that protagonist message and targetIdx
+                const excludedFromSequence = new Set<string>();
+                excludedFromSequence.add(char.id);
+
+                const startIdx = lastProtagonistIdx !== -1 ? lastProtagonistIdx + 1 : 0;
+                for (let i = startIdx; i < targetIdx; i++) {
+                    const msg = history[i];
+                    if (msg.character?.id && !protagonistIdSet.has(msg.character.id)) {
+                        excludedFromSequence.add(msg.character.id);
+                    }
+                }
+
+                // 3. Regenerate the single turn for the target character
                 updatedData = await this.runSingleTurn(updatedData, char);
-                await this.runSequence(updatedData, new Set([char.id]));
+
+                // 4. Cascade to remaining AI characters who haven't yet spoken since the protagonist message
+                await this.runSequence(updatedData, excludedFromSequence);
             }
         } finally {
             this.releaseLock();
