@@ -50,7 +50,7 @@ import { embeddingEngine } from '../services/EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from '../services/RetrievalEngine';
 import { retrieveEligibleMemories } from './memoryLogic';
 import { isEntityActiveWithCache, doesAnyTriggerMatchCached, type CombinationCache, type TriggerEvaluationContext } from './triggerLogic';
-import { formatDuration, formatTimeElapsedSentence } from './timeLogic';
+import { formatDuration } from './timeLogic';
 import { calculateEntropyPruningCutoff } from './entropyPruningLogic';
 import { resolveEffectiveStopTokens } from './chatSessionLogic';
 
@@ -1646,9 +1646,9 @@ function buildInventoryText(ctx: PromptBuildContext): string {
 function buildToolInstructionText(enabledToolNames: string[]): string {
   const lines: string[] = [];
   const haveTools = enabledToolNames.length > 0;
-  const availableToolString = haveTools ? `Available tools: {{tools}}` : 'Currently, all of my tools are disabled.';
+  const availableToolString = haveTools ? "Available tools: {{tools}}" : 'Currently, all of my tools are disabled.';
   lines.push(`${toolUsageInstructions} ${availableToolString}.`);
-  if (haveTools) lines.push(`When I use {{toolCallStartString}}tool(){{toolCallEndString}} as my first word, I will activate tool message mode where the whole message text are only visible to me.`);
+  if (haveTools) lines.push("When I use {{toolCallStartString}}tool(){{toolCallEndString}} as my first word, I will activate tool message mode where the whole message text are only visible to me.");
   return lines.join('\n');
 }
 
@@ -1671,6 +1671,12 @@ function buildParagraphCountInstructionsText(
   if (currentChatStamina === undefined || effectiveMaxChatStamina === Number.POSITIVE_INFINITY) return '';
   const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
   return `I understand that I can create a minimum of 1 paragraph and a maximum of {{currentChatStamina}} ${paragraphText}. If I exceed this, I will immediately and naturally stop creating new paragraphs.`;
+}
+
+function buildTimeElapsedText(diffMs: number): string {
+    if (diffMs <= 1000) return 'It has been just now since the last message in the real world.';
+    const timeStr = formatDuration(diffMs, { verbose: true, includeDays: true });
+    return `It has been ${timeStr} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.`;
 }
 
 function buildAntiRepetitionNudgeText(ctx: PromptBuildContext): string {
@@ -2330,7 +2336,7 @@ export async function buildPrompt(
   if (timeData && ctx.localHistory.length > 0) {
     const lastMsgTimestamp = ctx.localHistory[ctx.localHistory.length - 1].lastUpdatedTimestamp;
     const diffMs = Math.max(0, timeData.rawTimestamp - lastMsgTimestamp);
-    timeElapsedText = formatTimeElapsedSentence(diffMs);
+    timeElapsedText = buildTimeElapsedText(diffMs);
   }
   const effectiveMaxChatStamina = getEffectiveMaximumChatStamina(ctx.character, ctx.profile);
   const effectiveMaxActionStamina = getEffectiveMaximumActionStamina(ctx.character, ctx.profile);
