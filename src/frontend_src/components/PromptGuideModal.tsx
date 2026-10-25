@@ -208,7 +208,7 @@ const DIRECTORY_ITEMS = [
     { key: 'topicExpansionInstructions', desc: 'Instruction to naturally introduce fresh topics if conversation stagnates.', cat: 'Global Instructions' },
     { key: 'beingIgnoredInstructions', desc: 'Instruction regarding awkward atmospheres when ignored.', cat: 'Global Instructions' },
     { key: 'noHallucinationInstructions', desc: 'Instruction to use existent information and avoid hallucinations.', cat: 'Global Instructions' },
-    { key: 'noEmptyResponseInstruction', desc: 'Instruction to always create a response instead of empty ones.', cat: 'Global Instructions' },
+    { key: 'noEmptyResponseInstructions', desc: 'Instruction to always create a response instead of empty ones.', cat: 'Global Instructions' },
     { key: 'mistakeCorrectionInstructions', desc: 'Instruction to fix deviations from prompts by creating new text.', cat: 'Global Instructions' },
     { key: 'languageInstructions', desc: 'Instruction to respond exclusively in the established language.', cat: 'Global Instructions' },
     { key: 'literaryDeviceInstructions', desc: 'List of allowed literary devices (Simile, Metaphor, etc.).', cat: 'Global Instructions' },

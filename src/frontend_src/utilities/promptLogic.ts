@@ -57,7 +57,7 @@ import { resolveEffectiveStopTokens } from './chatSessionLogic';
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. ";
 const beingIgnoredInstructions = "Anytime a character ignore me talking, there would be an awkward atmosphere. ";
 const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them. ";
-const noEmptyResponseInstruction = "I will also always create a response instead of giving empty ones. ";
+const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones. ";
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts. ";
 const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns. ";
 const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus. ";
@@ -141,7 +141,7 @@ const GLOBAL_STRINGS: Record<string, string> = {
   topicExpansionInstructions,
   beingIgnoredInstructions,
   noHallucinationInstructions,
-  noEmptyResponseInstruction,
+  noEmptyResponseInstructions,
   mistakeCorrectionInstructions,
   languageInstructions,
   literaryDeviceInstructions,
@@ -1489,7 +1489,7 @@ function buildThinkPromptText(
 
 function buildMetaThinkText(ctx: PromptBuildContext): string {
   const characterInstructions = `I will respond exclusively as ${ctx.characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${ctx.characterParticipantTag} is likely to use.`;
-  return `${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstruction} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions}`;
+  return `${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions}`;
 }
 
 async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string> {
