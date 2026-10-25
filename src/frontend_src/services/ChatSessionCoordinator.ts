@@ -14,7 +14,7 @@ import { runSummarization } from './SummarizationEngine';
 import { textToSpeechEngine } from './TextToSpeechEngine';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 
-import { createMessage, findLatestMessage } from '../utilities/messageLogic';
+import { createMessage, findLatestMessage, getMessageById } from '../utilities/messageLogic';
 import { addMessageToInteractionData, updatePartialMessageInInteractionData } from '../utilities/interactionDataLogic';
 import { getCurrentLocationId, getCoLocatedParticipants, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
@@ -65,6 +65,7 @@ class ChatSessionCoordinator {
     private abortController: AbortController | null = null;
     private voiceTracker: StreamingVoiceTracker | null = null;
     private wasStopped = false;
+    private activeMessageId: string | null = null;
     private deps!: CoordinatorDependencies;
 
     private characterActor = new CharacterActor();
@@ -98,13 +99,14 @@ class ChatSessionCoordinator {
         if (this.isGenerating) return false;
         this.isGenerating = true;
         this.wasStopped = false;
-        useGenerationStore.setState({ isLoading: true, streamingText: '', streamingCharacter: null });
+        useGenerationStore.setState({ isLoading: true, streamingText: '', streamingCharacter: null, streamingMessageId: null });
         return true;
     }
 
     private releaseLock(): void {
         this.isGenerating = false;
-        useGenerationStore.setState({ isLoading: false, streamingText: '', streamingCharacter: null });
+        this.activeMessageId = null;
+        useGenerationStore.setState({ isLoading: false, streamingText: '', streamingCharacter: null, streamingMessageId: null });
         if (this.abortController) {
             this.abortController = null;
         }
@@ -158,13 +160,16 @@ class ChatSessionCoordinator {
         let autoResumeCount = 0;
         const narratorBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
 
+        if (resumingMessageId) {
+            this.activeMessageId = resumingMessageId;
+        }
+
         if (profile?.enableCharacterExpression) {
             sentimentEngine.initialize().catch(() => {});
         } else {
             sentimentEngine.unload();
         }
 
-        // Attempt to borrow a model from a peer if configured
         let borrowedModel: LanguageModel | null = null;
         if (this.deps.requestBorrowedModel) {
             try {
@@ -192,7 +197,12 @@ class ChatSessionCoordinator {
             if (currentExistingText) this.voiceTracker.seed(currentExistingText);
             await this.voiceTracker.start().catch(() => {});
 
-            useGenerationStore.setState({ streamingCharacter: character, streamingText: currentExistingText });
+            // 🛠️ FIX: Push streamingMessageId to generation store so views know to update in-place!
+            useGenerationStore.setState({ 
+                streamingCharacter: character, 
+                streamingText: currentExistingText,
+                streamingMessageId: this.activeMessageId 
+            });
 
             const currentState = useChatStore.getState();
             
@@ -246,8 +256,12 @@ class ChatSessionCoordinator {
                 useChatStore.setState({ interactionData: activeData });
                 saveRawInteractionData(activeData).catch(console.warn);
                 this.deps.onStateBroadcast?.({});
-                const latestMsg = findLatestMessage(activeData, character)?.message;
-                if (latestMsg) this.deps.onMessageBroadcast?.(latestMsg);
+                
+                const targetBroadcastMsg = resumingMessageId 
+                    ? getMessageById(activeData, resumingMessageId)?.message
+                    : findLatestMessage(activeData, character)?.message;
+                    
+                if (targetBroadcastMsg) this.deps.onMessageBroadcast?.(targetBroadcastMsg);
             }
 
             const evaluation = evaluateAutoResumeSignals(profile, result.rawText, autoResumeCount);
@@ -258,6 +272,7 @@ class ChatSessionCoordinator {
                 
                 if (!resumingMessageId) {
                     resumingMessageId = findLastAIMessageId(activeData, new Set(activeData.protagonistIds || [])) || undefined;
+                    this.activeMessageId = resumingMessageId || null;
                 }
                 isResuming = true;
                 continue;
@@ -272,7 +287,10 @@ class ChatSessionCoordinator {
             break; 
         }
 
-        if (!this.wasStopped) {
+        const history = getGlobalMessageHistory(activeData);
+        const isAtTip = !resumingMessageId || (history.length > 0 && history[history.length - 1].id === resumingMessageId);
+
+        if (!this.wasStopped && isAtTip) {
             await runSummarization({
                 data: activeData,
                 character,
@@ -294,8 +312,8 @@ class ChatSessionCoordinator {
         
         this.abortController = new AbortController();
 
-        const executor = async (d: InteractionData, c: Character, _signal: AbortSignal) => {
-            useGenerationStore.setState({ streamingCharacter: c, streamingText: '' });
+        const executor = async (d: InteractionData, c: Character, _signal?: AbortSignal) => {
+            useGenerationStore.setState({ streamingCharacter: c, streamingText: '', streamingMessageId: null });
             currentData = await this.runSingleTurn(d, c);
             
             const preToolData = currentData;
@@ -309,7 +327,7 @@ class ChatSessionCoordinator {
             currentData, 
             executor, 
             this.abortController,
-            (c) => useGenerationStore.setState({ streamingCharacter: c, streamingText: '' }),
+            (c) => useGenerationStore.setState({ streamingCharacter: c, streamingText: '', streamingMessageId: null }),
             (d) => { currentData = d; useChatStore.setState({ interactionData: d }); },
             { excludeFromSequence }
         );
@@ -555,19 +573,23 @@ class ChatSessionCoordinator {
         if (!currentData) return;
 
         const history = getGlobalMessageHistory(currentData);
-        const msg = history.find(m => m.id === messageId);
-        if (!msg || !hasTextContent(msg)) { this.deps.addToast('Message not found.', 'error'); return; }
+        const targetIdx = history.findIndex(m => m.id === messageId);
+        if (targetIdx === -1) { this.deps.addToast('Message not found.', 'error'); return; }
+        const msg = history[targetIdx];
+        if (!hasTextContent(msg)) { this.deps.addToast('Message not found.', 'error'); return; }
 
         if (!this.acquireLock()) { this.deps.addToast('Already generating...', 'info'); return; }
+        
+        this.activeMessageId = messageId;
+        
         try {
             const char = this.deps.allCharacters.find(c => c.id === msg.character.id) || msg.character;
-            const updatedData = await this.runSingleTurn(currentData, char, true, messageId, msg.textContent);
-            
-            await this.runSequence(updatedData, new Set([char.id]));
+            await this.runSingleTurn(currentData, char, true, messageId, msg.textContent);
         } catch (e) {
             console.error('Resume failed:', e);
             this.deps.addToast(`Resume error: ${(e as Error).message}`, 'error');
         } finally {
+            this.activeMessageId = null;
             this.releaseLock();
         }
     }
@@ -609,7 +631,6 @@ class ChatSessionCoordinator {
             } else {
                 const char = this.deps.allCharacters.find(c => c.id === targetMsg.character.id) || targetMsg.character;
 
-                // 1. Locate the nearest protagonist message that came before targetIdx
                 let lastProtagonistIdx = -1;
                 for (let i = targetIdx - 1; i >= 0; i--) {
                     if (protagonistIdSet.has(history[i].character.id)) {
@@ -618,7 +639,6 @@ class ChatSessionCoordinator {
                     }
                 }
 
-                // 2. Collect all AI characters who already took their turn between that protagonist message and targetIdx
                 const excludedFromSequence = new Set<string>();
                 excludedFromSequence.add(char.id);
 
@@ -630,10 +650,7 @@ class ChatSessionCoordinator {
                     }
                 }
 
-                // 3. Regenerate the single turn for the target character
                 updatedData = await this.runSingleTurn(updatedData, char);
-
-                // 4. Cascade to remaining AI characters who haven't yet spoken since the protagonist message
                 await this.runSequence(updatedData, excludedFromSequence);
             }
         } finally {
@@ -656,8 +673,7 @@ class ChatSessionCoordinator {
         const genState = useGenerationStore.getState();
         
         if (genState.streamingCharacter && genState.streamingText && state.interactionData) {
-            const activeIds = new Set(state.interactionData.protagonistIds || []);
-            const targetId = findLastAIMessageId(state.interactionData, activeIds);
+            const targetId = this.activeMessageId || findLastAIMessageId(state.interactionData, new Set(state.interactionData.protagonistIds || []));
             if (targetId) {
                 const updated = finalizeMessageById(state.interactionData, targetId, true, genState.streamingText);
                 useChatStore.setState({ interactionData: updated });
@@ -665,6 +681,7 @@ class ChatSessionCoordinator {
             }
         }
 
+        this.activeMessageId = null;
         this.releaseLock();
     }
     

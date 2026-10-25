@@ -7,6 +7,7 @@ interface GenerationState {
     isNarrating: boolean;
     streamingText: string;
     streamingCharacter: Character | null;
+    streamingMessageId: string | null; // 👈 ADD THIS
     currentCharacterExpression: string;
     loadingLocations: Record<string, boolean>;
     abortController: AbortController | null;
@@ -21,6 +22,7 @@ interface GenerationState {
     setStreamingState: (char: Character | null, text: string) => void;
     setStreamingText: (text: string) => void;
     setStreamingCharacter: (character: Character | null) => void;
+    setStreamingMessageId: (msgId: string | null) => void; // 👈 ADD THIS
     setIsLoading: (isLoading: boolean) => void;
     setIsNarrating: (isNarrating: boolean) => void;
     resetStreaming: () => void;
@@ -35,6 +37,7 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
     isNarrating: false,
     streamingText: '',
     streamingCharacter: null,
+    streamingMessageId: null, // 👈 ADD THIS
     currentCharacterExpression: 'neutral',
     loadingLocations: {},
     abortController: null,
@@ -48,9 +51,10 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
     setStreamingState: (char, text) => set({ streamingCharacter: char, streamingText: text, isLoading: char !== null }),
     setStreamingText: (text) => set({ streamingText: text }),
     setStreamingCharacter: (character) => set({ streamingCharacter: character }),
+    setStreamingMessageId: (streamingMessageId) => set({ streamingMessageId }), // 👈 ADD THIS
     setIsLoading: (isLoading) => set({ isLoading }),
     setIsNarrating: (isNarrating) => set({ isNarrating }),
-    resetStreaming: () => set({ streamingText: '', streamingCharacter: null, isLoading: false, isNarrating: false }),
+    resetStreaming: () => set({ streamingText: '', streamingCharacter: null, streamingMessageId: null, isLoading: false, isNarrating: false }), // 👈 UPDATE THIS
     setAbortController: (ctrl) => set({ abortController: ctrl }),
     setSelectedCharacterExpression: (expr) => set({ currentCharacterExpression: expr }),
     
@@ -71,6 +75,6 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
     stopGeneration: () => {
         const { abortController } = get();
         if (abortController) abortController.abort();
-        set({ streamingText: '', streamingCharacter: null, isLoading: false, isNarrating: false, abortController: null });
+        set({ streamingText: '', streamingCharacter: null, streamingMessageId: null, isLoading: false, isNarrating: false, abortController: null });
     },
 }));

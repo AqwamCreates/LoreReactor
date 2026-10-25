@@ -23,7 +23,7 @@ import { defaultBudgetData } from '../dictionaries/defaults';
 import { executeTools, formatToolDisplay, type ToolExecutionContext, type ToolResult } from './ToolExecutor';
 import { findLatestMessage, createMessage, getMessageById } from '../utilities/messageLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
-import { getLocalMessageHistory } from '../utilities/timelineLogic';
+import { getGlobalMessageHistory, clearTimelineCache } from '../utilities/timelineLogic';
 import { toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import type { StreamingVoiceTracker } from './StreamingVoiceTracker';
 import { compileMessageDisplayText } from '../utilities/messageDisplayCompiler';
@@ -306,29 +306,45 @@ export class CharacterActor {
         const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
         const seedText = existingCharacterText || prefillText || '';
 
-        // ✅ THE CAUSAL SHADOW CONTEXT FIX:
-        // Create a shadow clone of the data that HIDES future causal messages strictly for the prompt builder.
+        // ─── CAUSAL SHADOW CONTEXT EXTRACTION ─────────────────────────
+        // Temporarily extract an isolated shadow snapshot of the session that strictly
+        // includes messages prior to the target message, completely excluding future messages.
         let dataForPrompt = data;
+        let shadowCacheId: string | null = null;
+
         if (resumingMessageId) {
-            const localThread = getLocalMessageHistory(data, character);
-            const targetIdx = localThread.findIndex(m => m.id === resumingMessageId);
+            const globalHistory = getGlobalMessageHistory(data);
+            const targetIdx = globalHistory.findIndex(m => m.id === resumingMessageId);
 
             if (targetIdx !== -1) {
-                const validLocalIds = new Set(localThread.slice(0, targetIdx + 1).map(m => m.id));
+                // Messages strictly before the target message become the prior history.
+                // The target message itself is represented exclusively via seedText / existingCharacterText.
+                // All messages with index > targetIdx are future messages and are completely excluded.
+                const validPastIds = new Set(globalHistory.slice(0, targetIdx).map(m => m.id));
 
                 const truncatedHistories: Record<string, HistoryMessage[]> = {};
                 for (const [locId, msgs] of Object.entries(data.interactionHistories || {})) {
-                    truncatedHistories[locId] = msgs.filter(m => validLocalIds.has(m.id));
+                    const filtered = msgs.filter(m => validPastIds.has(m.id));
+                    if (filtered.length > 0) {
+                        truncatedHistories[locId] = filtered;
+                    }
                 }
-                dataForPrompt = { ...data, interactionHistories: truncatedHistories };
+
+                shadowCacheId = `${data.id}__shadow__${resumingMessageId}__${Date.now()}`;
+                dataForPrompt = {
+                    ...data,
+                    id: shadowCacheId,
+                    interactionHistories: truncatedHistories,
+                    lastUpdatedTimestamp: Date.now(),
+                };
             }
         }
 
-        // ✅ USE dataForPrompt FOR PROMPT BUILDING
+        // Use dataForPrompt for prompt building (timelineLogic uses shadowCacheId to compute fresh, unpolluted context)
         const filteredMessages = getFilteredTextMessages(dataForPrompt, character.id, allPromptBlocks);
         const knownCharacterNames = detectName(character, filteredMessages);
 
-        // ✅ USE ORIGINAL data OR target ID TO FIND latestMsg FOR STATE INHERITANCE
+        // State inheritance targets the original message metadata
         const latestMsg = resumingMessageId
             ? getMessageById(data, resumingMessageId)?.message
             : findLatestMessage(data, character)?.message;
@@ -516,6 +532,7 @@ export class CharacterActor {
 
                     accState.get().setLastRawLen(0);
                     const { body } = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    body.session_id = data.id;
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
@@ -591,6 +608,7 @@ export class CharacterActor {
                     const { body } = await buildRequestBody(
                         dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage, toolContext.allRawInteractionDataShells
                     );
+                    body.session_id = data.id;
 
                     await runSingleStreamPass(body, true);
 
@@ -659,6 +677,7 @@ export class CharacterActor {
 
                     accState.get().setLastRawLen(0);
                     const { body } = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    body.session_id = data.id;
                     await runSingleStreamPass(body, false);
 
                     const pendingInvs = accState.getPending();
@@ -717,11 +736,9 @@ export class CharacterActor {
 
             if (isResuming) {
                 const allExecutionResults = accState.getCollectedExecutionResults();
-                // ✅ Uses original `data` to preserve future messages!
+                // Updates the target message in-place in the live data, preserving all future messages intact
                 const newHistories = { ...data.interactionHistories };
                 for (const [locId, msgs] of Object.entries(newHistories)) {
-                    // ✅ STRICT TARGETING: If latestMsg is missing, targetIdx is -1. 
-                    // NEVER fallback to the first message in the array.
                     const targetIdx = latestMsg 
                         ? msgs.findIndex(m => m.id === latestMsg.id)
                         : -1; 
@@ -801,6 +818,10 @@ export class CharacterActor {
         } catch (error) {
             console.error('CharacterActor turn execution failed:', error);
             return { error: classifyError(error, signal) };
+        } finally {
+            if (shadowCacheId) {
+                clearTimelineCache(shadowCacheId);
+            }
         }
     }
 }

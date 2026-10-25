@@ -22,12 +22,15 @@ export function StreamingIndicators({
 }: StreamingIndicatorsProps) {
     const isLoading = useGenerationStore(s => s.isLoading);
     const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
+    const streamingMessageId = useGenerationStore(s => s.streamingMessageId); // 👈 Track active resume message ID
     const interactionData = useChatStore(s => s.interactionData);
 
     const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const protagonistIds = useChatStore(s => s.interactionData?.protagonistIds || []);
 
-    if (!isLoading) return null;
+    // 🛠️ FIX: If not loading OR if we are resuming an existing message, do not render this separate indicator.
+    // The message is already updating live in-place where it belongs.
+    if (!isLoading || streamingMessageId) return null;
 
     // ✅ If streamingCharacter is null while isLoading is true, it's an ambient narration stream
     const isNarration = !streamingCharacter;

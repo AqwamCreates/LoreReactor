@@ -28,7 +28,8 @@ export function useThrottledStream() {
             clearPendingFlush();
             lastFlushRef.current = now;
             useGenerationStore.setState({ streamingText: text });
-        } else if (!pendingFlushRef.current) {
+        } else if (!pendingFlushRef.current) {// src/frontend_src/components/views/ChatViewArea.tsx
+
             pendingFlushRef.current = setTimeout(() => {
                 lastFlushRef.current = performance.now();
                 useGenerationStore.setState({ streamingText: pendingStreamingTextRef.current });
