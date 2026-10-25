@@ -77,31 +77,17 @@ export function useChatEngine(deps: EngineDependencies) {
                 onToken?.(text);
 
                 if (isResuming) {
-                    const currentState = getState();
-                    const currentData = currentState.interactionData;
+                    const currentData = getState().interactionData;
                     if (currentData) {
-                        if (resumingMessageId) {
-                            const newHistories = { ...currentData.interactionHistories };
-                            let found = false;
-                            for (const [locId, msgs] of Object.entries(newHistories)) {
-                                const idx = msgs.findIndex(m => m.id === resumingMessageId);
-                                if (idx !== -1) {
-                                    newHistories[locId] = [...msgs];
-                                    newHistories[locId][idx] = { ...msgs[idx], textContent: text, lastUpdatedTimestamp: Date.now() } as any;
-                                    found = true;
-                                    break;
-                                }
-                            }
-                            if (found) {
-                                setInteractionData({ ...currentData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() });
-                            }
-                        } else {
-                            const updated = updatePartialMessageInInteractionData(
-                                currentData, character.id, text
-                            );
-                            if (updated !== currentData) {
-                                setInteractionData(updated);
-                            }
+                        const updated = updatePartialMessageInInteractionData(
+                            currentData, 
+                            character, 
+                            text, 
+                            undefined, 
+                            resumingMessageId ?? undefined
+                        );
+                        if (updated !== currentData) {
+                            setInteractionData(updated);
                         }
                     }
                 }
@@ -152,8 +138,6 @@ export function useChatEngine(deps: EngineDependencies) {
         }));
 
         const liveProfile = getState().interactionData?.profile;
-        
-        // ✅ Always use the actor's finalized data to preserve tool results, inventory, etc.
         const baseUpdated = result.updatedData; 
 
         const effectiveData: InteractionData = {
@@ -223,8 +207,6 @@ export function useChatEngine(deps: EngineDependencies) {
         const executor = async (d: InteractionData, c: Character, s: AbortSignal, onToken?: (t: string) => void) => {
             setStreamingState(c, '');
             
-            // ✅ FIX: Only pass existing text to the very first character in the sequence
-            // to prevent context leakage into subsequent characters' prompts.
             const textForThisChar = isFirstTurn ? (existingCharacterText || '') : '';
             isFirstTurn = false;
 

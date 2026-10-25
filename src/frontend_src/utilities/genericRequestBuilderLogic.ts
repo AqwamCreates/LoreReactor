@@ -1,6 +1,6 @@
 import type { Sampler } from "../types";
 
-function extractSamplerParameters(sampler: Sampler | undefined): Record<string, unknown> {
+export function extractSamplerParameters(sampler: Sampler | undefined): Record<string, unknown> {
     if (!sampler?.parameters) return {};
     const params = sampler.parameters;
     const result: Record<string, unknown> = {};
@@ -15,10 +15,10 @@ function extractSamplerParameters(sampler: Sampler | undefined): Record<string, 
 }
 
 /**
- * Builds a request body by merging sampler parameters with task-specific overrides.
- * Task overrides always take precedence over sampler defaults.
+ * Builds a generic completion payload for auxiliary tasks (summarization, memories, etc.).
+ * Renamed from buildRequestBody to avoid naming collision with interactionDataLogic.ts.
  */
-export function buildRequestBody(
+export function buildGenericCompletionBody(
     prompt: string,
     maxTokens: number,
     sampler: Sampler | undefined,
@@ -31,4 +31,4 @@ export function buildRequestBody(
         n_predict: maxTokens,
         stop: stopSequences,
     };
-} 
+}

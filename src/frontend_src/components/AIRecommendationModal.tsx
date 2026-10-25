@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock, EntityFolder, entityImageType } from '../types';
-import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
+import { buildGenericCompletionBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { EntitySelect } from './EntitySelect';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -323,7 +323,7 @@ export function AIRecommendationModal({
             const urp = userPrompt ? `\n\nUser Request: ${userPrompt}` : '\n\nUser Request: Generate freely.';
             const fp = `${sp}${urp}${imgDesc}${injBlock}`;
             let acc = '';
-            const requestBody = buildRequestBody(fp, maxTokens, activeSampler ?? undefined, []);
+            const requestBody = buildGenericCompletionBody(fp, maxTokens, activeSampler ?? undefined, []);
             const res = await recommendationEngine.generateStream(
                 { ...requestBody, stream: true },
                 ctrl,

@@ -1,32 +1,23 @@
-// src/frontend_src/utilities/messageLogic.ts
 import { deleteRawMessage, saveRawInteractionData, loadAllRawInteractionDataShells } from '../storages/serverStorage';
 import type { 
     InteractionData, HistoryMessage, ChatMessage, Character, messageType, 
     ActiveToolActions, BaseMessage, InteractionMessage, Inventory, 
-    NarrationMessage, PendingToolAction, ToolExecutionResult, ToolMessage, WhisperMessage 
+    NarrationMessage, PendingToolAction, ToolExecutionResult, ToolMessage, WhisperMessage, TextMessage 
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { getGlobalMessageHistory } from './timelineLogic';
 import { getEffectiveMaximumChatStamina, getEffectiveMaximumActionStamina, initializeClothingWearingStatuses } from './characterLogic';
 import { isToolMessageText } from './interactionDataLogic';
 
-// Helper: Returns a Set of all Message IDs in this chat that are branch points for OTHER chats
 async function getParentMessageIds(chatId: string): Promise<Set<string>> {
     const allChats = await loadAllRawInteractionDataShells();
     const points = new Set<string>();
-    
     for (const c of allChats) {
-        if (c && c.parentInteractionDataId === chatId && c.parentMessageId) {
-            points.add(c.parentMessageId);
-        }
+        if (c?.parentInteractionDataId === chatId && c.parentMessageId) points.add(c.parentMessageId);
     }
     return points;
 }
 
-/**
- * Finds the most recent message where the character is currently present.
- * Returns both the message and the locationId it belongs to in a single pass.
- */
 export function findLatestMessage(
     interactionData: InteractionData, 
     character: Character, 
@@ -40,31 +31,23 @@ export function findLatestMessage(
         for (let i = messages.length - 1; i >= 0; i--) {
             const msg = messages[i];
             if (msg.character.id === character.id) {
-                if (messageTypes && messageTypes.length > 0 && !messageTypes.includes(msg.messageType)) {
-                    continue; 
-                }
-                
-                // Compare timestamps across ALL locations to find their true chronological state
+                if (messageTypes && messageTypes.length > 0 && !messageTypes.includes(msg.messageType)) continue;
                 if (msg.firstCreatedTimestamp > maxTime) {
                     maxTime = msg.firstCreatedTimestamp;
                     latestMessage = msg;
                     latestLocationId = locationId;
                 }
-                break; // Found the newest message for this character IN THIS LOCATION array. Move to next location array.
+                break;
             }
         }
     }
 
-    if (latestMessage && (latestMessage as HistoryMessage).isPresent !== false && latestLocationId) {
+    if (latestMessage && latestMessage.isPresent !== false && latestLocationId) {
         return { message: latestMessage, locationId: latestLocationId };
     }
-    
     return undefined;
 }
 
-/**
- * Clears the partial flag on a message after successful resume completion.
- */
 export async function clearPartialFlag(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
     const updatedHistories = { ...interactionData.interactionHistories };
     let found = false;
@@ -94,15 +77,79 @@ export async function clearPartialFlag(interactionData: InteractionData, message
     return updatedChat;
 }
 
+export async function editChatMessage(
+    interactionData: InteractionData, 
+    messageId: string, 
+    newText: string
+): Promise<InteractionData> {
+    const parentInteractionMessageIds = await getParentMessageIds(interactionData.id);
+    if (parentInteractionMessageIds.has(messageId)) {
+        throw new Error("Cannot edit: Other chat sessions branch from this message.");
+    }
+
+    const newHistories = { ...interactionData.interactionHistories };
+    let found = false;
+
+    for (const [locId, messages] of Object.entries(newHistories)) {
+        const index = messages.findIndex((m: HistoryMessage) => m.id === messageId);
+        if (index !== -1) {
+            newHistories[locId] = [...messages];
+            const targetMsg = newHistories[locId][index];
+            if (targetMsg.messageType === 'chat' || targetMsg.messageType === 'whisper') {
+                newHistories[locId][index] = { 
+                    ...targetMsg, 
+                    textContent: newText, 
+                    toolExecutionResults: [],
+                    kvCacheTextContentPaths: {}, 
+                    kvCacheTextContentSummaryPaths: {}, 
+                    kvCacheInteractionTextContentSummaries: {},
+                    lastUpdatedTimestamp: Date.now() 
+                } as TextMessage;
+            }
+            found = true;
+            break;
+        }
+    }
+
+    if (!found) return interactionData;
+
+    const allMessages = getGlobalMessageHistory({ ...interactionData, interactionHistories: newHistories });
+    const msgIndex = allMessages.findIndex((m: HistoryMessage) => m.id === messageId);
+
+    if (msgIndex !== -1) {
+        for (const [locId, messages] of Object.entries(newHistories)) {
+            newHistories[locId] = messages.map((m: HistoryMessage) => {
+                const globalIdx = allMessages.findIndex((am: HistoryMessage) => am.id === m.id);
+                if (globalIdx > msgIndex && (m.messageType === 'chat' || m.messageType === 'whisper')) {
+                    return { 
+                        ...m, 
+                        kvCacheTextContentPaths: {}, 
+                        kvCacheTextContentSummaryPaths: {}, 
+                        kvCacheInteractionTextContentSummaries: {} 
+                    } as TextMessage;
+                }
+                return m;
+            });
+        }
+    }
+
+    const updatedChat: InteractionData = {
+        ...interactionData,
+        interactionHistories: newHistories,
+        lastUpdatedTimestamp: Date.now(),
+    };
+
+    await saveRawInteractionData(updatedChat);
+    return updatedChat;
+}
+
 export async function deleteMessage(currentChat: InteractionData, messageId: string): Promise<InteractionData> {
     const parentInteractionMessageIds = await getParentMessageIds(currentChat.id);
-    
     if (parentInteractionMessageIds.has(messageId)) {
         throw new Error("Cannot delete: Other chat sessions branch from this message.");
     }
 
     await deleteRawMessage(messageId);
-    
     const updatedHistories = { ...currentChat.interactionHistories };
     let found = false;
 
@@ -124,62 +171,12 @@ export async function deleteMessage(currentChat: InteractionData, messageId: str
         lastUpdatedTimestamp: Date.now(),
     };
 
-    // ✅ SAVE IMMEDIATELY: Prevents useServerSync from reloading the old chat shell
-    await saveRawInteractionData(updatedChat);
-
-    return updatedChat;
-}
-
-export async function editChatMessage(interactionData: InteractionData, messageId: string, newText: string): Promise<InteractionData> {
-    const parentInteractionMessageIds = await getParentMessageIds(interactionData.id);
-
-    if (parentInteractionMessageIds.has(messageId)) {
-        throw new Error("Cannot edit: Other chat sessions branch from this message.");
-    }
-
-    const updatedHistories = { ...interactionData.interactionHistories };
-    let found = false;
-
-    for (const [locId, messages] of Object.entries(updatedHistories)) {
-        const index = messages.findIndex(m => m.id === messageId);
-        if (index !== -1) {
-            const msg = messages[index];
-            const messageType = msg.messageType;
-            if (messageType === 'chat' || messageType === "whisper") {
-                updatedHistories[locId] = [...messages];
-                updatedHistories[locId][index] = { 
-                    ...msg, 
-                    textContent: newText, 
-                    // Clear fields tied to the old text
-                    toolExecutionResults: [], 
-                    lastUpdatedTimestamp: Date.now() 
-                } as ChatMessage;
-            }
-            found = true;
-            break;
-        }
-    }
-
-    if (!found) return interactionData;
-
-    const updatedChat = {
-        ...interactionData,
-        interactionHistories: updatedHistories,
-        lastUpdatedTimestamp: Date.now(),
-    };
-
     await saveRawInteractionData(updatedChat);
     return updatedChat;
 }
 
-/**
- * Mass deletes messages from the target message's location onwards.
- * Automatically resolves the locationId from the messageId.
- */
 export async function massDeleteMessages(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
     const parentInteractionMessageIds = await getParentMessageIds(interactionData.id);
-    
-    // 1. Get the global flattened history to find chronological order
     const globalHistory = getGlobalMessageHistory(interactionData);
     const targetGlobalIndex = globalHistory.findIndex(m => m.id === messageId);
     
@@ -187,27 +184,21 @@ export async function massDeleteMessages(interactionData: InteractionData, messa
         throw new Error("Message not found.");
     }
 
-    // 2. Identify all messages from this message onwards in the global timeline
     const messagesToDelete = globalHistory.slice(targetGlobalIndex);
-
     for (const msg of messagesToDelete) {
         if (parentInteractionMessageIds.has(msg.id)) {
             throw new Error("Cannot delete: Other chats branch from this message.");
         }
     }
 
-    // 3. Delete raw messages from server storage
     await Promise.all(messagesToDelete.map(m => deleteRawMessage(m.id)));
     
-    // 4. Rebuild all location histories keeping only messages BEFORE targetGlobalIndex
     const updatedHistories: Record<string, HistoryMessage[]> = {};
     for (const [locId, messages] of Object.entries(interactionData.interactionHistories || {})) {
-        const keptMsgs = messages.filter(m => {
+        updatedHistories[locId] = messages.filter(m => {
             const globalIdx = globalHistory.findIndex(hm => hm.id === m.id);
             return globalIdx !== -1 && globalIdx < targetGlobalIndex;
         });
-        
-        updatedHistories[locId] = keptMsgs;
     }
 
     const totalMessages = Object.values(updatedHistories).reduce((acc, curr) => acc + curr.length, 0);
@@ -220,26 +211,16 @@ export async function massDeleteMessages(interactionData: InteractionData, messa
     };
 }
 
-/**
- * Branches the chat at the target message.
- * Automatically resolves the locationId from the messageId.
- */
 export async function branchMessage(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
     const target = getMessageById(interactionData, messageId);
-    if (!target) {
-        throw new Error("Message not found");
-    }
+    if (!target) throw new Error("Message not found");
     
     const locationId = target.locationId;
     const messages = interactionData.interactionHistories[locationId] || [];
     const branchIndex = messages.findIndex(m => m.id === messageId);
-    
-    if (branchIndex === -1) {
-        throw new Error("Message not found in this location");
-    }
+    if (branchIndex === -1) throw new Error("Message not found in this location");
 
     const branchedHistories: Record<string, HistoryMessage[]> = {};
-    
     for (const [locId, msgs] of Object.entries(interactionData.interactionHistories)) {
         if (locId === locationId) {
             branchedHistories[locId] = msgs.slice(0, branchIndex + 1);
@@ -263,23 +244,13 @@ export async function branchMessage(interactionData: InteractionData, messageId:
     return branchedChat;
 }
 
-/**
- * Clones the chat up to the target message.
- * Uses the global timeline to ensure all locations are cloned chronologically,
- * and properly remaps parentMessageIds so the UI timeline chain isn't severed.
- */
 export async function cloneChatUpToMessage(interactionData: InteractionData, messageId: string): Promise<InteractionData> {
     const globalHistory = getGlobalMessageHistory(interactionData);
     const targetGlobalIndex = globalHistory.findIndex(m => m.id === messageId);
-    
-    if (targetGlobalIndex === -1) {
-        throw new Error("Message not found in global timeline.");
-    }
+    if (targetGlobalIndex === -1) throw new Error("Message not found in global timeline.");
 
     const now = Date.now();
     const clonedHistories: Record<string, HistoryMessage[]> = {};
-    
-    // 1. Filter messages chronologically and map old IDs to new UUIDs
     const idMapping: Record<string, string> = {};
     const keptMessagesByLocation: Record<string, HistoryMessage[]> = {};
 
@@ -289,28 +260,18 @@ export async function cloneChatUpToMessage(interactionData: InteractionData, mes
             return globalIdx !== -1 && globalIdx <= targetGlobalIndex;
         });
         keptMessagesByLocation[locId] = keptMsgs;
-        for (const msg of keptMsgs) {
-            idMapping[msg.id] = uuidv4();
-        }
+        for (const msg of keptMsgs) idMapping[msg.id] = uuidv4();
     }
 
-    // 2. Rebuild histories with new IDs and remapped parentMessageIds
     for (const [locId, keptMsgs] of Object.entries(keptMessagesByLocation)) {
-        clonedHistories[locId] = keptMsgs.map(msg => {
-            // Remap parentMessageId to the new UUID if the parent was also cloned
-            const newParentId = msg.parentMessageId && idMapping[msg.parentMessageId] 
-                ? idMapping[msg.parentMessageId] 
-                : null;
-
-            return {
-                ...msg,
-                id: idMapping[msg.id],
-                character: { ...msg.character },
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
-                parentMessageId: newParentId,
-            };
-        });
+        clonedHistories[locId] = keptMsgs.map(msg => ({
+            ...msg,
+            id: idMapping[msg.id],
+            character: { ...msg.character },
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+            parentMessageId: msg.parentMessageId && idMapping[msg.parentMessageId] ? idMapping[msg.parentMessageId] : null,
+        }));
     }
 
     const clonedChat: InteractionData = {
@@ -333,21 +294,13 @@ export async function cloneChatUpToMessage(interactionData: InteractionData, mes
     return clonedChat;
 }
 
-/**
- * Finds a specific message by its ID across all locations.
- * Returns the message and the locationId it belongs to.
- */
 export function getMessageById(interactionData: InteractionData, messageId: string): { message: HistoryMessage; locationId: string } | undefined {
     for (const [locationId, messages] of Object.entries(interactionData.interactionHistories || {})) {
         const msg = messages.find(m => m.id === messageId);
-        if (msg) {
-            return { message: msg, locationId };
-        }
+        if (msg) return { message: msg, locationId };
     }
     return undefined;
 }
-
-// ─── Unified Message Factory ───────────────────────────────────────
 
 export interface CreateMessageOptions {
     messageType?: messageType;
@@ -374,22 +327,10 @@ export interface CreateMessageOptions {
 }
 
 function inferMessageType(options?: CreateMessageOptions): messageType {
-    if (options?.messageType) {
-        return options.messageType;
-    }
-
-    if (options?.targetCharacterIds && options.targetCharacterIds.length > 0) {
-        return 'whisper';
-    }
-
-    if (options?.textContent === undefined) {
-        return 'interaction';
-    }
-
-    if (isToolMessageText(options.textContent)) {
-        return 'tool';
-    }
-
+    if (options?.messageType) return options.messageType;
+    if (options?.targetCharacterIds && options.targetCharacterIds.length > 0) return 'whisper';
+    if (options?.textContent === undefined) return 'interaction';
+    if (isToolMessageText(options.textContent)) return 'tool';
     return 'chat';
 }
 
@@ -401,12 +342,8 @@ export function createMessage(character: Character, options?: CreateMessageOptio
 
     const effectiveMaxChatStamina = getEffectiveMaximumChatStamina(character, interactionData?.profile);
     const effectiveMaxActionStamina = getEffectiveMaximumActionStamina(character, interactionData?.profile);
-    const remainingChatStamina = options?.remainingChatStamina 
-        ?? prev?.remainingChatStamina 
-        ?? effectiveMaxChatStamina;
-    const remainingActionStamina = options?.remainingActionStamina 
-        ?? prev?.remainingActionStamina 
-        ?? effectiveMaxActionStamina;
+    const remainingChatStamina = options?.remainingChatStamina ?? prev?.remainingChatStamina ?? effectiveMaxChatStamina;
+    const remainingActionStamina = options?.remainingActionStamina ?? prev?.remainingActionStamina ?? effectiveMaxActionStamina;
 
     const globalMessages = interactionData ? getGlobalMessageHistory(interactionData) : [];
     const defaultParentId = globalMessages.length > 0 ? globalMessages[globalMessages.length - 1].id : null;
@@ -415,26 +352,14 @@ export function createMessage(character: Character, options?: CreateMessageOptio
 
     const knownCharacterNames = options?.knownCharacterNames ??
         (character.knownCharacterNames
-            ? Object.fromEntries(
-                Object.entries(character.knownCharacterNames).map(([charId, names]) =>
-                    [charId, Object.fromEntries(names.map(n => [n, true] as const))]
-                )
-            )
+            ? Object.fromEntries(Object.entries(character.knownCharacterNames).map(([charId, names]) => [charId, Object.fromEntries(names.map(n => [n, true] as const))]))
             : {});
 
     const prevClothing = (prev as ChatMessage)?.characterClothingWearingStatuses;
-    const clothingWearingStatuses = options?.clothingWearingStatuses 
-        ?? prevClothing 
-        ?? initializeClothingWearingStatuses(character);
-
-    const characterLockedLocations = options?.characterLockedLocations 
-        ?? (prev?.characterLockedLocations ? { ...prev.characterLockedLocations } : {});
-
-    const inventory = options?.inventory 
-        ?? (prev?.inventory ? { ...prev.inventory } : undefined);
-
-    const activeToolActions = options?.activeToolActions 
-        ?? (prev?.activeToolActions ? { ...prev.activeToolActions } : undefined);
+    const clothingWearingStatuses = options?.clothingWearingStatuses ?? prevClothing ?? initializeClothingWearingStatuses(character);
+    const characterLockedLocations = options?.characterLockedLocations ?? (prev?.characterLockedLocations ? { ...prev.characterLockedLocations } : {});
+    const inventory = options?.inventory ?? (prev?.inventory ? { ...prev.inventory } : undefined);
+    const activeToolActions = options?.activeToolActions ?? (prev?.activeToolActions ? { ...prev.activeToolActions } : undefined);
 
     const resolvedType = inferMessageType(options);
     const textContent = options?.textContent ?? '';
@@ -459,11 +384,7 @@ export function createMessage(character: Character, options?: CreateMessageOptio
 
     switch (resolvedType) {
         case 'interaction':
-            return {
-                ...baseMessage,
-                messageType: 'interaction',
-            } as InteractionMessage;
-
+            return { ...baseMessage, messageType: 'interaction' } as InteractionMessage;
         case 'whisper':
             return {
                 ...baseMessage,
@@ -480,7 +401,6 @@ export function createMessage(character: Character, options?: CreateMessageOptio
                 kvCacheTextContentSummaryPaths: {},
                 kvCacheInteractionTextContentSummaries: {},
             } as WhisperMessage;
-
         case 'tool':
             return {
                 ...baseMessage,
@@ -490,14 +410,8 @@ export function createMessage(character: Character, options?: CreateMessageOptio
                 frontCameraImage: options?.frontCameraImage,
                 toolExecutionResults: options?.toolExecutionResults,
             } as ToolMessage;
-
         case 'narration':
-            return {
-                ...baseMessage,
-                messageType: 'narration',
-                textContent,
-            } as NarrationMessage;
-
+            return { ...baseMessage, messageType: 'narration', textContent } as NarrationMessage;
         default:
             return {
                 ...baseMessage,

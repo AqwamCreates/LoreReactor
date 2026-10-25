@@ -1,4 +1,3 @@
-// src/frontend_src/services/SummarizationEngine.ts
 import type { InteractionData, ChatMessage, Character, PromptBlock, TextMessage } from '../types';
 import { 
     checkTriggerThreshold, 
@@ -10,10 +9,35 @@ import {
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getLocalMessageHistory } from '../utilities/timelineLogic';
 
+export function applySummariesToInteractionData(
+    data: InteractionData,
+    summaries: Map<string, string>,
+    modelId: string
+): InteractionData {
+    if (summaries.size === 0) return data;
+    const newHistories = { ...data.interactionHistories };
+    for (const [locId, msgs] of Object.entries(newHistories)) {
+        newHistories[locId] = msgs.map(m => {
+            const summary = summaries.get(m.id);
+            if (summary && m.messageType === 'chat') {
+                return {
+                    ...m,
+                    modelTextContentSummaries: {
+                        ...(m as ChatMessage).modelTextContentSummaries,
+                        [modelId]: summary,
+                    },
+                } as ChatMessage;
+            }
+            return m;
+        });
+    }
+    return { ...data, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+}
+
 interface RunSummarizationOptions {
     data: InteractionData;
-    character: Character; // ADDED: Scope to character perspective
-    promptBlocks: PromptBlock[],
+    character: Character;
+    promptBlocks: PromptBlock[];
     setInteractionData: (data: InteractionData) => void;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
@@ -23,8 +47,7 @@ export async function runSummarization({ data, character, promptBlocks, setInter
     const activeModel = engine.getContext();
     const contextLength = activeModel?.contextLength ?? 4096;
     const modelId = activeModel?.id ?? 'default';
-    
-    // STRICTLY USE LOCAL HISTORY FOR CHARACTER PERSPECTIVE TOKEN COUNTING
+
     const history = getLocalMessageHistory(data, character, ['chat', 'whisper']) as TextMessage[];
     let currentTokens = 0;
     for (const m of history) currentTokens += await engine.countTokens(m.textContent);
@@ -36,32 +59,13 @@ export async function runSummarization({ data, character, promptBlocks, setInter
 
     for (const step of triggeredSteps) {
         addToast(`Running ${step.strategyType}...`, 'info');
-        
         let ns = 0;
         let nc = 0;
 
         if (step.strategyType === 'Sliding Window Replace' && step.slidingWindowSize) {
             const summaries = await generateMissingSummaries(updated, character, promptBlocks, step.slidingWindowSize, modelId, 256);
-            if (summaries.size > 0) {
-                const newHistories = { ...updated.interactionHistories };
-                for (const [locId, msgs] of Object.entries(newHistories)) {
-                    newHistories[locId] = msgs.map(m => {
-                        const summary = summaries.get(m.id);
-                        if (summary && m.messageType === 'chat') {
-                            return {
-                                ...m,
-                                modelTextContentSummaries: {
-                                    ...(m as ChatMessage).modelTextContentSummaries,
-                                    [modelId]: summary,
-                                },
-                            } as ChatMessage;
-                        }
-                        return m;
-                    });
-                }
-                updated = { ...updated, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-                ns = summaries.size;
-            }
+            updated = applySummariesToInteractionData(updated, summaries, modelId);
+            ns = summaries.size;
         } else if (step.strategyType === 'Periodic Compression' && step.periodicCompressionInterval && step.periodicCompressionChunkSize) {
             const newContexts = await generatePeriodicCompression(updated, character, promptBlocks, step.periodicCompressionInterval, step.periodicCompressionChunkSize, 512);
             if (newContexts.length > 0) {
@@ -79,26 +83,8 @@ export async function runSummarization({ data, character, promptBlocks, setInter
                 updated, character, promptBlocks, modelId, 256,
                 step.entropyPruningChunkSize, step.entropyPruningThreshold, step.entropyPruningTokenBudget
             );
-            if (summaries.size > 0) {
-                const newHistories = { ...updated.interactionHistories };
-                for (const [locId, msgs] of Object.entries(newHistories)) {
-                    newHistories[locId] = msgs.map(m => {
-                        const summary = summaries.get(m.id);
-                        if (summary && m.messageType === 'chat') {
-                            return {
-                                ...m,
-                                modelTextContentSummaries: {
-                                    ...(m as ChatMessage).modelTextContentSummaries,
-                                    [modelId]: summary,
-                                },
-                            } as ChatMessage;
-                        }
-                        return m;
-                    });
-                }
-                updated = { ...updated, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
-                ns = summaries.size;
-            }
+            updated = applySummariesToInteractionData(updated, summaries, modelId);
+            ns = summaries.size;
         }
 
         if (ns > 0) {

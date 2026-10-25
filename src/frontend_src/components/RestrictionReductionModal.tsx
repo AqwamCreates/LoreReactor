@@ -3,7 +3,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import type { Character, Profile, Sampler, LanguageModel } from '../types';
 import { EntitySelect } from './EntitySelect';
 import { EntitySelectList } from './EntitySelectList';
-import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
+import { buildGenericCompletionBody } from '../utilities/genericRequestBuilderLogic';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
@@ -465,7 +465,7 @@ export function RestrictionReductionModal({
         languageModelEngine.setContext(targetModel);
         languageModelEngine.setRunningModels(runningModels);
         
-        const requestBody = buildRequestBody(prompt, maxTokens, resolvedSampler || undefined, []);
+        const requestBody = buildGenericCompletionBody(prompt, maxTokens, resolvedSampler || undefined, []);
         const controller = new AbortController();
         abortControllerReference.current = controller;
         

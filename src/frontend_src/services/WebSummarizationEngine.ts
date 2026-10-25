@@ -3,7 +3,7 @@ import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { deriveDelimiters } from '../utilities/promptLogic';
-import { buildRequestBody } from '../utilities/genericRequestBuilderLogic';
+import { buildGenericCompletionBody } from '../utilities/genericRequestBuilderLogic';
 import type { Sampler, StopPattern } from '../types';
 
 const WEBPAGE_SUMMARIZE_PROMPT = "You are a concise summarizer for web content used as roleplay context. Given raw webpage text and associated images, produce a dense summary that preserves: key facts, names, dates, locations, relationships, definitions, visual details from images, and any lore-relevant details. Eliminate navigation text, ads, boilerplate, and redundancy. Write in third person, present tense. Output ONLY the summary with no preamble, no markdown, no quotes.";
@@ -61,7 +61,7 @@ export async function summarizeWebpageContent(
     const stops = getWebpageStopTokens(stopPattern);
     const prompt = `${basePrompt}\n\nSource: ${sourceUrl}\n\nWebpage content:\n${content}\n\nSummary:`;
 
-    const requestBody = buildRequestBody(prompt, 1024, sampler, stops);
+    const requestBody = buildGenericCompletionBody(prompt, 1024, sampler, stops);
 
     // Inject image data into the request body if images are present
     if (hasImages) {
@@ -101,7 +101,7 @@ export async function mergeWebpageSummaries(
     const stops = getWebpageStopTokens(stopPattern);
     const prompt = `${MULTI_PAGE_MERGE_PROMPT}\n\nSources to merge:\n${formatted}\n\nMerged document:`;
 
-    const requestBody = buildRequestBody(prompt, 2048, sampler, stops);
+    const requestBody = buildGenericCompletionBody(prompt, 2048, sampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);

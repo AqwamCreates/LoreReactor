@@ -7,7 +7,7 @@ import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { v4 as uuidv4 } from 'uuid';
 import { generateInitialCharacterText } from './characterLogic';
 import { buildPrompt } from './promptLogic';
-import { findLatestMessage } from './messageLogic';
+import { findLatestMessage, getMessageById } from './messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from './timelineLogic';
 import { toolCallStartString, toolCallEndString } from '../dictionaries/stringList';
 
@@ -219,31 +219,44 @@ export function editInteractionMessageInInteractionData(interactionData: Interac
 
 export function updatePartialMessageInInteractionData(
     interactionData: InteractionData,
-    characterId: string,
+    character: Character,
     newText: string,
     characterExpression?: string,
+    targetMessageId?: string,
 ): InteractionData {
-    const newHistories = { ...interactionData.interactionHistories };
-    
-    const latest = findLatestMessage(interactionData, { id: characterId } as Character);
-    if (!latest) return interactionData;
+    // If targetMessageId is provided (e.g. during a resume turn), look up that exact message.
+    // Otherwise, find the latest message from the generating character.
+    const target = targetMessageId
+        ? getMessageById(interactionData, targetMessageId)
+        : findLatestMessage(interactionData, character);
 
-    const { message, locationId } = latest;
-    if (message.messageType !== 'chat') return interactionData;
+    if (!target) return interactionData;
 
-    const locMessages = newHistories[locationId];
+    const { message, locationId } = target;
+    if (message.messageType !== 'chat' && message.messageType !== 'whisper') return interactionData;
+
+    const locMessages = interactionData.interactionHistories[locationId];
+    if (!locMessages) return interactionData;
+
     const index = locMessages.findIndex((m: HistoryMessage) => m.id === message.id);
-    if (index !== -1) {
-        newHistories[locationId] = [...locMessages];
-        newHistories[locationId][index] = { 
-            ...message, 
-            textContent: newText, 
-            characterExpression: characterExpression ?? (message as ChatMessage).characterExpression, 
-            lastUpdatedTimestamp: Date.now() 
-        } as ChatMessage;
-    }
+    if (index === -1) return interactionData;
 
-    return { ...interactionData, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
+    const updatedLocMessages = [...locMessages];
+    updatedLocMessages[index] = { 
+        ...message, 
+        textContent: newText, 
+        characterExpression: characterExpression ?? message.characterExpression, 
+        lastUpdatedTimestamp: Date.now() 
+    } as ChatMessage;
+
+    return {
+        ...interactionData,
+        interactionHistories: {
+            ...interactionData.interactionHistories,
+            [locationId]: updatedLocMessages,
+        },
+        lastUpdatedTimestamp: Date.now(),
+    };
 }
 
 function escapeRegExp(string: string) {

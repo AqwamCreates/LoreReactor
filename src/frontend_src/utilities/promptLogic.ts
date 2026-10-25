@@ -30,7 +30,8 @@ import {
   getEffectiveMessagesToDisableThinkPrompt,
   getEffectiveMessagesToDisableStarterPrompt,
   getEffectiveUseFrontCameraImage,
-  getEnabledTools
+  getEnabledTools,
+  getCharacterNameVariants
 } from './characterLogic';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
@@ -40,13 +41,16 @@ import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/TextMessageSummarizationEngine';
 import { findLatestMessage } from './messageLogic';
 import { getLocalMessageHistory, getLatestLocalLocationMessageHistory } from './timelineLogic';
-import { collectActiveDialoguePromptContent, buildDialogueSearchSpace, getActiveDialoguePrompts } from './dialoguePromptLogic';
+import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './dialoguePromptLogic';
 import { STOP_STEMS, getStemmedContentWords } from './stemmerHelper';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
 import { embeddingEngine } from '../services/EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from '../services/RetrievalEngine';
 import { retrieveEligibleMemories } from './memoryLogic';
 import { isEntityActiveWithCache, doesAnyTriggerMatchCached, type CombinationCache, type TriggerEvaluationContext } from './triggerLogic';
+import { formatDuration, formatTimeElapsedSentence } from './timeLogic';
+import { calculateEntropyPruningCutoff } from './entropyPruningLogic';
+import { resolveEffectiveStopTokens } from './chatSessionLogic';
 
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. ";
 const beingIgnoredInstructions = "Anytime a character ignore me talking, there would be an awkward atmosphere. ";
@@ -105,38 +109,34 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
  * - stripTools = false: Replaces tool calls with their actual textContent result (for other characters & summaries).
  */
 export function sanitizeToolSyntax(
-    text: string, 
-    toolExecutionResults: ToolExecutionResult[] | undefined,
-    stripTools: boolean
+  text: string, 
+  toolExecutionResults: ToolExecutionResult[] | undefined,
+  stripTools: boolean
 ): string {
-    if (!text) return text;
-    let sanitized = text;
+  if (!text) return text;
+  let sanitized = text;
 
-    // 1. Precise replacement using saved execution results
-    if (toolExecutionResults && toolExecutionResults.length > 0) {
-        for (const res of toolExecutionResults) {
-            if (!sanitized.includes(res.rawMatch)) continue;
-            const stringReplacement = stripTools ? '' : res.textContent;
-            sanitized = sanitized.replace(res.rawMatch, stringReplacement);
-        }
+  if (toolExecutionResults && toolExecutionResults.length > 0) {
+    for (const res of toolExecutionResults) {
+      if (!sanitized.includes(res.rawMatch)) continue;
+      const stringReplacement = stripTools ? '' : res.textContent;
+      sanitized = sanitized.replace(res.rawMatch, stringReplacement);
     }
+  }
 
-    // 2. Fallback regex for any uncaptured/legacy markers
-    const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const obsStart = escapeRegex(toolResultStartString);
-    const obsEnd = escapeRegex(toolResultEndString);
-    const callStart = escapeRegex(toolCallStartString);
-    const callEnd = escapeRegex(toolCallEndString);
+  const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const obsStart = escapeRegex(toolResultStartString);
+  const obsEnd = escapeRegex(toolResultEndString);
+  const callStart = escapeRegex(toolCallStartString);
+  const callEnd = escapeRegex(toolCallEndString);
 
-    // Strip observations ⟦...⟧ completely
-    const observationRegex = new RegExp(`${obsStart}[\\s\\S]*?${obsEnd}`, 'g');
-    sanitized = sanitized.replace(observationRegex, '');
-    
-    // Strip uncaptured calls ⟪...⟫ completely
-    const callRegex = new RegExp(`${callStart}[\\s\\S]*?${callEnd}`, 'g');
-    sanitized = sanitized.replace(callRegex, '');
-    
-    return sanitized.replace(/\s{2,}/g, ' ');
+  const observationRegex = new RegExp(`${obsStart}[\\s\\S]*?${obsEnd}`, 'g');
+  sanitized = sanitized.replace(observationRegex, '');
+  
+  const callRegex = new RegExp(`${callStart}[\\s\\S]*?${callEnd}`, 'g');
+  sanitized = sanitized.replace(callRegex, '');
+  
+  return sanitized.replace(/\s{2,}/g, ' ');
 }
 
 const GLOBAL_STRINGS: Record<string, string> = {
@@ -377,7 +377,7 @@ function compileTriggerRegexes(triggers: RegularExpressionTrigger[] | undefined)
   return regexes;
 }
 
-interface PromptDelimiters {
+export interface PromptDelimiters {
   blockStart: (role: string) => string;
   blockEnd: string;
   turnStart: (role: string) => string;
@@ -449,18 +449,6 @@ interface PromptBuildContext {
   allRawInteractionDataShells?: RawInteractionData[];
 }
 
-function formatTimerDuration(ms: number): string {
-  const totalSeconds = Math.floor(Math.abs(ms) / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-  const parts: string[] = [];
-  if (hours > 0) parts.push(`${hours}h`);
-  if (minutes > 0) parts.push(`${minutes}m`);
-  if (seconds > 0 || parts.length === 0) parts.push(`${seconds}s`);
-  return parts.join(' ');
-}
-
 function selectModelSummary(msg: TextMessage, modelId: string): string {
   if (msg.modelTextContentSummaries?.[modelId]) return msg.modelTextContentSummaries[modelId];
   return msg.textContent;
@@ -479,7 +467,7 @@ export function getKnownDisplayName(
   targetChar: Character,
   knownNames: Record<string, Record<string, boolean>>,
 ): string | null {
-  const candidates = [targetChar.name, ...(targetChar.aliases ?? [])];
+  const candidates = getCharacterNameVariants(targetChar);
   const knownMap = knownNames[targetChar.id];
   if (!knownMap) return null;
   for (const candidate of candidates) {
@@ -699,16 +687,19 @@ function applyMessageFilterTriggers(
   }
 }
 
-function getMessageFilterFlags(
+export function computeMessageFilterFlags(
   textMessages: TextMessage[],
+  promptBlocks: PromptBlock[],
   contexts: Context[],
   locations: Location[],
-  promptBlocks: PromptBlock[],
-  characterId: string,
+  characterId?: string,
 ): boolean[] {
   const excluded = new Array(textMessages.length).fill(false);
   for (const context of contexts) {
-    if (!isCharacterBound(context, characterId)) continue;
+    const isBound = characterId !== undefined
+      ? isCharacterBound(context, characterId)
+      : (!context.characterBindings || context.characterBindings.length === 0);
+    if (!isBound) continue;
     const source = context as Context & WithMessageFilterExclusionTriggers;
     applyMessageFilterTriggers(
       textMessages,
@@ -720,13 +711,10 @@ function getMessageFilterFlags(
     );
   }
   for (const location of locations) {
-    if (
-      location.characterBindings &&
-      location.characterBindings.length > 0 &&
-      !location.characterBindings.includes(characterId)
-    ) {
-      continue;
-    }
+    const isBound = characterId !== undefined
+      ? (!location.characterBindings || location.characterBindings.length === 0 || location.characterBindings.includes(characterId))
+      : (!location.characterBindings || location.characterBindings.length === 0);
+    if (!isBound) continue;
     const source = location as Location & WithMessageFilterExclusionTriggers;
     applyMessageFilterTriggers(
       textMessages,
@@ -738,7 +726,10 @@ function getMessageFilterFlags(
     );
   }
   for (const block of promptBlocks) {
-    if (!isPromptBlockCharacterBound(block, characterId)) continue;
+    const isBound = characterId !== undefined
+      ? isPromptBlockCharacterBound(block, characterId)
+      : (!block.characterBindings || block.characterBindings.length === 0);
+    if (!isBound) continue;
     const source = block as PromptBlock & WithMessageFilterExclusionTriggers;
     applyMessageFilterTriggers(
       textMessages,
@@ -750,6 +741,25 @@ function getMessageFilterFlags(
     );
   }
   return excluded;
+}
+
+function getMessageFilterFlags(
+  textMessages: TextMessage[],
+  contexts: Context[],
+  locations: Location[],
+  promptBlocks: PromptBlock[],
+  characterId: string,
+): boolean[] {
+  return computeMessageFilterFlags(textMessages, promptBlocks, contexts, locations, characterId);
+}
+
+export function getUniversalMessageFilterFlags(
+  textMessages: TextMessage[],
+  promptBlocks: PromptBlock[],
+  contexts: Context[],
+  locations: Location[],
+): boolean[] {
+  return computeMessageFilterFlags(textMessages, promptBlocks, contexts, locations);
 }
 
 export function getFilteredTextMessages(
@@ -1045,7 +1055,6 @@ function buildPromptContext(
   for (const msg of localHistory) {
     if (isTextMessage(msg) && isMessageVisibleTo(msg, characterId)) {
       characterIdArray.push(msg.character.id);
-      // 🛡️ Strip tool syntax from search spaces so it doesn't trigger regex/embeddings
       textContentArray.push(sanitizeToolSyntax(msg.textContent, (msg as ChatMessage).toolExecutionResults, true));
     }
   }
@@ -1089,8 +1098,6 @@ function buildPromptContext(
 function buildCharacterTagsText(ctx: PromptBuildContext): { tags: string[]; tagsWithDescriptions: string[] } {
   const tags: string[] = [];
   const tagsWithDescriptions: string[] = [];
-  
-  // Cleanly combine the generating character and everyone in the room with them
   const actuallyPresentParticipants = [ctx.character, ...ctx.coLocatedParticipants];
 
   for (const participant of actuallyPresentParticipants) {
@@ -1328,48 +1335,20 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
     combinationCache: ctx.combinationCache,
   };
 
-  if (ctx.character.useEmbeddingModelForDialoguePrompts && ctx.character.dialogueRetrievalConfiguration && dialogueSearchSpace) {
-    const activePrompts = getActiveDialoguePrompts(ctx.character.dialoguePrompts, evalContext);
-    if (activePrompts.length > 0) {
-      const queryVector = await embeddingEngine.embed(dialogueSearchSpace);
-      if (queryVector) {
-        const items: RetrievableItem[] = activePrompts.map(dp => ({
-          id: dp.id,
-          name: dp.name,
-          textContent: dp.textContent,
-          embedding: dp.embedding,
-          firstCreatedTimestamp: dp.firstCreatedTimestamp
-        }));
-        const results = await retrieveRelevantContext(
-          queryVector,
-          dialogueSearchSpace,
-          items,
-          ctx.character.dialogueRetrievalConfiguration
-        );
-        if (results.length > 0) {
-          const selectedPrompt = activePrompts.find(p => p.id === results[0].id);
-          if (selectedPrompt) {
-            const skipProb = selectedPrompt.skipProbability ?? 0;
-            if (skipProb > 0 && Math.random() < skipProb) return '';
-            return replacePlaceholders(
-              selectedPrompt.textContent,
-              ctx.characterParticipantTag,
-              ctx.characterName,
-              ctx.coLocatedProtagonists,
-              ctx.participants,
-              ctx.knownNames,
-              ctx.tools
-            );
-          }
-        }
-      }
+  const activeContents = await collectActiveDialoguePromptContent(
+    ctx.character.dialoguePrompts,
+    evalContext,
+    {
+      useEmbedding: ctx.character.useEmbeddingModelForDialoguePrompts,
+      retrievalConfiguration: ctx.character.dialogueRetrievalConfiguration,
+      queryText: dialogueSearchSpace,
     }
-  }
-  const activeContents = await collectActiveDialoguePromptContent(ctx.character.dialoguePrompts, evalContext);
+  );
+
   if (activeContents.length === 0) return '';
   const lines: string[] = [];
   for (const content of activeContents) {
-    const replacedDialogue = replacePlaceholders(
+    lines.push(replacePlaceholders(
       content,
       ctx.characterParticipantTag,
       ctx.characterName,
@@ -1377,8 +1356,7 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
       ctx.participants,
       ctx.knownNames,
       ctx.tools
-    );
-    lines.push(replacedDialogue);
+    ));
   }
   return lines.join('\n');
 }
@@ -1453,7 +1431,6 @@ async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
   const socialHistoryText = ctx.localHistory
     .filter(m => isTextMessage(m) && coLocatedIds.has(m.character.id))
     .map(m => {
-        // 🛡️ Sanitize tool syntax from social history so memory retrievals aren't polluted by backend plumbing
         const cleanText = sanitizeToolSyntax((m as TextMessage).textContent, (m as ChatMessage).toolExecutionResults, true);
         return `[${m.character.name}]: ${cleanText}`;
     })
@@ -1635,23 +1612,11 @@ function buildInventoryText(ctx: PromptBuildContext): string {
     let stopwatches: { name: string; startTimestamp: number; pausedElapsedMs?: number }[] = [];
     for (const [key, value] of Object.entries(latestInventory)) {
       if (key === 'notes') {
-        try {
-          notes = JSON.parse(value as string);
-        } catch {
-          // ignore
-        }
+        try { notes = JSON.parse(value as string); } catch {}
       } else if (key === 'timers') {
-        try {
-          timers = JSON.parse(value as string);
-        } catch {
-          // ignore
-        }
+        try { timers = JSON.parse(value as string); } catch {}
       } else if (key === 'stopwatches') {
-        try {
-          stopwatches = JSON.parse(value as string);
-        } catch {
-          // ignore
-        }
+        try { stopwatches = JSON.parse(value as string); } catch {}
       } else {
         userInventoryEntries.push(`${key}: ${value}`);
       }
@@ -1667,7 +1632,7 @@ function buildInventoryText(ctx: PromptBuildContext): string {
     if (timers.length > 0) {
       const timerStatuses = timers.map(t => {
         const remaining = t.targetTimestamp - now;
-        return remaining <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatTimerDuration(remaining)} remaining`;
+        return remaining <= 0 ? `${t.name}: EXPIRED` : `${t.name}: ${formatDuration(remaining)} remaining`;
       });
       lines.push(`[Active Timers]\n${timerStatuses.join('\n')}`);
     }
@@ -1675,7 +1640,7 @@ function buildInventoryText(ctx: PromptBuildContext): string {
       const swStatuses = stopwatches.map(s => {
         const elapsed = s.pausedElapsedMs !== undefined ? s.pausedElapsedMs : now - s.startTimestamp;
         const status = s.pausedElapsedMs !== undefined ? 'PAUSED' : 'RUNNING';
-        return `${s.name}: ${formatTimerDuration(elapsed)} (${status})`;
+        return `${s.name}: ${formatDuration(elapsed)} (${status})`;
       });
       lines.push(`[Active Stopwatches]\n${swStatuses.join('\n')}`);
     }
@@ -1685,8 +1650,8 @@ function buildInventoryText(ctx: PromptBuildContext): string {
 
 function buildToolInstructionText(enabledToolNames: string[]): string {
   const lines: string[] = [];
-  const haveTools = enabledToolNames.length > 0
-  const availableToolString = haveTools ? `Available tools: {{tools}}` : 'Currently, all of my tools are disabled.'
+  const haveTools = enabledToolNames.length > 0;
+  const availableToolString = haveTools ? `Available tools: {{tools}}` : 'Currently, all of my tools are disabled.';
   lines.push(`${toolUsageInstructions} ${availableToolString}.`);
   if (haveTools) lines.push(`When I use {{toolCallStartString}}tool(){{toolCallEndString}} as my first word, I will activate tool message mode where the whole message text are only visible to me.`);
   return lines.join('\n');
@@ -1801,9 +1766,9 @@ function buildTextInjectionText(ctx: PromptBuildContext, hasBeenSummarized: bool
   return lines.join('\n');
 }
 
-export function createChatHistoryArray(
+export async function createChatHistoryArray(
   ctx: PromptBuildContext,
-): { chatHistoryArray: string[]; hasBeenSummarized: boolean } {
+): Promise<{ chatHistoryArray: string[]; hasBeenSummarized: boolean }> {
   const participants = ctx.participants;
   const profile = ctx.profile;
   const contexts = ctx.interactionData.contexts || [];
@@ -1867,54 +1832,15 @@ export function createChatHistoryArray(
       const chunkSize = step.entropyPruningChunkSize ?? 3;
       const threshold = step.entropyPruningThreshold ?? 0.35;
       const maxRawTokens = step.entropyPruningTokenBudget ?? 2000;
-      let accumulatedTokens = 0;
-      let cutoffIndex = 0;
-      for (let i = processedMessages.length; i > chunkSize; i -= chunkSize) {
-        const chunkStart = Math.max(0, i - chunkSize);
-        const currentChunk = processedMessages.slice(chunkStart, i);
-        const previousChunk = processedMessages.slice(Math.max(0, chunkStart - chunkSize), chunkStart);
-        for (const msg of currentChunk) accumulatedTokens += Math.ceil(msg.text.length / 4);
-        let hardBoundary = false;
-        for (let j = 1; j < currentChunk.length; j++) {
-          const prev = currentChunk[j - 1].msg;
-          const curr = currentChunk[j].msg;
-          const prevLoc = messageLocationMap.get(prev.id);
-          const currLoc = messageLocationMap.get(curr.id);
-          if (prevLoc !== undefined && currLoc !== undefined && prevLoc !== currLoc) {
-            hardBoundary = true;
-            break;
-          }
-        }
-        if (hardBoundary) {
-          cutoffIndex = i;
-          break;
-        }
-        if (accumulatedTokens >= maxRawTokens) {
-          cutoffIndex = i;
-          break;
-        }
-        if (previousChunk.length > 0) {
-          const currentWords = new Set<string>();
-          for (const msg of currentChunk) {
-            for (const w of getStemmedContentWords(msg.text)) currentWords.add(w);
-          }
-          const previousWords = new Set<string>();
-          for (const msg of previousChunk) {
-            for (const w of getStemmedContentWords(msg.text)) previousWords.add(w);
-          }
-          let intersection = 0;
-          for (const w of currentWords) {
-            if (previousWords.has(w)) intersection++;
-          }
-          const union = currentWords.size + previousWords.size - intersection;
-          const lexicalOverlap = union > 0 ? intersection / union : 0;
-          if ((1 - lexicalOverlap) < threshold) {
-            cutoffIndex = chunkStart;
-            break;
-          }
-        }
-        cutoffIndex = chunkStart;
-      }
+
+      const candidates = processedMessages.map(p => ({
+        id: p.msg.id,
+        textContent: p.text,
+        locationId: p.locationId,
+      }));
+
+      const cutoffIndex = await calculateEntropyPruningCutoff(candidates, chunkSize, threshold, maxRawTokens);
+
       for (let i = 0; i < processedMessages.length; i++) {
         const msg = processedMessages[i].msg;
         if (i < cutoffIndex && (msg as ChatMessage).modelTextContentSummaries?.[ctx.modelId]) {
@@ -1970,14 +1896,12 @@ export function createChatHistoryArray(
     }
   }
   const outputMessages = processedMessages.filter((p) => {
-    // 1. HARD WALL: If the message has a location and it's NOT the current one, exclude it immediately.
     if (hasLocationData) {
       const charLocationId = p.locationId;
       if (charLocationId !== undefined && charLocationId !== currentLocationId) {
         return false;
       }
     }
-    // 2. Standard visibility rules for messages inside this location
     if (protagonistIds.has(p.msg.character.id)) return true;
     if (p.msg.character.id === ctx.characterId) return true;
     if (recentInteractors.has(p.msg.character.id)) return true;
@@ -2016,15 +1940,13 @@ export function createChatHistoryArray(
     let chatHistoryText = ctx.delimiters.turnStart(finalRoleStr);
     
     let historyText = p.text;
-    
-    // 🛡️ DIVERGENCE: Clean tool markers for OTHER characters
     const isSelf = p.msg.character.id === ctx.characterId;
     if (!isSelf) {
-        historyText = sanitizeToolSyntax(
-            historyText,
-            (p.msg as ChatMessage).toolExecutionResults,
-            false
-        );
+      historyText = sanitizeToolSyntax(
+        historyText,
+        (p.msg as ChatMessage).toolExecutionResults,
+        false
+      );
     }
 
     const replacedText = replacePlaceholders(
@@ -2222,6 +2144,32 @@ async function buildPromptBlocks(
   return blockMap;
 }
 
+async function trackEntityImages(
+  entities: { id: string; name?: string; images?: string[] }[],
+  entityType: 'promptBlock' | 'context' | 'location',
+  getImageUrl: (id: string, filename: string) => string | null,
+  instructionList: string[],
+  trackedList: TrackedImage[],
+  getGlobalId: () => number
+): Promise<void> {
+  for (const entity of entities) {
+    if (!entity.images || entity.images.length === 0) continue;
+    let localIdx = 1;
+    for (const img of entity.images) {
+      const imageUrl = getImageUrl(entity.id, img);
+      if (!imageUrl) continue;
+      const base64Data = await fetchImageAsBase64(imageUrl);
+      if (!base64Data) continue;
+      const id = getGlobalId();
+      const label = entity.name || 'Unknown Location';
+      trackedList.push({ globalId: id, entityType, entityName: label, localIndex: localIdx, base64Data });
+      const typeLabel = entityType === 'promptBlock' ? 'Prompt Block' : entityType === 'context' ? 'Context' : 'Location';
+      instructionList.push(`Image ${id} - ${typeLabel} '${label}' Image ${localIdx}`);
+      localIdx++;
+    }
+  }
+}
+
 interface BuildResult {
   messages: OpenAIMessage[];
   stops: string[];
@@ -2386,7 +2334,7 @@ export async function buildPrompt(
   }
   const timeData = getTimeDataFromCoordinates(latitude, longitude);
   const locationResult = buildLocationText(ctx);
-  const chatHistoryResult = createChatHistoryArray(ctx);
+  const chatHistoryResult = await createChatHistoryArray(ctx);
   const reachableLocationsResult = buildReachableLocationsText(ctx);
   const characterTagsResult = buildCharacterTagsText(ctx);
   let skyViewText = '';
@@ -2407,18 +2355,7 @@ export async function buildPrompt(
   if (timeData && ctx.localHistory.length > 0) {
     const lastMsgTimestamp = ctx.localHistory[ctx.localHistory.length - 1].lastUpdatedTimestamp;
     const diffMs = Math.max(0, timeData.rawTimestamp - lastMsgTimestamp);
-    const totalSeconds = Math.floor(diffMs / 1000);
-    const numberOfDays = Math.floor(totalSeconds / 86400);
-    const numberOfHours = Math.floor((totalSeconds % 86400) / 3600);
-    const numberOfMinutes = Math.floor((totalSeconds % 3600) / 60);
-    const numberOfSeconds = totalSeconds % 60;
-    const parts: string[] = [];
-    if (numberOfDays > 0) parts.push(`${numberOfDays} day${numberOfDays !== 1 ? 's' : ''}`);
-    if (numberOfHours > 0) parts.push(`${numberOfHours} hour${numberOfHours !== 1 ? 's' : ''}`);
-    if (numberOfMinutes > 0 && numberOfDays === 0) parts.push(`${numberOfMinutes} minute${numberOfMinutes !== 1 ? 's' : ''}`);
-    if (numberOfSeconds > 0 && numberOfDays === 0 && numberOfHours === 0) parts.push(`${numberOfSeconds} second${numberOfSeconds !== 1 ? 's' : ''}`);
-    const timeSinceLastMessageString = (parts.length > 0) ? parts.join(', ') : 'just now';
-    timeElapsedText = `It has been ${timeSinceLastMessageString} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.`;
+    timeElapsedText = formatTimeElapsedSentence(diffMs);
   }
   const effectiveMaxChatStamina = getEffectiveMaximumChatStamina(ctx.character, ctx.profile);
   const effectiveMaxActionStamina = getEffectiveMaximumActionStamina(ctx.character, ctx.profile);
@@ -2436,11 +2373,13 @@ export async function buildPrompt(
   const textInjectionText = buildTextInjectionText(ctx, hasBeenSummarized, contextLines);
   const allowedImageTypes = profile?.entityImageTypes ?? ['promptBlock', 'context', 'location', 'character'];
   let globalIdCounter = 1;
+  const nextGlobalId = () => globalIdCounter++;
   const trackedImages: TrackedImage[] = [];
   const charImgInst: string[] = [];
   const promptImgInst: string[] = [];
   const ctxImgInst: string[] = [];
   const locImgInst: string[] = [];
+
   for (const imageType of allowedImageTypes) {
     if (imageType === 'character') {
       const colocatedParticipants = getCoLocatedParticipants(interactionData, character);
@@ -2461,7 +2400,7 @@ export async function buildPrompt(
           if (imagePath) base64Data = await fetchImageAsBase64(imagePath);
         }
         if (!base64Data) continue;
-        const id = globalIdCounter++;
+        const id = nextGlobalId();
         const displayName = getFullDisplayName(char, ctx.participants, ctx.knownNames);
         trackedImages.push({
           globalId: id,
@@ -2473,11 +2412,11 @@ export async function buildPrompt(
         charImgInst.push(`Image ${id} - ${displayName}`);
       }
     } else if (imageType === 'promptBlock') {
-      for (const block of allPromptBlocks) {
-        if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
-        if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
-        if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
-        if (!isEntityActiveWithCache(
+      const activeBlocks = allPromptBlocks.filter(block => {
+        if (!isPromptBlockCharacterBound(block, ctx.characterId)) return false;
+        if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) return false;
+        if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) return false;
+        return isEntityActiveWithCache(
           block.regularExpressionActivationTriggers,
           block.regularExpressionDeactivationTriggers,
           block.regularExpressionExclusionActivationTriggers,
@@ -2488,74 +2427,16 @@ export async function buildPrompt(
           [...ctx.protagonistIds],
           allTextSearchSpace,
           ctx.combinationCache
-        )) {
-          continue;
-        }
-        if (block.images && block.images.length > 0) {
-          let localIdx = 1;
-          for (const img of block.images) {
-            const imageUrl = getPromptBlockImageUrl(block.id, img);
-            if (!imageUrl) continue;
-            const base64Data = await fetchImageAsBase64(imageUrl);
-            if (!base64Data) continue;
-            const id = globalIdCounter++;
-            trackedImages.push({
-              globalId: id,
-              entityType: 'promptBlock',
-              entityName: block.name,
-              localIndex: localIdx,
-              base64Data
-            });
-            promptImgInst.push(`Image ${id} - Prompt Block '${block.name}' Image ${localIdx}`);
-            localIdx++;
-          }
-        }
-      }
+        );
+      });
+      await trackEntityImages(activeBlocks, 'promptBlock', getPromptBlockImageUrl, promptImgInst, trackedImages, nextGlobalId);
     } else if (imageType === 'context') {
-      for (const { context } of resolvedContextsWithWeb) {
-        if (context.images && context.images.length > 0) {
-          let localIdx = 1;
-          for (const img of context.images) {
-            const imageUrl = getContextImageUrl(context.id, img);
-            if (!imageUrl) continue;
-            const base64Data = await fetchImageAsBase64(imageUrl);
-            if (!base64Data) continue;
-            const id = globalIdCounter++;
-            trackedImages.push({
-              globalId: id,
-              entityType: 'context',
-              entityName: context.name,
-              localIndex: localIdx,
-              base64Data
-            });
-            ctxImgInst.push(`Image ${id} - Context '${context.name}' Image ${localIdx}`);
-            localIdx++;
-          }
-        }
-      }
+      await trackEntityImages(resolvedContextsWithWeb.map(r => r.context), 'context', getContextImageUrl, ctxImgInst, trackedImages, nextGlobalId);
     } else if (imageType === 'location' && ctx.currentLocation) {
-      const loc = ctx.currentLocation;
-      if (loc.images && loc.images.length > 0) {
-        let localIdx = 1;
-        for (const img of loc.images) {
-          const imageUrl = getLocationImageUrl(loc.id, img);
-          if (!imageUrl) continue;
-          const base64Data = await fetchImageAsBase64(imageUrl);
-          if (!base64Data) continue;
-          const id = globalIdCounter++;
-          trackedImages.push({
-            globalId: id,
-            entityType: 'location',
-            entityName: loc.name || 'Unknown Location',
-            localIndex: localIdx,
-            base64Data
-          });
-          locImgInst.push(`Image ${id} - Location '${loc.name || 'Unknown Location'}' Image ${localIdx}`);
-          localIdx++;
-        }
-      }
+      await trackEntityImages([ctx.currentLocation], 'location', getLocationImageUrl, locImgInst, trackedImages, nextGlobalId);
     }
   }
+
   const charImgStr = charImgInst.length > 0 ? `${delimiters.blockStart('system')}${charImgInst.join(', ')}${delimiters.blockEnd}` : '';
   const promptImgStr = promptImgInst.length > 0 ? `${delimiters.blockStart('system')}${promptImgInst.join(', ')}${delimiters.blockEnd}` : '';
   const ctxImgStr = ctxImgInst.length > 0 ? `${delimiters.blockStart('system')}${ctxImgInst.join(', ')}${delimiters.blockEnd}` : '';
@@ -2670,10 +2551,8 @@ export async function buildPrompt(
   let messages: OpenAIMessage[];
 
   if (promptFormatMode !== 'none') {
-    // 1. Assemble all content lines (the payload)
     const contentLines: string[] = [];
     for (const entry of inputStrategy) {
-      // Ignore legacy template strings if they somehow still exist in the array
       if (
         entry === 'Model Chat Template' ||
         entry === 'Model Instruction Template' ||
@@ -2684,7 +2563,6 @@ export async function buildPrompt(
       if (lines?.length) contentLines.push(...lines);
     }
     
-    // Add regex-activated blocks
     for (const blockId of regexActivatedBlocks) {
       const lines = blockMap[blockId];
       if (lines?.length) contentLines.push(...lines);
@@ -2696,7 +2574,6 @@ export async function buildPrompt(
     const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
     const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
 
-    // 2. Apply Envelope based on promptFormatMode
     if (promptFormatMode === 'instruction' && resolvedInstructionTemplate?.instructionTemplate) {
       promptLines.push(
         resolvedInstructionTemplate.instructionTemplate
@@ -2710,14 +2587,13 @@ export async function buildPrompt(
         (m): m is TextMessage => isTextMessage(m) && isMessageVisibleTo(m, ctx.characterId)
       );
       
-      // Prepend non-history assembled content
       promptLines.push(assembledContent);
       
       for (const msg of chatHistoryForTemplate) {
         const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
         let content = selectModelSummary(msg, modelId);
         if (msg.character.id !== ctx.characterId) {
-            content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
+          content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
         }
         content = replacePlaceholders(
           content,
@@ -2755,7 +2631,7 @@ export async function buildPrompt(
         const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
         let content = selectModelSummary(msg, modelId);
         if (msg.character.id !== ctx.characterId) {
-            content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
+          content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
         }
         content = replacePlaceholders(
           content,
@@ -2778,12 +2654,10 @@ export async function buildPrompt(
           .replace(/{content}/g, '')
       );
     } else {
-      // Fallback if templates are missing but mode is set
       promptLines.push(assembledContent);
     }
     messages = [{ role: 'user', content: promptLines.join('\n') }];
   } else {
-    // 'none' mode (Standard OpenAI-style system/user/assistant messages)
     messages = buildStructuredMessages(blockMap, inputStrategy, ctx.minimalVolatileCacheMode);
     if (regexActivatedBlocks.length > 0) {
       const extraLines: string[] = [];
@@ -2794,7 +2668,7 @@ export async function buildPrompt(
       if (extraLines.length > 0) {
         const lastSystemMsg = [...messages].reverse().find(m => m.role === 'system');
         if (lastSystemMsg && typeof lastSystemMsg.content === 'string') {
-          lastSystemMsg.content += '\n' + extraLines.join('\n');
+          lastSystemMsg.content += `\n${extraLines.join('\n')}`;
         } else {
           messages.push({ role: 'system', content: extraLines.join('\n') });
         }
@@ -2802,15 +2676,13 @@ export async function buildPrompt(
     }
   }
 
-  let defaultStops: string[] = [];
-  if (!profile?.doNotInjectDefaultStopTokens) {
-    const templateStops = resolvedChatTemplate?.stopPatterns || [];
-    const turnEndStop = delimiters.turnEnd;
-    defaultStops = [...templateStops, turnEndStop].filter(s => s.length > 0);
-  }
+  const defaultStops = !profile?.doNotInjectDefaultStopTokens
+    ? resolveEffectiveStopTokens()
+    : [];
   const stops = [...defaultStops, ...activeStopPatterns.map(sp => sp.pattern)];
   const uniqueStops = Array.from(new Set(stops)).filter(s => typeof s === 'string' && s.length > 0);
   const imagePayloads = trackedImages.map(img => ({ data: img.base64Data, id: img.globalId }));
+
   return {
     messages,
     stops: uniqueStops,
@@ -2818,50 +2690,4 @@ export async function buildPrompt(
     characterClothingWearingStatuses,
     fetchErrors
   };
-}
-
-export function getUniversalMessageFilterFlags(
-  textMessages: TextMessage[],
-  promptBlocks: PromptBlock[],
-  contexts: Context[],
-  locations: Location[],
-): boolean[] {
-  const excluded = new Array(textMessages.length).fill(false);
-  for (const context of contexts) {
-    if (context.characterBindings && context.characterBindings.length > 0) continue;
-    const source = context as Context & WithMessageFilterExclusionTriggers;
-    applyMessageFilterTriggers(
-      textMessages,
-      excluded,
-      source.messageFilterRegularExpressionActivationTriggers,
-      source.messageFilterRegularExpressionDeactivationTriggers,
-      source.messageFilterRegularExpressionExclusionActivationTriggers,
-      source.messageFilterRegularExpressionExclusionDeactivationTriggers,
-    );
-  }
-  for (const location of locations) {
-    if (location.characterBindings && location.characterBindings.length > 0) continue;
-    const source = location as Location & WithMessageFilterExclusionTriggers;
-    applyMessageFilterTriggers(
-      textMessages,
-      excluded,
-      source.messageFilterRegularExpressionActivationTriggers,
-      source.messageFilterRegularExpressionDeactivationTriggers,
-      source.messageFilterRegularExpressionExclusionActivationTriggers,
-      source.messageFilterRegularExpressionExclusionDeactivationTriggers,
-    );
-  }
-  for (const block of promptBlocks) {
-    if (block.characterBindings && block.characterBindings.length > 0) continue;
-    const source = block as PromptBlock & WithMessageFilterExclusionTriggers;
-    applyMessageFilterTriggers(
-      textMessages,
-      excluded,
-      source.messageFilterRegularExpressionActivationTriggers,
-      source.messageFilterRegularExpressionDeactivationTriggers,
-      source.messageFilterRegularExpressionExclusionActivationTriggers,
-      source.messageFilterRegularExpressionExclusionDeactivationTriggers,
-    );
-  }
-  return excluded;
 }

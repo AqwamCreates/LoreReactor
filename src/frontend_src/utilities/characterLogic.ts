@@ -1,7 +1,8 @@
-// src/frontend_src/utilities/characterLogic.ts
-import type { Character, InteractionData, HistoryMessage, Profile, tool, ChatMessage, TextCharacterInjection } from "../types";
+import type { Character, InteractionData, HistoryMessage, Profile, tool, ChatMessage } from "../types";
 import { findLatestMessage } from "./messageLogic";
 import { getLocalMessageHistory } from "./timelineLogic";
+import { traverseStochasticGraph, type StochasticGraphNode } from "./graphLogic";
+import { weightedSample } from "./dynamicCharacterLogic";
 
 function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, character: Character, profile?: Profile): boolean {
     const characterValue = character[key] as boolean;
@@ -9,6 +10,21 @@ function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, characte
     if (profileValue === undefined || profileValue === 0) return characterValue;
     if (profileValue < 0) return false;
     return true;
+}
+
+export function getEffectiveUseFrontCameraImage(character: Character, profile?: Profile): boolean {
+    return getEffectiveTriStateBoolean("useFrontCameraImage", character, profile);
+}
+
+export function getCharacterNameVariants(character: Character, toLowerCase = false): string[] {
+    const variants = new Set<string>();
+    if (character.name) variants.add(toLowerCase ? character.name.toLowerCase() : character.name);
+    if (character.aliases) {
+        for (const alias of character.aliases) {
+            if (alias) variants.add(toLowerCase ? alias.toLowerCase() : alias);
+        }
+    }
+    return Array.from(variants);
 }
 
 function getEffectiveNumeric<K extends keyof Character>(key: K, character: Character, profile?: Profile): number {
@@ -28,7 +44,6 @@ function getEffectiveRecordStringBoolean(key: string, character: Character, prof
     if (!profileRecord) return { ...characterRecord };
 
     const result = {} as Record<string, boolean>;
-
     for (const k of Object.keys(characterRecord)) {
         const profileValue = profileRecord[k];
         if (profileValue === undefined || profileValue === 0) {
@@ -42,237 +57,74 @@ function getEffectiveRecordStringBoolean(key: string, character: Character, prof
     return result;
 }
 
-export function getEffectiveUseFrontCameraImage(character: Character, profile?: Profile){
-    return getEffectiveTriStateBoolean("useFrontCameraImage", character, profile)
-}
-
 export function getEffectiveChatProbability(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("chatProbability", character, profile);
 }
-
 export function getEffectiveMaximumChatStamina(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("maximumChatStamina", character, profile);
 }
-
 export function getEffectiveChatStaminaRegenerationRate(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("chatStaminaRegenerationRate", character, profile);
 }
-
 export function getEffectiveInitiativeWeight(character: Character, profile?: Profile): number {
     if (profile?.forceEqualInitiative) return 1;
     return character.initiativeWeight ?? 1;
 }
-
 export function getEffectiveNameSensitivity(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("nameSensitivity", character, profile);
 }
-
 export function getEffectiveChatImpatienceSensitivity(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("chatImpatienceSensitivity", character, profile);
 }
-
 export function getEffectiveSkipProbability(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("skipProbability", character, profile);
 }
-
 export function getEffectiveMemoryRetentionWeight(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("memoryRetentionWeight", character, profile);
 }
-
 export function getEffectiveContextSensitivity(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("contextSensitivity", character, profile);
 }
-
 export function getEffectiveMaximumActionStamina(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("maximumActionStamina", character, profile);
 }
-
 export function getEffectiveActionStaminaRegenerationRate(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("actionStaminaRegenerationRate", character, profile);
 }
-
 export function getEffectiveMessagesToDisableThinkPrompt(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableThinkPrompt", character, profile);
 }
-
 export function getEffectiveMessagesToDisableMetaThinkInstructions(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableMetaThinkInstructions", character, profile);
 }
-
 export function getEffectiveMessagesToDisableDialoguePrompt(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableDialoguePrompt", character, profile);
 }
-
 export function getEffectiveMessagesToDisableStarterPrompt(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("numberOfMessagesToDisableStarterPrompt", character, profile);
 }
-
 export function getEffectiveTools(character: Character, profile?: Profile): Record<tool, boolean> {
     return getEffectiveRecordStringBoolean("tools", character, profile);
 }
-
 export function isToolEnabled(character: Character, toolName: tool, profile?: Profile): boolean {
+    return getEffectiveTools(character, profile)[toolName] ?? false;
+}
+export function getEnabledTools(character: Character, profile: Profile | undefined): string[] {
     const effectiveTools = getEffectiveTools(character, profile);
-    return effectiveTools[toolName] ?? false;
+    return (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
 }
 
 export function getNameSensitivityMultiplier(character: Character, interactionData: InteractionData): number {
     const sensitivity = getEffectiveNameSensitivity(character, interactionData.profile);
     if (sensitivity === 0) return 1;
-
-    const globalHistory = getLocalMessageHistory(interactionData, character, ['chat']);
-    if (globalHistory.length === 0) return 1;
-
-    const latestMessage = globalHistory[globalHistory.length - 1] as ChatMessage;
-    if (latestMessage.character.id === character.id) return 1;
-
-    const textLower = latestMessage.textContent.toLowerCase();
-    const fullNameLower = character.name.toLowerCase();
-
-    // Build ignore list: other participants' full names
-    const ignoreRanges: { start: number; end: number }[] = [];
-    for (const participant of interactionData.participants) {
-        if (participant.id === character.id) continue;
-        const otherNameLower = participant.name.toLowerCase();
-        if (otherNameLower === fullNameLower) continue;
-        let searchIndex = 0;
-        while (true) {
-            const foundIndex = textLower.indexOf(otherNameLower, searchIndex);
-            if (foundIndex === -1) break;
-            ignoreRanges.push({ start: foundIndex, end: foundIndex + otherNameLower.length });
-            searchIndex = foundIndex + otherNameLower.length;
-        }
-    }
-
-    const isIgnored = (matchStart: number, matchLength: number): boolean => {
-        const matchEnd = matchStart + matchLength;
-        for (const range of ignoreRanges) {
-            if (matchStart < range.end && matchEnd > range.start) return true;
-        }
-        return false;
-    };
-
-    let mentionCount = 0;
-
-    // Step 1: Scan for full name first
-    let searchIndex = 0;
-    while (true) {
-        const foundIndex = textLower.indexOf(fullNameLower, searchIndex);
-        const fullNameLength = fullNameLower.length;
-        if (foundIndex === -1) break;
-        if (!isIgnored(foundIndex, fullNameLength)) {
-            mentionCount++;
-        }
-        searchIndex = foundIndex + fullNameLength;
-    }
-
-    // Step 2: Split into parts and scan for partial names (min 2 chars)
-    const nameParts = new Set<string>();
-    for (const part of fullNameLower.split(/\s+/)) {
-        if (part.length >= 2 && part !== fullNameLower) nameParts.add(part);
-    }
-
-    for (const namePart of nameParts) {
-        let partSearchIndex = 0;
-        while (true) {
-            const foundIndex = textLower.indexOf(namePart, partSearchIndex);
-            if (foundIndex === -1) break;
-            if (!isIgnored(foundIndex, namePart.length)) {
-                mentionCount++;
-            }
-            partSearchIndex = foundIndex + namePart.length;
-        }
-    }
-
-    const multiplier = (mentionCount * sensitivity) + 1;
-
-    return multiplier;
+    const mentionCount = getNameMentionCount(character, interactionData);
+    return (mentionCount * sensitivity) + 1;
 }
 
-export function consumeChatStaminaForMessage(interactionMessage: HistoryMessage, amountOfChatStaminaConsumed: number) {
-    if (interactionMessage.remainingChatStamina === undefined) return;
-    interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amountOfChatStaminaConsumed);
-}
-
-export function consumeActionStaminaForMessage(interactionMessage: HistoryMessage, amountOfActionStaminaConsumed: number) {
-    if (interactionMessage.remainingActionStamina === undefined) return;
-    interactionMessage.remainingActionStamina = Math.max(0, interactionMessage.remainingActionStamina - amountOfActionStaminaConsumed);
-}
-
-export function generateChatStaminaForMessage(interactionMessage: HistoryMessage, amountOfChatStaminaGenerated: number, character: Character, profile?: Profile) {
-    const maximumChatStamina = getEffectiveMaximumChatStamina(character, profile);
-    const remainingChatStamina = interactionMessage.remainingChatStamina;
-
-    if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
-    if (remainingChatStamina === undefined) return;
-    if (remainingChatStamina >= maximumChatStamina) return;
-
-    const newRemainingChatStamina = Math.min(
-        maximumChatStamina,
-        remainingChatStamina + amountOfChatStaminaGenerated
-    );
-
-    interactionMessage.remainingChatStamina = newRemainingChatStamina;
-}
-
-export function generateActionStaminaForMessage(interactionMessage: HistoryMessage, amountOfActionStaminaGenerated: number, character: Character, profile?: Profile) {
-    const maximumActionStamina = getEffectiveMaximumActionStamina(character, profile);
-    const remainingActionStamina = interactionMessage.remainingActionStamina;
-
-    if (maximumActionStamina === Number.POSITIVE_INFINITY) return;
-    if (remainingActionStamina === undefined) return;
-    if (remainingActionStamina >= maximumActionStamina) return;
-
-    const newRemainingActionStamina = Math.min(
-        maximumActionStamina,
-        remainingActionStamina + amountOfActionStaminaGenerated
-    );
-
-    interactionMessage.remainingActionStamina = newRemainingActionStamina;
-}
-
-/**
- * Regenerate chat stamina for a character based on their previous interaction.
- * Mutates the interactionHistories in place by updating the character's last entry.
- */
-export function generateChatStaminaForInteractionData(data: InteractionData, amountOfChatStamina: number, character: Character) {
-    const maximumChatStamina = getEffectiveMaximumChatStamina(character, data.profile);
-    if (maximumChatStamina === Number.POSITIVE_INFINITY) return;
-    
-    // FIX: Replaced obsolete findPreviousMessage with spatial findLatestMessage
-    const latest = findLatestMessage(data, character);
-    const previousMessage = latest?.message;
-    if (!previousMessage) return;
-    
-    generateChatStaminaForMessage(previousMessage, amountOfChatStamina, character, data.profile);
-}
-
-/**
- * Regenerate action stamina for a character based on their previous interaction.
- * Mutates the interactionHistories in place by updating the character's last entry.
- */
-export function generateActionStaminaForInteractionData(data: InteractionData, amountOfActionStamina: number, character: Character) {
-    const maximumActionStamina = getEffectiveMaximumActionStamina(character, data.profile);
-    if (maximumActionStamina === Number.POSITIVE_INFINITY) return;
-    
-    // FIX: Replaced obsolete findPreviousMessage with spatial findLatestMessage
-    const latest = findLatestMessage(data, character);
-    const previousMessage = latest?.message;
-    if (!previousMessage) return;
-    
-    generateActionStaminaForMessage(previousMessage, amountOfActionStamina, character, data.profile);
-}
-
-/**
- * Count how many times a character's name (full or partial) appears in the
- * most recent chat message, excluding mentions that overlap with other
- * participants' names.
- */
 export function getNameMentionCount(character: Character, interactionData: InteractionData): number {
     const sensitivity = getEffectiveNameSensitivity(character, interactionData.profile);
     if (sensitivity === 0) return 0;
 
-    // FIX: Replaced flat interactionHistory array with spatial getLocalMessageHistory
     const localHistory = getLocalMessageHistory(interactionData, character, ['chat']);
     if (localHistory.length === 0) return 0;
 
@@ -282,7 +134,6 @@ export function getNameMentionCount(character: Character, interactionData: Inter
     const textLower = latestMessage.textContent.toLowerCase();
     const fullNameLower = character.name.toLowerCase();
 
-    // Build ignore list: other participants' full names
     const ignoreRanges: { start: number; end: number }[] = [];
     for (const participant of interactionData.participants) {
         if (participant.id === character.id) continue;
@@ -306,19 +157,14 @@ export function getNameMentionCount(character: Character, interactionData: Inter
     };
 
     let mentionCount = 0;
-
-    // Full name scan
     let searchIndex = 0;
     while (true) {
         const foundIndex = textLower.indexOf(fullNameLower, searchIndex);
         if (foundIndex === -1) break;
-        if (!isIgnored(foundIndex, fullNameLower.length)) {
-            mentionCount++;
-        }
+        if (!isIgnored(foundIndex, fullNameLower.length)) mentionCount++;
         searchIndex = foundIndex + fullNameLower.length;
     }
 
-    // Partial name scan (min 2 chars, excluding full name itself)
     const nameParts = new Set<string>();
     for (const part of fullNameLower.split(/\s+/)) {
         if (part.length >= 2 && part !== fullNameLower) nameParts.add(part);
@@ -329,9 +175,7 @@ export function getNameMentionCount(character: Character, interactionData: Inter
         while (true) {
             const foundIndex = textLower.indexOf(namePart, partSearchIndex);
             if (foundIndex === -1) break;
-            if (!isIgnored(foundIndex, namePart.length)) {
-                mentionCount++;
-            }
+            if (!isIgnored(foundIndex, namePart.length)) mentionCount++;
             partSearchIndex = foundIndex + namePart.length;
         }
     }
@@ -339,14 +183,39 @@ export function getNameMentionCount(character: Character, interactionData: Inter
     return mentionCount;
 }
 
+export function consumeChatStaminaForMessage(interactionMessage: HistoryMessage, amount: number) {
+    if (interactionMessage.remainingChatStamina === undefined) return;
+    interactionMessage.remainingChatStamina = Math.max(0, interactionMessage.remainingChatStamina - amount);
+}
+
+export function consumeActionStaminaForMessage(interactionMessage: HistoryMessage, amount: number) {
+    if (interactionMessage.remainingActionStamina === undefined) return;
+    interactionMessage.remainingActionStamina = Math.max(0, interactionMessage.remainingActionStamina - amount);
+}
+
+export function generateChatStaminaForInteractionData(data: InteractionData, amount: number, character: Character) {
+    const maximum = getEffectiveMaximumChatStamina(character, data.profile);
+    if (maximum === Number.POSITIVE_INFINITY) return;
+    const latest = findLatestMessage(data, character)?.message;
+    if (!latest || latest.remainingChatStamina === undefined || latest.remainingChatStamina >= maximum) return;
+    latest.remainingChatStamina = Math.min(maximum, latest.remainingChatStamina + amount);
+}
+
+export function generateActionStaminaForInteractionData(data: InteractionData, amount: number, character: Character) {
+    const maximum = getEffectiveMaximumActionStamina(character, data.profile);
+    if (maximum === Number.POSITIVE_INFINITY) return;
+    const latest = findLatestMessage(data, character)?.message;
+    if (!latest || latest.remainingActionStamina === undefined || latest.remainingActionStamina >= maximum) return;
+    latest.remainingActionStamina = Math.min(maximum, latest.remainingActionStamina + amount);
+}
+
 export function initializeClothingWearingStatuses(character: Character): Record<string, boolean> {
     const clothings = character.clothings;
     if (!clothings || clothings.length === 0) return {};
-
     const statuses: Record<string, boolean> = {};
     for (const clothing of clothings) {
-        const probability = clothing.initialWearingProbability ?? 1;
-        statuses[clothing.id] = probability >= 1 ? true : probability <= 0 ? false : Math.random() < probability;
+        const prob = clothing.initialWearingProbability ?? 1;
+        statuses[clothing.id] = prob >= 1 ? true : prob <= 0 ? false : Math.random() < prob;
     }
     return statuses;
 }
@@ -354,117 +223,37 @@ export function initializeClothingWearingStatuses(character: Character): Record<
 export function getCharacterStarterMessage(character: Character): string {
     const starterPrompts = character.starterPrompts;
     if (!starterPrompts || starterPrompts.length === 0) return `*${character.name} enters the scene.*`;
-
     const entries = starterPrompts.filter(sp => sp.textContent && sp.textContent.length > 0);
     if (entries.length === 0) return `*${character.name} enters the scene.*`;
 
-    const totalWeight = entries.reduce((sum, sp) => sum + (sp.weight > 0 ? sp.weight : 1), 0);
-    let random = Math.random() * totalWeight;
-    let chosen = entries[0].textContent;
-
-    for (const sp of entries) {
-        const w = sp.weight > 0 ? sp.weight : 1;
-        if (random < w) {
-            chosen = sp.textContent;
-            break;
-        }
-        random -= w;
-    }
+    const pool = entries.map(sp => ({ item: sp.textContent, weight: sp.weight > 0 ? sp.weight : 1 }));
+    const chosen = weightedSample(pool) ?? entries[0].textContent;
     return chosen.replace(/\{\{char\}\}/gi, character.name);
 }
 
 export function generateInitialCharacterText(character: Character): string {
-    const textCharacterInjections = character.textCharacterInjections;
-    if (!textCharacterInjections || textCharacterInjections.length === 0) return '';
+    const injections = character.textCharacterInjections;
+    if (!injections || injections.length === 0) return '';
 
-    const injectionMap = new Map<string, TextCharacterInjection>();
-    for (const inj of textCharacterInjections) {
-        injectionMap.set(inj.id, inj);
-    }
-
-    const startPool: { inj: TextCharacterInjection; weight: number }[] = [];
-    let totalStartWeight = 0;
-    for (const inj of textCharacterInjections) {
-        const w = inj.textCharacterInjectionWeight ?? 1;
-        if (w > 0) {
-            startPool.push({ inj, weight: w });
-            totalStartWeight += w;
+    const nodes: StochasticGraphNode<string>[] = injections.map(inj => {
+        let picked = '';
+        if (inj.textCharacters && inj.textCharacters.length > 0) {
+            const charPool = inj.textCharacters.map((text, idx) => ({
+                item: text,
+                weight: inj.textCharacterWeights?.[idx] ?? 1,
+            }));
+            picked = weightedSample(charPool) ?? inj.textCharacters[0];
         }
-    }
-    if (startPool.length === 0 || totalStartWeight <= 0) return '';
+        return {
+            id: inj.id,
+            weight: inj.textCharacterInjectionWeight ?? 1,
+            skipProbability: inj.textCharacterSkipProbability ?? 0,
+            breakProbability: inj.textCharacterBreakProbability ?? 0,
+            bindings: inj.textCharacterInjectionBindings,
+            payload: picked,
+        };
+    });
 
-    let result = '';
-    let currentInj: TextCharacterInjection | undefined;
-
-    let roll = Math.random() * totalStartWeight;
-    for (const entry of startPool) {
-        roll -= entry.weight;
-        if (roll <= 0) { currentInj = entry.inj; break; }
-    }
-    if (!currentInj) currentInj = startPool[startPool.length - 1].inj;
-
-    while (currentInj) {
-        const skipProb = currentInj.textCharacterSkipProbability ?? 0;
-        const isSkipped = skipProb > 0 && Math.random() < skipProb;
-
-        if (!isSkipped) {
-            const textPool: { text: string; weight: number }[] = [];
-            let totalTextWeight = 0;
-            for (let i = 0; i < currentInj.textCharacters.length; i++) {
-                const w = currentInj.textCharacterWeights[i] ?? 0;
-                if (w > 0) {
-                    textPool.push({ text: currentInj.textCharacters[i], weight: w });
-                    totalTextWeight += w;
-                }
-            }
-
-            if (textPool.length > 0 && totalTextWeight > 0) {
-                let textRoll = Math.random() * totalTextWeight;
-                let pickedText = '';
-                for (const entry of textPool) {
-                    textRoll -= entry.weight;
-                    if (textRoll <= 0) { pickedText = entry.text; break; }
-                }
-                if (!pickedText) pickedText = textPool[textPool.length - 1].text;
-                result += pickedText;
-            }
-        }
-
-        const breakProb = currentInj.textCharacterBreakProbability ?? 0;
-        if (breakProb > 0 && Math.random() < breakProb) break;
-
-        const bindings = currentInj.textCharacterInjectionBindings;
-        if (!bindings || bindings.length === 0) break;
-
-        const nextPool: { inj: TextCharacterInjection; weight: number }[] = [];
-        let totalNextWeight = 0;
-        for (const bindId of bindings) {
-            const nextInj = injectionMap.get(bindId);
-            if (!nextInj) continue;
-            const w = nextInj.textCharacterInjectionWeight ?? 1;
-            if (w > 0) {
-                nextPool.push({ inj: nextInj, weight: w });
-                totalNextWeight += w;
-            }
-        }
-
-        if (nextPool.length === 0 || totalNextWeight <= 0) break;
-
-        let nextRoll = Math.random() * totalNextWeight;
-        let nextInj: TextCharacterInjection | undefined;
-        for (const entry of nextPool) {
-            nextRoll -= entry.weight;
-            if (nextRoll <= 0) { nextInj = entry.inj; break; }
-        }
-        if (!nextInj) nextInj = nextPool[nextPool.length - 1].inj;
-
-        currentInj = nextInj;
-    }
-
-    return result;
-}
-
-export function getEnabledTools(character: Character, profile: Profile | undefined): string[] {
-    const effectiveTools = getEffectiveTools(character, profile);
-    return (Object.keys(effectiveTools) as tool[]).filter(t => effectiveTools[t]);
+    const segments = traverseStochasticGraph(nodes);
+    return segments.join('');
 }
