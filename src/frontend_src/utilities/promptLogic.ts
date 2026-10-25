@@ -1673,9 +1673,9 @@ function buildParagraphCountInstructionsText(
   return `I understand that I can create a minimum of 1 paragraph and a maximum of {{currentChatStamina}} ${paragraphText}. If I exceed this, I will immediately and naturally stop creating new paragraphs.`;
 }
 
-function buildTimeElapsedText(diffMs: number): string {
-    if (diffMs <= 1000) return 'It has been just now since the last message in the real world.';
-    const timeStr = formatDuration(diffMs, { verbose: true, includeDays: true });
+function buildTimeElapsedText(msDifference: number): string {
+    if (msDifference <= 1000) return 'It has been just now since the last message in the real world.';
+    const timeStr = formatDuration(msDifference, { verbose: true, includeDays: true });
     return `It has been ${timeStr} since the last message in the real world. I may or may not acknowledge the time elapsed. I will update relevant information according to this information. For example, a previous time must be subtracted or added with the elapsed time to get current time.`;
 }
 
