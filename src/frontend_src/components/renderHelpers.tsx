@@ -57,6 +57,7 @@ export function renderProfileSubtext(profile: Profile): React.ReactNode {
     if (inputStrategy.includes('Date')) flags.push('Date');
     if (inputStrategy.includes('Time')) flags.push('Time');
     if (inputStrategy.includes('Time Elapsed')) flags.push('Time Elapsed');
+    if (inputStrategy.includes('Tool Instructions')) flags.push('Tools');
     if (enableWebSearchText) flags.push(enableWebSearchText as string);
     if (enableCalculatorText) flags.push(enableCalculatorText as string);
     if (enableDialogue) flags.push(enableDialogue as string);
