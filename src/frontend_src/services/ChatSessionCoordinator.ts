@@ -50,6 +50,8 @@ export interface CoordinatorDependencies {
     allRawInteractionDataShells: RawInteractionData[];
     allEntityFolders: EntityFolder[];
     allActions: InterjectableAction[];
+    requestBorrowedModel?: () => Promise<LanguageModel | null>;
+    requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
     addToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
     captureFrontCameraImage: () => Promise<string | null>;
     onMessageBroadcast?: (message: HistoryMessage) => void;
@@ -69,6 +71,27 @@ class ChatSessionCoordinator {
 
     public setDependencies(deps: CoordinatorDependencies) {
         this.deps = deps;
+    }
+
+    public setupPeerInference() {
+        const engineInstance = getLanguageModelEngine();
+        if (typeof (engineInstance as any).setPeerInferenceHandler === 'function') {
+            if (this.deps.requestPeerInference) {
+                (engineInstance as any).setPeerInferenceHandler(async (modelId: string, prompt: any, onToken: (token: string) => void, signal?: AbortSignal) => {
+                    if (modelId.startsWith('borrowed-')) {
+                        const parts = modelId.split('-');
+                        const ownerAccountId = parts[1];
+                        if (ownerAccountId && this.deps.requestPeerInference) {
+                            await this.deps.requestPeerInference(ownerAccountId, modelId, prompt, onToken, signal);
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+            } else {
+                (engineInstance as any).setPeerInferenceHandler(undefined);
+            }
+        }
     }
 
     private acquireLock(): boolean {
@@ -141,6 +164,16 @@ class ChatSessionCoordinator {
             sentimentEngine.unload();
         }
 
+        // Attempt to borrow a model from a peer if configured
+        let borrowedModel: LanguageModel | null = null;
+        if (this.deps.requestBorrowedModel) {
+            try {
+                borrowedModel = await this.deps.requestBorrowedModel();
+            } catch (e) {
+                console.warn('Failed to borrow model from peer:', e);
+            }
+        }
+
         const charHistory = getLocalMessageHistory(activeData, character, ['chat', 'whisper']) as TextMessage[];
         speculativeMarkovEngine.syncMessages(
             charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })),
@@ -187,6 +220,7 @@ class ChatSessionCoordinator {
                 existingCharacterText: currentExistingText,
                 callbacks,
                 isMultiplayerClient: this.deps.isMultiplayerClient,
+                borrowedModel,
                 toolContext: this.buildToolContext(),
                 voiceTracker: this.voiceTracker,
                 resumingMessageId: resumingMessageId,

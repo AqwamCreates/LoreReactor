@@ -1183,3 +1183,11 @@ export type entityType =
   | 'account' 
   | 'multiplayerData'
   | 'entityFolder';
+
+export interface HandleServerResponseResult {
+    interactionData: InteractionData;
+    isCompleted: boolean;
+    promptText?: string;
+    rawText?: string;
+    displayText?: string;
+}

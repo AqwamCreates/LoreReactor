@@ -25,7 +25,7 @@ import {
     computeChatStaminaConsumptionCost,
     computeMovementCost,
 } from '../utilities/dynamicCharacterLogic';
-import type { HandleServerResponseResult } from '../hooks/useChatEngine';
+import type { HandleServerResponseResult } from '../types';
 
 // ✅ Reverted to pure 3-argument executor for Autonomous Simulation
 type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>;

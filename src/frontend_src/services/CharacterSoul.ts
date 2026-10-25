@@ -2,7 +2,7 @@
 import type { InteractionData, Character } from '../types';
 import { runTurnSequence } from './InteractionOrchestrator';
 import { computeGlobalScore, computeAutonomousTickDelay } from '../utilities/dynamicCharacterLogic';
-import type { HandleServerResponseResult } from '../hooks/useChatEngine';
+import type { HandleServerResponseResult } from '../types';
 import { processPendingToolActions } from './ToolExecutor';
 
 export class CharacterSoul {

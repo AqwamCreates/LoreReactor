@@ -9,6 +9,12 @@ import { chatCoordinator } from '../services/ChatSessionCoordinator';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
 import { createNewInteractionData } from '../utilities/interactionDataLogic';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
+import { getLanguageModelEngine } from '../services/LanguageModelEngine';
+import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
+import { loadRawBudgetData } from '../storages/serverStorage';
+import { getGlobalMessageHistory } from '../utilities/timelineLogic';
+import { hasTextContent } from '../utilities/chatSessionLogic';
+import { localURL } from '../../configurations';
 
 import type {
     Character, PromptBlock, Profile, InteractionData, Context, Location, AudioTrack,
@@ -20,7 +26,7 @@ interface UseChatSessionOptions {
     onMessageBroadcast: (message: HistoryMessage) => void;
     onStateBroadcast: (state: Partial<InteractionData>) => void;
     isMultiplayerClient: boolean;
-    joinProtagonist: Character | null; // <--- FIX
+    joinProtagonist: Character | null;
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -36,19 +42,24 @@ interface UseChatSessionOptions {
     allMemories: Memory[];
     allAccounts: Account[];
     allMultiplayerData: MultiplayerData[];
-    allRawInteractionDataShells: RawInteractionData[];
-    allEntityFolders: EntityFolder[];
+    allRawInteractionDataShells?: RawInteractionData[];
+    allEntityFolders?: EntityFolder[];
+    allExtensions: any[];
     allActions: InterjectableAction[];
+    requestBorrowedModel?: () => Promise<LanguageModel | null>;
+    requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
 }
 
 export function useChatSession(options: UseChatSessionOptions) {
     const { addToast } = useToast();
     const { captureFrontCameraImage } = useFrontCamera(addToast);
+    const lmEngine = getLanguageModelEngine();
 
+    // ─── 1. Bind Dependencies to Headless Coordinator ───
     useEffect(() => {
         chatCoordinator.setDependencies({
             isMultiplayerClient: options.isMultiplayerClient,
-            joinProtagonist: options.joinProtagonist, // <--- FIX
+            joinProtagonist: options.joinProtagonist,
             allCharacters: options.allCharacters,
             allContexts: options.allContexts,
             allLocations: options.allLocations,
@@ -64,16 +75,20 @@ export function useChatSession(options: UseChatSessionOptions) {
             allMemories: options.allMemories,
             allAccounts: options.allAccounts,
             allMultiplayerData: options.allMultiplayerData,
-            allRawInteractionDataShells: options.allRawInteractionDataShells,
-            allEntityFolders: options.allEntityFolders,
+            allRawInteractionDataShells: options.allRawInteractionDataShells ?? [],
+            allEntityFolders: options.allEntityFolders ?? [],
             allActions: options.allActions,
+            requestBorrowedModel: options.requestBorrowedModel,
+            requestPeerInference: options.requestPeerInference,
             addToast,
             captureFrontCameraImage,
             onMessageBroadcast: options.onMessageBroadcast,
             onStateBroadcast: options.onStateBroadcast,
         });
+        chatCoordinator.setupPeerInference();
     }, [options, addToast, captureFrontCameraImage]);
 
+    // ─── 2. Multiplayer Events ───
     useEffect(() => {
         if (options.isMultiplayerClient) return;
         const unsubscribe = MultiplayerEvents.on('peerMessageReceived', () => { 
@@ -82,10 +97,82 @@ export function useChatSession(options: UseChatSessionOptions) {
         return unsubscribe;
     }, [options.isMultiplayerClient]);
 
+    // ─── 3. Background Effects (Budget, Polling, Tokens, FM Unload) ───
     const interactionData = useChatStore(s => s.interactionData);
+    const selectedModel = useChatStore(s => s.selectedModel);
+    const setBudgetData = useChatStore(s => s.setBudgetData);
+    const updateRunningModels = useChatStore(s => s.updateRunningModels);
+    const setNumberOfTokens = useChatStore(s => s.setNumberOfTokens);
+
+    // Budget Data Hydration
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const bd = await loadRawBudgetData();
+                if (!cancelled && bd) setBudgetData(bd);
+            } catch (e) {
+                console.warn('Failed to load budget data:', e);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [setBudgetData]);
+
+    // Model Status Polling
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const response = await fetch(`${localURL}/language_models/status`);
+                if (!response.ok || cancelled) return;
+                const data = await response.json();
+                const status: Record<string, { isRunning: boolean; port?: number }> = {};
+                for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
+                if (!cancelled) updateRunningModels(status);
+            } catch (e) {
+                if (!cancelled) addToast(`Failed to fetch models status: ${e}`, 'error');
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [updateRunningModels, addToast]);
+
+    // Model Context Syncing
+    useEffect(() => {
+        if (selectedModel) lmEngine.setContext(selectedModel);
+    }, [selectedModel, lmEngine]);
+
+    // Context Token Accounting
+    useEffect(() => {
+        if (!interactionData) return;
+        let cancelled = false;
+        const timer = setTimeout(async () => {
+            const history = getGlobalMessageHistory(interactionData);
+            const fullText = history.filter(hasTextContent).map(m => m.textContent).join('\n\n');
+            if (!fullText) {
+                if (!cancelled) setNumberOfTokens(0);
+                return;
+            }
+            const total = await lmEngine.countTokens(fullText);
+            if (!cancelled) setNumberOfTokens(total);
+        }, 300);
+
+        return () => { cancelled = true; clearTimeout(timer); };
+    }, [interactionData, setNumberOfTokens, lmEngine]);
+
+    // Persist Factorization Machine Weights on Window Unload
+    useEffect(() => {
+        const handleBeforeUnload = () => {
+            try {
+                getBudgetStrategyEngine().persistFMs().catch(() => {});
+            } catch { /* engine not initialized */ }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, []);
+
+    // ─── 4. State Subscriptions & UI Bindings ───
     const localProtagonist = useChatStore(s => s.localProtagonist);
     const activeStrategy = useChatStore(s => s.activeStrategy);
-    const selectedModel = useChatStore(s => s.selectedModel);
     const runningModels = useChatStore(s => s.runningModels);
     const budgetData = useChatStore(s => s.budgetData);
     const selectedModelId = useChatStore(s => s.selectedModelId);
@@ -98,7 +185,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     const setSelectedCharacter = useChatStore(s => s.setLocalProtagonist);
     const setActiveBudgetStrategy = useChatStore(s => s.setActiveStrategy);
     const setSelectedGlobalModel = useChatStore(s => s.setSelectedModel);
-    const updateRunningModels = useChatStore(s => s.updateRunningModels);
 
     const isAtBottomRef = useRef(true);
     const ui = useChatUI(interactionData, isAtBottomRef, options.allCharacters);
@@ -126,7 +212,6 @@ export function useChatSession(options: UseChatSessionOptions) {
         sendActionAndGetResponse: (text: string, targetChar: Character) => chatCoordinator.sendDirectedAction(text, targetChar, localProtagonist!),
         stopGeneration: () => chatCoordinator.stopGeneration(),
         resumeGeneration: (id: string) => chatCoordinator.resumeGeneration(id),
-        // FIX: Match array parameter signature provided by App.tsx
         regenerateFromMessage: (id: string, protagonistIds?: string[]) => chatCoordinator.regenerateFromMessage(id, protagonistIds || [localProtagonist!.id]),
         startNewChat,
     };
