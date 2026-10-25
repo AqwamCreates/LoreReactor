@@ -902,7 +902,7 @@ export type participantScopeMode = 'current' | 'coLocated' | 'all'; // Default i
 
 export type participantInsertionMode = 'dynamic' | 'static' // Default is dynamic.
 
-export type cacheEfficiencyConfigurationType = 'Character Name' | 'System Prompt' | 'Think Prompt' // 0 -> No optimization, 1 -> Limited to co-located participants, 2 -> All participants
+export type cacheConfigurationType = 'Character Name' | 'System Prompt' | 'Think Prompt' // 0 -> No optimization, 1 -> Limited to co-located participants, 2 -> All participants
 export interface AutoResumeSignal {
 
   regularExpressionActivationTrigger?: string; // If not empty, this activates the auto-resume.
@@ -952,9 +952,9 @@ export interface Profile extends ObjectData {
   contextSensitivity: number;
   maximumActionStamina: number;
   actionStaminaRegenerationRate: number
-  participantScopeModes: Record<cacheEfficiencyConfigurationType, participantScopeMode>;
-  participantInsertionModes: Record<cacheEfficiencyConfigurationType, participantInsertionMode>;
-  participantsKnownNamesLimits: Record<cacheEfficiencyConfigurationType, number>;
+  participantScopeModes: Record<cacheConfigurationType, participantScopeMode>;
+  participantInsertionModes: Record<cacheConfigurationType, participantInsertionMode>;
+  participantsKnownNamesLimits: Record<cacheConfigurationType, number>;
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
   textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
@@ -1021,9 +1021,9 @@ export interface RawProfile extends RawData {
   maximumActionStamina: number;
   actionStaminaRegenerationRate: number 
   contextSensitivity: number;
-  participantScopeModes: Record<cacheEfficiencyConfigurationType, participantScopeMode>;
-  participantInsertionModes: Record<cacheEfficiencyConfigurationType, participantInsertionMode>;
-  participantsKnownNamesLimits: Record<cacheEfficiencyConfigurationType, number>;
+  participantScopeModes: Record<cacheConfigurationType, participantScopeMode>;
+  participantInsertionModes: Record<cacheConfigurationType, participantInsertionMode>;
+  participantsKnownNamesLimits: Record<cacheConfigurationType, number>;
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
   textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,

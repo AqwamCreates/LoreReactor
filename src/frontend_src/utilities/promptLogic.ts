@@ -14,7 +14,7 @@ import type {
   RegularExpressionTrigger,
   Clothing,
   Profile,
-  cacheEfficiencyConfigurationType,
+  cacheConfigurationType,
   RawInteractionData,
   ToolExecutionResult,
   participantScopeMode,
@@ -484,9 +484,9 @@ interface PromptBuildContext {
   characterName: string;
   profile: Profile | undefined;
   tools: string[];
-  participantScopeModes: Record<cacheEfficiencyConfigurationType, participantScopeMode>;
-  participantInsertionModes: Record<cacheEfficiencyConfigurationType, participantInsertionMode>;
-  participantsKnownNamesLimits: Record<cacheEfficiencyConfigurationType, number>;
+  participantScopeModes: Record<cacheConfigurationType, participantScopeMode>;
+  participantInsertionModes: Record<cacheConfigurationType, participantInsertionMode>;
+  participantsKnownNamesLimits: Record<cacheConfigurationType, number>;
   minimalVolatileCacheMode: boolean;
   currentLocation: Location | undefined;
   currentLocationId: string | undefined;

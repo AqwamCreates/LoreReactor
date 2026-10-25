@@ -4,7 +4,7 @@ import type {
     Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, 
     EntityFolder, entityType,
     tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, 
-    regularExpressionTarget, tristateInteger, cacheEfficiencyConfigurationType, 
+    regularExpressionTarget, tristateInteger, cacheConfigurationType, 
     AutoResumeSignal, deviceType, 
     toolUsageDisplayPlacementMode,
     textType,
@@ -551,13 +551,13 @@ function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
     };
 }
 
-function parseParticipantScopeModes(raw: unknown): Record<cacheEfficiencyConfigurationType, participantScopeMode> {
-    const defaults: Record<cacheEfficiencyConfigurationType, participantScopeMode> = { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' };
+function parseParticipantScopeModes(raw: unknown): Record<cacheConfigurationType, participantScopeMode> {
+    const defaults: Record<cacheConfigurationType, participantScopeMode> = { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' };
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
     const obj = raw as Record<string, unknown>;
     const result = { ...defaults };
     const validModes: participantScopeMode[] = ['current', 'coLocated', 'all'];
-    for (const key of Object.keys(defaults) as cacheEfficiencyConfigurationType[]) {
+    for (const key of Object.keys(defaults) as cacheConfigurationType[]) {
         if (key in obj && typeof obj[key] === 'string' && validModes.includes(obj[key] as participantScopeMode)) {
             result[key] = obj[key] as participantScopeMode;
         }
@@ -565,13 +565,13 @@ function parseParticipantScopeModes(raw: unknown): Record<cacheEfficiencyConfigu
     return result;
 }
 
-function parseParticipantInsertionModes(raw: unknown): Record<cacheEfficiencyConfigurationType, participantInsertionMode> {
-    const defaults: Record<cacheEfficiencyConfigurationType, participantInsertionMode> = { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' };
+function parseParticipantInsertionModes(raw: unknown): Record<cacheConfigurationType, participantInsertionMode> {
+    const defaults: Record<cacheConfigurationType, participantInsertionMode> = { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' };
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
     const obj = raw as Record<string, unknown>;
     const result = { ...defaults };
     const validModes: participantInsertionMode[] = ['dynamic', 'static'];
-    for (const key of Object.keys(defaults) as cacheEfficiencyConfigurationType[]) {
+    for (const key of Object.keys(defaults) as cacheConfigurationType[]) {
         if (key in obj && typeof obj[key] === 'string' && validModes.includes(obj[key] as participantInsertionMode)) {
             result[key] = obj[key] as participantInsertionMode;
         }
@@ -579,12 +579,12 @@ function parseParticipantInsertionModes(raw: unknown): Record<cacheEfficiencyCon
     return result;
 }
 
-function parseParticipantsKnownNamesLimits(raw: unknown): Record<cacheEfficiencyConfigurationType, number> {
-    const defaults: Record<cacheEfficiencyConfigurationType, number> = { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 };
+function parseParticipantsKnownNamesLimits(raw: unknown): Record<cacheConfigurationType, number> {
+    const defaults: Record<cacheConfigurationType, number> = { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 };
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
     const obj = raw as Record<string, unknown>;
     const result = { ...defaults };
-    for (const key of Object.keys(defaults) as cacheEfficiencyConfigurationType[]) {
+    for (const key of Object.keys(defaults) as cacheConfigurationType[]) {
         if (key in obj && typeof obj[key] === 'number') {
             const val = Math.round(obj[key] as number);
             result[key] = Math.max(-1, val);

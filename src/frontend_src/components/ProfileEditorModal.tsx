@@ -1,6 +1,6 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode, participantScopeMode, participantInsertionMode } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode, participantScopeMode, participantInsertionMode } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelect } from './EntitySelect';
 import '../main.css';
@@ -315,13 +315,13 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
     const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
     
-    const [participantScopeModes, setParticipantScopeModes] = useState<Record<cacheEfficiencyConfigurationType, participantScopeMode>>(
+    const [participantScopeModes, setParticipantScopeModes] = useState<Record<cacheConfigurationType, participantScopeMode>>(
         ep?.participantScopeModes ?? { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' }
     );
-    const [participantInsertionModes, setParticipantInsertionModes] = useState<Record<cacheEfficiencyConfigurationType, participantInsertionMode>>(
+    const [participantInsertionModes, setParticipantInsertionModes] = useState<Record<cacheConfigurationType, participantInsertionMode>>(
         ep?.participantInsertionModes ?? { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' }
     );
-    const [participantsKnownNamesLimits, setParticipantsKnownNamesLimits] = useState<Record<cacheEfficiencyConfigurationType, number>>(
+    const [participantsKnownNamesLimits, setParticipantsKnownNamesLimits] = useState<Record<cacheConfigurationType, number>>(
         ep?.participantsKnownNamesLimits ?? { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 }
     );
     
@@ -416,7 +416,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
     const profileTabs: { id: ProfileTabId; label: string; icon: string }[] = [{ id: 'general', label: 'General', icon: '📝' }, { id: 'injection', label: 'Injection', icon: '💉' }, { id: 'behaviour', label: 'Behaviour', icon: '🧠' }, { id: 'tools', label: 'Tools', icon: '🔧' }, { id: 'pipeline', label: 'Pipeline', icon: '🔄' }, { id: 'cache', label: 'Cache', icon: '⚡' }, { id: 'models', label: 'Models', icon: '🤖' }];
-    const cacheCategories: cacheEfficiencyConfigurationType[] = ['Character Name', 'System Prompt', 'Think Prompt'];
+    const cacheCategories: cacheConfigurationType[] = ['Character Name', 'System Prompt', 'Think Prompt'];
 
     // --- Array Configs to eliminate repetitive JSX ---
     const promptDecayConfigs = [
