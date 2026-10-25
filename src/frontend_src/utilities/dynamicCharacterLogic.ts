@@ -345,7 +345,7 @@ export function computeChatStaminaConsumptionCost(
     if (paragraphs <= 0) return 0;
 
     const hasLocations = data.locations && data.locations.length > 0;
-    let coLocatedCount;
+    let coLocatedCount: number;
 
     if (!hasLocations) {
         coLocatedCount = Math.max(1, data.participants.filter(p => p.id !== speaker.id).length);
@@ -363,9 +363,8 @@ export function computeMovementCost(fromId: string, toId: string, locations: Loc
     if (fromId === toId) return 0;
     const fromLoc = locations.find(l => l.id === fromId);
     const distance = fromLoc?.locationDistances?.[toId];
-
-    if (distance !== undefined) return Math.max(1, Math.round(Math.sqrt(Math.max(0, distance))));
-    return 1; 
+    if (!distance) return 1;
+    return distance; 
 }
 
 /**

@@ -29,6 +29,7 @@ import { embeddingEngine } from './EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from './RetrievalEngine';
 import { retrieveEligibleMemories, detokenizeMemoryContent } from '../utilities/memoryLogic';
 import { toolResultEndString, toolResultStartString } from '../dictionaries/stringList';
+import { computeMovementCost } from '../utilities/dynamicCharacterLogic';
 
 // Re-export so consumers importing from ToolExecutor remain compatible
 export type {
@@ -2676,8 +2677,7 @@ export function processPendingToolActions(
                         if (updatedActionStamina !== undefined) {
                             const currentLocId = getCurrentLocation(updatedData, targetMsg.character)?.id;
                             if (currentLocId && currentLocId !== destLocId && updatedData.locations) {
-                                const fromLoc = updatedData.locations.find(l => l.id === currentLocId);
-                                const movementCost = fromLoc?.locationDistances?.[destLocId] ?? 1;
+                                const movementCost = computeMovementCost(currentLocId, destLocId, updatedData.locations)
                                 updatedActionStamina = Math.max(0, updatedActionStamina - movementCost);
                             }
                         }
