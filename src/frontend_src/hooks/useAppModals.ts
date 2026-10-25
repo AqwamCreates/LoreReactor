@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useAppModals.ts
 import { useState, useCallback, useMemo } from 'react';
 
-export type ModalName =
+export type modalName =
     | 'interactionDataList'
     | 'characterList'
     | 'contextList'
@@ -24,6 +24,7 @@ export type ModalName =
     | 'alternateTimelines'
     | 'aiRecommendation'
     | 'restrictionReduction'
+    | 'promptGuide'
     | 'cardImport'
     | 'importData'
     | 'exportData'
@@ -41,20 +42,20 @@ export interface ModalController {
     toggle: () => void;
 }
 
-type ModalStateMap = Record<ModalName, boolean>;
+type ModalStateMap = Record<modalName, boolean>;
 
 export function useAppModals() {
     const [modalStates, setModalStates] = useState<Partial<ModalStateMap>>({});
 
-    const openModal = useCallback((name: ModalName) => {
+    const openModal = useCallback((name: modalName) => {
         setModalStates(prev => ({ ...prev, [name]: true }));
     }, []);
 
-    const closeModal = useCallback((name: ModalName) => {
+    const closeModal = useCallback((name: modalName) => {
         setModalStates(prev => ({ ...prev, [name]: false }));
     }, []);
 
-    const toggleModal = useCallback((name: ModalName) => {
+    const toggleModal = useCallback((name: modalName) => {
         setModalStates(prev => ({ ...prev, [name]: !prev[name] }));
     }, []);
 
@@ -63,17 +64,17 @@ export function useAppModals() {
     }, []);
 
     const modals = useMemo(() => {
-        const names: ModalName[] = [
+        const names: modalName[] = [
             'interactionDataList', 'characterList', 'contextList', 'locationList', 'audioTrackList',
             'worldList', 'promptBlockList', 'modelList', 'samplerList', 'stopPatternList', 'retrievalConfigurationList',
             'budgetStrategyList', 'profileList', 'extensionList', 'accountList', 'multiplayerDataList',
             'settings', 'budgetControl', 'participantControl', 'alternateTimelines',
-            'aiRecommendation', 'restrictionReduction', 'cardImport', 'importData',
+            'aiRecommendation', 'restrictionReduction', 'promptGuide', 'cardImport', 'importData',
             'exportData', 'dataManager', 'joinSession', 'superSearch', 'gpuMonitor', 
             'languageModelInferenceManager', 'chatInspection'
         ];
 
-        const acc = {} as Record<ModalName, ModalController>;
+        const acc = {} as Record<modalName, ModalController>;
         for (const name of names) {
             acc[name] = {
                 isOpen: !!modalStates[name],

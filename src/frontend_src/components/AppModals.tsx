@@ -42,6 +42,7 @@ import { WorldEditorModal } from './WorldEditorModal';
 import { ParticipantControlModal } from './ParticipantControlModal';
 import { AIRecommendationModal } from './AIRecommendationModal';
 import { RestrictionReductionModal } from './RestrictionReductionModal';
+import { PromptGuideModal } from './PromptGuideModal';
 import { CharacterCardImportModal } from './CharacterCardImportModal';
 import { DataImportModal } from './DataImportModal';
 import { DataExportModal } from './DataExportModal';
@@ -915,6 +916,7 @@ export function AppModals({
                     onOpenJoinSession={modals.joinSession.open}
                     onOpenAIRecommendation={modals.aiRecommendation.open}
                     onOpenRestrictionReduction={modals.restrictionReduction.open}
+                    onOpenPromptGuide={modals.promptGuide.open}
                     onOpenAlternateTimelines={modals.alternateTimelines.open}
                     onOpenImportCharacterCard={modals.cardImport.open}
                     onOpenExportData={modals.exportData.open}
@@ -974,6 +976,10 @@ export function AppModals({
                     allCharacters={allCharacters} allProfiles={allProfiles} allLanguageModels={allLanguageModels} allSamplers={allSamplers}
                     runningModels={runningModels} 
                 />
+            )}
+
+            {modals.promptGuide.isOpen && (
+                <PromptGuideModal onClose={modals.promptGuide.close} />
             )}
 
             {modals.alternateTimelines.isOpen && (

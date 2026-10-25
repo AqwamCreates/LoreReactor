@@ -769,6 +769,37 @@ export interface RawBudgetData extends RawData {
   modelAverageTimeToFirstToken: Record<string, number>
   modelTotalSessionDuration: Record<string, number>
 }
+export interface PromptBlock extends ObjectData {
+  textContent: string
+  images: string[]
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  characterBindings: string[]
+  contextBindings: string[]
+  locationBindings: string[]
+}
+
+export interface RawPromptBlock extends RawData {
+  textContent: string
+  images: string[]
+  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
+  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
+  characterBindings: string[]
+  contextBindings: string[]
+  locationBindings: string[]
+}
 
 export type SummarizationStrategyType =
   | 'Sliding Window Replace'
@@ -851,37 +882,6 @@ export type promptBlockType =
   | 'Text Injection'
 
 export type promptFormatMode = 'none' | 'instruction' | 'chat' | 'chat-instruction';
-export interface PromptBlock extends ObjectData {
-  textContent: string
-  images: string[]
-  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
-  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
-  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
-  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
-  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
-  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
-  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  characterBindings: string[]
-  contextBindings: string[]
-  locationBindings: string[]
-}
-
-export interface RawPromptBlock extends RawData {
-  textContent: string
-  images: string[]
-  regularExpressionActivationTriggers?: RegularExpressionTrigger[];
-  regularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
-  regularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
-  regularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  messageFilterRegularExpressionActivationTriggers?: RegularExpressionTrigger[];
-  messageFilterRegularExpressionDeactivationTriggers?: RegularExpressionTrigger[];
-  messageFilterRegularExpressionExclusionActivationTriggers?: RegularExpressionTrigger[];
-  messageFilterRegularExpressionExclusionDeactivationTriggers?: RegularExpressionTrigger[];
-  characterBindings: string[]
-  contextBindings: string[]
-  locationBindings: string[]
-}
 
 export type textType = 
   | "normal" 
@@ -897,6 +897,10 @@ export type textType =
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 
 export type toolUsageDisplayPlacementMode = "top" | "before paragraph" | "before sentence" | "inline" | "after sentence" |"after paragraph" | "bottom" // Default is before sentence.
+
+export type participantScopeMode = 'current' | 'coLocated' | 'all'; // Default is colocated.
+
+export type participantInsertionMode = 'dynamic' | 'static' // Default is dynamic.
 
 export type cacheEfficiencyConfigurationType = 'Character Name' | 'System Prompt' | 'Think Prompt' // 0 -> No optimization, 1 -> Limited to co-located participants, 2 -> All participants
 export interface AutoResumeSignal {
@@ -948,7 +952,9 @@ export interface Profile extends ObjectData {
   contextSensitivity: number;
   maximumActionStamina: number;
   actionStaminaRegenerationRate: number
-  cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
+  participantScopeModes: Record<cacheEfficiencyConfigurationType, participantScopeMode>;
+  participantInsertionModes: Record<cacheEfficiencyConfigurationType, participantInsertionMode>;
+  participantsKnownNamesLimits: Record<cacheEfficiencyConfigurationType, number>;
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
   textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
@@ -1015,7 +1021,9 @@ export interface RawProfile extends RawData {
   maximumActionStamina: number;
   actionStaminaRegenerationRate: number 
   contextSensitivity: number;
-  cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
+  participantScopeModes: Record<cacheEfficiencyConfigurationType, participantScopeMode>;
+  participantInsertionModes: Record<cacheEfficiencyConfigurationType, participantInsertionMode>;
+  participantsKnownNamesLimits: Record<cacheEfficiencyConfigurationType, number>;
   minimalVolatileCacheMode: boolean // A switch that forces the input strategy to be locked to specific configuration to maximize cache efficiency.
   doNotInjectDefaultStopTokens: boolean;
   textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,

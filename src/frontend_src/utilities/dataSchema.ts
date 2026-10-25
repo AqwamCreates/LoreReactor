@@ -289,10 +289,20 @@ ${characterToolsSchema}
     "skipProbability": "number (-1 or 0-1, default -1 defers to character)",
     "memoryRetentionWeight": "number (-1 or ≥0, default -1 defers to character)",
     "contextSensitivity": "number (-1 or ≥0, default -1 defers to character)",
-    "cacheEfficiencyLevels": {
-      "Character Name": "number (0-2, default 0). 0 = no optimization, names resolved dynamically. 1 = freeze names for co-located participants. 2 = freeze names for all participants.",
-      "System Prompt": "number (0-2, default 0). 0 = only current character system prompt. 1 = inject co-located participants system prompts. 2 = inject all participants system prompts.",
-      "Think Prompt": "number (0-2, default 0). 0 = only current character think prompt. 1 = inject co-located participants think prompts. 2 = inject all participants think prompts."
+    "participantScopeModes": {
+      "Character Name": "'current' | 'coLocated' | 'all' (default 'coLocated'). Controls which characters are included in the prefix.",
+      "System Prompt": "'current' | 'coLocated' | 'all' (default 'coLocated').",
+      "Think Prompt": "'current' | 'coLocated' | 'all' (default 'coLocated')."
+    },
+    "participantInsertionModes": {
+      "Character Name": "'dynamic' | 'static' (default 'dynamic'). Dynamic = include only after they speak since arrival. Static = always include based on scope. Override in templates with ^ (dynamic) or * (static).",
+      "System Prompt": "'dynamic' | 'static' (default 'dynamic').",
+      "Think Prompt": "'dynamic' | 'static' (default 'dynamic')."
+    },
+    "participantsKnownNamesLimits": {
+      "Character Name": "number (≥-1, default -1). Limit name reveals to N oldest known characters. -1 = reveal all, 0 = reveal none. Override in templates with ?N (e.g., {{characters?3}}).",
+      "System Prompt": "number (≥-1, default -1).",
+      "Think Prompt": "number (≥-1, default -1)."
     },
     "minimalVolatileCacheMode": "boolean (default false). When true, volatile sections (date/time, weather, fatigue, inventory, tools, location) are forced to end of prompt regardless of input strategy ordering to maximize cache stability.",
     "doNotInjectDefaultStopTokens": "boolean (default false)",

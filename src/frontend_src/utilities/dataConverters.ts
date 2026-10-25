@@ -13,7 +13,9 @@ import type {
     RetrievalConfiguration,
     SummarizationStrategyType,
     textGenerationBehaviourOnNarration,
-    promptFormatMode
+    promptFormatMode,
+    participantScopeMode,
+    participantInsertionMode
 } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { UUID_REGEX } from './dataTypes';
@@ -549,15 +551,43 @@ function fillPromptBlockDefaults(b: Record<string, unknown>): PromptBlock {
     };
 }
 
-function parseCacheEfficiencyLevels(raw: unknown): Record<cacheEfficiencyConfigurationType, number> {
-    const defaults: Record<cacheEfficiencyConfigurationType, number> = { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+function parseParticipantScopeModes(raw: unknown): Record<cacheEfficiencyConfigurationType, participantScopeMode> {
+    const defaults: Record<cacheEfficiencyConfigurationType, participantScopeMode> = { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+    const obj = raw as Record<string, unknown>;
+    const result = { ...defaults };
+    const validModes: participantScopeMode[] = ['current', 'coLocated', 'all'];
+    for (const key of Object.keys(defaults) as cacheEfficiencyConfigurationType[]) {
+        if (key in obj && typeof obj[key] === 'string' && validModes.includes(obj[key] as participantScopeMode)) {
+            result[key] = obj[key] as participantScopeMode;
+        }
+    }
+    return result;
+}
+
+function parseParticipantInsertionModes(raw: unknown): Record<cacheEfficiencyConfigurationType, participantInsertionMode> {
+    const defaults: Record<cacheEfficiencyConfigurationType, participantInsertionMode> = { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
+    const obj = raw as Record<string, unknown>;
+    const result = { ...defaults };
+    const validModes: participantInsertionMode[] = ['dynamic', 'static'];
+    for (const key of Object.keys(defaults) as cacheEfficiencyConfigurationType[]) {
+        if (key in obj && typeof obj[key] === 'string' && validModes.includes(obj[key] as participantInsertionMode)) {
+            result[key] = obj[key] as participantInsertionMode;
+        }
+    }
+    return result;
+}
+
+function parseParticipantsKnownNamesLimits(raw: unknown): Record<cacheEfficiencyConfigurationType, number> {
+    const defaults: Record<cacheEfficiencyConfigurationType, number> = { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 };
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
     const obj = raw as Record<string, unknown>;
     const result = { ...defaults };
     for (const key of Object.keys(defaults) as cacheEfficiencyConfigurationType[]) {
         if (key in obj && typeof obj[key] === 'number') {
             const val = Math.round(obj[key] as number);
-            result[key] = Math.max(0, Math.min(2, val));
+            result[key] = Math.max(-1, val);
         }
     }
     return result;
@@ -621,7 +651,9 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         skipProbability: (p.skipProbability as number) ?? 0.1,
         memoryRetentionWeight: (p.memoryRetentionWeight as number) ?? 0.5,
         contextSensitivity: (p.contextSensitivity as number) ?? 0.5,
-        cacheEfficiencyLevels: parseCacheEfficiencyLevels(p.cacheEfficiencyLevels),
+        participantScopeModes: parseParticipantScopeModes(p.participantScopeModes),
+        participantInsertionModes: parseParticipantInsertionModes(p.participantInsertionModes),
+        participantsKnownNamesLimits: parseParticipantsKnownNamesLimits(p.participantsKnownNamesLimits),
         minimalVolatileCacheMode: (p.minimalVolatileCacheMode as boolean) ?? false,
         doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
         enableSpeculativeMarkov: (p.enableSpeculativeMarkov as boolean) ?? false,

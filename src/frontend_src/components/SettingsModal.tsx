@@ -53,6 +53,12 @@ const ASSISTANCE_ITEMS: SettingsItem[] = [
         label: 'Restriction Reduction',
         description: 'Analyze and modify character prompts to reduce the likelihood of model censorship or refusal.',
     },
+    {
+        id: 'prompt-guide',
+        icon: '📖',
+        label: 'Prompt Template Guide',
+        description: 'Syntax, operators, slicing, and live preview for custom prompt blocks.',
+    },
 ];
 
 const DATA_ITEMS: SettingsItem[] = [
@@ -141,6 +147,7 @@ interface SettingsModalProps {
     // Assistance tab
     onOpenAIRecommendation: () => void;
     onOpenRestrictionReduction: () => void;
+    onOpenPromptGuide: () => void;
     // Data tab
     onOpenImportCharacterCard: () => void;
     onOpenImportData: () => void;
@@ -153,7 +160,7 @@ interface SettingsModalProps {
     // Miscellaneous tab
     onOpenSuperSearch: () => void;
     onOpenGpuMonitor: () => void;
-    onOpenLanguageModelInferenceManager: () => void; // <--- ADD THIS
+    onOpenLanguageModelInferenceManager: () => void;
 }
 
 export function SettingsModal({
@@ -165,6 +172,7 @@ export function SettingsModal({
     // Assistance tab
     onOpenAIRecommendation,
     onOpenRestrictionReduction,
+    onOpenPromptGuide,
     // Data tab
     onOpenImportCharacterCard,
     onOpenImportData,
@@ -190,6 +198,7 @@ export function SettingsModal({
             // Assistance tab
             case 'ai-recommendation': onOpenAIRecommendation(); break;
             case 'restriction-reduction': onOpenRestrictionReduction(); break;
+            case 'prompt-guide': onOpenPromptGuide(); break;
             // Data tab
             case 'import-character-card': onOpenImportCharacterCard(); break;
             case 'import-data': onOpenImportData(); break;

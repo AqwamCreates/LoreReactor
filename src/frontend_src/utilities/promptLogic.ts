@@ -16,7 +16,9 @@ import type {
   Profile,
   cacheEfficiencyConfigurationType,
   RawInteractionData,
-  ToolExecutionResult
+  ToolExecutionResult,
+  participantScopeMode,
+  participantInsertionMode
 } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
@@ -71,8 +73,8 @@ const DEFAULT_MAX_RECURSION_DEPTH = 3;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 const RECENT_INTERACTION_WINDOW = 20;
 
-const TEMPLATE_REGEX = /{{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?}}/g;
-const TOOLS_PLACEHOLDER_REGEX = /{{tools(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?}}/g;
+// 1=key, 2=slice start, 3=slice end, 4=#, 5=!, 6=%scope, 7=^ or *, 8=?limit
+const TEMPLATE_REGEX = /{{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z]+))?([\^*])?(?:\?(\d+))?}}/g;
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -103,11 +105,6 @@ async function fetchImageAsBase64(url: string): Promise<string | null> {
   }
 }
 
-/**
- * Sanitizes raw tool call/result markers from text.
- * - stripTools = true: Removes tool syntax entirely (for regex/embedding search spaces).
- * - stripTools = false: Replaces tool calls with their actual textContent result (for other characters & summaries).
- */
 export function sanitizeToolSyntax(
   text: string, 
   toolExecutionResults: ToolExecutionResult[] | undefined,
@@ -206,6 +203,10 @@ export interface TemplateContext {
   characterName: string;
   protagonistDisplayString: string;
   protagonistPossessiveString: string;
+  protagonists: string[];
+  "protagonists'": string[];
+  characters: string[];
+  "characters'": string[];
   characterTurnStart: string;
   characterTurnEnd: string;
   chatHistory: string[];
@@ -251,6 +252,8 @@ export interface TemplateContext {
   contextImageInstructions: string;
   currentLocationImageInstructions: string;
   text: string;
+  promptBuildContext?: PromptBuildContext;
+  wearingStatus?: Record<string, boolean>;
 }
 
 const DEFAULT_TEMPLATES: Record<string, string> = {
@@ -291,12 +294,56 @@ export function resolveTemplate(
 ): string {
   return template.replace(
     TEMPLATE_REGEX,
-    (_match, key, startStr, endStr, hashStr, excludeStr) => {
+    (_match, key, startStr, endStr, hashStr, excludeStr, scopeStr, insertionStr, limitStr) => {
       const wantLength = hashStr === '#';
       const wantExclude = excludeStr === '!';
-      const asLengthOrValue = (value: string): string => {
+      
+      const hasScopeOverride = scopeStr !== undefined;
+      const scopeOverride = hasScopeOverride ? (scopeStr as participantScopeMode) : undefined;
+      
+      const hasInsertionOverride = insertionStr !== undefined;
+      const insertionOverride = insertionStr === '^' ? 'dynamic' : (insertionStr === '*' ? 'static' : undefined);
+      
+      const hasLimitOverride = limitStr !== undefined;
+      const limitOverride = hasLimitOverride ? parseInt(limitStr, 10) : undefined;
+
+      const asLengthOrValue = (value: string | string[]): string => {
+        if (Array.isArray(value)) {
+          const slice = getSlicedArray(value, startStr, endStr, wantExclude);
+          return wantLength ? String(slice.length) : slice.join('\n');
+        }
         return wantLength ? String(value.length) : value;
       };
+
+      if (ctx.promptBuildContext && (hasScopeOverride || hasInsertionOverride || hasLimitOverride)) {
+        const pCtx = ctx.promptBuildContext;
+        const profile = pCtx.profile;
+        
+        if (key === 'characterTags' || key === 'characterTagsWithDescriptions') {
+          const effectiveScope = scopeOverride ?? (profile?.participantScopeModes?.['Character Name'] ?? 'coLocated');
+          const effectiveInsertion = insertionOverride ?? (profile?.participantInsertionModes?.['Character Name'] ?? 'dynamic');
+          const effectiveLimit = limitOverride ?? profile?.participantsKnownNamesLimits?.['Character Name'];
+          const { tags, tagsWithDescriptions } = buildCharacterTagsText(pCtx, effectiveScope, effectiveInsertion, effectiveLimit);
+          return asLengthOrValue(key === 'characterTags' ? tags : tagsWithDescriptions);
+        }
+        if (key === 'appearancePrompt') {
+          const effectiveScope = scopeOverride ?? (profile?.participantScopeModes?.['Character Name'] ?? 'coLocated');
+          const effectiveInsertion = insertionOverride ?? (profile?.participantInsertionModes?.['Character Name'] ?? 'dynamic');
+          const effectiveLimit = limitOverride ?? profile?.participantsKnownNamesLimits?.['Character Name'];
+          return asLengthOrValue(buildAppearanceText(pCtx, ctx.wearingStatus || {}, effectiveScope, effectiveInsertion, effectiveLimit));
+        }
+        if (key === 'systemPrompt') {
+          const effectiveScope = scopeOverride ?? (profile?.participantScopeModes?.['System Prompt'] ?? 'coLocated');
+          const effectiveInsertion = insertionOverride ?? (profile?.participantInsertionModes?.['System Prompt'] ?? 'dynamic');
+          return asLengthOrValue(buildSystemPromptText(pCtx, effectiveScope, effectiveInsertion));
+        }
+        if (key === 'thinkPrompt') {
+          const effectiveScope = scopeOverride ?? (profile?.participantScopeModes?.['Think Prompt'] ?? 'coLocated');
+          const effectiveInsertion = insertionOverride ?? (profile?.participantInsertionModes?.['Think Prompt'] ?? 'dynamic');
+          return asLengthOrValue(buildThinkPromptText(pCtx, effectiveScope, effectiveInsertion));
+        }
+      }
+
       if (key === 'character') {
         return asLengthOrValue(`${ctx.characterParticipantTag} (${ctx.characterName})`);
       }
@@ -437,7 +484,9 @@ interface PromptBuildContext {
   characterName: string;
   profile: Profile | undefined;
   tools: string[];
-  cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number>;
+  participantScopeModes: Record<cacheEfficiencyConfigurationType, participantScopeMode>;
+  participantInsertionModes: Record<cacheEfficiencyConfigurationType, participantInsertionMode>;
+  participantsKnownNamesLimits: Record<cacheEfficiencyConfigurationType, number>;
   minimalVolatileCacheMode: boolean;
   currentLocation: Location | undefined;
   currentLocationId: string | undefined;
@@ -492,8 +541,7 @@ function buildProtagonistDisplayString(
   knownNames: Record<string, Record<string, boolean>>,
 ): string {
   if (coLocatedProtagonists.length === 0) return '';
-  const parts = coLocatedProtagonists.map(p => getFullDisplayName(p, participants, knownNames));
-  return parts.join(' and ');
+  return getFullDisplayName(coLocatedProtagonists[0], participants, knownNames);
 }
 
 function buildProtagonistPossessiveString(
@@ -502,53 +550,93 @@ function buildProtagonistPossessiveString(
   knownNames: Record<string, Record<string, boolean>>,
 ): string {
   if (coLocatedProtagonists.length === 0) return '';
-  const parts = coLocatedProtagonists.map(p => {
-    const tag = getParticipantTag(p, participants);
-    const knownName = getKnownDisplayName(p, knownNames);
-    const name = knownName ?? tag;
-    return `${name}'s`;
-  });
-  return parts.join(' and ');
+  const p = coLocatedProtagonists[0];
+  const tag = getParticipantTag(p, participants);
+  const knownName = getKnownDisplayName(p, knownNames);
+  const name = knownName ?? tag;
+  return `${name}'s`;
 }
 
-function replaceToolsPlaceholders(text: string, tools: string[]): string {
-  if (!text) return text;
-  return text.replace(
-    TOOLS_PLACEHOLDER_REGEX,
-    (_m, startStr, endStr, hashStr, excludeStr) => {
-      return formatToolsPlaceholder(
-        tools,
-        startStr,
-        endStr,
-        hashStr === '#',
-        excludeStr === '!'
-      );
-    }
-  );
-}
-
-export function replacePlaceholders(
+export function resolveInnerText(
   text: string,
-  characterParticipantTag: string,
-  characterName: string,
-  coLocatedProtagonists: Character[],
-  participants: Character[],
-  knownNames: Record<string, Record<string, boolean>>,
-  tools: string[] = [],
+  ctx: PromptBuildContext,
+  delimiters: PromptDelimiters
 ): string {
   if (!text) return text;
-  const protagonistString = buildProtagonistDisplayString(coLocatedProtagonists, participants, knownNames);
-  const protagonistPossessive = buildProtagonistPossessiveString(coLocatedProtagonists, participants, knownNames);
-  let result = text;
-  result = result.replace(/{{character}}/g, () => `${characterParticipantTag} (${characterName})`);
-  result = result.replace(/{{protagonist}}'s/g, () => protagonistPossessive);
-  result = result.replace(/{{protagonist}}/g, () => protagonistString);
-  result = replaceToolsPlaceholders(result, tools);
-  result = result.replace(/{{toolCallStartString}}/g, () => toolCallStartString);
-  result = result.replace(/{{toolCallEndString}}/g, () => toolCallEndString);
-  result = result.replace(/{{toolResultStartString}}/g, () => toolResultStartString);
-  result = result.replace(/{{toolResultEndString}}/g, () => toolResultEndString);
-  return result;
+
+  const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames));
+  const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
+    const tag = getParticipantTag(p, ctx.participants);
+    const knownName = getKnownDisplayName(p, ctx.knownNames);
+    return `${knownName ?? tag}'s`;
+  });
+
+  const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames));
+  const charactersPossessiveList = ctx.participants.map(p => {
+    const tag = getParticipantTag(p, ctx.participants);
+    const knownName = getKnownDisplayName(p, ctx.knownNames);
+    return `${knownName ?? tag}'s`;
+  });
+
+  const baseContext: TemplateContext = {
+    characterParticipantTag: ctx.characterParticipantTag,
+    characterName: ctx.characterName,
+    protagonistDisplayString: buildProtagonistDisplayString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames),
+    protagonistPossessiveString: buildProtagonistPossessiveString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames),
+    protagonists: protagonistsList,
+    "protagonists'": protagonistsPossessiveList,
+    characters: charactersList,
+    "characters'": charactersPossessiveList,
+    characterTurnStart: delimiters.turnStart(ctx.characterParticipantTag),
+    characterTurnEnd: delimiters.turnEnd,
+    chatHistory: [],
+    appearancePrompt: '',
+    reachableLocations: [],
+    reachableLocationsWithDescriptions: [],
+    characterTags: [],
+    characterTagsWithDescriptions: [],
+    systemPrompt: '',
+    thinkPrompt: '',
+    metaThinkInstructions: '',
+    dialoguePrompt: '',
+    knowledgePrompt: '',
+    memoryPrompt: '',
+    starterPrompt: '',
+    context: [],
+    currentLocation: '',
+    currentLocationWithDescription: '',
+    inventory: '',
+    skyView: '',
+    weather: '',
+    date: '',
+    time: '',
+    timeElapsed: '',
+    currentChatStamina: '',
+    maximumChatStamina: '',
+    chatStaminaRatio: '',
+    currentActionStamina: '',
+    maximumActionStamina: '',
+    actionStaminaRatio: '',
+    currentTotalStamina: '',
+    maximumTotalStamina: '',
+    totalStaminaRatio: '',
+    fatigueInformation: '',
+    paragraphCountInstructions: '',
+    toolInstructions: '',
+    toolMessageInstructions: '',
+    tools: ctx.tools,
+    antiRepetitionNudge: '',
+    textInjection: '',
+    characterImageInstructions: '',
+    promptBlockImageInstructions: '',
+    contextImageInstructions: '',
+    currentLocationImageInstructions: '',
+    text: '',
+    promptBuildContext: ctx,
+    wearingStatus: {}
+  };
+
+  return resolveTemplate(text, baseContext, delimiters);
 }
 
 export function getFatigueContext(
@@ -1047,8 +1135,11 @@ function buildPromptContext(
   const characterName = character.name;
   const profile = interactionData.profile;
   const tools = getEnabledTools(character, profile);
-  const cacheEfficiencyLevels: Record<cacheEfficiencyConfigurationType, number> =
-    profile?.cacheEfficiencyLevels ?? { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
+  
+  const participantScopeModes = profile?.participantScopeModes ?? { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' };
+  const participantInsertionModes = profile?.participantInsertionModes ?? { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' };
+  const participantsKnownNamesLimits = profile?.participantsKnownNamesLimits ?? { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 };
+  
   const minimalVolatileCacheMode = profile?.minimalVolatileCacheMode ?? false;
   const characterIdArray: string[] = [];
   const textContentArray: string[] = [];
@@ -1082,7 +1173,9 @@ function buildPromptContext(
     characterName,
     profile,
     tools,
-    cacheEfficiencyLevels,
+    participantScopeModes,
+    participantInsertionModes,
+    participantsKnownNamesLimits,
     minimalVolatileCacheMode,
     currentLocation,
     currentLocationId,
@@ -1095,27 +1188,101 @@ function buildPromptContext(
   };
 }
 
-function buildCharacterTagsText(ctx: PromptBuildContext): { tags: string[]; tagsWithDescriptions: string[] } {
+function getParticipantsForScopeAndInsertion(
+  ctx: PromptBuildContext, 
+  scope: participantScopeMode,
+  insertion: participantInsertionMode
+): Character[] {
+  let candidates: Character[] = [];
+  
+  if (scope === 'current') {
+    candidates = ctx.participants.filter(p => p.id === ctx.characterId);
+  } else if (scope === 'coLocated') {
+    const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
+    coLocatedIds.add(ctx.characterId);
+    candidates = ctx.participants.filter(p => coLocatedIds.has(p.id));
+  } else { // 'all'
+    candidates = ctx.participants;
+  }
+  
+  if (insertion === 'static') return candidates;
+  
+  // insertion === 'dynamic'
+  const currentLocationId = ctx.currentLocationId;
+  if (!currentLocationId) return ctx.participants.filter(p => p.id === ctx.characterId);
+
+  const locationHistory = ctx.interactionData.interactionHistories?.[currentLocationId] || [];
+  let arrivalTimestamp = -1;
+  const charMessagesInLoc = locationHistory.filter(m => m.character.id === ctx.characterId);
+  if (charMessagesInLoc.length > 0) {
+    arrivalTimestamp = Math.max(...charMessagesInLoc.map(m => m.firstCreatedTimestamp));
+  }
+
+  return candidates.filter(p => {
+    if (p.id === ctx.characterId) return true;
+    const talked = locationHistory.some(m => 
+      m.character.id === p.id && 
+      (m.messageType === 'chat' || m.messageType === 'whisper') &&
+      m.firstCreatedTimestamp > arrivalTimestamp
+    );
+    return talked;
+  });
+}
+
+function getDisplayName(
+  participant: Character, 
+  ctx: PromptBuildContext, 
+  limit: number | undefined
+): string {
+  const tag = getParticipantTag(participant, ctx.participants);
+  const knownMap = ctx.knownNames[participant.id];
+  const hasKnownName = !!knownMap && Object.keys(knownMap).length > 0;
+  
+  let revealName = false;
+  if (limit !== undefined && limit >= 0) {
+    if (limit === 0) {
+      revealName = false;
+    } else {
+      let knownCount = 0;
+      for (const p of ctx.participants) {
+        const pKnownMap = ctx.knownNames[p.id];
+        const pHasKnown = !!pKnownMap && Object.keys(pKnownMap).length > 0;
+        if (p.id === participant.id) {
+          revealName = pHasKnown && knownCount < limit;
+          break;
+        }
+        if (pHasKnown) knownCount++;
+      }
+    }
+  } else {
+    revealName = hasKnownName;
+  }
+
+  if (revealName && hasKnownName) {
+    const knownName = getKnownDisplayName(participant, ctx.knownNames);
+    if (knownName) return `${tag} (${knownName})`;
+  }
+  
+  return tag;
+}
+
+function buildCharacterTagsText(
+  ctx: PromptBuildContext, 
+  scope: participantScopeMode, 
+  insertion: participantInsertionMode,
+  limit?: number
+): { tags: string[]; tagsWithDescriptions: string[] } {
   const tags: string[] = [];
   const tagsWithDescriptions: string[] = [];
-  const actuallyPresentParticipants = [ctx.character, ...ctx.coLocatedParticipants];
+  const actuallyPresentParticipants = getParticipantsForScopeAndInsertion(ctx, scope, insertion);
 
   for (const participant of actuallyPresentParticipants) {
-    const tag = getParticipantTag(participant, ctx.participants);
-    const knownName = getKnownDisplayName(participant, ctx.knownNames);
-    const displayName = knownName ? `${tag} (${knownName})` : tag;
+    const displayName = getDisplayName(participant, ctx, limit);
     tags.push(`- ${displayName}`);
+    
     let desc = `- **${displayName}**`;
     if (participant.appearancePrompt) {
-      const replacedDesc = replacePlaceholders(
-        participant.appearancePrompt,
-        ctx.characterParticipantTag,
-        ctx.characterName,
-        ctx.coLocatedProtagonists,
-        ctx.participants,
-        ctx.knownNames,
-        ctx.tools
-      );
+      const replacedDesc = resolveInnerText(participant.appearancePrompt, ctx, ctx.delimiters);
       const indentedText = replacedDesc.split('\n').map(line => `${line}`).join('\n');
       desc += `\n${indentedText}`;
     } else {
@@ -1131,27 +1298,11 @@ function buildReachableLocationsText(ctx: PromptBuildContext): { names: string[]
   const names: string[] = [];
   const withDescriptions: string[] = [];
   for (const loc of reachable) {
-    const locName = replacePlaceholders(
-      loc.name || 'Unknown Location',
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    );
+    const locName = resolveInnerText(loc.name || 'Unknown Location', ctx, ctx.delimiters);
     names.push(`- ${locName}`);
     let desc = `- **${locName}**`;
     if (loc.text) {
-      const replacedText = replacePlaceholders(
-        loc.text,
-        ctx.characterParticipantTag,
-        ctx.characterName,
-        ctx.coLocatedProtagonists,
-        ctx.participants,
-        ctx.knownNames,
-        ctx.tools
-      );
+      const replacedText = resolveInnerText(loc.text, ctx, ctx.delimiters);
       const indentedText = replacedText.split('\n').map(line => `${line}`).join('\n');
       desc += `\n${indentedText}`;
     }
@@ -1160,57 +1311,37 @@ function buildReachableLocationsText(ctx: PromptBuildContext): { names: string[]
   return { names, withDescriptions };
 }
 
-function buildAppearanceText(ctx: PromptBuildContext, wearingStatus: Record<string, boolean>): string {
+function buildAppearanceText(
+  ctx: PromptBuildContext, 
+  wearingStatus: Record<string, boolean>, 
+  scope: participantScopeMode, 
+  insertion: participantInsertionMode,
+  limit?: number
+): string {
   const lines: string[] = [];
   const hasAnyAppearance = ctx.participants.some(p => p.appearancePrompt);
   if (!hasAnyAppearance) return '';
-  const nameLevel = ctx.cacheEfficiencyLevels['Character Name'] ?? 0;
-  let participantsToRender: Character[];
-  if (nameLevel >= 2) {
-    participantsToRender = ctx.participants;
-  } else if (nameLevel >= 1) {
-    const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
-    coLocatedIds.add(ctx.characterId);
-    participantsToRender = ctx.participants.filter(p => coLocatedIds.has(p.id));
-  } else {
-    participantsToRender = ctx.participants.filter(p => p.id === ctx.characterId);
-  }
+  
+  const participantsToRender = getParticipantsForScopeAndInsertion(ctx, scope, insertion);
   if (participantsToRender.length === 0) return '';
+  
   for (const participant of participantsToRender) {
     const appearancePrompt = participant.appearancePrompt;
     if (!appearancePrompt) continue;
-    const otherParticipantId = getParticipantId(participant, ctx.participants);
-    const isCurrent = otherParticipantId === ctx.characterParticipantId;
-    const otherTag = getParticipantTag(participant, ctx.participants);
-    const knownName = getKnownDisplayName(participant, ctx.knownNames);
-    const finalAppearancePrompt = replacePlaceholders(
-      appearancePrompt,
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    );
-    const useFrozenName = nameLevel >= 1 && !isCurrent;
-    const roleStr = useFrozenName
-      ? `${otherTag} (${knownName ?? participant.name})`
-      : (knownName ? `${otherTag} (${knownName})` : otherTag);
+    
+    const displayName = getDisplayName(participant, ctx, limit);
+    
+    const finalAppearancePrompt = resolveInnerText(appearancePrompt, ctx, ctx.delimiters);
+    
+    const roleStr = displayName;
     const appearanceText = `${ctx.delimiters.blockStart(roleStr)}${finalAppearancePrompt}${ctx.delimiters.blockEnd}`;
     lines.push(appearanceText);
   }
+  
   const visibleClothingDescriptions = getVisibleClothingDescriptions(ctx.character.clothings ?? [], wearingStatus);
   if (visibleClothingDescriptions.length > 0) {
     const clothingLines = visibleClothingDescriptions.map(desc => {
-      const replaced = replacePlaceholders(
-        desc,
-        ctx.characterParticipantTag,
-        ctx.characterName,
-        ctx.coLocatedProtagonists,
-        ctx.participants,
-        ctx.knownNames,
-        ctx.tools
-      );
+      const replaced = resolveInnerText(desc, ctx, ctx.delimiters);
       return `${ctx.delimiters.blockStart('system')}${replaced}${ctx.delimiters.blockEnd}`;
     });
     lines.push(...clothingLines);
@@ -1218,102 +1349,38 @@ function buildAppearanceText(ctx: PromptBuildContext, wearingStatus: Record<stri
   return lines.join('\n');
 }
 
-function buildSystemPromptText(ctx: PromptBuildContext): string {
+function buildSystemPromptText(
+  ctx: PromptBuildContext, 
+  scope: participantScopeMode, 
+  insertion: participantInsertionMode
+): string {
   const lines: string[] = [];
-  const systemLevel = ctx.cacheEfficiencyLevels['System Prompt'] ?? 0;
-  let systemPrompt = ctx.character.systemPrompt;
-  if (systemLevel >= 2) {
-    for (const p of ctx.participants) {
-      if (p.systemPrompt) {
-        lines.push(`${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(
-          p.systemPrompt,
-          ctx.characterParticipantTag,
-          ctx.characterName,
-          ctx.coLocatedProtagonists,
-          ctx.participants,
-          ctx.knownNames,
-          ctx.tools
-        )}`);
-      }
-    }
-  } else if (systemLevel >= 1) {
-    const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
-    coLocatedIds.add(ctx.characterId);
-    for (const p of ctx.participants) {
-      if (!coLocatedIds.has(p.id)) continue;
-      if (p.systemPrompt) {
-        lines.push(`${getParticipantTag(p, ctx.participants)} Prompt: ${replacePlaceholders(
-          p.systemPrompt,
-          ctx.characterParticipantTag,
-          ctx.characterName,
-          ctx.coLocatedProtagonists,
-          ctx.participants,
-          ctx.knownNames,
-          ctx.tools
-        )}`);
-      }
-    }
-  } else if (systemPrompt) {
-    systemPrompt = replacePlaceholders(
-      systemPrompt,
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    );
-    lines.push(`${ctx.characterParticipantTag} Prompt: ${systemPrompt}`);
+  const participantsToRender = getParticipantsForScopeAndInsertion(ctx, scope, insertion);
+  
+  for (const p of participantsToRender) {
+    if (!p.systemPrompt) continue;
+    const replaced = resolveInnerText(p.systemPrompt, ctx, ctx.delimiters);
+    lines.push(`${getParticipantTag(p, ctx.participants)} Prompt: ${replaced}`);
   }
   return lines.join('\n');
 }
 
-function buildThinkPromptText(ctx: PromptBuildContext): string {
+function buildThinkPromptText(
+  ctx: PromptBuildContext, 
+  scope: participantScopeMode, 
+  insertion: participantInsertionMode
+): string {
   const lines: string[] = [];
-  const thinkLevel = ctx.cacheEfficiencyLevels['Think Prompt'] ?? 0;
-  let thinkPrompt = ctx.character.thinkPrompt;
-  if (thinkLevel >= 2) {
-    for (const p of ctx.participants) {
-      if (p.thinkPrompt) {
-        lines.push(`I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(
-          p.thinkPrompt,
-          ctx.characterParticipantTag,
-          ctx.characterName,
-          ctx.coLocatedProtagonists,
-          ctx.participants,
-          ctx.knownNames,
-          ctx.tools
-        )}`);
-      }
+  const participantsToRender = getParticipantsForScopeAndInsertion(ctx, scope, insertion);
+  
+  for (const p of participantsToRender) {
+    if (!p.thinkPrompt) continue;
+    const replaced = resolveInnerText(p.thinkPrompt, ctx, ctx.delimiters);
+    if (p.id === ctx.characterId) {
+      lines.push(replaced);
+    } else {
+      lines.push(`I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replaced}`);
     }
-  } else if (thinkLevel >= 1) {
-    const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
-    coLocatedIds.add(ctx.characterId);
-    for (const p of ctx.participants) {
-      if (!coLocatedIds.has(p.id)) continue;
-      if (p.thinkPrompt) {
-        lines.push(`I am keeping this in mind as ${getParticipantTag(p, ctx.participants)}: ${replacePlaceholders(
-          p.thinkPrompt,
-          ctx.characterParticipantTag,
-          ctx.characterName,
-          ctx.coLocatedProtagonists,
-          ctx.participants,
-          ctx.knownNames,
-          ctx.tools
-        )}`);
-      }
-    }
-  } else if (thinkPrompt) {
-    thinkPrompt = replacePlaceholders(
-      thinkPrompt,
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    );
-    lines.push(thinkPrompt);
   }
   return lines.join('\n');
 }
@@ -1348,15 +1415,7 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
   if (activeContents.length === 0) return '';
   const lines: string[] = [];
   for (const content of activeContents) {
-    lines.push(replacePlaceholders(
-      content,
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    ));
+    lines.push(resolveInnerText(content, ctx, ctx.delimiters));
   }
   return lines.join('\n');
 }
@@ -1398,15 +1457,7 @@ async function buildKnowledgePromptText(ctx: PromptBuildContext): Promise<string
           ctx.character.knowledgeRetrievalConfiguration
         );
         if (results.length > 0) {
-          return replacePlaceholders(
-            results.map(r => r.textContent).join('\n---\n'),
-            ctx.characterParticipantTag,
-            ctx.characterName,
-            ctx.coLocatedProtagonists,
-            ctx.participants,
-            ctx.knownNames,
-            ctx.tools
-          );
+          return resolveInnerText(results.map(r => r.textContent).join('\n---\n'), ctx, ctx.delimiters);
         }
       }
     }
@@ -1414,15 +1465,7 @@ async function buildKnowledgePromptText(ctx: PromptBuildContext): Promise<string
   const validPrompts = activePrompts.filter(kp => kp.textContent && kp.textContent.length > 0);
   if (validPrompts.length === 0) return '';
   const joinedText = validPrompts.map(kp => kp.textContent).join('\n---\n');
-  return replacePlaceholders(
-    joinedText,
-    ctx.characterParticipantTag,
-    ctx.characterName,
-    ctx.coLocatedProtagonists,
-    ctx.participants,
-    ctx.knownNames,
-    ctx.tools
-  );
+  return resolveInnerText(joinedText, ctx, ctx.delimiters);
 }
 
 async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
@@ -1443,15 +1486,7 @@ async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
     ctx.knownNames,
   );
   if (!retrieved) return '';
-  return replacePlaceholders(
-    retrieved,
-    ctx.characterParticipantTag,
-    ctx.characterName,
-    ctx.coLocatedProtagonists,
-    ctx.participants,
-    ctx.knownNames,
-    ctx.tools,
-  );
+  return resolveInnerText(retrieved, ctx, ctx.delimiters);
 }
 
 async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> {
@@ -1498,15 +1533,7 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
           if (selectedPrompt.skipProbability > 0 && Math.random() < selectedPrompt.skipProbability) {
             return '';
           }
-          return replacePlaceholders(
-            results[0].textContent,
-            ctx.characterParticipantTag,
-            ctx.characterName,
-            ctx.coLocatedProtagonists,
-            ctx.participants,
-            ctx.knownNames,
-            ctx.tools
-          );
+          return resolveInnerText(results[0].textContent, ctx, ctx.delimiters);
         }
       }
     }
@@ -1529,15 +1556,7 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
     if (selectedPrompt.skipProbability > 0 && Math.random() < selectedPrompt.skipProbability) {
       return '';
     }
-    return replacePlaceholders(
-      selectedPrompt.textContent,
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    );
+    return resolveInnerText(selectedPrompt.textContent, ctx, ctx.delimiters);
   }
   return '';
 }
@@ -1546,15 +1565,7 @@ function buildLocationText(ctx: PromptBuildContext): { basic: string; withDescri
   const images: EntityImageRef[] = [];
   const location = ctx.currentLocation;
   if (!location) return { basic: '', withDescription: '', images: [] };
-  const locationName = replacePlaceholders(
-    location.name || 'Unknown Location',
-    ctx.characterParticipantTag,
-    ctx.characterName,
-    ctx.coLocatedProtagonists,
-    ctx.participants,
-    ctx.knownNames,
-    ctx.tools
-  );
+  const locationName = resolveInnerText(location.name || 'Unknown Location', ctx, ctx.delimiters);
   const basicLines: string[] = [];
   basicLines.push(`Current Location: ${locationName}`);
   if (location.ownerBindings && location.ownerBindings.length > 0) {
@@ -1565,29 +1576,13 @@ function buildLocationText(ctx: PromptBuildContext): { basic: string; withDescri
   }
   const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
   if (reachable.length > 0) {
-    const reachableNames = reachable.map(r => replacePlaceholders(
-      r.name || 'Unknown Location',
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    ));
+    const reachableNames = reachable.map(r => resolveInnerText(r.name || 'Unknown Location', ctx, ctx.delimiters));
     basicLines.push(`From ${locationName}, I can travel to: ${reachableNames.join(', ')}.`);
   }
   const withDescLines: string[] = [];
   withDescLines.push(`Current Location: ${locationName}`);
   if (location.text) {
-    const replacedLocationText = replacePlaceholders(
-      location.text,
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    );
+    const replacedLocationText = resolveInnerText(location.text, ctx, ctx.delimiters);
     withDescLines.push(replacedLocationText);
   }
   if (location.images && location.images.length > 0) {
@@ -1878,15 +1873,7 @@ export async function createChatHistoryArray(
       const msgLoc = messageLocationMap.get(msg.id);
       if (msgLoc !== undefined && msgLoc !== currentLocationId) {
         const loc = locs.find(l => l.id === msgLoc);
-        const locName = replacePlaceholders(
-          loc?.name || 'Unknown Location',
-          ctx.characterParticipantTag,
-          ctx.characterName,
-          ctx.coLocatedProtagonists,
-          participants,
-          ctx.knownNames,
-          ctx.tools
-        );
+        const locName = resolveInnerText(loc?.name || 'Unknown Location', ctx, ctx.delimiters);
         locationVisitSummaries.push({
           characterName: msg.character.name,
           locationName: locName,
@@ -1918,15 +1905,7 @@ export async function createChatHistoryArray(
   }
   const currentLocation = ctx.currentLocation;
   if (currentLocation) {
-    const sceneName = replacePlaceholders(
-      currentLocation.name || 'Unknown Location',
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      participants,
-      ctx.knownNames,
-      ctx.tools
-    );
+    const sceneName = resolveInnerText(currentLocation.name || 'Unknown Location', ctx, ctx.delimiters);
     chatHistoryArray.push(`${ctx.delimiters.turnStart('system')}[Scene: ${sceneName}]${ctx.delimiters.turnEnd}`);
   }
   for (const p of outputMessages) {
@@ -1949,15 +1928,7 @@ export async function createChatHistoryArray(
       );
     }
 
-    const replacedText = replacePlaceholders(
-      historyText,
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      participants,
-      ctx.knownNames,
-      ctx.tools
-    );
+    const replacedText = resolveInnerText(historyText, ctx, ctx.delimiters);
     chatHistoryText = `${chatHistoryText}${replacedText}${ctx.delimiters.turnEnd}`;
     chatHistoryArray.push(chatHistoryText);
   }
@@ -2279,15 +2250,7 @@ export async function buildPrompt(
   const contextLines: string[] = [];
   for (const { context, combinedText } of resolvedContextsWithWeb) {
     activeContextIds.add(context.id);
-    const replacedText = replacePlaceholders(
-      combinedText,
-      ctx.characterParticipantTag,
-      ctx.characterName,
-      ctx.coLocatedProtagonists,
-      ctx.participants,
-      ctx.knownNames,
-      ctx.tools
-    );
+    const replacedText = resolveInnerText(combinedText, ctx, ctx.delimiters);
     if (context.useBase64Encoding) {
       contextLines.push(`[base64:${btoa(unescape(encodeURIComponent(replacedText)))}]`);
     } else {
@@ -2336,7 +2299,19 @@ export async function buildPrompt(
   const locationResult = buildLocationText(ctx);
   const chatHistoryResult = await createChatHistoryArray(ctx);
   const reachableLocationsResult = buildReachableLocationsText(ctx);
-  const characterTagsResult = buildCharacterTagsText(ctx);
+  
+  const defaultCharScope = profile?.participantScopeModes?.['Character Name'] ?? 'coLocated';
+  const defaultCharInsertion = profile?.participantInsertionModes?.['Character Name'] ?? 'dynamic';
+  const defaultCharLimit = profile?.participantsKnownNamesLimits?.['Character Name'];
+  
+  const defaultSysScope = profile?.participantScopeModes?.['System Prompt'] ?? 'coLocated';
+  const defaultSysInsertion = profile?.participantInsertionModes?.['System Prompt'] ?? 'dynamic';
+  
+  const defaultThinkScope = profile?.participantScopeModes?.['Think Prompt'] ?? 'coLocated';
+  const defaultThinkInsertion = profile?.participantInsertionModes?.['Think Prompt'] ?? 'dynamic';
+
+  const characterTagsResult = buildCharacterTagsText(ctx, defaultCharScope, defaultCharInsertion, defaultCharLimit);
+  
   let skyViewText = '';
   if (ctx.currentLocation?.hasSkyView && timeData) {
     const skySummary = generateSkyViewText(timeData.rawTimestamp, latitude, longitude);
@@ -2441,11 +2416,30 @@ export async function buildPrompt(
   const promptImgStr = promptImgInst.length > 0 ? `${delimiters.blockStart('system')}${promptImgInst.join(', ')}${delimiters.blockEnd}` : '';
   const ctxImgStr = ctxImgInst.length > 0 ? `${delimiters.blockStart('system')}${ctxImgInst.join(', ')}${delimiters.blockEnd}` : '';
   const locImgStr = locImgInst.length > 0 ? `${delimiters.blockStart('system')}${locImgInst.join(', ')}${delimiters.blockEnd}` : '';
+  
+  const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames));
+  const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
+    const tag = getParticipantTag(p, ctx.participants);
+    const knownName = getKnownDisplayName(p, ctx.knownNames);
+    return `${knownName ?? tag}'s`;
+  });
+
+  const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames));
+  const charactersPossessiveList = ctx.participants.map(p => {
+    const tag = getParticipantTag(p, ctx.participants);
+    const knownName = getKnownDisplayName(p, ctx.knownNames);
+    return `${knownName ?? tag}'s`;
+  });
+
   const templateContext: TemplateContext = {
     characterParticipantTag: ctx.characterParticipantTag,
     characterName: ctx.characterName,
     protagonistDisplayString: buildProtagonistDisplayString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames),
     protagonistPossessiveString: buildProtagonistPossessiveString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames),
+    protagonists: protagonistsList,
+    "protagonists'": protagonistsPossessiveList,
+    characters: charactersList,
+    "characters'": charactersPossessiveList,
     characterTurnStart: delimiters.turnStart(ctx.characterParticipantTag),
     characterTurnEnd: delimiters.turnEnd,
     chatHistory: chatHistoryResult.chatHistoryArray,
@@ -2453,10 +2447,10 @@ export async function buildPrompt(
     reachableLocationsWithDescriptions: reachableLocationsResult.withDescriptions,
     characterTags: characterTagsResult.tags,
     characterTagsWithDescriptions: characterTagsResult.tagsWithDescriptions,
-    systemPrompt: buildSystemPromptText(ctx),
-    thinkPrompt: buildThinkPromptText(ctx),
+    systemPrompt: buildSystemPromptText(ctx, defaultSysScope, defaultSysInsertion),
+    thinkPrompt: buildThinkPromptText(ctx, defaultThinkScope, defaultThinkInsertion),
     metaThinkInstructions: buildMetaThinkText(ctx),
-    appearancePrompt: buildAppearanceText(ctx, characterClothingWearingStatuses),
+    appearancePrompt: buildAppearanceText(ctx, characterClothingWearingStatuses, defaultCharScope, defaultCharInsertion, defaultCharLimit),
     knowledgePrompt: await buildKnowledgePromptText(ctx),
     dialoguePrompt: await buildDialoguePromptText(ctx),
     memoryPrompt: await buildMemoryPromptText(ctx),
@@ -2490,7 +2484,9 @@ export async function buildPrompt(
     currentLocationImageInstructions: locImgStr,
     antiRepetitionNudge: buildAntiRepetitionNudgeText(ctx),
     textInjection: textInjectionText,
-    text: existingCharacterText
+    text: existingCharacterText,
+    promptBuildContext: ctx,
+    wearingStatus: characterClothingWearingStatuses
   };
   templateContext.toolInstructions = resolveTemplate(
     templateContext.toolInstructions,
@@ -2595,15 +2591,7 @@ export async function buildPrompt(
         if (msg.character.id !== ctx.characterId) {
           content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
         }
-        content = replacePlaceholders(
-          content,
-          ctx.characterParticipantTag,
-          ctx.characterName,
-          ctx.coLocatedProtagonists,
-          ctx.participants,
-          ctx.knownNames,
-          ctx.tools
-        );
+        content = resolveInnerText(content, ctx, ctx.delimiters);
         promptLines.push(
           resolvedChatTemplate.chatTemplate
             .replace(/{role}/gi, role)
@@ -2633,15 +2621,7 @@ export async function buildPrompt(
         if (msg.character.id !== ctx.characterId) {
           content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
         }
-        content = replacePlaceholders(
-          content,
-          ctx.characterParticipantTag,
-          ctx.characterName,
-          ctx.coLocatedProtagonists,
-          ctx.participants,
-          ctx.knownNames,
-          ctx.tools
-        );
+        content = resolveInnerText(content, ctx, ctx.delimiters);
         promptLines.push(
           resolvedChatTemplate.chatTemplate
             .replace(/{role}/gi, role)

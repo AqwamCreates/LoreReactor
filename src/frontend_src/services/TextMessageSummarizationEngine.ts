@@ -1,8 +1,9 @@
+// src/frontend_src/services/TextMessageSummarizationEngine.ts
 import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, Profile, TextMessage } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
-import { createChatHistoryArray, getParticipantTag, replacePlaceholders, getUniversalMessageFilterFlags, getFilteredTextMessages, deriveDelimiters, sanitizeToolSyntax } from '../utilities/promptLogic';
+import { createChatHistoryArray, getParticipantTag, resolveInnerText, getUniversalMessageFilterFlags, getFilteredTextMessages, deriveDelimiters, sanitizeToolSyntax } from '../utilities/promptLogic';
 import { detectName } from '../utilities/nameDetection';
 import { buildGenericCompletionBody } from '../utilities/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities/locationLogic';
@@ -99,7 +100,9 @@ export async function generateCharacterMemory(
         characterName: character.name,
         profile,
         tools: getEnabledTools(character, profile),
-        cacheEfficiencyLevels: profile?.cacheEfficiencyLevels ?? { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 },
+        participantScopeModes: profile?.participantScopeModes ?? { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' },
+        participantInsertionModes: profile?.participantInsertionModes ?? { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' },
+        participantsKnownNamesLimits: profile?.participantsKnownNamesLimits ?? { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 },
         minimalVolatileCacheMode: profile?.minimalVolatileCacheMode ?? false,
         currentLocation: undefined,
         currentLocationId: undefined,
@@ -126,12 +129,12 @@ export async function generateCharacterMemory(
     const systemDefaultPerspective = `I am ${participantTag}. I am reflecting on what I have experienced. I will express my memory as natural, personal thoughts that others will not hear, read or respond to. I will use this memory in the future. Only I can access this memory. When referring to other participants, I will identify them by their tag (e.g. 'Character 1', 'Character 2') to keep my memory records accurate.`;
 
     const finalMemoryInstruction = memoryPromptTemplate 
-        ? replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)
+        ? resolveInnerText(memoryPromptTemplate, ctx, delimiters)
         : systemDefaultPerspective;
 
     const perspectiveInstruction = `${delimiters.blockStart('system')}${finalMemoryInstruction}${delimiters.blockEnd}`;
-    const systemPrompt = character.systemPrompt ? `${delimiters.blockStart('system')}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}` : '';
-    const thinkPrompt = character.thinkPrompt ? `${delimiters.blockStart('system')}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}` : '';
+    const systemPrompt = character.systemPrompt ? `${delimiters.blockStart('system')}System Prompt: ${resolveInnerText(character.systemPrompt, ctx, delimiters)}${delimiters.blockEnd}` : '';
+    const thinkPrompt = character.thinkPrompt ? `${delimiters.blockStart('system')}Think Prompt: ${resolveInnerText(character.thinkPrompt, ctx, delimiters)}${delimiters.blockEnd}` : '';
 
     const prompt = [systemPrompt, thinkPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryArray.join('\n'), `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, delimiters.turnStart(participantTag)].filter(Boolean).join('\n\n');
     const stops = resolveEffectiveStopTokens(stopPattern);
@@ -236,8 +239,18 @@ export async function generateLocationVisitSummary(
     const nextLocationName = nextLocationId ? locs.find(l => l.id === nextLocationId)?.name : undefined;
     const coLocatedProtagonists = getCoLocatedProtagonists(interactionData, character);
 
-    const systemPrompt = character.systemPrompt ? `${delimiters.blockStart('system')}System Prompt: ${replacePlaceholders(character.systemPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}` : '';
-    const thinkPrompt = character.thinkPrompt ? `${delimiters.blockStart('system')}Think Prompt: ${replacePlaceholders(character.thinkPrompt, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames)}${delimiters.blockEnd}` : '';
+    const dummyCtx = {
+        characterParticipantTag: participantTag,
+        characterName: character.name,
+        coLocatedProtagonists,
+        participants,
+        knownNames: knownCharacterNames,
+        tools: getEnabledTools(character, interactionData.profile),
+        delimiters
+    } as any;
+
+    const systemPrompt = character.systemPrompt ? `${delimiters.blockStart('system')}System Prompt: ${resolveInnerText(character.systemPrompt, dummyCtx, delimiters)}${delimiters.blockEnd}` : '';
+    const thinkPrompt = character.thinkPrompt ? `${delimiters.blockStart('system')}Think Prompt: ${resolveInnerText(character.thinkPrompt, dummyCtx, delimiters)}${delimiters.blockEnd}` : '';
     const scopedHistoryBlock = `${delimiters.blockStart('system')}Events at ${locationName}:\n${scopedMessages.join('\n')}${delimiters.blockEnd}`;
 
     let recentExpression = 'neutral';
@@ -254,7 +267,7 @@ export async function generateLocationVisitSummary(
         ? `I am ${participantTag}. I am reflecting on what happened at ${locationName} before I moved to ${nextLocationName}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.`
         : `I am ${participantTag}. ${LOCATION_VISIT_MEMORY_PROMPT} I will never use 'Character #' or 'Character # (Name)' unless I require it.`;
 
-    const finalMemoryInstruction = memoryPromptTemplate ? replacePlaceholders(memoryPromptTemplate, participantTag, character.name, coLocatedProtagonists, participants, knownCharacterNames) : systemDefaultPerspective;
+    const finalMemoryInstruction = memoryPromptTemplate ? resolveInnerText(memoryPromptTemplate, dummyCtx, delimiters) : systemDefaultPerspective;
     const perspectiveInstruction = `${delimiters.blockStart('system')}${finalMemoryInstruction}${delimiters.blockEnd}`;
 
     const prompt = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction].filter(Boolean).join('\n\n');

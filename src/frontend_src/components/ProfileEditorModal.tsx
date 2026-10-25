@@ -1,6 +1,6 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheEfficiencyConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode, participantScopeMode, participantInsertionMode } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelect } from './EntitySelect';
 import '../main.css';
@@ -23,12 +23,6 @@ interface ProfileEditorModalProps {
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
 }
-
-const CACHE_EFFICIENCY_DESCRIPTIONS: Record<cacheEfficiencyConfigurationType, string[]> = {
-    'Character Name': ['No optimization. Names resolved dynamically per turn.', 'Freeze names for co-located participants only.', 'Freeze names for all participants regardless of location.'],
-    'System Prompt': ['Only current character\'s system prompt injected.', 'Inject co-located participants\' system prompts upfront.', 'Inject ALL participants\' system prompts upfront.'],
-    'Think Prompt': ['Only current character\'s think prompt injected.', 'Inject co-located participants\' think prompts upfront.', 'Inject ALL participants\' think prompts upfront.'],
-};
 
 const STRATEGY_DESCRIPTIONS: Record<SummarizationStrategyType, string> = {
     'Sliding Window Replace': 'Replace old messages with per-message summaries beyond the window size.',
@@ -320,8 +314,17 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
     const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
-    const defaultCacheLevels: Record<cacheEfficiencyConfigurationType, number> = { 'Character Name': 0, 'System Prompt': 0, 'Think Prompt': 0 };
-    const [cacheEfficiencyLevels, setCacheEfficiencyLevels] = useState<Record<cacheEfficiencyConfigurationType, number>>(ep?.cacheEfficiencyLevels ?? { ...defaultCacheLevels });
+    
+    const [participantScopeModes, setParticipantScopeModes] = useState<Record<cacheEfficiencyConfigurationType, participantScopeMode>>(
+        ep?.participantScopeModes ?? { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' }
+    );
+    const [participantInsertionModes, setParticipantInsertionModes] = useState<Record<cacheEfficiencyConfigurationType, participantInsertionMode>>(
+        ep?.participantInsertionModes ?? { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' }
+    );
+    const [participantsKnownNamesLimits, setParticipantsKnownNamesLimits] = useState<Record<cacheEfficiencyConfigurationType, number>>(
+        ep?.participantsKnownNamesLimits ?? { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 }
+    );
+    
     const [minimalVolatileCacheMode, setMinimalVolatileCacheMode] = useState<boolean>(ep?.minimalVolatileCacheMode ?? false);
 
     // --- Memos & Handlers ---
@@ -329,7 +332,6 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const getBlockLabel = (entry: promptBlockType | string): string => isBuiltInBlockType(entry) ? entry : (promptBlockById.get(entry) ? `🧱 ${promptBlockById.get(entry)!.name}` : "🧱 (Unknown Block)");
     const handleToolChange = (toolName: tool, value: tristateInteger) => setTools(prev => ({ ...prev, [toolName]: value }));
     const handleNarrateToggle = (type: textType, checked: boolean) => setNarrateTexts(prev => ({ ...prev, [type]: checked }));
-    const handleCacheLevelChange = (category: cacheEfficiencyConfigurationType, value: number) => setCacheEfficiencyLevels(prev => ({ ...prev, [category]: Math.round(value) }));
     const handleSelectAllTools = useCallback(() => setTools(prev => { const next = { ...prev }; for (const key of Object.keys(next) as tool[]) next[key] = 1; return next; }), []);
     const handleDeselectAllTools = useCallback(() => setTools(prev => { const next = { ...prev }; for (const key of Object.keys(next) as tool[]) next[key] = -1; return next; }), []);
     const handleResetToolsToDefaults = useCallback(() => setTools({ ...defaultProfileTools }), []);
@@ -366,7 +368,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         const getStopPattern = (spId: string) => allStopPatterns.find(sp => sp.id === spId);
         const getRetrievalConfiguration = (rcId: string) => allRetrievalConfigurations.find(rc => rc.id === rcId);
         return {
-            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, textGenerationBehaviourOnNarration, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, entityImageTypes: [...entityImageTypes], numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, cacheEfficiencyLevels: { ...cacheEfficiencyLevels }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, stripThinkTokens, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], promptFormatMode, summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
+            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, textGenerationBehaviourOnNarration, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, entityImageTypes: [...entityImageTypes], numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, participantScopeModes: { ...participantScopeModes }, participantInsertionModes: { ...participantInsertionModes }, participantsKnownNamesLimits: { ...participantsKnownNamesLimits }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, stripThinkTokens, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], promptFormatMode, summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
         };
     };
 
@@ -781,15 +783,52 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                     {activeTab === 'cache' && (
                         <>
                             <div className="editor-section">
-                                <span className="editor-section-title">Cache Efficiency Levels</span>
-                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>Control how much participant content is frozen into the static prompt prefix for provider-side caching.</div>
+                                <span className="editor-section-title">Prefix Caching</span>
+                                <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>Control how character data is frozen into the static prompt prefix for provider-side caching.</div>
                                 {cacheCategories.map(category => (
-                                    <div key={category} style={{ marginBottom: '16px' }}>
-                                        <div style={SLIDER_HEADER_STYLE}>
-                                            <label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{category}</label>
-                                            <span style={SLIDER_VALUE_STYLE}>{cacheEfficiencyLevels[category] === 0 ? '(No optimization)' : cacheEfficiencyLevels[category] === 1 ? '(Co-located only)' : '(All participants)'}</span>
+                                    <div key={category} style={{ marginBottom: '24px', padding: '12px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                                        <div style={{ fontSize: '0.8rem', fontWeight: 'bold', marginBottom: '12px', color: 'var(--text-h)' }}>{category}</div>
+                                        
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <label className="editor-label editor-label-small">Scope</label>
+                                            <select 
+                                                value={participantScopeModes[category]} 
+                                                onChange={(e) => setParticipantScopeModes(prev => ({ ...prev, [category]: e.target.value as participantScopeMode }))}
+                                                className="editor-select"
+                                                style={{ width: '100%' }}
+                                            >
+                                                <option value="current">Current</option>
+                                                <option value="coLocated">Co-Located</option>
+                                                <option value="all">All</option>
+                                            </select>
+                                            <div style={FIELD_HINT_STYLE}>Who to include in the prompt prefix.</div>
                                         </div>
-                                        <SliderInput label="" value={cacheEfficiencyLevels[category]} minimumValue={0} maximumValue={2} stepValue={1} decimals={0} onChange={(val) => handleCacheLevelChange(category, val)} description={CACHE_EFFICIENCY_DESCRIPTIONS[category][Math.round(cacheEfficiencyLevels[category])] || ''} />
+
+                                        <div style={{ marginBottom: '12px' }}>
+                                            <label className="editor-label editor-label-small">Insertion</label>
+                                            <select 
+                                                value={participantInsertionModes[category]} 
+                                                onChange={(e) => setParticipantInsertionModes(prev => ({ ...prev, [category]: e.target.value as participantInsertionMode }))}
+                                                className="editor-select"
+                                                style={{ width: '100%' }}
+                                            >
+                                                <option value="dynamic">Dynamic</option>
+                                                <option value="static">Static</option>
+                                            </select>
+                                            <div style={FIELD_HINT_STYLE}>When to include them. Dynamic = only after they speak since arrival. Static = always based on scope.</div>
+                                        </div>
+
+                                        {renderOverrideSlider(
+                                            'Known Names Limit', 
+                                            participantsKnownNamesLimits[category], 
+                                            -1, 
+                                            30, 
+                                            1, 
+                                            0, 
+                                            (val) => setParticipantsKnownNamesLimits(prev => ({ ...prev, [category]: Math.round(val) })), 
+                                            'Limit name reveals to N oldest known characters. -1 = reveal all, 0 = reveal none.',
+                                            participantsKnownNamesLimits[category] === -1 ? '(Reveal All)' : participantsKnownNamesLimits[category] === 0 ? '(Reveal None)' : undefined
+                                        )}
                                     </div>
                                 ))}
                             </div>
