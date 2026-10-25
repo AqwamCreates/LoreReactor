@@ -38,8 +38,22 @@ function getKnownDisplayName(
 }
 
 /**
- * Replaces runtime index tags ("Character 1", "Character 2") with immutable "{{character@uuid}}" tokens.
- * Call this immediately before saving a new memory string to RawMemory.
+ * Escapes special regex characters to prevent syntax errors during tokenization.
+ */
+function escapeRegExp(string: string): string {
+  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * TOKENIZATION PHASE
+ * 
+ * Replaces unique true names and aliases with immutable "{{char:uuid}}" tokens.
+ * 
+ * CRITICAL DESIGN DECISION: We intentionally DO NOT tokenize "Character X" tags.
+ * Index-based tags are volatile. If the participant array shifts between the time 
+ * an event occurred and the time it is summarized, tokenizing "Character X" will 
+ * permanently bind the action to the wrong UUID. We rely strictly on stable 
+ * identifiers (Names/Aliases) for UUID mapping.
  */
 export function tokenizeMemoryContent(
   text: string,
@@ -48,23 +62,59 @@ export function tokenizeMemoryContent(
   if (!text || participants.length === 0) return text;
 
   let tokenized = text;
+  const replacements: { pattern: string; token: string }[] = [];
 
-  // Process in reverse numerical order so "Character 10" is replaced before "Character 1"
-  const indexedParticipants = participants
-    .map((p, idx) => ({ p, tagNumber: idx + 1 }))
-    .sort((a, b) => b.tagNumber - a.tagNumber);
+  // 1. Map all names and aliases to their frequency to detect true collisions
+  const stringFrequency = new Map<string, number>();
+  for (const p of participants) {
+    if (p.name) {
+      const lowerName = p.name.toLowerCase();
+      stringFrequency.set(lowerName, (stringFrequency.get(lowerName) || 0) + 1);
+    }
+    if (p.aliases) {
+      for (const alias of p.aliases) {
+        if (alias) {
+          const lowerAlias = alias.toLowerCase();
+          stringFrequency.set(lowerAlias, (stringFrequency.get(lowerAlias) || 0) + 1);
+        }
+      }
+    }
+  }
 
-  for (const { p, tagNumber } of indexedParticipants) {
-    const regex = new RegExp(`\\bCharacter\\s+${tagNumber}\\b`, 'g');
-    tokenized = tokenized.replace(regex, `{{character@${p.id}}}`);
+  // 2. Build replacement rules for STRICTLY UNIQUE names/aliases
+  for (const p of participants) {
+    const token = `{{char:${p.id}}}`;
+
+    if (p.name && stringFrequency.get(p.name.toLowerCase()) === 1) {
+      replacements.push({ pattern: escapeRegExp(p.name), token });
+    }
+
+    if (p.aliases) {
+      for (const alias of p.aliases) {
+        if (alias && stringFrequency.get(alias.toLowerCase()) === 1) {
+          replacements.push({ pattern: escapeRegExp(alias), token });
+        }
+      }
+    }
+  }
+
+  // 3. Sort STRICTLY by length descending to prevent substring partial matches
+  replacements.sort((a, b) => b.pattern.length - a.pattern.length);
+
+  // 4. Execute replacements using word boundaries and case-insensitivity
+  for (const { pattern, token } of replacements) {
+    const regex = new RegExp(`\\b${pattern}\\b`, 'gi');
+    tokenized = tokenized.replace(regex, token);
   }
 
   return tokenized;
 }
 
 /**
- * Resolves "{{character@uuid}}" tokens back into the current turn's participant tags/names.
- * Call this before injecting retrieved memories into prompts or returning them from tools.
+ * DETOKENIZATION PHASE
+ * 
+ * Resolves "{{char:uuid}}" tokens back into session-aware display strings.
+ * Resolves surviving "Character X" tags directly to the current participant's knownName.
  */
 export function detokenizeMemoryContent(
   text: string,
@@ -73,9 +123,9 @@ export function detokenizeMemoryContent(
 ): string {
   if (!text) return text;
 
-  const TOKEN_REGEX = /\{\{character@([a-zA-Z0-9-]+)\}\}/g;
-
-  return text.replace(TOKEN_REGEX, (_match, uuid: string) => {
+  // 1. Resolve immutable UUID tokens
+  const TOKEN_REGEX = /\{\{char:([a-zA-Z0-9-]+)\}\}/g;
+  let resolvedText = text.replace(TOKEN_REGEX, (_match, uuid: string) => {
     const participant = currentParticipants.find(p => p.id === uuid);
 
     if (!participant) {
@@ -84,17 +134,45 @@ export function detokenizeMemoryContent(
 
     const tag = getParticipantTag(participant, currentParticipants);
     const knownName = getKnownDisplayName(participant, knownNames);
-    const displayName = knownName ?? participant.name;
+    
+    // Unified Resolution: Known alias takes precedence over true name
+    const baseName = knownName ?? participant.name;
 
-    // Detect if multiple characters in current session share the exact same name
-    const hasNameCollision = currentParticipants.filter(p => p.name === participant.name).length > 1;
+    // Unified Collision Detection across the active session
+    const hasNameCollision = currentParticipants.some(p => {
+      if (p.id === participant.id) return false;
+      const otherKnown = getKnownDisplayName(p, knownNames);
+      const otherBase = otherKnown ?? p.name;
+      return otherBase === baseName;
+    });
 
-    if (hasNameCollision) {
-      return `${tag} (${displayName})`;
+    // If the protagonist doesn't know the name, or there's a collision, 
+    // we must anchor it to the meta-tag to prevent ambiguity.
+    if (!knownName || hasNameCollision) {
+      return `${tag} (${baseName || 'Unknown'})`;
     }
 
-    return displayName ? `${tag} (${displayName})` : tag;
+    return `${tag} (${baseName})`;
   });
+
+  // 2. Resolve surviving "Character X" tags.
+  // Instead of neutralizing them to a generic historical marker, we map them 
+  // directly to the CURRENTLY USED NAME (knownName) of the participant 
+  // currently occupying that index. We do not attempt historical UUID mapping.
+  const SURVIVING_TAG_REGEX = /\bCharacter\s+(\d+)\b/gi;
+  resolvedText = resolvedText.replace(SURVIVING_TAG_REGEX, (_match, numStr) => {
+    const idx = parseInt(numStr, 10) - 1;
+    if (idx < 0 || idx >= currentParticipants.length) return 'Unknown';
+    
+    const p = currentParticipants[idx];
+    const knownName = getKnownDisplayName(p, knownNames);
+    
+    // Stick strictly to the currently used name. 
+    // Fallback to true name only if knownName is completely null.
+    return knownName ?? p.name;
+  });
+
+  return resolvedText;
 }
 
 export interface TurnSearchTargets {

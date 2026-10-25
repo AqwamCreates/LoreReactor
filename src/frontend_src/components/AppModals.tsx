@@ -517,7 +517,29 @@ export function AppModals({
 
     return (
         <>
-            {/* ─── Manager Lists ─── */}
+            {/* ─── Tool / Utility Modals ─── */}
+
+            {modals.settings.isOpen && (
+                <SettingsModal
+                    onClose={modals.settings.close}
+                    onOpenBudgetControl={modals.budgetControl.open}
+                    onOpenParticipantControl={modals.participantControl.open}
+                    onOpenAccountData={modals.accountList.open}
+                    onOpenMultiplayerData={modals.multiplayerDataList.open}
+                    onOpenJoinSession={modals.joinSession.open}
+                    onOpenAIRecommendation={modals.aiRecommendation.open}
+                    onOpenRestrictionReduction={modals.restrictionReduction.open}
+                    onOpenPromptGuide={modals.promptGuide.open}
+                    onOpenAlternateTimelines={modals.alternateTimelines.open}
+                    onOpenImportCharacterCard={modals.cardImport.open}
+                    onOpenExportData={modals.exportData.open}
+                    onOpenImportData={modals.importData.open}
+                    onOpenDataManager={modals.dataManager.open}
+                    onOpenSuperSearch={modals.superSearch.open}
+                    onOpenGpuMonitor={modals.gpuMonitor.open}
+                    onOpenLanguageModelInferenceManager={modals.languageModelInferenceManager.open}
+                />
+            )}
 
             {/* ✅ FIX: Explicitly defined <ChatShellWithIdentifier> to fix TS generic inference cascade failure */}
             {modals.interactionDataList.isOpen && (
@@ -901,30 +923,6 @@ export function AppModals({
                     onSaveEntityFolder={onSaveEntityFolder}
                     onDeleteEntityFolder={onDeleteEntityFolder}
                     addToast={addToast}
-                />
-            )}
-
-            {/* ─── Tool / Utility Modals ─── */}
-
-            {modals.settings.isOpen && (
-                <SettingsModal
-                    onClose={modals.settings.close}
-                    onOpenBudgetControl={modals.budgetControl.open}
-                    onOpenParticipantControl={modals.participantControl.open}
-                    onOpenAccountData={modals.accountList.open}
-                    onOpenMultiplayerData={modals.multiplayerDataList.open}
-                    onOpenJoinSession={modals.joinSession.open}
-                    onOpenAIRecommendation={modals.aiRecommendation.open}
-                    onOpenRestrictionReduction={modals.restrictionReduction.open}
-                    onOpenPromptGuide={modals.promptGuide.open}
-                    onOpenAlternateTimelines={modals.alternateTimelines.open}
-                    onOpenImportCharacterCard={modals.cardImport.open}
-                    onOpenExportData={modals.exportData.open}
-                    onOpenImportData={modals.importData.open}
-                    onOpenDataManager={modals.dataManager.open}
-                    onOpenSuperSearch={modals.superSearch.open}
-                    onOpenGpuMonitor={modals.gpuMonitor.open}
-                    onOpenLanguageModelInferenceManager={modals.languageModelInferenceManager.open}
                 />
             )}
 

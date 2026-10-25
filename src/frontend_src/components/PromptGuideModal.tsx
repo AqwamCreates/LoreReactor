@@ -23,6 +23,8 @@ const MOCK_DATA: Record<string, string[] | string> = {
     "protagonists'": ["User's", "Player 2's"],
     characters: ['Character 1 (Alice)', 'Character 2 (Bob)', 'Character 3 (Charlie)', 'Character 4 (Dave)'],
     "characters'": ["Character 1 (Alice)'s", "Character 2 (Bob)'s", "Character 3 (Charlie)'s", "Character 4 (Dave)'s"],
+    'character@uuid-alice': 'Character 1 (Alice)',
+    'character@uuid-bob': 'Character 2 (Bob)',
     currentLocation: 'Town Square',
     weather: 'Raining heavily with thunderstorms.',
     date: "Today's date is October 26, 2026.",
@@ -59,17 +61,30 @@ const MOCK_DATA: Record<string, string[] | string> = {
     noHallucinationInstructions: 'I will also use existent information instead of creating non-existent information...',
 };
 
-// Lightweight client-side regex evaluator for array/string slicing demonstration
-const TEMPLATE_REGEX = /{{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z]+))?([\^*])?(?:\?(\d+))?}}/g;
+// Updated to capture suffix scopes (-/+) on keys and %scope overrides
+const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'\-@+]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?}}/g;
 
 function evaluateMockTemplate(raw: string): string {
     if (!raw) return '';
-    return raw.replace(TEMPLATE_REGEX, (_match, key, startStr, endStr, hashStr, excludeStr) => {
-        const data = MOCK_DATA[key];
+    return raw.replace(TEMPLATE_REGEX, (_match, key, startStr, endStr, hashStr, excludeStr, scopeStr, insertionStr, limitStr) => {
+        let cleanKey = key;
+        let suffixNote = '';
+        
+        // Parse suffix scopes
+        if (cleanKey.endsWith('-')) {
+            suffixNote = ' [Scope: Co-Located]';
+            cleanKey = cleanKey.slice(0, -1);
+        } else if (cleanKey.endsWith('+')) {
+            suffixNote = ' [Scope: All]';
+            cleanKey = cleanKey.slice(0, -1);
+        }
+
+        const data = MOCK_DATA[cleanKey];
         if (data === undefined) return _match; 
 
+        const limitOverride = limitStr !== undefined ? parseInt(limitStr, 10) : undefined;
         const isArray = Array.isArray(data);
-        const len = data.length;
+        const len = isArray ? data.length : (data as string).length;
         const wantLength = hashStr === '#';
         const wantExclude = excludeStr === '!';
         
@@ -82,7 +97,7 @@ function evaluateMockTemplate(raw: string): string {
         start = Math.max(0, Math.min(len, start));
         end = Math.max(0, Math.min(len, end));
 
-        if (wantLength) return String(len);
+        if (wantLength) return String(len) + suffixNote;
 
         if (isArray) {
             const arr = data as string[];
@@ -96,7 +111,12 @@ function evaluateMockTemplate(raw: string): string {
                     ? [...arr.slice(0, start), ...arr.slice(end)]
                     : arr.slice(start, end);
             }
-            return slice.join(', ');
+            
+            // Mock variant indexing for arrays
+            if (limitOverride !== undefined && limitOverride > 1) {
+                slice = slice.map(item => `${item} (Alias ${limitOverride - 1})`);
+            }
+            return slice.join(', ') + suffixNote;
         } else {
             const str = data as string;
             let slice: string;
@@ -109,22 +129,27 @@ function evaluateMockTemplate(raw: string): string {
                     ? str.slice(0, start) + str.slice(end)
                     : str.slice(start, end);
             }
-            return slice;
+            // Mock variant indexing for strings
+            if (limitOverride !== undefined && limitOverride > 1) {
+                return `${slice} (Alias ${limitOverride - 1})${suffixNote}`;
+            }
+            return slice + suffixNote;
         }
     });
 }
 
 const DIRECTORY_ITEMS = [
     // Identity
-    { key: 'character', desc: 'Current character tag and name (e.g., Character 1 (Alice)).', cat: 'Identity' },
-    { key: 'protagonist', desc: 'Display string of the FIRST co-located protagonist only.', cat: 'Identity' },
-    { key: "protagonist's", desc: 'Possessive string of the FIRST co-located protagonist only.', cat: 'Identity' },
-    { key: 'protagonists', desc: 'Array of all co-located protagonists. Supports slicing and operators.', cat: 'Identity' },
-    { key: "protagonists'", desc: 'Array of possessive strings for all co-located protagonists. Supports operators.', cat: 'Identity' },
-    { key: 'characters', desc: 'Array of all participants in the session. Supports slicing and operators.', cat: 'Identity' },
-    { key: "characters'", desc: 'Array of possessive strings for all participants. Supports operators.', cat: 'Identity' },
+    { key: 'character', desc: 'Current character. Use - for co-located, + for all. Use ?N for alias indexing (?1=True Name, ?2=First Alias).', cat: 'Identity' },
+    { key: 'protagonist', desc: 'FIRST co-located protagonist. Use + for all protagonists. Supports ?N alias indexing.', cat: 'Identity' },
+    { key: "protagonist's", desc: 'Possessive form of the FIRST co-located protagonist. Supports ?N alias indexing.', cat: 'Identity' },
+    { key: 'protagonists', desc: 'Array of protagonists. Use - for co-located, + for all. Supports slicing and ?N alias indexing.', cat: 'Identity' },
+    { key: "protagonists'", desc: 'Array of possessive strings for protagonists. Supports slicing and ?N alias indexing.', cat: 'Identity' },
+    { key: 'characters', desc: 'Array of all participants. Use - for co-located, + for all. Supports slicing and ?N alias indexing.', cat: 'Identity' },
+    { key: "characters'", desc: 'Array of possessive strings for all participants. Supports slicing and ?N alias indexing.', cat: 'Identity' },
     { key: 'characterTags', desc: 'Array of formatted character tags for present participants.', cat: 'Identity' },
     { key: 'characterTagsWithDescriptions', desc: 'Array of character tags including their appearance prompts.', cat: 'Identity' },
+    { key: 'character@uuid', desc: 'Resolves a specific character by their immutable UUID (e.g., {{character@1234-5678}}). Fully respects the ?limit operator and prevents index-shift corruption in persistent memories.', cat: 'Identity' },
 
     // Prompts
     { key: 'systemPrompt', desc: 'The character\'s core system prompt.', cat: 'Prompts' },
@@ -202,7 +227,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
     const [activeTab, setActiveTab] = useState<GuideTabId>('basics');
     
     // Playground State
-    const [playgroundInput, setPlaygroundInput] = useState('I am {{character}}. Present are {{characters[0:3]}}. My tools: {{tools[0:3]}}. Location: {{currentLocation}}.');
+    const [playgroundInput, setPlaygroundInput] = useState('I am {{character}}. Present are {{characters-[0:2]}}. My tools: {{tools[0:3]}}. Location: {{currentLocation}}.');
     const [searchQuery, setSearchQuery] = useState('');
 
     const playgroundOutput = useMemo(() => {
@@ -295,6 +320,12 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                 'Basic injection of identity variables.'
                             )}
 
+                            {renderComparison(
+                                'I remember when {{character@uuid-alice}} gave me the sword.',
+                                'I remember when Character 1 (Alice) gave me the sword.',
+                                'UUID resolution ensures persistent memories map to the correct character. Fully respects known name limits (?limit).'
+                            )}
+
                             <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '16px', padding: '10px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
                                 <strong>Note:</strong> Custom Prompt Blocks can also be injected by using their exact ID or by relying on Regex Activation Triggers to append them automatically.
                             </div>
@@ -341,14 +372,33 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                 'Returns the possessive strings for all co-located protagonists.'
                             )}
                             {renderComparison(
-                                "{{characters[0:2]'}}",
-                                evaluateMockTemplate("{{characters[0:2]'}}"),
-                                'Note: To slice possessives, use the dedicated possessive array variable: {{characters\'[0:2]}}.'
-                            )}
-                            {renderComparison(
                                 "{{characters'[0:2]}}",
                                 evaluateMockTemplate("{{characters'[0:2]}}"),
                                 'Slices the possessive array directly (First 2 participants\' possessive tags).'
+                            )}
+
+                            <span className="editor-section-title" style={{ marginTop: '20px' }}>Suffix Scopes <code>-</code> / <code>+</code></span>
+                            {renderComparison(
+                                '{{characters-}}',
+                                evaluateMockTemplate('{{characters-}}'),
+                                'The - suffix restricts the array to strictly co-located participants.'
+                            )}
+                            {renderComparison(
+                                '{{characters+}}',
+                                evaluateMockTemplate('{{characters+}}'),
+                                'The + suffix forces the array to include all participants in the session, regardless of location.'
+                            )}
+
+                            <span className="editor-section-title" style={{ marginTop: '20px' }}>Name Variant Indexing <code>?N</code></span>
+                            {renderComparison(
+                                '{{character?1}}',
+                                evaluateMockTemplate('{{character?1}}'),
+                                '?1 (or default) resolves to the character\'s True Name.'
+                            )}
+                            {renderComparison(
+                                '{{character?2}}',
+                                evaluateMockTemplate('{{character?2}}'),
+                                '?2 resolves to the character\'s First Alias. ?3 for Second Alias, etc.'
                             )}
                         </div>
                     )}
@@ -362,10 +412,10 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 <div className="entity-field-block">
-                                    <span className="entity-field-title">Scope Override <code>%scope</code></span>
+                                    <span className="entity-field-title">Scope Override <code>%scope</code> or Suffix <code>-</code>/<code>+</code></span>
                                     <div className="entity-field-content">
-                                        <code>{'{{characterTags%all}}'}</code><br/>
-                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Forces the 'all' scope, ignoring the Profile's 'coLocated' or 'current' setting. Valid values: <code>%current</code>, <code>%coLocated</code>, <code>%all</code>.</span>
+                                        <code>{'{{characterTags%all}}'}</code> or <code>{'{{characters+}}'}</code><br/>
+                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Forces the 'all' scope, ignoring the Profile's 'coLocated' or 'current' setting. Valid values: <code>%current</code>, <code>%coLocated</code> (or <code>-</code>), <code>%all</code> (or <code>+</code>).</span>
                                     </div>
                                 </div>
 
@@ -381,7 +431,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     <span className="entity-field-title">Known Names Limit <code>?limit</code></span>
                                     <div className="entity-field-content">
                                         <code>{'{{characterTags?2}}'}</code><br/>
-                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Restricts name reveals to the first N known characters. <code>?0</code> reveals no names (only tags), <code>?-1</code> reveals all.</span>
+                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Restricts name reveals to the first N known characters. <code>?0</code> reveals no names (only tags), <code>?-1</code> reveals all. <strong>Also applies to UUID lookups and Identity Variant Indexing:</strong> <code>{'{{character@uuid?0}}'}</code></span>
                                     </div>
                                 </div>
 
@@ -402,7 +452,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                         <div className="editor-section">
                             <span className="editor-section-title">Live Mock Playground</span>
                             <p style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '16px' }}>
-                                Test array slicing, length, and exclusion operators against all mock data simultaneously. Mix and match variables in the same string. <em>Note: Cache/Scope overrides (<code>%</code>, <code>^</code>, <code>?</code>) require the backend engine and are not evaluated here.</em>
+                                Test array slicing, suffix scopes (<code>-</code>/<code>+</code>), length, exclusion, and variant indexing against all mock data simultaneously. Mix and match variables in the same string. <em>Note: Complex Cache/Scope overrides (<code>%</code>, <code>^</code>, <code>*</code>) require the backend engine and are not fully evaluated here.</em>
                             </p>
 
                             <div style={{ marginBottom: '16px' }}>
@@ -411,7 +461,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     className="editor-textarea" 
                                     value={playgroundInput}
                                     onChange={e => setPlaygroundInput(e.target.value)}
-                                    placeholder={`e.g., I am {{character}}. Present are {{characters[0:3]}}.`}
+                                    placeholder={`e.g., I am {{character}}. Present are {{characters-[0:2]}}.`}
                                     style={{ fontFamily: 'monospace', minHeight: '80px' }}
                                 />
                             </div>

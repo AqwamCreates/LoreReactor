@@ -67,14 +67,15 @@ const noRepeatInstructions = "If I want to repeat myself or others, I will talk 
 const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts. ";
 const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on. ";
 const toolUsageInstructions = `I must read answers from the list of available tools to get accurate and precise response when the situation requires it. I will also always give the tool inputs as {{character}} in-character. I will also assume the tools that are not in my list are currently disabled. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. I can call the tool like {{toolCallStartString}}tool(){{toolCallEndString}} to get direct result or access the help page. If I never used a tool and I intend to use it in the future, I will call the tool without any arguments to understand how it works. If I do not know how a tool works, I will explore the tool arguments thoroughly. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools each time I receive tool results. Tool invocation markers are only visible to me. I also must continue to generate a response upon performing tool calls or receiving tool results.`;
-const toolMessageModeInstructions = `I am currently in tool message mode, where I will only interact with the environment and only talk to myself.`;
+const toolMessageModeInstructions = "I am currently in tool message mode, where I will only interact with the environment and only talk to myself.";
 
 const DEFAULT_MAX_RECURSION_DEPTH = 3;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 const RECENT_INTERACTION_WINDOW = 20;
 
 // 1=key, 2=slice start, 3=slice end, 4=#, 5=!, 6=%scope, 7=^ or *, 8=?limit
-const TEMPLATE_REGEX = /{{([a-zA-Z0-9_']+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z]+))?([\^*])?(?:\?(\d+))?}}/g;
+// Added + and - to the %scope capture group to support %+ and %-
+const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'@\-]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?}}/g;
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -298,9 +299,6 @@ export function resolveTemplate(
       const wantLength = hashStr === '#';
       const wantExclude = excludeStr === '!';
       
-      const hasScopeOverride = scopeStr !== undefined;
-      const scopeOverride = hasScopeOverride ? (scopeStr as participantScopeMode) : undefined;
-      
       const hasInsertionOverride = insertionStr !== undefined;
       const insertionOverride = insertionStr === '^' ? 'dynamic' : (insertionStr === '*' ? 'static' : undefined);
       
@@ -315,44 +313,111 @@ export function resolveTemplate(
         return wantLength ? String(value.length) : value;
       };
 
-      if (ctx.promptBuildContext && (hasScopeOverride || hasInsertionOverride || hasLimitOverride)) {
+      // 1. Parse suffix scope operators (- and +)
+      let rawKey = key;
+      let suffixScope: participantScopeMode | undefined = undefined;
+
+      if (rawKey.endsWith('-')) {
+          suffixScope = 'coLocated';
+          rawKey = rawKey.slice(0, -1);
+      } else if (rawKey.endsWith('+')) {
+          suffixScope = 'all';
+          rawKey = rawKey.slice(0, -1);
+      }
+
+      // 2. Parse possessive
+      const isPossessive = rawKey.endsWith("'") || rawKey.endsWith("'s");
+      const cleanKey = isPossessive ? rawKey.replace(/'s?$/, '') : rawKey;
+
+      // 3. Parse %scope overrides (including %+ and %-)
+      const hasScopeOverride = scopeStr !== undefined;
+      let scopeOverride = hasScopeOverride ? (scopeStr as participantScopeMode) : undefined;
+      if (scopeStr === '-' || scopeStr === '+') {
+          scopeOverride = scopeStr === '-' ? 'coLocated' : 'all';
+      }
+
+      const effectiveScope = suffixScope ?? scopeOverride;
+
+      // UUID Resolution (e.g., {{character@uuid}})
+      const isUuidKey = cleanKey.startsWith('character@');
+      
+      if (isUuidKey && ctx.promptBuildContext) {
+        const uuid = cleanKey.split('@')[1];
         const pCtx = ctx.promptBuildContext;
-        const profile = pCtx.profile;
+        const participant = pCtx.participants.find(p => p.id === uuid);
+        
+        if (participant) {
+          if (isPossessive) {
+            return asLengthOrValue(getIdentityPossessiveName(participant, pCtx, limitOverride));
+          }
+          return asLengthOrValue(getDisplayName(participant, pCtx, limitOverride));
+        }
+        return asLengthOrValue(isPossessive ? "Unknown's" : "Unknown");
+      }
+
+      const pCtx = ctx.promptBuildContext;
+
+      // Unified Identity Resolution with Scope Awareness
+      if (pCtx && (cleanKey === 'character' || cleanKey === 'protagonist' || cleanKey === 'protagonists' || cleanKey === 'characters')) {
+          let targetParticipants: Character[] = [];
+          
+          if (cleanKey === 'character') {
+              targetParticipants = [pCtx.character];
+          } else if (cleanKey === 'protagonist' || cleanKey === 'protagonists') {
+              const allProtagonists = pCtx.participants.filter(p => pCtx.protagonistIds.has(p.id));
+              if (effectiveScope === 'coLocated' || effectiveScope === 'current') {
+                  targetParticipants = allProtagonists.filter(p => pCtx.coLocatedProtagonists.some(cp => cp.id === p.id));
+              } else {
+                  targetParticipants = allProtagonists;
+              }
+          } else if (cleanKey === 'characters') {
+              targetParticipants = getParticipantsForScopeAndInsertion(pCtx, effectiveScope ?? 'all', insertionOverride ?? 'dynamic');
+          }
+
+          const getResolvedName = (p: Character) => getDisplayName(p, pCtx, limitOverride);
+          const getResolvedPossessive = (p: Character) => getIdentityPossessiveName(p, pCtx, limitOverride);
+
+          if (cleanKey === 'character' || cleanKey === 'protagonist') {
+              const p = targetParticipants[0];
+              if (!p) return asLengthOrValue('');
+              const name = isPossessive ? getResolvedPossessive(p) : getResolvedName(p);
+              return asLengthOrValue(name);
+          }
+          
+          if (cleanKey === 'protagonists' || cleanKey === 'characters') {
+              const names = targetParticipants.map(p => isPossessive ? getResolvedPossessive(p) : getResolvedName(p));
+              return asLengthOrValue(names);
+          }
+      }
+
+      if (ctx.promptBuildContext && (hasScopeOverride || hasInsertionOverride || hasLimitOverride)) {
+        const profile = pCtx!.profile;
         
         if (key === 'characterTags' || key === 'characterTagsWithDescriptions') {
-          const effectiveScope = scopeOverride ?? (profile?.participantScopeModes?.['Character Name'] ?? 'coLocated');
-          const effectiveInsertion = insertionOverride ?? (profile?.participantInsertionModes?.['Character Name'] ?? 'dynamic');
-          const effectiveLimit = limitOverride ?? profile?.participantsKnownNamesLimits?.['Character Name'];
-          const { tags, tagsWithDescriptions } = buildCharacterTagsText(pCtx, effectiveScope, effectiveInsertion, effectiveLimit);
+          const effectiveScopeTags = scopeOverride ?? (profile?.participantScopeModes?.['Character Name'] ?? 'coLocated');
+          const effectiveInsertionTags = insertionOverride ?? (profile?.participantInsertionModes?.['Character Name'] ?? 'dynamic');
+          const effectiveLimitTags = limitOverride ?? profile?.participantsKnownNamesLimits?.['Character Name'];
+          const { tags, tagsWithDescriptions } = buildCharacterTagsText(pCtx!, effectiveScopeTags, effectiveInsertionTags, effectiveLimitTags);
           return asLengthOrValue(key === 'characterTags' ? tags : tagsWithDescriptions);
         }
         if (key === 'appearancePrompt') {
-          const effectiveScope = scopeOverride ?? (profile?.participantScopeModes?.['Character Name'] ?? 'coLocated');
-          const effectiveInsertion = insertionOverride ?? (profile?.participantInsertionModes?.['Character Name'] ?? 'dynamic');
-          const effectiveLimit = limitOverride ?? profile?.participantsKnownNamesLimits?.['Character Name'];
-          return asLengthOrValue(buildAppearanceText(pCtx, ctx.wearingStatus || {}, effectiveScope, effectiveInsertion, effectiveLimit));
+          const effectiveScopeApp = scopeOverride ?? (profile?.participantScopeModes?.['Character Name'] ?? 'coLocated');
+          const effectiveInsertionApp = insertionOverride ?? (profile?.participantInsertionModes?.['Character Name'] ?? 'dynamic');
+          const effectiveLimitApp = limitOverride ?? profile?.participantsKnownNamesLimits?.['Character Name'];
+          return asLengthOrValue(buildAppearanceText(pCtx!, ctx.wearingStatus || {}, effectiveScopeApp, effectiveInsertionApp, effectiveLimitApp));
         }
         if (key === 'systemPrompt') {
-          const effectiveScope = scopeOverride ?? (profile?.participantScopeModes?.['System Prompt'] ?? 'coLocated');
-          const effectiveInsertion = insertionOverride ?? (profile?.participantInsertionModes?.['System Prompt'] ?? 'dynamic');
-          return asLengthOrValue(buildSystemPromptText(pCtx, effectiveScope, effectiveInsertion));
+          const effectiveScopeSys = scopeOverride ?? (profile?.participantScopeModes?.['System Prompt'] ?? 'coLocated');
+          const effectiveInsertionSys = insertionOverride ?? (profile?.participantInsertionModes?.['System Prompt'] ?? 'dynamic');
+          return asLengthOrValue(buildSystemPromptText(pCtx!, effectiveScopeSys, effectiveInsertionSys));
         }
         if (key === 'thinkPrompt') {
-          const effectiveScope = scopeOverride ?? (profile?.participantScopeModes?.['Think Prompt'] ?? 'coLocated');
-          const effectiveInsertion = insertionOverride ?? (profile?.participantInsertionModes?.['Think Prompt'] ?? 'dynamic');
-          return asLengthOrValue(buildThinkPromptText(pCtx, effectiveScope, effectiveInsertion));
+          const effectiveScopeThink = scopeOverride ?? (profile?.participantScopeModes?.['Think Prompt'] ?? 'coLocated');
+          const effectiveInsertionThink = insertionOverride ?? (profile?.participantInsertionModes?.['Think Prompt'] ?? 'dynamic');
+          return asLengthOrValue(buildThinkPromptText(pCtx!, effectiveScopeThink, effectiveInsertionThink));
         }
       }
 
-      if (key === 'character') {
-        return asLengthOrValue(`${ctx.characterParticipantTag} (${ctx.characterName})`);
-      }
-      if (key === 'protagonist') {
-        return asLengthOrValue(ctx.protagonistDisplayString);
-      }
-      if (key === "protagonist's") {
-        return asLengthOrValue(ctx.protagonistPossessiveString);
-      }
       if (key === 'tools') {
         return formatToolsPlaceholder(
           ctx.tools ?? [],
@@ -555,6 +620,43 @@ function buildProtagonistPossessiveString(
   const knownName = getKnownDisplayName(p, knownNames);
   const name = knownName ?? tag;
   return `${name}'s`;
+}
+
+function getIdentityPossessiveName(
+  participant: Character,
+  ctx: PromptBuildContext,
+  limit: number | undefined
+): string {
+  const tag = getParticipantTag(participant, ctx.participants);
+  const knownMap = ctx.knownNames[participant.id];
+  const hasKnownName = !!knownMap && Object.keys(knownMap).length > 0;
+  
+  let revealName = false;
+  if (limit !== undefined && limit >= 0) {
+    if (limit === 0) {
+      revealName = false;
+    } else {
+      let knownCount = 0;
+      for (const p of ctx.participants) {
+        const pKnownMap = ctx.knownNames[p.id];
+        const pHasKnown = !!pKnownMap && Object.keys(pKnownMap).length > 0;
+        if (p.id === participant.id) {
+          revealName = pHasKnown && knownCount < limit;
+          break;
+        }
+        if (pHasKnown) knownCount++;
+      }
+    }
+  } else {
+    revealName = hasKnownName;
+  }
+
+  if (revealName && hasKnownName) {
+    const knownName = getKnownDisplayName(participant, ctx.knownNames);
+    if (knownName) return `${knownName}'s`;
+  }
+  
+  return `${tag}'s`;
 }
 
 export function resolveInnerText(
