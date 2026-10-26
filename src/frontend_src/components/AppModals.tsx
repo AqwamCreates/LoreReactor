@@ -50,7 +50,7 @@ import { DataManagerModal } from './DataManagerModal';
 import { AlternateTimelinesModal } from './AlternateTimelinesModal';
 import { InteractionDataInspectionModal } from './InteractionDataInspectionModal';
 import { SuperSearchModal } from './SuperSearchModal';
-import { LanguageModelInferenceManagerModal } from './LanguageModelInferenceManager';
+import { ModelInferenceManagerModal } from './ModelInferenceManager';
 import { voiceTranscriptionEngine } from '../services/VoiceTranscriptionEngine';
 import { embeddingQueue } from '../services/EmbeddingQueue';
 import { getCurrentLocationId, getReachableLocationsByCharacter } from '../utilities/locationLogic';
@@ -537,7 +537,7 @@ export function AppModals({
                     onOpenDataManager={modals.dataManager.open}
                     onOpenSuperSearch={modals.superSearch.open}
                     onOpenGpuMonitor={modals.gpuMonitor.open}
-                    onOpenLanguageModelInferenceManager={modals.languageModelInferenceManager.open}
+                    onOpenModelInferenceManager={modals.modelInferenceManager.open}
                 />
             )}
 
@@ -1132,9 +1132,9 @@ export function AppModals({
                 <GpuMonitorModal onClose={modals.gpuMonitor.close} />
             )}
 
-            {modals.languageModelInferenceManager.isOpen && (
-                <LanguageModelInferenceManagerModal
-                    onClose={modals.languageModelInferenceManager.close}
+            {modals.modelInferenceManager.isOpen && (
+                <ModelInferenceManagerModal
+                    onClose={modals.modelInferenceManager.close}
                     addToast={addToast}
                 />
             )}

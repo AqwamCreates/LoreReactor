@@ -1807,7 +1807,7 @@ app.get(LANGUAGE_MODEL_STATUS_ROUTE, (_req, response) => {
   response.json({ activeModels: status, count: status.length });
 });
 
-// ─── Local Backends Management Endpoints for LanguageModelInferenceManager ───
+// ─── Local Backends Management Endpoints for ModelInferenceManager ───
 app.get(LANGUAGE_MODEL_ROUTE, (_req, res) => {
   const result = Object.entries(BACKEND_CONFIGS).map(([name, cfg]) => ({
     name,

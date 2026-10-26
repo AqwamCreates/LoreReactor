@@ -1,11 +1,11 @@
-// src/backend_src/downloadUrls.ts
-
+// src/backend_src/externalUrls.ts (or downloadUrls.ts)
 export const GITHUB_REPOSITORIES = {
   LLAMA_CPP: 'ggml-org/llama.cpp',
   LLAMA_CPP_FALLBACK_TAG: 'v0.4.1',
   MISTRAL_RS: 'EricLBuehler/mistral.rs',
   OLLAMA: 'ollama/ollama',
   LOCAL_AI: 'mudler/LocalAI',
+  STABLE_DIFFUSION_CPP: 'leejet/stable-diffusion.cpp',
 };
 
 export const DOCKER_IMAGES = {

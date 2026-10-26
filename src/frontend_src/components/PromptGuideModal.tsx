@@ -86,14 +86,14 @@ const locCastle = {
     id: 'uuid-castle',
     name: "King's Castle",
     text: 'The grand royal residence atop the distant mountain.',
-    locationBindings: []
+    locationBindings: ['']
 } as Location;
 
 const locRuins = {
     id: 'uuid-ruins',
     name: 'Abandoned Ruins',
     text: 'Crumbling stone towers overgrown with cursed briars.',
-    locationBindings: []
+    locationBindings: ['']
 } as Location;
 
 const mockAllLocations = [locTown, locForest, locCastle, locRuins];

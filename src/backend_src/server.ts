@@ -70,7 +70,8 @@ type LocalBackend =
   | 'SGLang'
   | 'LM Studio'
   | 'LocalAI'
-  | 'mistral.rs';
+  | 'mistral.rs'
+  | 'stable-diffusion.cpp';
 
 interface BackendConfig {
   binaryPath: string;
@@ -81,6 +82,7 @@ interface BackendConfig {
   readyPattern?: RegExp;
   envOverrides?: (port: number) => Record<string, string>;
   modelNameNotPath?: boolean;
+  category?: 'llm' | 'spatiotemporal';
 }
 
 const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
@@ -94,6 +96,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'llama'),
     logLabel: 'LLAMA',
     readyPattern: /HTTP server listening/i,
+    category: 'llm',
   },
 
   'Transformers': {
@@ -110,6 +113,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'transformers'),
     logLabel: 'TGI',
     readyPattern: /Connected/i,
+    category: 'llm',
   },
 
   'ExLlamaV3': {
@@ -121,6 +125,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'exllamav3'),
     logLabel: 'EXLV3',
     readyPattern: /Uvicorn running/i,
+    category: 'llm',
   },
 
   'ExLlamaV3 HF': {
@@ -132,6 +137,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'exllamav3_hf'),
     logLabel: 'EXLV3HF',
     readyPattern: /Uvicorn running/i,
+    category: 'llm',
   },
 
   'ExLlamaV2': {
@@ -143,6 +149,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'exllamav2'),
     logLabel: 'EXLV2',
     readyPattern: /Uvicorn running/i,
+    category: 'llm',
   },
 
   'TensorRT-LLM': {
@@ -159,6 +166,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'tensorrt-llm'),
     logLabel: 'TRTLLM',
     readyPattern: /Started HTTPService/i,
+    category: 'llm',
   },
 
   'Ollama': {
@@ -170,6 +178,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /listening on/i,
     envOverrides: (port) => ({ OLLAMA_HOST: `0.0.0.0:${port}` }),
     modelNameNotPath: true,
+    category: 'llm',
   },
 
   'vLLM': {
@@ -182,6 +191,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'vllm'),
     logLabel: 'VLLM',
     readyPattern: /Application startup complete/i,
+    category: 'llm',
   },
 
   'SGLang': {
@@ -194,6 +204,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'sglang'),
     logLabel: 'SGLANG',
     readyPattern: /The server is fired up and ready/i,
+    category: 'llm',
   },
 
   'LM Studio': {
@@ -206,6 +217,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     logLabel: 'LMS',
     readyPattern: /Server started/i,
     modelNameNotPath: true,
+    category: 'llm',
   },
 
   'LocalAI': {
@@ -218,6 +230,7 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     logLabel: 'LOCAI',
     readyPattern: /LocalAI is ready|listening on/i,
     modelNameNotPath: true,
+    category: 'llm',
   },
 
   'mistral.rs': {
@@ -229,6 +242,19 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'mistral-rs'),
     logLabel: 'MRSSV',
     readyPattern: /Started HTTP server/i,
+    category: 'llm',
+  },
+
+  'stable-diffusion.cpp': {
+    binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'stable-diffusion.cpp', bin('sd-server')),
+    buildArgs: (modelPath, port, extraArgs) => [
+      '-m', modelPath, '--listen-ip', '0.0.0.0', '--listen-port', port.toString(), ...extraArgs,
+    ],
+    healthUrl: (port) => `http://127.0.0.1:${port}/`,
+    cwd: path.join(LOCAL_MODEL_BACKENDS_PATH, 'stable-diffusion.cpp'),
+    logLabel: 'SD-CPP',
+    readyPattern: /listening on/i,
+    category: 'spatiotemporal',
   },
 };
 
@@ -1055,6 +1081,52 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     writeDockerWrapper(config.binaryPath, image);
   }
 
+  // 10. STABLE-DIFFUSION.CPP
+  else if (backend === 'stable-diffusion.cpp') {
+    broadcastNotify(backend, 'downloading', 5, 'Resolving stable-diffusion.cpp release assets...');
+    const release = await fetchGithubRelease(GITHUB_REPOSITORIES.STABLE_DIFFUSION_CPP || 'leejet/stable-diffusion.cpp');
+
+    let assetPattern: RegExp;
+    if (IS_WINDOWS) {
+      if (detectedGpuVendor === 'nvidia') {
+        assetPattern = /sd-.*(?:cublas|cuda).*win.*x64\.zip$/i;
+      } else {
+        assetPattern = /sd-.*vulkan.*win.*x64\.zip$/i;
+      }
+    } else if (IS_MACOS) {
+      assetPattern = /sd-.*(?:metal|macos|darwin).*\.tar\.gz$/i;
+    } else {
+      if (detectedGpuVendor === 'nvidia') {
+        assetPattern = /sd-.*(?:cublas|cuda).*ubuntu.*x64\.tar\.gz$/i;
+      } else {
+        assetPattern = /sd-.*vulkan.*ubuntu.*x64\.tar\.gz$/i;
+      }
+    }
+
+    const platformFallback = IS_WINDOWS ? /win/i : IS_MACOS ? /macos|darwin/i : /ubuntu|linux/i;
+
+    const asset = release.assets.find((a: any) => assetPattern.test(a.name))
+      || release.assets.find((a: any) => platformFallback.test(a.name) && /x64|amd64/i.test(a.name));
+
+    if (!asset?.browser_download_url) throw new Error('Could not locate suitable stable-diffusion.cpp release asset.');
+
+    const tempPath = path.join(destDir, `sdcpp_pkg_${Date.now()}${path.extname(asset.name)}`);
+    await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      broadcastNotify(backend, 'downloading', pct, `Downloading stable-diffusion.cpp (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
+    }, backend);
+
+    broadcastNotify(backend, 'extracting', 85, 'Extracting stable-diffusion.cpp binaries...');
+    extractArchive(tempPath, destDir);
+    try { fs.unlinkSync(tempPath); } catch {}
+
+    hoistBinaryIfExists(destDir, bin('sd-server'), config.binaryPath);
+
+    if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
+      fs.chmodSync(config.binaryPath, 0o755);
+    }
+  }
+
   broadcastNotify(backend, 'ready', 100, `${backend} is installed and ready.`);
   log.success(`[AutoInstaller] ${backend} installed successfully!`);
   cancelledInstalls.delete(backend);
@@ -1788,7 +1860,7 @@ app.use('/user_data', (req, response) => {
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
-// --- Language Model Management ---
+// --- Language & Spatiotemporal Model Management ---
 
 const LANGUAGE_MODEL_ROUTE = '/language_models';
 const LANGUAGE_MODEL_STATUS_ROUTE = '/language_models/status';
@@ -1798,29 +1870,65 @@ const LANGUAGE_MODEL_INSTALL_ROUTE = '/language_models/install';
 const LANGUAGE_MODEL_CANCEL_ROUTE = '/language_models/cancel';
 const LANGUAGE_MODEL_DELETE_ROUTE = '/language_models/delete';
 
+const SPATIOTEMPORAL_MODEL_ROUTE = '/spatiotemporal_models';
+const SPATIOTEMPORAL_MODEL_STATUS_ROUTE = '/spatiotemporal_models/status';
+const SPATIOTEMPORAL_MODEL_LOAD_ROUTE   = '/spatiotemporal_models/load';
+const SPATIOTEMPORAL_MODEL_UNLOAD_ROUTE = '/spatiotemporal_models/unload';
+const SPATIOTEMPORAL_MODEL_INSTALL_ROUTE = '/spatiotemporal_models/install';
+const SPATIOTEMPORAL_MODEL_CANCEL_ROUTE = '/spatiotemporal_models/cancel';
+const SPATIOTEMPORAL_MODEL_DELETE_ROUTE = '/spatiotemporal_models/delete';
+
 app.get(LANGUAGE_MODEL_STATUS_ROUTE, (_req, response) => {
-  const status = Array.from(activeModels.entries()).map(([id, instance]) => ({
-    id,
-    port: instance.port,
-    status: instance.status,
-    backend: instance.backend,
-    modelPath: instance.modelPath,
-    uptime: Date.now() - instance.startTime,
-  }));
+  const status = Array.from(activeModels.entries())
+    .filter(([_, instance]) => BACKEND_CONFIGS[instance.backend]?.category !== 'spatiotemporal')
+    .map(([id, instance]) => ({
+      id,
+      port: instance.port,
+      status: instance.status,
+      backend: instance.backend,
+      modelPath: instance.modelPath,
+      uptime: Date.now() - instance.startTime,
+    }));
   response.json({ activeModels: status, count: status.length });
 });
 
-// ─── Local Backends Management Endpoints for LanguageModelInferenceManager ───
+app.get(SPATIOTEMPORAL_MODEL_STATUS_ROUTE, (_req, response) => {
+  const status = Array.from(activeModels.entries())
+    .filter(([_, instance]) => BACKEND_CONFIGS[instance.backend]?.category === 'spatiotemporal')
+    .map(([id, instance]) => ({
+      id,
+      port: instance.port,
+      status: instance.status,
+      backend: instance.backend,
+      modelPath: instance.modelPath,
+      uptime: Date.now() - instance.startTime,
+    }));
+  response.json({ activeModels: status, count: status.length });
+});
+
 app.get(LANGUAGE_MODEL_ROUTE, (_req, res) => {
-  const result = Object.entries(BACKEND_CONFIGS).map(([name, cfg]) => ({
-    name,
-    installed: fs.existsSync(cfg.binaryPath),
-    binaryPath: cfg.binaryPath,
-  }));
+  const result = Object.entries(BACKEND_CONFIGS)
+    .filter(([_, cfg]) => cfg.category !== 'spatiotemporal')
+    .map(([name, cfg]) => ({
+      name,
+      installed: fs.existsSync(cfg.binaryPath),
+      binaryPath: cfg.binaryPath,
+    }));
   res.json({ success: true, backends: result });
 });
 
-app.post(LANGUAGE_MODEL_INSTALL_ROUTE, async (req, res) => {
+app.get(SPATIOTEMPORAL_MODEL_ROUTE, (_req, res) => {
+  const result = Object.entries(BACKEND_CONFIGS)
+    .filter(([_, cfg]) => cfg.category === 'spatiotemporal')
+    .map(([name, cfg]) => ({
+      name,
+      installed: fs.existsSync(cfg.binaryPath),
+      binaryPath: cfg.binaryPath,
+    }));
+  res.json({ success: true, backends: result });
+});
+
+const handleInstall = async (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
   if (!backend || !BACKEND_CONFIGS[backend as LocalBackend]) {
     return res.status(400).json({ error: `Invalid backend "${backend}".` });
@@ -1837,10 +1945,9 @@ app.post(LANGUAGE_MODEL_INSTALL_ROUTE, async (req, res) => {
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
-});
+};
 
-// ─── Cancel Installation ─────────────────────────────────────────────
-app.post(LANGUAGE_MODEL_CANCEL_ROUTE, (req, res) => {
+const handleCancel = (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
   if (!backend) return res.status(400).json({ error: 'Missing backend' });
 
@@ -1850,10 +1957,9 @@ app.post(LANGUAGE_MODEL_CANCEL_ROUTE, (req, res) => {
 
   log.info(`[InstallManager] Cancellation requested for ${backend}.`);
   res.json({ success: true, message: `Cancellation requested for ${backend}.` });
-});
+};
 
-// ─── Delete / Uninstall Backend ──────────────────────────────────────
-app.post(LANGUAGE_MODEL_DELETE_ROUTE, async (req, res) => {
+const handleDelete = async (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
   if (!backend || !BACKEND_CONFIGS[backend as LocalBackend]) {
     return res.status(400).json({ error: `Invalid backend "${backend}".` });
@@ -1892,9 +1998,9 @@ app.post(LANGUAGE_MODEL_DELETE_ROUTE, async (req, res) => {
     log.error(`[DeleteManager] Failed to delete ${backend}: ${err.message}`);
     res.status(500).json({ error: `Failed to delete ${backend}: ${err.message}` });
   }
-});
+};
 
-app.post(LANGUAGE_MODEL_LOAD_ROUTE, async (req, response) => {
+const handleLoad = async (req: express.Request, response: express.Response) => {
   const { id, modelPath, port: requestedPort, args = [], backend: requestedBackend } = req.body;
 
   if (!id || !modelPath) return response.status(400).json({ error: 'Missing id or modelPath' });
@@ -2007,9 +2113,9 @@ app.post(LANGUAGE_MODEL_LOAD_ROUTE, async (req, response) => {
     activeModels.delete(id);
     response.status(504).json({ error: 'Model failed to initialize within timeout' });
   }
-});
+};
 
-app.post(LANGUAGE_MODEL_UNLOAD_ROUTE, (req, response) => {
+const handleUnload = (req: express.Request, response: express.Response) => {
   const { id } = req.body;
   if (!id) return response.status(400).json({ error: 'Missing id' });
 
@@ -2030,7 +2136,22 @@ app.post(LANGUAGE_MODEL_UNLOAD_ROUTE, (req, response) => {
   activeModels.delete(id);
   log.success(`${instance.backend} model "${id}" unloaded`);
   response.json({ success: true, message: 'Model unloaded' });
-});
+};
+
+app.post(LANGUAGE_MODEL_INSTALL_ROUTE, handleInstall);
+app.post(SPATIOTEMPORAL_MODEL_INSTALL_ROUTE, handleInstall);
+
+app.post(LANGUAGE_MODEL_CANCEL_ROUTE, handleCancel);
+app.post(SPATIOTEMPORAL_MODEL_CANCEL_ROUTE, handleCancel);
+
+app.post(LANGUAGE_MODEL_DELETE_ROUTE, handleDelete);
+app.post(SPATIOTEMPORAL_MODEL_DELETE_ROUTE, handleDelete);
+
+app.post(LANGUAGE_MODEL_LOAD_ROUTE, handleLoad);
+app.post(SPATIOTEMPORAL_MODEL_LOAD_ROUTE, handleLoad);
+
+app.post(LANGUAGE_MODEL_UNLOAD_ROUTE, handleUnload);
+app.post(SPATIOTEMPORAL_MODEL_UNLOAD_ROUTE, handleUnload);
 
 app.all('/proxy/:modelId/{*path}', async (req, response) => {
   const modelId       = req.params.modelId;
