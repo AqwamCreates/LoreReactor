@@ -26,7 +26,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         locationBackgroundUrl,
         displayMessages,
         portraitUrlCache,
-        streamingText,
         centerAvatar, displayNameCache,
         messageEndRef, editTextAreaRef,
         onSaveEdit,
@@ -59,7 +58,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const cloneChat = useChatStore(s => s.cloneChat);
     const stopGeneration = useGenerationStore(s => s.stopGeneration);
 
-    // Derived state & Local wrappers for Zustand actions
     const isMassActive = massDeleteId !== null;
     const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
     const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
@@ -102,7 +100,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     }, [chatMessages.length, focusedMessageId, setFocusedMessageId]);
 
     const lastMsg = displayMessages[displayMessages.length - 1];
-    const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.messageType !== 'narration' && lastMsg?.character?.id === streamingCharacter.id;
 
     const displayedMessage = useMemo(() => {
         if (viewIndex !== null && viewIndex >= 0 && viewIndex < chatMessages.length) {
@@ -113,17 +110,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const isNarration = displayedMessage?.messageType === 'narration';
     const compiledText = useCompiledMessageText(isNarration ? null : (displayedMessage as TextMessage | undefined));
-    
     const displayedTextContent = isNarration && displayedMessage ? (displayedMessage as NarrationMessage).textContent : compiledText;
-
-    const streamingCompiledText = useCompiledMessageText(isStreamingInList ? (lastMsg as TextMessage) : null);
-
-    const activeStreamingText: string | null = useMemo(() => {
-        if (isStreamingInList && lastMsg) {
-            return streamingCompiledText;
-        }
-        return isLoading && streamingText ? streamingText : null;
-    }, [isStreamingInList, lastMsg, streamingCompiledText, isLoading, streamingText]);
 
     const visibleCharacters = useMemo(() => {
         return interactionData?.participants || [];
@@ -134,14 +121,13 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
     const activeSpeaker = useMemo(() => {
         if (isAmbientSpeaker) return null;
         if (viewIndex !== null && displayedMessage) return displayedMessage.character;
-        if (isLoading && streamingCharacter) return streamingCharacter;
-        if (isStreamingInList && lastMsg?.character) return lastMsg.character;
         if (displayedMessage?.character) return displayedMessage.character;
+        if (isLoading && streamingCharacter) return streamingCharacter;
         if (centerAvatar) return centerAvatar;
         return visibleCharacters.find((c: Character) => c.id !== localProtagonistId)
             || visibleCharacters[0]
             || null;
-    }, [viewIndex, displayedMessage, isLoading, streamingCharacter, isStreamingInList, lastMsg, centerAvatar, visibleCharacters, localProtagonistId, isAmbientSpeaker]);
+    }, [viewIndex, displayedMessage, isLoading, streamingCharacter, centerAvatar, visibleCharacters, localProtagonistId, isAmbientSpeaker]);
 
     const activeSpeakerDisplayName = useMemo(() => {
         if (isAmbientSpeaker) return 'System';
@@ -150,9 +136,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return resolveDelayedDisplayNameFromCache(displayNameCache, msgIdx, activeSpeaker.id);
     }, [displayNameCache, displayedMessage, chatMessages, activeSpeaker, isAmbientSpeaker]);
 
-    const isWaitingForGeneration = isLoading && !activeStreamingText && viewIndex === null && !isAmbientSpeaker;
+    const isWaitingForGeneration = isLoading && !displayedTextContent && viewIndex === null && !isAmbientSpeaker;
     const isEditingLastSpeaker = editingId !== null && displayedMessage?.id === editingId;
-
     const hasParentBranch = !!interactionData?.parentInteractionDataId;
 
     const canGoBack = chatMessages.length > 1 && (viewIndex === null ? true : viewIndex > 0);
@@ -316,7 +301,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         onSaveEdit();
     }, [displayedMessage, rawDraft, onSaveEdit]);
 
-    // Dynamic background style: uses the active location background image when present
     const bgStyle: React.CSSProperties = useMemo(() => {
         if (locationBackgroundUrl) {
             return {
@@ -337,11 +321,8 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
 
     const displayText = useMemo(() => {
         if (isEditingLastSpeaker) return null;
-        if (viewIndex !== null && displayedTextContent) return displayedTextContent;
-        if (activeStreamingText) return activeStreamingText;
-        if (displayedTextContent) return displayedTextContent;
-        return null;
-    }, [isEditingLastSpeaker, viewIndex, displayedTextContent, activeStreamingText]);
+        return displayedTextContent || null;
+    }, [isEditingLastSpeaker, displayedTextContent]);
 
     const hasMessages = useMemo(() => {
         if (!interactionData?.interactionHistories) return false;

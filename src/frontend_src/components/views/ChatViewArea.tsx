@@ -28,7 +28,7 @@ export function ChatViewArea({
     const localProtagonistId = useChatStore((s) => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const streamingText = useGenerationStore((s) => s.streamingText);
     const streamingCharacter = useGenerationStore((s) => s.streamingCharacter);
-    const streamingMessageId = useGenerationStore((s) => s.streamingMessageId); // 👈 Added tracking ID
+    const streamingMessageId = useGenerationStore((s) => s.streamingMessageId);
     const isLoading = useGenerationStore((s) => s.isLoading);
 
     const displayMessages = useMemo(() => {
@@ -44,37 +44,15 @@ export function ChatViewArea({
             });
         }
 
-        if (isLoading && streamingText && streamingCharacter) {
-            // 🛠️ FIX: If a specific message ID is being resumed (e.g. Message 2), find it and update it in-place!
-            if (streamingMessageId) {
-                const idx = base.findIndex(m => m.id === streamingMessageId);
-                if (idx !== -1) {
-                    const name = resolveDelayedDisplayNameFromCache(displayNameCache, idx, streamingCharacter.id);
-                    base[idx] = { ...base[idx], textContent: streamingText, character: { ...base[idx].character, name } } as TextMessage;
-                }
-            } else {
-                const last = base[base.length - 1];
-                const isStreamingPlaceholder = last?.id?.startsWith('streaming-');
-
-                if (isStreamingPlaceholder) {
-                    const idx = base.length - 1;
-                    const name = resolveDelayedDisplayNameFromCache(displayNameCache, idx, streamingCharacter.id);
-                    base[idx] = { ...last, textContent: streamingText, character: { ...last.character, name } } as TextMessage;
-                } else {
-                    const name = resolveDelayedDisplayNameFromCache(displayNameCache, base.length, streamingCharacter.id);
-                    const now = Date.now();
-                    base.push({
-                        id: `streaming-${streamingCharacter.id}`, messageType: 'chat',
-                        character: { ...streamingCharacter, name }, textContent: streamingText,
-                        files: [], frontCameraImage: undefined, doNotRespond: false,
-                        modelTextContentSummaries: {}, modelInteractionTextContentSummaries: {},
-                        kvCacheTextContentPaths: {}, kvCacheTextContentSummaryPaths: {}, kvCacheInteractionTextContentSummaries: {},
-                        characterClothingWearingStatuses: {}, characterLockedLocations: {},
-                        isPresent: true, parentMessageId: null, firstCreatedTimestamp: now, lastUpdatedTimestamp: now,
-                    } as ChatMessage);
-                }
+        // Fast update: if actively streaming into an existing message, ensure immediate render
+        if (isLoading && streamingText && streamingCharacter && streamingMessageId) {
+            const idx = base.findIndex(m => m.id === streamingMessageId);
+            if (idx !== -1) {
+                const name = resolveDelayedDisplayNameFromCache(displayNameCache, idx, streamingCharacter.id);
+                base[idx] = { ...base[idx], textContent: streamingText, character: { ...base[idx].character, name } } as TextMessage;
             }
         }
+
         return base as ChatMessage[];
     }, [safeMessages, isLoading, streamingText, streamingCharacter, streamingMessageId, displayNameCache, isMultiplayerChat, localProtagonistId]);
 

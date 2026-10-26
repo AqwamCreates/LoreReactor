@@ -303,12 +303,13 @@ export class CharacterActor {
         let previousExpression: string | null = null;
         let lastIsCompleted = true;
 
-        const isResuming = !!existingCharacterText && existingCharacterText.length > 0;
+        // 🛠️ CRITICAL FIX: If resumingMessageId is passed, the message already exists in data!
+        // We must mark isResuming as true so it updates the existing message in-place
+        // rather than executing the else branch and creating a duplicate empty message!
+        const isResuming = Boolean(resumingMessageId || (existingCharacterText && existingCharacterText.length > 0));
         const seedText = existingCharacterText || prefillText || '';
 
         // ─── CAUSAL SHADOW CONTEXT EXTRACTION ─────────────────────────
-        // Temporarily extract an isolated shadow snapshot of the session that strictly
-        // includes messages prior to the target message, completely excluding future messages.
         let dataForPrompt = data;
         let shadowCacheId: string | null = null;
 
@@ -364,7 +365,9 @@ export class CharacterActor {
         let accumulatedLockedLocations: Record<string, boolean> = latestMsg?.characterLockedLocations ? { ...latestMsg.characterLockedLocations } : {};
         let accumulatedInventory: Inventory = latestMsg?.inventory ? { ...latestMsg.inventory } : {};
 
-        if (!isResuming) {
+        // Probe clothing wearing statuses on fresh generation passes
+        const isFreshTurn = !existingCharacterText || existingCharacterText.length === 0;
+        if (isFreshTurn) {
             const probeModelId = borrowedModel
                 ? borrowedModel.id
                 : strat

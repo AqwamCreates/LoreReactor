@@ -598,6 +598,7 @@ function parseNarrateTextCharacterIds(raw: unknown): Record<textType, string> {
         normal: '', quote: '', bold: '', italic: '',
         underline: '', parenthesis: '', bracket: '', brace: '',
         strikethrough: '', inline_code: '', code_block: '',
+        think_block: '',
     };
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
     const obj = raw as Record<string, unknown>;

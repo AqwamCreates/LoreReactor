@@ -20,7 +20,7 @@ import { getCurrentLocationId, getCoLocatedParticipants, findReachableLocationBy
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
-import { evaluateAutoResumeSignals, injectStopSignals, broadcastToolStateChanges, hasTextContent, findLastAIMessageId, NO_ARG_TOOLS, HOST_ONLY_TOOLS, finalizeMessageById } from '../utilities/chatSessionLogic';
+import { evaluateAutoResumeSignals, injectStopSignals, broadcastToolStateChanges, hasTextContent, NO_ARG_TOOLS, HOST_ONLY_TOOLS, finalizeMessageById } from '../utilities/chatSessionLogic';
 import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost } from '../utilities/dynamicCharacterLogic';
 import { generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage } from '../utilities/characterLogic';
 import { saveRawInteractionData } from '../storages/serverStorage';
@@ -156,7 +156,6 @@ class ChatSessionCoordinator {
     private async runSingleTurn(
         currentData: InteractionData,
         character: Character,
-        isResuming: boolean = false,
         resumingMessageId?: string,
         existingText: string = '',
     ): Promise<InteractionData> {
@@ -167,7 +166,20 @@ class ChatSessionCoordinator {
         let autoResumeCount = 0;
         const narratorBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
 
-        if (resumingMessageId) {
+        // ─── SINGLE SOURCE OF TRUTH: INSTANT STUB ───────────────────────────
+        if (!resumingMessageId) {
+            const currentLocId = getCurrentLocationId(activeData, character) || 'global';
+            const aiMessage = createMessage(character, {
+                textContent: currentExistingText,
+                interactionData: activeData,
+            }) as ChatMessage;
+
+            activeData = addMessageToInteractionData(activeData, aiMessage, currentLocId);
+            resumingMessageId = aiMessage.id;
+            this.activeMessageId = aiMessage.id;
+            useChatStore.setState({ interactionData: activeData });
+            saveRawInteractionData(activeData).catch(console.warn);
+        } else {
             this.activeMessageId = resumingMessageId;
         }
 
@@ -215,10 +227,14 @@ class ChatSessionCoordinator {
             const callbacks = {
                 onDisplayText: (text: string) => {
                     useGenerationStore.setState({ streamingText: text });
-                    if (isResuming && resumingMessageId) {
-                        const updated = updatePartialMessageInInteractionData(useChatStore.getState().interactionData!, character, text, undefined, resumingMessageId);
-                        useChatStore.setState({ interactionData: updated });
-                    }
+                    const updated = updatePartialMessageInInteractionData(
+                        useChatStore.getState().interactionData!, 
+                        character, 
+                        text, 
+                        undefined, 
+                        resumingMessageId!
+                    );
+                    useChatStore.setState({ interactionData: updated });
                 },
                 onLatency: (ms: number) => useGenerationStore.getState().setStats({ latency: ms }),
                 onTimeToFirstToken: (ms: number) => useGenerationStore.getState().setStats({ timeToFirstToken: ms }),
@@ -252,33 +268,15 @@ class ChatSessionCoordinator {
                 currentExistingText = this.pendingSkipText;
                 this.pendingSkipText = null;
 
-                // 🛠️ CRITICAL FIX: If this is a fresh turn, the AI message has NOT been added
-                // to activeData yet! We must explicitly create and insert it so it actually exists in
-                // interactionData to be resumed, preventing it from vanishing on completion.
-                if (!resumingMessageId) {
-                    const currentLocId = getCurrentLocationId(activeData, character) || 'global';
-                    const newAiMessage = createMessage(character, {
-                        textContent: currentExistingText,
-                        interactionData: activeData,
-                    }) as ChatMessage;
+                activeData = updatePartialMessageInInteractionData(
+                    useChatStore.getState().interactionData!,
+                    character,
+                    currentExistingText,
+                    undefined,
+                    resumingMessageId!
+                );
+                useChatStore.setState({ interactionData: activeData });
 
-                    activeData = addMessageToInteractionData(activeData, newAiMessage, currentLocId);
-                    resumingMessageId = newAiMessage.id;
-                    this.activeMessageId = newAiMessage.id;
-                    useChatStore.setState({ interactionData: activeData });
-                    saveRawInteractionData(activeData).catch(console.warn);
-                } else {
-                    activeData = updatePartialMessageInInteractionData(
-                        activeData,
-                        character,
-                        currentExistingText,
-                        undefined,
-                        resumingMessageId
-                    );
-                    useChatStore.setState({ interactionData: activeData });
-                }
-
-                isResuming = true;
                 continue;
             }
 
@@ -286,6 +284,8 @@ class ChatSessionCoordinator {
                 if (outcome.error.type !== 'aborted') {
                     this.deps.addToast(`Inference Error: ${outcome.error.message}`, 'error');
                 }
+                // Sync with the store where stopGeneration() finalized or cleaned the message
+                activeData = useChatStore.getState().interactionData || activeData;
                 break;
             }
 
@@ -311,12 +311,6 @@ class ChatSessionCoordinator {
                 autoResumeCount++;
                 activeData = injectStopSignals(activeData, evaluation.patternsToInject);
                 currentExistingText = result.rawText;
-                
-                if (!resumingMessageId) {
-                    resumingMessageId = findLastAIMessageId(activeData, new Set(activeData.protagonistIds || [])) || undefined;
-                    this.activeMessageId = resumingMessageId || null;
-                }
-                isResuming = true;
                 continue;
             }
 
@@ -438,28 +432,32 @@ class ChatSessionCoordinator {
         const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
         const finalText = sentences ? sentences.slice(0, 2).join(' ') : cleaned;
 
-        useGenerationStore.setState({ streamingText: '' });
-        for (let i = 0; i < finalText.length; i++) {
-            if (signal.aborted) break;
-            const p = finalText.substring(0, i + 1);
-            useGenerationStore.setState({ streamingText: p });
-            await new Promise(r => setTimeout(r, 20));
-        }
-        useGenerationStore.setState({ streamingText: '' });
-
+        const currentLocId = protagonistStub ? getCurrentLocationId(data, protagonistStub) : 'global';
         const narrationMessage: NarrationMessage = {
             id: `nar-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
             messageType: 'narration',
-            textContent: finalText,
+            textContent: '',
             character: null as unknown as Character, 
             firstCreatedTimestamp: Date.now(),
             lastUpdatedTimestamp: Date.now(),
             characterClothingWearingStatuses: {},
             characterLockedLocations: {},
         };
-        
-        const currentLocId = protagonistStub ? getCurrentLocationId(data, protagonistStub) : 'global';
-        return addMessageToInteractionData(data, narrationMessage, currentLocId || 'global');
+
+        let updatedData = addMessageToInteractionData(data, narrationMessage, currentLocId || 'global');
+        useChatStore.setState({ interactionData: updatedData });
+
+        for (let i = 0; i < finalText.length; i++) {
+            if (signal.aborted) break;
+            const p = finalText.substring(0, i + 1);
+            useGenerationStore.setState({ streamingText: p });
+            updatedData = updatePartialMessageInInteractionData(updatedData, null as any, p, undefined, narrationMessage.id);
+            useChatStore.setState({ interactionData: updatedData });
+            await new Promise(r => setTimeout(r, 20));
+        }
+
+        useGenerationStore.setState({ streamingText: '' });
+        return updatedData;
     }
 
     // ─── Public Triggers (Bound to UI via Hook) ──────────────────────────────────
@@ -626,7 +624,7 @@ class ChatSessionCoordinator {
         
         try {
             const char = this.deps.allCharacters.find(c => c.id === msg.character.id) || msg.character;
-            await this.runSingleTurn(currentData, char, true, messageId, msg.textContent);
+            await this.runSingleTurn(currentData, char, messageId, msg.textContent);
         } catch (e) {
             console.error('Resume failed:', e);
             this.deps.addToast(`Resume error: ${(e as Error).message}`, 'error');
@@ -716,10 +714,17 @@ class ChatSessionCoordinator {
         const state = useChatStore.getState();
         const genState = useGenerationStore.getState();
         
-        if (genState.streamingCharacter && genState.streamingText && state.interactionData) {
-            const targetId = this.activeMessageId || findLastAIMessageId(state.interactionData, new Set(state.interactionData.protagonistIds || []));
-            if (targetId) {
-                const updated = finalizeMessageById(state.interactionData, targetId, true, genState.streamingText);
+        if (this.activeMessageId && state.interactionData) {
+            if (genState.streamingText) {
+                const updated = finalizeMessageById(state.interactionData, this.activeMessageId, true, genState.streamingText);
+                useChatStore.setState({ interactionData: updated });
+                saveRawInteractionData(updated).catch(console.warn);
+            } else {
+                const cleanedHistories = { ...state.interactionData.interactionHistories };
+                for (const [locId, msgs] of Object.entries(cleanedHistories)) {
+                    cleanedHistories[locId] = msgs.filter(m => m.id !== this.activeMessageId);
+                }
+                const updated = { ...state.interactionData, interactionHistories: cleanedHistories };
                 useChatStore.setState({ interactionData: updated });
                 saveRawInteractionData(updated).catch(console.warn);
             }

@@ -29,7 +29,9 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const interactionData = useChatStore(s => s.interactionData);
     const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const selectedCharacterId = useChatStore(s => s.selectedCharacterId);
+    
     const isLoading = useGenerationStore(s => s.isLoading);
+    const streamingMessageId = useGenerationStore(s => s.streamingMessageId);
     const streamingPortraitUrl = useGenerationStore(s => s.streamingCharacter ? portraitUrlCache.get(`${s.streamingCharacter.id}`) ?? null : null);
 
     const editingId = useUIStore(s => s.editingId);
@@ -48,6 +50,10 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const centerAvatarUrl = centerAvatar
         ? portraitUrlCache.get(`${centerAvatar.id}`) ?? null
         : null;
+
+    const lastMsg = displayMessages[displayMessages.length - 1];
+    const isStreamingInList = isLoading && streamingMessageId !== null && lastMsg?.id === streamingMessageId;
+    const isWaitingForFirstToken = isStreamingInList && !lastMsg?.textContent;
 
     const isScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -119,7 +125,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         };
     }, [chatHistoryRef, updateFocusedFromScroll]);
 
-    // Local wrappers for Zustand actions to match MessageBubble's expected signatures
+    // Local wrappers for Zustand actions
     const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
     const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
     const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
@@ -151,14 +157,16 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
             )}
 
             <div className="chat-history" ref={chatHistoryRef}>
-                <StreamingIndicators
-                    streamingText={streamingText}
-                    viewMode="cinematic"
-                    selectedCharacterId={selectedCharacterId ?? undefined}
-                    streamingPortraitUrl={streamingPortraitUrl}
-                    messagesLength={displayMessages.length}
-                    onAvatarClick={onAvatarClick}
-                />
+                {isLoading && (!isStreamingInList || isWaitingForFirstToken) && (
+                    <StreamingIndicators
+                        streamingText={streamingText}
+                        viewMode="cinematic"
+                        selectedCharacterId={selectedCharacterId ?? undefined}
+                        streamingPortraitUrl={streamingPortraitUrl}
+                        messagesLength={displayMessages.length}
+                        onAvatarClick={onAvatarClick}
+                    />
+                )}
 
                 {displayMessages.map((message, renderIndex) => {
                     if (!message.character) return null;
@@ -183,6 +191,11 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                     const messagePortraitUrl = portraitUrlCache.get(message.id)
                         ?? portraitUrlCache.get(`${message.character.id}`)
                         ?? null;
+
+                    // While waiting for first token, don't render the empty message stub (the indicator shows above)
+                    if (isStreamingInList && message.id === streamingMessageId && !message.textContent) {
+                        return null;
+                    }
 
                     return (
                         <MessageBubble

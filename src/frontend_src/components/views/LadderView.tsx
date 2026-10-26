@@ -28,8 +28,9 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const interactionData = useChatStore(s => s.interactionData);
     const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const selectedCharacterId = useChatStore(s => s.selectedCharacterId);
+    
     const isLoading = useGenerationStore(s => s.isLoading);
-    const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
+    const streamingMessageId = useGenerationStore(s => s.streamingMessageId);
     const streamingPortraitUrl = useGenerationStore(s => s.streamingCharacter ? portraitUrlCache.get(`${s.streamingCharacter.id}`) ?? null : null);
 
     const editingId = useUIStore(s => s.editingId);
@@ -45,9 +46,11 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const isMassActive = massDeleteId !== null;
     const massStartIndex = isMassActive && displayMessages ? displayMessages.findIndex(m => m.id === massDeleteId) : -1;
 
+    // Single source of truth: the streaming message is simply the active message matching streamingMessageId
     const lastMsg = displayMessages[displayMessages.length - 1];
-    const isStreamingInList = isLoading && streamingCharacter !== null && lastMsg?.character.id === streamingCharacter.id;
-    
+    const isStreamingInList = isLoading && streamingMessageId !== null && lastMsg?.id === streamingMessageId;
+    const isWaitingForFirstToken = isStreamingInList && !lastMsg?.textContent;
+
     const isScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const skipNextFocusScrollRef = useRef(false);
@@ -118,7 +121,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
         };
     }, [chatHistoryRef, updateFocusedFromScroll]);
 
-    // Local wrappers for Zustand actions to match MessageBubble's expected signatures
+    // Local wrappers for Zustand actions
     const onStartEditing = useCallback((id: string, text: string) => setEditingState(id, text), [setEditingState]);
     const onCancelEditing = useCallback(() => setEditingState(null, ''), [setEditingState]);
     const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
@@ -153,6 +156,11 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                 const messagePortraitUrl = portraitUrlCache.get(message.id)
                     ?? portraitUrlCache.get(`${message.character.id}`)
                     ?? null;
+
+                // While waiting for first token, don't render the empty message stub (the indicator shows below)
+                if (isStreamingInList && message.id === streamingMessageId && !message.textContent) {
+                    return null;
+                }
 
                 return (
                     <MessageBubble
@@ -196,7 +204,8 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                 );
             })}
 
-            {!isStreamingInList && (
+            {/* Rendered only while model is warming up / thinking before the first token arrives */}
+            {isLoading && (!isStreamingInList || isWaitingForFirstToken) && (
                 <StreamingIndicators
                     streamingText={streamingText}
                     viewMode="ladder"

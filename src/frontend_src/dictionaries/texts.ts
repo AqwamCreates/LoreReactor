@@ -94,11 +94,12 @@ export const narrateTextLabels: Record<textType, string> = {
     quote: 'Quoted Text', 
     bold: 'Bolded Text',
     italic: 'Italicized Text', 
-    underline: 'Underlined Text', // ✅ Placed after italics
+    underline: 'Underlined Text',
     parenthesis: 'Parenthesized Text',
     bracket: 'Bracketed Text', 
     brace: 'Braced Text',
     strikethrough: 'Strikethrough Text',
     inline_code: 'Inline Code Text',
     code_block: 'Code Block Text',
+    think_block: 'Think Block Text',
 };

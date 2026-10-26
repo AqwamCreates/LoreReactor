@@ -31,7 +31,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
     const interactionData = useChatStore(s => s.interactionData);
     const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const isLoading = useGenerationStore(s => s.isLoading);
-    const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
+    const streamingMessageId = useGenerationStore(s => s.streamingMessageId);
     const stopGeneration = useGenerationStore(s => s.stopGeneration);
 
     const editingId = useUIStore(s => s.editingId);
@@ -52,8 +52,8 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
     const onSetMassDelete = useCallback((id: string) => setMassDeleteId(id), [setMassDeleteId]);
     const onCancelMassDelete = useCallback(() => setMassDeleteId(null), [setMassDeleteId]);
 
-    // ── Build message cards list ───────────────────────────────────────────
-    const committedCards = useMemo(() => {
+    // ── Single Source of Truth Cards ───────────────────────────────────────
+    const allCards = useMemo(() => {
         const all = displayMessages.filter((m): m is TextMessage => m.messageType === 'chat' || m.messageType === 'whisper');
         const seen = new Set<string>();
         return all.filter(m => {
@@ -62,36 +62,6 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
             return true;
         });
     }, [displayMessages]);
-
-    const hasStreamingInList = committedCards.some(m => m.id.startsWith('streaming-'));
-
-    const allCards = useMemo(() => {
-        const list = [...committedCards];
-        if (isLoading && !hasStreamingInList) {
-            const now = Date.now();
-            const fallbackChar = streamingCharacter || { id: 'fate', name: 'Fate' } as Character;
-            list.push({
-                id: '__pending_blank_card__',
-                messageType: 'chat',
-                character: fallbackChar,
-                textContent: streamingText || '',
-                files: [],
-                isPresent: true,
-                parentMessageId: null,
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
-                modelTextContentSummaries: {},
-                modelInteractionTextContentSummaries: {},
-                kvCacheTextContentPaths: {},
-                kvCacheTextContentSummaryPaths: {},
-                kvCacheInteractionTextContentSummaries: {},
-                characterClothingWearingStatuses: {},
-                characterLockedLocations: {},
-                doNotRespond: false,
-            } as TextMessage);
-        }
-        return list;
-    }, [committedCards, isLoading, hasStreamingInList, streamingCharacter, streamingText]);
 
     // ── View index resolution ──────────────────────────────────────────────
     const viewIndex = useMemo(() => {
@@ -108,7 +78,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
         prevCountRef.current = allCards.length;
     }, [allCards.length, focusedMessageId, setFocusedMessageId]);
 
-    // ── Dealing Animation Tracker ──────────────────────────────────────────
+    // ── Clean Dealing Animation ──────────────────────────────────────────
     const [enteringIds, setEnteringIds] = useState<Set<string>>(new Set());
     const prevIdsRef = useRef<Set<string>>(new Set());
 
@@ -118,38 +88,15 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
         
         currentIds.forEach(id => {
             if (!prevIdsRef.current.has(id) && prevIdsRef.current.size > 0) {
-                const newCard = allCards.find(c => c.id === id);
-                let isReplacement = false;
-
-                if (newCard) {
-                    if (!newCard.id.startsWith('streaming-') && newCard.id !== '__pending_blank_card__') {
-                        const hadStreaming = Array.from(prevIdsRef.current).some(pid => pid === `streaming-${newCard.character.id}`);
-                        if (hadStreaming) isReplacement = true;
-                    }
-                    if (newCard.id.startsWith('streaming-')) {
-                        if (prevIdsRef.current.has('__pending_blank_card__')) isReplacement = true;
-                    }
-                    if (newCard.id === '__pending_blank_card__') {
-                        const hadStreaming = Array.from(prevIdsRef.current).some(pid => pid.startsWith('streaming-'));
-                        if (hadStreaming) isReplacement = true;
-                    }
-                }
-
-                if (!isReplacement) {
-                    newIds.add(id);
-                }
+                newIds.add(id);
             }
         });
         
-        let raf1: number;
-        let raf2: number;
-        let timeout: ReturnType<typeof setTimeout>;
-
         if (newIds.size > 0) {
             setEnteringIds(newIds);
-            raf1 = requestAnimationFrame(() => {
-                raf2 = requestAnimationFrame(() => {
-                    timeout = setTimeout(() => {
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setTimeout(() => {
                         setEnteringIds(new Set());
                     }, 50);
                 });
@@ -157,12 +104,6 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
         }
         
         prevIdsRef.current = currentIds;
-
-        return () => {
-            if (raf1) cancelAnimationFrame(raf1);
-            if (raf2) cancelAnimationFrame(raf2);
-            if (timeout) clearTimeout(timeout);
-        };
     }, [allCards]);
 
     const activeTextBodyRef = useRef<HTMLDivElement>(null);
@@ -271,8 +212,7 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
                         }
 
                         const isUserCard = localProtagonistId ? card.character.id === localProtagonistId : false;
-                        const isPendingBlank = card.id === '__pending_blank_card__';
-                        const isStreamingThis = isCurrent && isLoading && (isPendingBlank || card.id.startsWith('streaming-'));
+                        const isStreamingThis = isCurrent && isLoading && streamingMessageId === card.id;
 
                         return (
                             <SingleCard
@@ -369,8 +309,7 @@ interface SingleCardProps {
 const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
     const {
         card, index, allCardsCount, isCurrent, positionClass, isUserCard, isStreamingThis,
-        isLoading, streamingText, textBodyRef,
-        displayNameCache,
+        textBodyRef, displayNameCache,
         editingId, editDraft, setEditDraft, editTextAreaRef,
         onStartEditing, onCancelEditing, onSaveEdit,
         onRegenerateFromMessage, onResumeGeneration, onPlayVoice,
@@ -391,11 +330,7 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
 
     const isEditing = editingId === card.id;
     const isMassDeleting = massDeleteId === card.id;
-
-    const renderedText = useMemo(() => {
-        if (isStreamingThis && streamingText !== null) return streamingText;
-        return compiledContent || card.textContent || '';
-    }, [isStreamingThis, streamingText, compiledContent, card.textContent]);
+    const renderedText = compiledContent || card.textContent || '';
 
     const cardClasses = [
         'fate-card',
@@ -410,7 +345,7 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
 
     return (
         <div className={cardClasses}>
-            {/* ── Header: Navigation Flanking the Centered Name Plate ── */}
+            {/* Header: Navigation Flanking the Centered Name Plate */}
             <div className="fate-card-header">
                 {allCardsCount > 1 ? (
                     <div className="fate-card-header-nav fate-card-header-nav-left">
@@ -502,7 +437,7 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
                             </>
                         ) : (
                             <>
-                                {isLoading && isStreamingThis && (
+                                {isStreamingThis && (
                                     <button type="button" className="fate-card-btn fate-card-btn-danger" onClick={onStopGeneration} title="Stop">⏹</button>
                                 )}
                                 <button type="button" className="fate-card-btn" onClick={() => onCopyText(renderedText)} title="Copy Text">📋</button>
@@ -515,7 +450,7 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
                                     <>
                                         <button type="button" className="fate-card-btn" onClick={() => onResumeGeneration(card.id)} title="Continue Generation">▶</button>
                                         <button type="button" className="fate-card-btn" onClick={() => onRegenerateFromMessage(card.id, interactionData?.protagonistIds || [])} title="Regenerate">↻</button>
-                                        <button type="button" className="fate-card-btn" onClick={() => onStartEditing(card.id, card.textContent)} disabled={isLoading} title="Edit Message">✎</button>
+                                        <button type="button" className="fate-card-btn" onClick={() => onStartEditing(card.id, card.textContent)} title="Edit Message">✎</button>
                                         <button type="button" className="fate-card-btn" onClick={() => onBranch(card.id)} title="Branch Timeline">🌿</button>
                                         <button type="button" className="fate-card-btn" onClick={() => onClone(card.id)} title="Clone Session">⑂</button>
                                         
@@ -530,7 +465,7 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
                                             </>
                                         ) : (
                                             canDelete && (
-                                                <button type="button" className="fate-card-btn" onClick={() => onSetMassDelete(card.id)} title="Mass Delete From Here">🗑️↓</button>
+                                                <button type="button" className="fate-card-btn fate-card-btn-warn" onClick={() => onSetMassDelete(card.id)} title="Mass Delete From Here">🗑️↓</button>
                                             )
                                         )}
                                     </>
