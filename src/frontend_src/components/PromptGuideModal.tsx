@@ -647,17 +647,17 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                             {renderComparison(
                                 '{{character?0}}',
                                 resolveTemplate('{{character?0}}', mockTemplateContext, mockDelimiters),
-                                '?0 hides all names and returns only the participant tag (e.g., "Character 1").'
+                                '?0 hides all names and returns only the participant tag.'
                             )}
                             {renderComparison(
                                 '{{character}} OR {{character?1}}',
                                 resolveTemplate('{{character}}', mockTemplateContext, mockDelimiters),
-                                'Default behavior (or ?1) for Singular: Reveals the tag and the True Name (e.g., "Character 1 (Aqwam)"). They are strictly equivalent.'
+                                'Default behavior (or ?1) for Singular: Reveals the tag and the True Name. They are strictly equivalent.'
                             )}
                             {renderComparison(
                                 '{{character?2}}',
                                 resolveTemplate('{{character?2}}', mockTemplateContext, mockDelimiters),
-                                '?2 for Singular: Reveals the tag and up to 2 defined aliases, comma-separated (e.g., "Character 1 (Aqwam, The LoreReactor Creator)").'
+                                '?2 for Singular: Reveals the tag and up to 2 defined aliases, comma-separated.'
                             )}
                             {renderComparison(
                                 '{{character?3}}',
