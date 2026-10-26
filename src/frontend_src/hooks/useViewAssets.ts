@@ -15,7 +15,7 @@ interface UseViewAssetsOptions {
     currentCharacterExpression: string;
     chatHistoryRef: React.RefObject<HTMLDivElement | null>;
     isMultiplayerChat?: boolean;
-    lastViewedMessageIdRef: React.RefObject<string | null>;
+    focusedMessageId: string | null
     suppressAutoScrollRef: React.RefObject<boolean>;
 }
 
@@ -124,12 +124,13 @@ export function useViewAssets(options: UseViewAssetsOptions) {
         viewMode, interactionData, currentCharacter, localProtagonist,
         streamingCharacter, currentCharacterExpression, chatHistoryRef,
         isMultiplayerChat,
-        lastViewedMessageIdRef,
+        focusedMessageId,
         suppressAutoScrollRef,
     } = options;
 
     const [centerAvatar, setCenterAvatar] = useState<Character | null>(null);
     const centerAvatarRef = useRef<Character | null>(null);
+    const [currentFocusedMessageId, setCurrentFocusedMessageId] = useState<string | null>(focusedMessageId);
 
     useEffect(() => { centerAvatarRef.current = centerAvatar; }, [centerAvatar]);
 
@@ -212,8 +213,8 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             for (const el of document.querySelectorAll('.message-row')) el.classList.remove('is-active');
             const activeEl = chatHistoryElement.querySelector(`[data-message-id="${bestId}"]`);
             if (activeEl) activeEl.classList.add('is-active');
-            
-            lastViewedMessageIdRef.current = bestId;
+
+            setCurrentFocusedMessageId(bestId)
 
             if (msg.character.id === currentCharacter?.id || msg.messageType === 'narration') {
                 setCenterAvatar(null);
@@ -242,7 +243,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             cancelAnimationFrame(rafId);
             chatHistoryElement.removeEventListener('scroll', updateAvatarFromScroll);
         };
-    }, [viewMode, currentCharacter?.id, interactionData, chatMessages, chatHistoryRef, lastViewedMessageIdRef]);
+    }, [viewMode, currentCharacter?.id, interactionData, chatMessages, chatHistoryRef]);
 
     useEffect(() => {
         const chatHistoryElement = chatHistoryRef.current;
@@ -252,7 +253,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
     return {
         centerAvatar, setCenterAvatar,
-        lastViewedMessageIdRef,
+        focusedMessageId: currentFocusedMessageId,
         suppressAutoScrollRef,
         chatMessages,
         portraitUrlCache,

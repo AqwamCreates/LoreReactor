@@ -514,8 +514,6 @@ function App() {
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
-
-    const lastViewedMessageIdRef = useRef<string | null>(null);
     const suppressAutoScrollRef = useRef(false);
 
     const viewAssets = useViewAssets({
@@ -523,7 +521,7 @@ function App() {
         interactionData, localProtagonist, currentCharacter,
         streamingCharacter: session.streamingCharacter, currentCharacterExpression, chatHistoryRef,
         isMultiplayerChat,
-        lastViewedMessageIdRef,
+        focusedMessageId,
         suppressAutoScrollRef,
     });
 
