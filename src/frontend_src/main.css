@@ -2393,7 +2393,7 @@ color: #fff;
 flex: 1 1 32px;
 width: auto;
 min-width: 32px;
-max-width: 58px; /* Prevents 1 or 2 isolated buttons from becoming excessively wide */
+max-width: none;
 height: 36px;    /* Taller for comfortable mobile touch targets */
 border-radius: 8px;
 cursor: pointer;
@@ -2477,6 +2477,17 @@ border-radius: 6px;
 .fate-card-btn-cancel {
 max-width: 120px;
 }
+}
+
+@media (max-width: 1024px) {
+    .fate-card {
+        width: min(92vw, 640px); /* Gives the card more room on tablets */
+    }
+
+    .fate-card-btn {
+        flex: 1 1 36px;
+        max-width: none; /* Guarantees buttons expand to fill the row */
+    }
 }
 
 /* =============================================================================
