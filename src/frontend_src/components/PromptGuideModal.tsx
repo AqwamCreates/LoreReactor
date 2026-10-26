@@ -93,7 +93,7 @@ const MOCK_DATA: Record<string, string[] | string> = {
     'locationWithDescription@uuid-town': mockLocationDescriptions[0],
 
     character: 'Character 1 (Alice)',
-    protagonist: 'User',
+    protagonist: 'Character X (User)',
     protagonists: mockProtagonists,
     "protagonists'": mockProtagonists.map(protagonist => `${protagonist}'s`),
     characters: mockCharacters,
