@@ -1,5 +1,5 @@
 // src/frontend_src/components/ChatHistoryPanel.tsx
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import type { ChatMessage } from '../types';
 import { useCompiledMessageText } from '../hooks/useMessageDisplay';
 
@@ -9,13 +9,14 @@ interface ChatHistoryPanelProps {
     selectedCharacterId?: string;
     isOpen: boolean;
     onClose: () => void;
+    onJumpToMessage: (messageId: string) => void; // 👈 NEW PROP
 }
 
 // Memoized list item to prevent re-renders during search typing
 const HistoryItem = React.memo(function HistoryItem({ 
-    msg, index, isProtagonist, onClick 
+    msg, isProtagonist, onClick 
 }: { 
-    msg: ChatMessage; index: number; isProtagonist: boolean; onClick: (index: number) => void;
+    msg: ChatMessage; isProtagonist: boolean; onClick: (id: string) => void;
 }) {
     const compiledText = useCompiledMessageText(msg);
     const firstLine = compiledText.split('\n')[0] || '';
@@ -24,13 +25,13 @@ const HistoryItem = React.memo(function HistoryItem({
     return (
         <div 
             className={`history-item ${isProtagonist ? 'history-item-protagonist' : ''}`}
-            onClick={(e) => { e.stopPropagation(); onClick(index); }}
+            onClick={(e) => { e.stopPropagation(); onClick(msg.id); }}
             role="button"
             tabIndex={0}
             onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    onClick(index);
+                    onClick(msg.id);
                 }
             }}
         >
@@ -46,7 +47,7 @@ const HistoryItem = React.memo(function HistoryItem({
 });
 
 export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
-    messages, containerRef, selectedCharacterId, isOpen, onClose
+    messages, containerRef, selectedCharacterId, isOpen, onClose, onJumpToMessage
 }: ChatHistoryPanelProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const inputRef = useRef<HTMLInputElement>(null);
@@ -92,21 +93,24 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
         });
     }, [messages, searchQuery]);
 
-    const handleJumpToMessage = (index: number) => {
-        const container = containerRef.current;
-        if (!container) return;
-        const msg = filteredMessages[index];
-        if (!msg) return;
+    const handleJumpToMessage = useCallback((msgId: string) => {
+        onJumpToMessage(msgId); // 👈 Set state in App.tsx
         
-        const el = container.querySelector(`[data-message-id="${msg.id}"]`) as HTMLElement | null;
-        if (el) {
-            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Brief highlight animation to the message bubble
-            el.classList.add('history-jump-highlight');
-            setTimeout(() => el.classList.remove('history-jump-highlight'), 2000);
+        // Only try to scroll if the container actually renders a list (Ladder/Cinematic)
+        const container = containerRef.current;
+        if (container) {
+            // We use setTimeout to allow React a tick to render the message if it was hidden
+            setTimeout(() => {
+                const el = container.querySelector(`[data-message-id="${msgId}"]`) as HTMLElement | null;
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.classList.add('history-jump-highlight');
+                    setTimeout(() => el.classList.remove('history-jump-highlight'), 2000);
+                }
+            }, 50);
         }
         onClose();
-    };
+    }, [containerRef, onJumpToMessage, onClose]);
 
     if (!isOpen) return null;
 
@@ -138,11 +142,10 @@ export const ChatHistoryPanel = React.memo(function ChatHistoryPanel({
                 {filteredMessages.length === 0 ? (
                     <div className="history-empty">No messages found.</div>
                 ) : (
-                    filteredMessages.map((msg, i) => (
+                    filteredMessages.map((msg) => (
                         <HistoryItem
                             key={msg.id}
                             msg={msg}
-                            index={i}
                             isProtagonist={msg.character.id === selectedCharacterId}
                             onClick={handleJumpToMessage}
                         />
