@@ -328,3 +328,74 @@ export function getChatTemplateOptions(): { value: string; label: string }[] {
         ...MODEL_TEMPLATES.filter(t => t.chatTemplate).map(t => ({ value: t.key, label: t.label })),
     ];
 }
+
+export interface ThinkTokenPair {
+    start: string;
+    end: string;
+}
+
+/**
+ * Extracts all unique thinkStart -> thinkEnd token pairs directly from MODEL_TEMPLATES.
+ */
+export function getModelThinkTokenPairs(): ThinkTokenPair[] {
+    const pairs: ThinkTokenPair[] = [];
+    const seen = new Set<string>();
+
+    for (const t of MODEL_TEMPLATES) {
+        if (t.thinkStart && t.thinkEnd) {
+            const key = `${t.thinkStart}:::${t.thinkEnd}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                pairs.push({ start: t.thinkStart, end: t.thinkEnd });
+            }
+        }
+    }
+    return pairs;
+}
+
+/**
+ * Given the streaming text and the active model, detects which thinking block
+ * is currently open and returns its EXACT matching closing token from MODEL_TEMPLATES.
+ * Returns null if no thinking block is currently unclosed.
+ */
+export function findActiveThinkEndToken(
+    text: string, 
+    activeModel?: { model?: string; chatTemplate?: string } | null
+): string | null {
+    if (!text) return null;
+
+    // 1. If an active model is configured, check its template first
+    if (activeModel?.model) {
+        const detectedKey = autoDetectTemplate(activeModel.model);
+        const template = getModelTemplate(detectedKey);
+        if (template?.thinkStart && template?.thinkEnd) {
+            const lastStart = text.lastIndexOf(template.thinkStart);
+            if (lastStart !== -1) {
+                // Check if it was already closed after this start position
+                const closedIdx = text.indexOf(template.thinkEnd, lastStart + template.thinkStart.length);
+                if (closedIdx === -1) {
+                    return template.thinkEnd;
+                }
+            }
+        }
+    }
+
+    // 2. Fall back to scanning all defined pairs from MODEL_TEMPLATES
+    // We look for whichever thinkStart appeared last in the text and remains unclosed
+    const pairs = getModelThinkTokenPairs();
+    let latestStartIdx = -1;
+    let matchingEndToken: string | null = null;
+
+    for (const { start, end } of pairs) {
+        const startIdx = text.lastIndexOf(start);
+        if (startIdx !== -1 && startIdx > latestStartIdx) {
+            const endIdx = text.indexOf(end, startIdx + start.length);
+            if (endIdx === -1) {
+                latestStartIdx = startIdx;
+                matchingEndToken = end;
+            }
+        }
+    }
+
+    return matchingEndToken;
+}

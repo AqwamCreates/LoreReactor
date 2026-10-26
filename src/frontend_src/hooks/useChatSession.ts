@@ -211,6 +211,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         sendMessage: (text: string, files?: File[], frontCameraImageBase64?: string) => chatCoordinator.sendMessage(text, files, frontCameraImageBase64),
         sendActionAndGetResponse: (text: string, targetChar: Character) => chatCoordinator.sendDirectedAction(text, targetChar, localProtagonist!),
         stopGeneration: () => chatCoordinator.stopGeneration(),
+        skipThinking: () => chatCoordinator.skipThinking(),
         resumeGeneration: (id: string) => chatCoordinator.resumeGeneration(id),
         regenerateFromMessage: (id: string, protagonistIds?: string[]) => chatCoordinator.regenerateFromMessage(id, protagonistIds || [localProtagonist!.id]),
         startNewChat,

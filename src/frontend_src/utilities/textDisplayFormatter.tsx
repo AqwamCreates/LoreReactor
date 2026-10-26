@@ -1,6 +1,10 @@
 // src/frontend_src/utilities/textDisplayFormatter.tsx
-import React, { useState, useEffect } from 'react';
+import type React from 'react';
+import { useState, useEffect } from 'react';
 import type { textType } from '../types';
+import { useGenerationStore } from '../hooks/useGenerationStore';
+import { chatCoordinator } from '../services/ChatSessionCoordinator';
+import { getModelThinkTokenPairs } from '../dictionaries/modelTemplates';
 
 const LEFT_DOUBLE_QUOTE = '\u201C'; // “
 const RIGHT_DOUBLE_QUOTE = '\u201D'; // ”
@@ -16,9 +20,26 @@ interface MatchCandidate {
     indent?: number;
     language?: string;
     blockKey?: string;
+    isUnclosed?: boolean;
 }
 
 const NO_PARAGRAPH_BREAK = '(?:[^\r\n]|(?<!\r?\n)\r?\n(?!\r?\n))+?';
+
+// ── Dynamic Thinking Regex from MODEL_TEMPLATES ──────────────────────────────
+function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+const thinkPairs = getModelThinkTokenPairs();
+const thinkStartPattern = thinkPairs.length > 0
+    ? thinkPairs.map(p => escapeRegex(p.start)).join('|')
+    : '<think>|\\[THINK\\]|<\\|channel>thought';
+const thinkEndPattern = thinkPairs.length > 0
+    ? thinkPairs.map(p => escapeRegex(p.end)).join('|')
+    : '<\\/think>|\\[\\/THINK\\]|<channel\\|>';
+
+const thinkRegex = new RegExp(`(?:${thinkStartPattern})([\\s\\S]*?)(?:${thinkEndPattern}|$)`, 'i');
+const thinkEndCheckRegex = new RegExp(`(?:${thinkEndPattern})`, 'i');
 
 // ── Persistent Expansion Memory ──────────────────────────────────────────────
 // Remembers user clicks so re-renders/streaming tokens don't reset your open/close choice
@@ -61,15 +82,21 @@ function CollapsibleThinkBlock({
     children, 
     rawContent, 
     blockKey,
+    isUnclosed = false,
 }: { 
     children: React.ReactNode; 
     rawContent: string; 
     blockKey: string;
+    isUnclosed?: boolean;
 }) {
     // Strictly closed by default unless the user previously toggled it open
     const [isExpanded, setIsExpanded] = useState<boolean>(() => {
         return thinkExpansionState.get(blockKey) ?? false;
     });
+
+    // Check if inference is actively generating right now
+    const isLoading = useGenerationStore(s => s.isLoading);
+    const canSkip = isLoading && isUnclosed;
 
     // Synchronize if user toggled state in cache
     useEffect(() => {
@@ -87,6 +114,11 @@ function CollapsibleThinkBlock({
         });
     };
 
+    const handleSkip = (e: React.MouseEvent) => {
+        e.stopPropagation(); // Avoid triggering open/close toggle
+        chatCoordinator.skipThinking();
+    };
+
     const wordCount = rawContent.trim() ? rawContent.trim().split(/\s+/).length : 0;
 
     return (
@@ -102,7 +134,20 @@ function CollapsibleThinkBlock({
                     <span className="fmt-think-title">Thinking</span>
                     <span className="fmt-think-count">({wordCount} words)</span>
                 </div>
-                <span className="fmt-think-chevron">{isExpanded ? '▾' : '▸'}</span>
+
+                <div className="fmt-think-actions">
+                    {canSkip && (
+                        <button
+                            type="button"
+                            className="fmt-think-skip-btn"
+                            onClick={handleSkip}
+                            title="Force model to finish thinking and answer now"
+                        >
+                            Skip Thinking
+                        </button>
+                    )}
+                    <span className="fmt-think-chevron">{isExpanded ? '▾' : '▸'}</span>
+                </div>
             </button>
             {isExpanded && (
                 <div className="fmt-think-body">
@@ -126,11 +171,11 @@ function parseFormattedText(
     while (remaining.length > 0) {
         const candidates: MatchCandidate[] = [];
 
-        // 0.0. Thinking Block (DeepSeek, Qwen, Mistral, Gemma 4)
-        const thinkMatch = remaining.match(/(?:<think>|\[THINK\]|<\|channel>thought)([\s\S]*?)(?:<\/think>|\[\/THINK\]|<channel\|>|$)/i);
+        // 0.0. Dynamic Thinking Block (Driven by MODEL_TEMPLATES)
+        const thinkMatch = remaining.match(thinkRegex);
         if (thinkMatch && thinkMatch.index !== undefined) {
             const inner = thinkMatch[1].trim();
-            // Generate a deterministic fingerprint key from position + start of thought
+            const hasClosedTag = thinkEndCheckRegex.test(thinkMatch[0]);
             const blockKey = `think_${thinkMatch.index}_${inner.slice(0, 40).trim()}`;
             candidates.push({
                 type: 'think_block',
@@ -138,6 +183,7 @@ function parseFormattedText(
                 length: thinkMatch[0].length,
                 innerContent: inner,
                 blockKey,
+                isUnclosed: !hasClosedTag,
             });
         }
 
@@ -336,6 +382,7 @@ function parseFormattedText(
                         key={`think_node_${match.index}`}
                         blockKey={match.blockKey || `think_${match.index}`}
                         rawContent={match.innerContent ?? ''}
+                        isUnclosed={match.isUnclosed}
                     >
                         {parseFormattedText(match.innerContent ?? '', false, keyGen)}
                     </CollapsibleThinkBlock>

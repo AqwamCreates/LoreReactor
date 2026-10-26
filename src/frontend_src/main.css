@@ -6708,3 +6708,37 @@ COLLAPSIBLE THINK BLOCKS (Crisp & High-Contrast)
 .thinking-bubble {
     opacity: 1 !important;
 }
+
+.fmt-think-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.fmt-think-skip-btn {
+    background: var(--accent-bg);
+    border: 1px solid var(--accent-border);
+    color: var(--accent);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    transition: all 0.15s ease;
+    line-height: 1;
+}
+
+.fmt-think-skip-btn:hover {
+    background: var(--accent);
+    color: #fff;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.fmt-think-skip-btn:active {
+    transform: translateY(0);
+}

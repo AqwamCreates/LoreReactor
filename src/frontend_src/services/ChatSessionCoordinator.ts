@@ -26,6 +26,7 @@ import { generateChatStaminaForInteractionData, generateActionStaminaForInteract
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { learnFromUserMessage } from './ActionFormatEngine';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
+import { findActiveThinkEndToken } from '../dictionaries/modelTemplates';
 
 import type { Character, InteractionData, PromptBlock, Context, Location, AudioTrack, World, LanguageModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder, ChatMessage, HistoryMessage, InterjectableAction, NarrationMessage, TextMessage, InteractionMessage } from '../types';
 
@@ -65,6 +66,8 @@ class ChatSessionCoordinator {
     private abortController: AbortController | null = null;
     private voiceTracker: StreamingVoiceTracker | null = null;
     private wasStopped = false;
+    private isSkippingThinking = false;
+    private pendingSkipText: string | null = null;
     private activeMessageId: string | null = null;
     private deps!: CoordinatorDependencies;
 
@@ -99,6 +102,8 @@ class ChatSessionCoordinator {
         if (this.isGenerating) return false;
         this.isGenerating = true;
         this.wasStopped = false;
+        this.isSkippingThinking = false;
+        this.pendingSkipText = null;
         useGenerationStore.setState({ isLoading: true, streamingText: '', streamingCharacter: null, streamingMessageId: null });
         return true;
     }
@@ -106,6 +111,8 @@ class ChatSessionCoordinator {
     private releaseLock(): void {
         this.isGenerating = false;
         this.activeMessageId = null;
+        this.isSkippingThinking = false;
+        this.pendingSkipText = null;
         useGenerationStore.setState({ isLoading: false, streamingText: '', streamingCharacter: null, streamingMessageId: null });
         if (this.abortController) {
             this.abortController = null;
@@ -197,7 +204,6 @@ class ChatSessionCoordinator {
             if (currentExistingText) this.voiceTracker.seed(currentExistingText);
             await this.voiceTracker.start().catch(() => {});
 
-            // 🛠️ FIX: Push streamingMessageId to generation store so views know to update in-place!
             useGenerationStore.setState({ 
                 streamingCharacter: character, 
                 streamingText: currentExistingText,
@@ -239,6 +245,42 @@ class ChatSessionCoordinator {
             const outcome = await this.characterActor.executeTurn(params);
 
             useGenerationStore.setState({ streamingText: '' });
+
+            // ── Intercept Early Think Stop ──────────────────────────────────────────
+            if (this.isSkippingThinking && this.pendingSkipText) {
+                this.isSkippingThinking = false;
+                currentExistingText = this.pendingSkipText;
+                this.pendingSkipText = null;
+
+                // 🛠️ CRITICAL FIX: If this is a fresh turn, the AI message has NOT been added
+                // to activeData yet! We must explicitly create and insert it so it actually exists in
+                // interactionData to be resumed, preventing it from vanishing on completion.
+                if (!resumingMessageId) {
+                    const currentLocId = getCurrentLocationId(activeData, character) || 'global';
+                    const newAiMessage = createMessage(character, {
+                        textContent: currentExistingText,
+                        interactionData: activeData,
+                    }) as ChatMessage;
+
+                    activeData = addMessageToInteractionData(activeData, newAiMessage, currentLocId);
+                    resumingMessageId = newAiMessage.id;
+                    this.activeMessageId = newAiMessage.id;
+                    useChatStore.setState({ interactionData: activeData });
+                    saveRawInteractionData(activeData).catch(console.warn);
+                } else {
+                    activeData = updatePartialMessageInInteractionData(
+                        activeData,
+                        character,
+                        currentExistingText,
+                        undefined,
+                        resumingMessageId
+                    );
+                    useChatStore.setState({ interactionData: activeData });
+                }
+
+                isResuming = true;
+                continue;
+            }
 
             if ('error' in outcome) {
                 if (outcome.error.type !== 'aborted') {
@@ -660,6 +702,8 @@ class ChatSessionCoordinator {
 
     public stopGeneration() {
         this.wasStopped = true;
+        this.isSkippingThinking = false;
+        this.pendingSkipText = null;
         if (this.abortController) {
             this.abortController.abort();
             this.abortController = null;
@@ -683,6 +727,23 @@ class ChatSessionCoordinator {
 
         this.activeMessageId = null;
         this.releaseLock();
+    }
+
+    public skipThinking() {
+        if (!this.isGenerating || !this.abortController || this.isSkippingThinking) return;
+
+        const genState = useGenerationStore.getState();
+        const chatState = useChatStore.getState();
+        const text = genState.streamingText;
+        if (!text) return;
+
+        const matchingEndToken = findActiveThinkEndToken(text, chatState.selectedModel);
+        if (!matchingEndToken) return;
+
+        this.isSkippingThinking = true;
+        this.pendingSkipText = text.trimEnd() + `\n${matchingEndToken}\n\n`;
+
+        this.abortController.abort();
     }
     
     public triggerHostResponse() {
