@@ -1440,10 +1440,9 @@ function App() {
                                     isOpen={isHistoryOpen}
                                     onClose={closeHeaderPanel}
                                     onJumpToMessage={(msgId) => {
-                                        setFocusedMessageId(msgId); // 👈 THIS fixes Card/VN View!
-                                        // Temporarily suppress auto-scroll so Ladder/Cinematic don't fight the jump
                                         suppressAutoScrollRef.current = true;
-                                        setTimeout(() => { suppressAutoScrollRef.current = false; }, 600);
+                                        setFocusedMessageId(msgId); // 👈 THIS fixes Card/VN View!
+                                        suppressAutoScrollRef.current = false
                                     }}
                                 />
                             </div>
