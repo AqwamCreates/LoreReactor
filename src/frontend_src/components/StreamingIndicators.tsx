@@ -22,17 +22,17 @@ export function StreamingIndicators({
 }: StreamingIndicatorsProps) {
     const isLoading = useGenerationStore(s => s.isLoading);
     const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
-    const streamingMessageId = useGenerationStore(s => s.streamingMessageId); // 👈 Track active resume message ID
+    const streamingMessageId = useGenerationStore(s => s.streamingMessageId);
     const interactionData = useChatStore(s => s.interactionData);
 
     const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const protagonistIds = useChatStore(s => s.interactionData?.protagonistIds || []);
 
-    // 🛠️ FIX: If not loading OR if we are resuming an existing message, do not render this separate indicator.
-    // The message is already updating live in-place where it belongs.
-    if (!isLoading || streamingMessageId) return null;
+    // 🛠️ CRITICAL FIX: Only bail if not loading, OR if text has already started arriving into the message.
+    // While streamingText is empty (warmup/TTFT/thinking), keep this indicator visible!
+    if (!isLoading || (streamingMessageId && streamingText)) return null;
 
-    // ✅ If streamingCharacter is null while isLoading is true, it's an ambient narration stream
+    // If streamingCharacter is null while isLoading is true, it's an ambient narration stream
     const isNarration = !streamingCharacter;
 
     const isProtagonist = streamingCharacter 
@@ -62,6 +62,7 @@ export function StreamingIndicators({
         </div>
     );
 
+    // ── Thinking / Warmup Phase Indicator (before first token) ───────────────
     if (!streamingText) {
         return (
             <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">
@@ -94,7 +95,6 @@ export function StreamingIndicators({
                 )}
                 <div style={{ display: 'inline', whiteSpace: 'pre-wrap' }}>
                     <span className="message-text" style={{ display: 'inline' }}>
-                        {/* ✅ Render the raw string through the universal memoized formatter */}
                         {streamingText ? <MemoizedMessageText text={streamingText} /> : null}
                     </span>
                     <span className="cursor-blink" style={{ display: 'inline' }}>&nbsp;▋</span>

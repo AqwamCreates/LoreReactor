@@ -8,7 +8,7 @@ import { detectName } from '../utilities/nameDetection';
 import { buildGenericCompletionBody } from '../utilities/genericRequestBuilderLogic';
 import { getCoLocatedProtagonists, getCoLocatedParticipants } from '../utilities/locationLogic';
 import { getLocalMessageHistory, getGlobalMessageHistory } from '../utilities/timelineLogic';
-import { getModelTemplate } from '../dictionaries/modelTemplates';
+import { getModelTemplate, getModelThinkTokenPairs } from '../dictionaries/modelTemplates';
 import { tokenizeMemoryContent } from '../utilities/memoryLogic';
 import { getEnabledTools } from '../utilities/characterLogic';
 import { resolveEffectiveStopTokens } from '../utilities/chatSessionLogic';
@@ -18,6 +18,25 @@ const SUMMARIZE_SYSTEM_PROMPT = "You are a concise summarizer for roleplay chat 
 const COMPRESS_CHUNK_PROMPT = "You are a narrative compressor for roleplay chat history. Given a chunk of conversation messages, produce a single dense paragraph that preserves: character names, key actions, dialogue substance, emotional beats, and plot progression. Write in past tense, third person. Output ONLY the compressed paragraph with no preamble, no markdown, no quotes.";
 const RECURSIVE_MERGE_PROMPT = "You are a narrative merger for roleplay chat history. Given multiple summary paragraphs from consecutive conversation segments, merge them into a single coherent paragraph that preserves the chronological flow, character arcs, and plot progression. Eliminate redundancy. Write in past tense, third person. Output ONLY the merged paragraph with no preamble, no markdown, no quotes.";
 const LOCATION_VISIT_MEMORY_PROMPT = "You are a reflective character in a roleplay. Below is a record of events that occurred at a specific location during your visit. Reflect on what happened there from your personal perspective. Express your memory as natural, personal thoughts. Preserve key events, conversations, emotional moments, and outcomes. Write in first person. Output ONLY your reflection with no preamble, no markdown, no quotes.";
+
+function escapeRegex(s: string): string {
+    return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Strips all model thinking blocks (<think>...</think>, [THINK]...[/THINK], <|channel>thought...<channel|>)
+ * so summaries, compression, and memories reflect only in-character actions, dialogue, and narrative events.
+ */
+export function sanitizeThinkingSyntax(text: string): string {
+    if (!text) return '';
+    const pairs = getModelThinkTokenPairs();
+    if (pairs.length === 0) return text;
+    const startPattern = pairs.map(p => escapeRegex(p.start)).join('|');
+    const endPattern = pairs.map(p => escapeRegex(p.end)).join('|');
+
+    const thinkRegex = new RegExp(`(?:${startPattern})[\\s\\S]*?(?:${endPattern}|$)\\s*`, 'gi');
+    return text.replace(thinkRegex, '').trim();
+}
 
 function createAutoSummaryContext(name: string, description: string, text: string, insertionDepth = 0, tokenBudget = 512): Context {
     const now = Date.now();
@@ -47,7 +66,11 @@ export async function generateMessageSummary(
     let text = chatMsg.textContent;
     if (!text) return null;
 
+    // Strip thoughts before tools and summarization prompt
+    text = sanitizeThinkingSyntax(text);
     text = sanitizeToolSyntax(text, chatMsg.toolExecutionResults, true);
+    if (!text) return null;
+
     const stops = resolveEffectiveStopTokens(profile?.interactionDataSummarizationStopPattern, ['\n\n', '\nMessage from']);
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
 
@@ -187,7 +210,16 @@ async function compressChunk(messages: HistoryMessage[], maxTokens = 512, sample
     const chatMessages = messages.filter((m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent);
     if (chatMessages.length === 0) return null;
 
-    const formatted = chatMessages.map(m => `${m.character.name}: ${sanitizeToolSyntax(m.textContent, m.toolExecutionResults, true)}`).join('\n\n');
+    const formatted = chatMessages
+        .map(m => {
+            const cleanText = sanitizeToolSyntax(sanitizeThinkingSyntax(m.textContent), m.toolExecutionResults, true);
+            return cleanText ? `${m.character.name}: ${cleanText}` : null;
+        })
+        .filter(Boolean)
+        .join('\n\n');
+
+    if (!formatted) return null;
+
     const stops = resolveEffectiveStopTokens(profile?.interactionDataSummarizationStopPattern);
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formatted}\n\nCompressed paragraph:`;
 
@@ -228,7 +260,8 @@ export async function generateLocationVisitSummary(
         const pIdx = participants.findIndex(p => p.id === chatMsg.character.id);
         const tag = pIdx !== -1 ? `Character ${pIdx + 1}` : 'Unknown';
         const rawText = chatMsg.modelTextContentSummaries?.[modelId] || chatMsg.textContent;
-        const cleanText = sanitizeToolSyntax(rawText, chatMsg.toolExecutionResults, true);
+        const cleanText = sanitizeToolSyntax(sanitizeThinkingSyntax(rawText), chatMsg.toolExecutionResults, true);
+        if (!cleanText) continue;
         scopedMessages.push(`${delimiters.turnStart(`${tag} (${chatMsg.character.name})`)}${cleanText}${delimiters.turnEnd}`);
     }
 
@@ -400,7 +433,12 @@ export async function generateEntropyPruningSummaries(
         for (const msg of msgs) msgLocMap.set(msg.id, locId);
     }
 
-    const candidates = visibleMessages.map(m => ({ id: m.id, textContent: m.textContent, locationId: msgLocMap.get(m.id) }));
+    // Strip thinking content before calculating narrative entropy
+    const candidates = visibleMessages.map(m => ({ 
+        id: m.id, 
+        textContent: sanitizeThinkingSyntax(m.textContent), 
+        locationId: msgLocMap.get(m.id) 
+    }));
     const cutoffIndex = await calculateEntropyPruningCutoff(candidates, chunkSize, threshold, maxRawTokens);
 
     const profile = interactionData.profile;

@@ -136,7 +136,6 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
         return resolveDelayedDisplayNameFromCache(displayNameCache, msgIdx, activeSpeaker.id);
     }, [displayNameCache, displayedMessage, chatMessages, activeSpeaker, isAmbientSpeaker]);
 
-    const isWaitingForGeneration = isLoading && !displayedTextContent && viewIndex === null && !isAmbientSpeaker;
     const isEditingLastSpeaker = editingId !== null && displayedMessage?.id === editingId;
     const hasParentBranch = !!interactionData?.parentInteractionDataId;
 
@@ -438,11 +437,7 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
             )}
 
             <div className="vn-dialogue-layer">
-                <div className={`vn-dialogue-box ${isAmbientSpeaker ? 'vn-dialogue-box-ambient' : ''}`} style={{
-                    opacity: isWaitingForGeneration ? 0 : 1,
-                    pointerEvents: isWaitingForGeneration ? 'none' : 'auto',
-                    transition: 'opacity 0.3s ease'
-                }}>
+                <div className={`vn-dialogue-box ${isAmbientSpeaker ? 'vn-dialogue-box-ambient' : ''}`}>
                     <div className="vn-name-plate">
                         {isAmbientSpeaker ? '✦ Narration' : activeSpeakerDisplayName}
                     </div>
@@ -539,6 +534,11 @@ export const VisualNovelView = React.memo(function VisualNovelView(props: ViewMo
                                 )
                             ) : displayText ? (
                                 <MemoizedMessageText text={displayText} />
+                            ) : isLoading ? (
+                                <span className="thinking-indicator">
+                                    <span className="thinking-text">Thinking</span>
+                                    <span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+                                </span>
                             ) : (
                                 <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Waiting for an interaction...</span>
                             )}

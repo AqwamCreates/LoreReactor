@@ -224,8 +224,6 @@ export const CardView = React.memo(function CardView(props: ViewModeProps) {
                                 positionClass={positionClass}
                                 isUserCard={isUserCard}
                                 isStreamingThis={isStreamingThis}
-                                isLoading={isLoading}
-                                streamingText={streamingText}
                                 textBodyRef={isCurrent ? activeTextBodyRef : undefined}
                                 displayNameCache={displayNameCache}
                                 editingId={editingId}
@@ -273,8 +271,6 @@ interface SingleCardProps {
     positionClass: string;
     isUserCard: boolean;
     isStreamingThis: boolean;
-    isLoading: boolean;
-    streamingText: string | null;
     textBodyRef?: React.RefObject<HTMLDivElement | null>;
     displayNameCache: any;
     editingId: string | null;
@@ -421,7 +417,14 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
                     />
                 ) : (
                     <div className="fate-card-text">
-                        {renderedText ? <MemoizedMessageText text={renderedText} /> : null}
+                        {renderedText ? (
+                            <MemoizedMessageText text={renderedText} />
+                        ) : isStreamingThis ? (
+                            <div className="thinking-indicator" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', margin: '20px auto' }}>
+                                <span className="thinking-text">Thinking</span>
+                                <span className="thinking-dots"><span>.</span><span>.</span><span>.</span></span>
+                            </div>
+                        ) : null}
                     </div>
                 )}
             </div>
