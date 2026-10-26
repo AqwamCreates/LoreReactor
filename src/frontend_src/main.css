@@ -1301,7 +1301,7 @@ right: auto;
     }
     /* Padding perfectly balanced for an 8px vertical gap between rows */
     .mode-ladder .context-bar-extended-row { padding: 10px 12px 2px 12px !important; }
-    .mode-ladder .context-bar-core-row { padding: 6px 12px 5px 12px !important; }
+    .mode-ladder .context-bar-core-row { padding: 6px 12px 3px 12px !important; }
     /* Fixed comfortable 44px touch targets */
     .mode-ladder .context-bar-core-row .nav-button,
     .mode-ladder .context-bar-extended-row .nav-button {
@@ -1332,7 +1332,7 @@ right: auto;
         max-width: 44px !important;
     }
     .mode-ladder .context-bar-core-row {
-        padding: 6px 12px 5px 12px !important;
+        padding: 6px 12px 3px 12px !important;
     }
 }
 
