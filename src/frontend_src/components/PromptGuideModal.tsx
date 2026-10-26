@@ -244,7 +244,7 @@ const mockTemplateContext: TemplateContext = {
     protagonistPossessiveString: "Aqwam's",
     protagonists: ['Character 1 (Aqwam)'],
     "protagonists'": ["Aqwam's"],
-    characters: ['Character 1 (Aqwam)', 'Character 2 (Alice)', 'Character 3 (Bob)', 'Character 4 (Charlie)', 'Character 5 (Dave)'],
+    characters: ['Character 1 (Aqwam)', 'Character 2 (Alice)', 'Character 3', 'Character 4 (Scout)', 'Character 5 (Gatekeeper)'],
     "characters'": ["Aqwam's", "Alice's", "Character 3's", "Scout's", "Gatekeeper's"],
     characterTurnStart: '<CHARACTER 1>',
     characterTurnEnd: '</TURN>',
@@ -297,16 +297,16 @@ const mockTemplateContext: TemplateContext = {
 
 const DIRECTORY_ITEMS = [
     // Identity
-    { key: 'character', desc: 'Current character. Strictly equivalent to {{character?1}} when used without a limit (shows tag + 1 oldest known name). Use - for co-located, + for all. Use ?N to reveal up to N oldest known names (comma-separated).', cat: 'Identity' },
-    { key: 'protagonist', desc: 'FIRST co-located protagonist. Strictly equivalent to {{protagonist?1}}. Use + for all protagonists. Supports ?N to reveal up to N oldest known names.', cat: 'Identity' },
-    { key: "protagonist's", desc: 'Possessive form of the FIRST co-located protagonist. Equivalent to ?1. Supports ?N to reveal up to N oldest known names.', cat: 'Identity' },
-    { key: 'protagonists', desc: 'Array of protagonists. Inline comma-separated by default. Append > for a bullet list. Defaults to ?1 per character. Supports ?N to reveal up to N oldest known names per character.', cat: 'Identity' },
-    { key: "protagonists'", desc: 'Array of possessive strings for protagonists. Comma-separated by default. Supports > for list mode and ?N for name limits.', cat: 'Identity' },
-    { key: 'characters', desc: 'Array of participants. Inline comma-separated by default. Append > for a Markdown list. Defaults to ?1 per character. Supports ?N to reveal up to N oldest known names per character.', cat: 'Identity' },
-    { key: "characters'", desc: 'Array of possessive strings for participants. Comma-separated by default. Supports > for list mode and ?N for name limits.', cat: 'Identity' },
-    { key: 'characterTags', desc: 'Formatted character tags. Inline comma-separated by default. Use {{characterTags>}} to render as a Markdown bullet list. Defaults to ?1. Supports ?N to limit known names per character.', cat: 'Identity' },
-    { key: 'characterTagsWithDescriptions', desc: 'Array of character tags with appearance prompts. Use > to format as a Markdown block list. Defaults to ?1. Supports ?N for name limits.', cat: 'Identity' },
-    { key: 'character@uuid', desc: 'Resolves a specific character by their immutable UUID. Defaults to ?1. Fully respects ?N to reveal up to N oldest known names.', cat: 'Identity' },
+    { key: 'character', desc: 'Current character (Singular). Uses the character\'s hardcoded defined aliases. The AI always knows its own identity. ?N reveals up to N defined aliases (comma-separated). ?1 (default) shows the true name.', cat: 'Identity' },
+    { key: 'protagonist', desc: 'FIRST co-located protagonist. If it\'s the AI, uses defined aliases. If it\'s another protagonist, uses interaction history (NO TRUE NAME FALLBACK). Supports ?N.', cat: 'Identity' },
+    { key: "protagonist's", desc: 'Possessive form of the FIRST co-located protagonist. Follows the same Singular/Plural rules as {{protagonist}}.', cat: 'Identity' },
+    { key: 'protagonists', desc: 'Array of protagonists (Plural). STRICTLY uses interaction history. ZERO FALLBACK TO THE TRUE NAME. If 0 names are known, returns just the tag. ?N reveals up to N oldest learned names.', cat: 'Identity' },
+    { key: "protagonists'", desc: 'Array of possessive strings for protagonists. Follows strict Plural interaction history rules.', cat: 'Identity' },
+    { key: 'characters', desc: 'Array of participants (Plural). STRICTLY uses the interaction history (knownNames map). ZERO FALLBACK TO THE TRUE NAME. If the AI hasn\'t learned a name, it remains completely anonymous (just the tag). ?N reveals up to N oldest learned names per character.', cat: 'Identity' },
+    { key: "characters'", desc: 'Array of possessive strings for participants. Follows strict Plural interaction history rules.', cat: 'Identity' },
+    { key: 'characterTags', desc: 'Formatted character tags (Plural). Same strict interaction history rules as {{characters}}. NO TRUE NAME FALLBACK. Defaults to ?1.', cat: 'Identity' },
+    { key: 'characterTagsWithDescriptions', desc: 'Array of character tags with appearance prompts. Follows strict Plural interaction history rules.', cat: 'Identity' },
+    { key: 'character@uuid', desc: 'Resolves a specific character by UUID. If it\'s the AI, uses defined aliases. If it\'s anyone else, STRICTLY uses interaction history (NO TRUE NAME FALLBACK). Fully respects ?N.', cat: 'Identity' },
 
     // Prompts
     { key: 'systemPrompt', desc: 'The character\'s core system prompt.', cat: 'Prompts' },
@@ -361,7 +361,7 @@ const DIRECTORY_ITEMS = [
     { key: '#', desc: 'Count operator. Returns the length/count of items instead of the content (e.g., {{chatHistory#}}).', cat: 'Operators' },
     { key: '!', desc: 'Exclusion operator. Returns everything EXCEPT the specified slice (e.g., {{tools[2:]!}}).', cat: 'Operators' },
     { key: '- / +', desc: 'Scope suffixes. "-" restricts to co-located or reachable; "+" forces all session entities (e.g., {{characters-}}, {{locations+>}}).', cat: 'Operators' },
-    { key: '?N', desc: 'Known names reveal limit. Appended to identity variables. ?0=tag only (no names). ?1=tag + oldest known name (Default behavior when omitted, strictly equivalent to omitting ?N). ?2=tag + up to 2 oldest known names (comma-separated). ?3=up to 3, etc.', cat: 'Operators' },
+    { key: '?N', desc: 'Known names reveal limit. Behavior depends on the target:\n• Singular ({{character}}): Slices the defined aliases array. ?1=True Name, ?2=True Name + 1st Alias, etc.\n• Plural/Others ({{characters}}, {{character@uuid}}): Slices the learned interaction names. ?1=1st learned name, ?2=1st & 2nd learned names. If 0 names are known, returns ONLY the tag. NO TRUE NAME FALLBACK.', cat: 'Operators' },
 
     // Formatting & Tokens
     { key: 'systemBlockStart', desc: 'Opening delimiter for system blocks.', cat: 'Formatting' },
@@ -400,7 +400,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
     const [activeTab, setActiveTab] = useState<GuideTabId>('basics');
 
     const [playgroundInput, setPlaygroundInput] = useState(
-        'I am {{character}}.\nI am with {{characters-[1:3]?2}}.\n\nAll session characters:\n{{characters+?2>}}\n\nPresent tags:\n{{characterTags>}}\n\nReachable locations:\n{{locations->}}\n\nAvailable tools:\n{{tools[0:4]>}}'
+        'I am {{character?2}}.\nI am with {{characters-[1:3]?2}}.\n\nAll session characters:\n{{characters+?2>}}\n\nPresent tags:\n{{characterTags>}}\n\nReachable locations:\n{{locations->}}\n\nAvailable tools:\n{{tools[0:4]>}}'
     );
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -499,19 +499,19 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                 <code style={{ background: 'var(--code-bg)', padding: '2px 6px', borderRadius: '4px' }}>
                                     {'{{key}}'}
                                 </code>
-                                . By default, arrays resolve as <strong>inline comma-separated text</strong> so you can safely use them inside dialogue or story text. Adding the <code>&gt;</code> operator at the end expands them into a <strong>Markdown bullet list</strong>. Identity variables without a limit strictly default to <code>?1</code> (showing the tag and the single oldest known name).
+                                . By default, arrays resolve as <strong>inline comma-separated text</strong> so you can safely use them inside dialogue or story text. Adding the <code>&gt;</code> operator at the end expands them into a <strong>Markdown bullet list</strong>.
                             </p>
 
                             {renderComparison(
                                 'My name is {{character}} and I am talking to {{characters[1:2]}}.',
                                 resolveTemplate('My name is {{character}} and I am talking to {{characters[1:2]}}.', mockTemplateContext, mockDelimiters),
-                                'Basic injection of identity variables. {{character}} defaults to ?1, showing the tag and the first known name. Clean inline formatting without breaking line breaks.'
+                                'Basic injection. {{character}} uses defined aliases (Singular). {{characters}} uses learned names (Plural). Clean inline formatting.'
                             )}
 
                             {renderComparison(
                                 'Present: {{characterTags}}',
                                 resolveTemplate('Present: {{characterTags}}', mockTemplateContext, mockDelimiters),
-                                'Default Inline Mode: Strips bullet dashes and joins with commas. Aqwam and Alice are revealed, Charlie is known by his alias "Scout", and Bob is anonymous as "Character 3".'
+                                'Default Inline Mode: Strips bullet dashes and joins with commas. Aqwam and Alice are revealed, Charlie is known by his alias "Scout", and Bob is completely anonymous as "Character 3" because his name hasn\'t been learned yet.'
                             )}
 
                             {renderComparison(
@@ -523,7 +523,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                             {renderComparison(
                                 'I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.',
                                 resolveTemplate('I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.', mockTemplateContext, mockDelimiters),
-                                'UUID resolution ensures persistent memories map to the correct character and location. Fully respects known name limits (?N).'
+                                'UUID resolution ensures persistent memories map to the correct character and location. Fully respects known name limits (?N) and the NO TRUE NAME FALLBACK rule.'
                             )}
 
                             {renderComparison(
@@ -642,32 +642,32 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Known Names Reveal Limit <code>?N</code></span>
                             <p style={{ fontSize: '0.8rem', opacity: 0.8, marginBottom: '12px' }}>
-                                Appended to identity variables to control how many of the oldest known names are revealed. <strong>Omitting <code>?N</code> is exactly equivalent to <code>?1</code></strong> (showing the tag and the single oldest known name).
+                                Appended to identity variables to control how many names are revealed. <strong>Behavior strictly depends on whether the target is Singular or Plural.</strong>
                             </p>
                             {renderComparison(
                                 '{{character?0}}',
                                 resolveTemplate('{{character?0}}', mockTemplateContext, mockDelimiters),
-                                '?0 hides all known names and returns only the participant tag (e.g., "Character 1").'
+                                '?0 hides all names and returns only the participant tag (e.g., "Character 1").'
                             )}
                             {renderComparison(
                                 '{{character}} OR {{character?1}}',
                                 resolveTemplate('{{character}}', mockTemplateContext, mockDelimiters),
-                                'Default behavior (or ?1): Reveals the tag and the 1 oldest known name (e.g., "Character 1 (Aqwam)"). They are strictly equivalent.'
+                                'Default behavior (or ?1) for Singular: Reveals the tag and the True Name (e.g., "Character 1 (Aqwam)"). They are strictly equivalent.'
                             )}
                             {renderComparison(
                                 '{{character?2}}',
                                 resolveTemplate('{{character?2}}', mockTemplateContext, mockDelimiters),
-                                '?2 reveals the tag and up to 2 oldest known names, comma-separated (e.g., "Character 1 (Aqwam, The Architect)").'
+                                '?2 for Singular: Reveals the tag and up to 2 defined aliases, comma-separated (e.g., "Character 1 (Aqwam, The LoreReactor Creator)").'
                             )}
                             {renderComparison(
                                 '{{character?3}}',
                                 resolveTemplate('{{character?3}}', mockTemplateContext, mockDelimiters),
-                                '?3 reveals the tag and up to 3 oldest known names (e.g., "Character 1 (Aqwam, The LoreReactor Creator)").'
+                                '?3 for Singular: Reveals the tag and up to 3 defined aliases (e.g., "Character 1 (Aqwam, The LoreReactor Creator, The DataPredict Creator)").'
                             )}
                             {renderComparison(
                                 '{{characters?2}}',
                                 resolveTemplate('{{characters?2}}', mockTemplateContext, mockDelimiters),
-                                'Applies the ?2 limit to all characters in the array. Aqwam and Alice show 2 names, Charlie shows his 2 known aliases, Bob remains anonymous.'
+                                '?2 for Plural: Aqwam shows 2 defined aliases (Singular rule applies to AI), Alice & Charlie show 2 learned names. Bob remains completely anonymous as "Character 3" (NO TRUE NAME FALLBACK).'
                             )}
                         </div>
                     )}
@@ -710,7 +710,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                         <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
                                             Restricts name reveals to the first N oldest known names per character (comma-separated).
                                             <code>?0</code> reveals no names, only tags.
-                                            <code>?1</code> (or omitting it) reveals the single oldest known name.
+                                            <code>?1</code> (or omitting it) reveals the single oldest known name (or true name for the AI).
                                             Also applies to UUID lookups and identity arrays:
                                             <code>{'{{character@uuid?2}}'}</code>, <code>{'{{characters?3}}'}</code>.
                                         </span>
@@ -752,7 +752,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     className="editor-textarea"
                                     value={playgroundInput}
                                     onChange={e => setPlaygroundInput(e.target.value)}
-                                    placeholder={'e.g., I am {{character}} (also known as {{character?2}} or {{character?3}}).\nI am with {{characters-[1:3]?2}}.\n\nAll session characters:\n{{characters+?2>}}'}
+                                    placeholder={'e.g., I am {{character?2}} (also known as {{character?3}}).\nI am with {{characters-[1:3]?2}}.\n\nAll session characters:\n{{characters+?2>}}'}
                                     style={{ fontFamily: 'monospace', minHeight: '120px' }}
                                 />
                             </div>

@@ -136,11 +136,6 @@ export function sanitizeToolSyntax(
   return sanitized.replace(/\s{2,}/g, ' ');
 }
 
-/**
- * Strips model thinking blocks (<think>...
-...[/THINK], <|channel>thought...<channel|>)
- * so a character's internal thoughts are never leaked to other characters in the prompt.
- */
 export function sanitizeThinkingSyntax(text: string): string {
   if (!text) return text;
   const pairs = getModelThinkTokenPairs();
@@ -199,20 +194,6 @@ function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string, exclude
     return [...safeArr.slice(0, start), ...safeArr.slice(end)];
   }
   return safeArr.slice(start, end);
-}
-
-function formatToolsPlaceholder(
-  tools: string[],
-  startStr?: string,
-  endStr?: string,
-  wantLength = false,
-  wantExclude = false
-): string {
-  const slice = getSlicedArray(tools ?? [], startStr, endStr, wantExclude);
-  if (wantLength) {
-    return String(slice.length);
-  }
-  return slice.join(', ');
 }
 
 export interface TemplateContext {
@@ -388,7 +369,6 @@ export function resolveTemplate(
         return value;
       };
 
-      // 1. Parse suffix scope operators (- and +)
       let locationScope: 'reachable' | 'all' | undefined = undefined;
       let suffixScope: participantScopeMode | undefined = undefined;
       let rawKey = key;
@@ -409,11 +389,9 @@ export function resolveTemplate(
         }
       }
 
-      // 2. Parse possessive
       const isPossessive = rawKey.endsWith("'") || rawKey.endsWith("'s");
       const cleanKey = isPossessive ? rawKey.replace(/'s?$/, '') : rawKey;
 
-      // 3. Parse %scope overrides (including %+ and %-)
       const hasScopeOverride = scopeStr !== undefined;
       let scopeOverride = hasScopeOverride ? (scopeStr as participantScopeMode) : undefined;
       if (scopeStr === '-' || scopeStr === '+') {
@@ -422,7 +400,6 @@ export function resolveTemplate(
 
       const effectiveScope = suffixScope ?? scopeOverride;
 
-      // 4. UUID Resolution
       const isCharacterUuidKey = cleanKey.startsWith('character@');
       const isLocationUuidKey = cleanKey.startsWith('location@');
       const isLocationDescUuidKey = cleanKey.startsWith('locationWithDescription@');
@@ -435,9 +412,9 @@ export function resolveTemplate(
           const participant = pCtx.participants.find(p => p.id === uuid);
           if (participant) {
             if (isPossessive) {
-              return asLengthOrValue(getIdentityPossessiveName(participant, pCtx, limitOverride));
+              return asLengthOrValue(getResolvedPossessiveName(participant, pCtx, limitOverride));
             }
-            return asLengthOrValue(getIdentityDisplayName(participant, pCtx, limitOverride));
+            return asLengthOrValue(getResolvedDisplayName(participant, pCtx, limitOverride));
           }
           return asLengthOrValue(isPossessive ? "Unknown's" : "Unknown");
         }
@@ -468,7 +445,6 @@ export function resolveTemplate(
 
       const pCtx = ctx.promptBuildContext;
 
-      // 5. Unified Identity & Location Resolution with Scope & Insertion Awareness
       if (pCtx && (
         cleanKey === 'character' || cleanKey === 'protagonist' || cleanKey === 'protagonists' || 
         cleanKey === 'characters' || cleanKey === 'locations' || cleanKey === 'locationsWithDescriptions'
@@ -493,9 +469,6 @@ export function resolveTemplate(
           targetLocations = buildLocationsArray(pCtx, delimiters, scope, insertionOverride, withDescriptions);
         }
 
-        const getResolvedName = (p: Character) => getIdentityDisplayName(p, pCtx, limitOverride);
-        const getResolvedPossessive = (p: Character) => getIdentityPossessiveName(p, pCtx, limitOverride);
-
         if (isLocationKey) {
           if (isPossessive) {
             return asLengthOrValue(targetLocations.map(l => `${l}'s`));
@@ -506,17 +479,16 @@ export function resolveTemplate(
         if (cleanKey === 'character' || cleanKey === 'protagonist') {
           const p = targetParticipants[0];
           if (!p) return asLengthOrValue('');
-          const name = isPossessive ? getResolvedPossessive(p) : getResolvedName(p);
+          const name = isPossessive ? getResolvedPossessiveName(p, pCtx, limitOverride) : getResolvedDisplayName(p, pCtx, limitOverride);
           return asLengthOrValue(name);
         }
         
         if (cleanKey === 'protagonists' || cleanKey === 'characters') {
-          const names = targetParticipants.map(p => isPossessive ? getResolvedPossessive(p) : getResolvedName(p));
+          const names = targetParticipants.map(p => isPossessive ? getResolvedPossessiveName(p, pCtx, limitOverride) : getResolvedDisplayName(p, pCtx, limitOverride));
           return asLengthOrValue(names);
         }
       }
 
-      // 6. Dynamic Caching Block Overrides
       if (ctx.promptBuildContext && (hasScopeOverride || hasInsertionOverride || hasLimitOverride)) {
         const profile = pCtx!.profile;
         
@@ -548,7 +520,6 @@ export function resolveTemplate(
       if (key === 'location') return asLengthOrValue(ctx.currentLocation);
       if (key === 'locationWithDescription') return asLengthOrValue(ctx.currentLocationWithDescription);
 
-      // 7. Chat History Special Handling (maintains multiline turn separation)
       if (key === 'chatHistory') {
         const val = ctx.chatHistory ?? [];
         const slice = getSlicedArray(val, startStr, endStr, wantExclude);
@@ -559,7 +530,6 @@ export function resolveTemplate(
         return slice.join('\n');
       }
 
-      // 8. General Context Variables & Array Handling
       if (key in ctx) {
         const val = (ctx as any)[key];
         if (Array.isArray(val)) {
@@ -568,7 +538,6 @@ export function resolveTemplate(
         return asLengthOrValue(String(val));
       }
 
-      // 9. Template Delimiters & Global Constants
       if (key === 'systemBlockStart') {
         return asLengthOrValue(delimiters.blockStart('system'));
       }
@@ -722,109 +691,205 @@ export function getKnownDisplayName(
   return null;
 }
 
+// SINGULAR: Uses defined aliases. A character always knows their own name/aliases.
+function getSingularDisplayName(
+  participant: Character,
+  ctx: PromptBuildContext,
+  limit: number | undefined
+): string {
+  const tag = getParticipantTag(participant, ctx.participants);
+  if (limit === 0) return tag;
+
+  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
+  
+  let sliceEnd = variants.length;
+  if (limit !== undefined && limit > 0) {
+    sliceEnd = Math.min(limit, variants.length);
+  } else {
+    sliceEnd = Math.min(1, variants.length);
+  }
+  
+  const resolvedNames = variants.slice(0, sliceEnd);
+  if (resolvedNames.length > 0) {
+    return `${tag} (${resolvedNames.join(', ')})`;
+  }
+  return tag;
+}
+
+function getSingularPossessiveName(
+  participant: Character,
+  ctx: PromptBuildContext,
+  limit: number | undefined
+): string {
+  const tag = getParticipantTag(participant, ctx.participants);
+  if (limit === 0) return `${tag}'s`;
+
+  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
+  
+  let sliceEnd = variants.length;
+  if (limit !== undefined && limit > 0) {
+    sliceEnd = Math.min(limit, variants.length);
+  } else {
+    sliceEnd = Math.min(1, variants.length);
+  }
+  
+  const resolvedNames = variants.slice(0, sliceEnd);
+  if (resolvedNames.length > 0) {
+    return `${resolvedNames.join(', ')}'s`;
+  }
+  return `${tag}'s`;
+}
+
+// PLURAL: Uses knownNames interaction map. NO FALLBACK TO TRUE NAME.
+function getPluralDisplayName(
+  participant: Character,
+  ctx: PromptBuildContext,
+  limit: number | undefined
+): string {
+  const tag = getParticipantTag(participant, ctx.participants);
+  if (limit === 0) return tag;
+
+  const knownMap = ctx.knownNames[participant.id];
+  let knownNamesList: string[] = [];
+  if (knownMap) {
+    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
+  }
+
+  if (limit !== undefined && limit > 0) {
+    knownNamesList = knownNamesList.slice(0, limit);
+  } else {
+    knownNamesList = knownNamesList.slice(0, 1);
+  }
+
+  if (knownNamesList.length > 0) {
+    return `${tag} (${knownNamesList.join(', ')})`;
+  }
+  
+  return tag; // NO TRUE NAME FALLBACK
+}
+
+function getPluralPossessiveName(
+  participant: Character,
+  ctx: PromptBuildContext,
+  limit: number | undefined
+): string {
+  const tag = getParticipantTag(participant, ctx.participants);
+  if (limit === 0) return `${tag}'s`;
+
+  const knownMap = ctx.knownNames[participant.id];
+  let knownNamesList: string[] = [];
+  if (knownMap) {
+    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
+  }
+
+  if (limit !== undefined && limit > 0) {
+    knownNamesList = knownNamesList.slice(0, limit);
+  } else {
+    knownNamesList = knownNamesList.slice(0, 1);
+  }
+
+  if (knownNamesList.length > 0) {
+    return `${knownNamesList.join(', ')}'s`;
+  }
+  
+  return `${tag}'s`; // NO TRUE NAME FALLBACK
+}
+
+// UNIFIED WRAPPERS: Prevents UUID and Protagonist leaks
+function getResolvedDisplayName(
+  participant: Character,
+  ctx: PromptBuildContext,
+  limit: number | undefined
+): string {
+  if (participant.id === ctx.characterId) {
+    return getSingularDisplayName(participant, ctx, limit);
+  }
+  return getPluralDisplayName(participant, ctx, limit);
+}
+
+function getResolvedPossessiveName(
+  participant: Character,
+  ctx: PromptBuildContext,
+  limit: number | undefined
+): string {
+  if (participant.id === ctx.characterId) {
+    return getSingularPossessiveName(participant, ctx, limit);
+  }
+  return getPluralPossessiveName(participant, ctx, limit);
+}
+
+function getDisplayName(
+  participant: Character, 
+  ctx: PromptBuildContext, 
+  limit: number | undefined
+): string {
+  return getResolvedDisplayName(participant, ctx, limit);
+}
+
 function getFullDisplayName(
   targetChar: Character,
   participants: Character[],
   knownNames: Record<string, Record<string, boolean>>,
+  currentCharId: string
 ): string {
   const tag = getParticipantTag(targetChar, participants);
-  const knownName = getKnownDisplayName(targetChar, knownNames);
-  return knownName ? `${tag} (${knownName})` : tag;
+  
+  if (targetChar.id === currentCharId) {
+    const variants = [targetChar.name, ...(targetChar.aliases ?? [])].filter((v): v is string => Boolean(v));
+    const resolvedNames = variants.slice(0, 1);
+    if (resolvedNames.length > 0) return `${tag} (${resolvedNames.join(', ')})`;
+    return tag;
+  }
+
+  const knownMap = knownNames[targetChar.id];
+  let knownNamesList: string[] = [];
+  if (knownMap) {
+    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
+  }
+  knownNamesList = knownNamesList.slice(0, 1);
+  
+  if (knownNamesList.length > 0) {
+    return `${tag} (${knownNamesList.join(', ')})`;
+  }
+  return tag; // NO TRUE NAME FALLBACK
 }
 
 function buildProtagonistDisplayString(
   coLocatedProtagonists: Character[],
   participants: Character[],
   knownNames: Record<string, Record<string, boolean>>,
+  currentCharId: string
 ): string {
   if (coLocatedProtagonists.length === 0) return '';
-  return getFullDisplayName(coLocatedProtagonists[0], participants, knownNames);
+  return getFullDisplayName(coLocatedProtagonists[0], participants, knownNames, currentCharId);
 }
 
 function buildProtagonistPossessiveString(
   coLocatedProtagonists: Character[],
   participants: Character[],
   knownNames: Record<string, Record<string, boolean>>,
+  currentCharId: string
 ): string {
   if (coLocatedProtagonists.length === 0) return '';
   const p = coLocatedProtagonists[0];
   const tag = getParticipantTag(p, participants);
-  const knownName = getKnownDisplayName(p, knownNames);
-  const name = knownName ?? tag;
-  return `${name}'s`;
-}
-
-function getIdentityDisplayName(
-  participant: Character,
-  ctx: PromptBuildContext,
-  limit: number | undefined
-): string {
-  const tag = getParticipantTag(participant, ctx.participants);
   
-  if (limit === 0) {
-    return tag;
-  }
-
-  if (limit === undefined) {
-    const knownName = getKnownDisplayName(participant, ctx.knownNames);
-    return knownName ? `${tag} (${knownName})` : tag;
-  }
-
-  const knownMap = ctx.knownNames[participant.id];
-  let knownNamesList: string[] = [];
-  
-  if (knownMap) {
-    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
-  }
-  
-  if (limit > 0) {
-    knownNamesList = knownNamesList.slice(0, limit);
-  }
-  
-  if (knownNamesList.length > 0) {
-    return `${tag} (${knownNamesList.join(', ')})`;
-  }
-  
-  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
-  const fallbackName = variants[0] || participant.name || 'Unknown';
-  return `${tag} (${fallbackName})`;
-}
-
-function getIdentityPossessiveName(
-  participant: Character,
-  ctx: PromptBuildContext,
-  limit: number | undefined
-): string {
-  const tag = getParticipantTag(participant, ctx.participants);
-  
-  if (limit === 0) {
+  if (p.id === currentCharId) {
+    const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
+    const resolvedNames = variants.slice(0, 1);
+    if (resolvedNames.length > 0) return `${resolvedNames.join(', ')}'s`;
     return `${tag}'s`;
   }
 
-  if (limit === undefined) {
-    const knownName = getKnownDisplayName(participant, ctx.knownNames);
-    const name = knownName ?? tag;
-    return `${name}'s`;
-  }
-
-  const knownMap = ctx.knownNames[participant.id];
+  const knownMap = knownNames[p.id];
   let knownNamesList: string[] = [];
-  
-  if (knownMap) {
-    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
-  }
-  
-  if (limit > 0) {
-    knownNamesList = knownNamesList.slice(0, limit);
-  }
+  if (knownMap) knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
+  knownNamesList = knownNamesList.slice(0, 1);
   
   if (knownNamesList.length > 0) {
     return `${knownNamesList.join(', ')}'s`;
   }
-  
-  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
-  const fallbackName = variants[0] || participant.name || tag;
-  return `${fallbackName}'s`;
+  return `${tag}'s`; // NO TRUE NAME FALLBACK
 }
 
 export function resolveInnerText(
@@ -834,25 +899,45 @@ export function resolveInnerText(
 ): string {
   if (!text) return text;
 
-  const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames));
+  const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
-    const knownName = getKnownDisplayName(p, ctx.knownNames);
-    return `${knownName ?? tag}'s`;
+    if (p.id === ctx.characterId) {
+      const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
+      const resolvedNames = variants.slice(0, 1);
+      if (resolvedNames.length > 0) return `${resolvedNames.join(', ')}'s`;
+      return `${tag}'s`;
+    }
+    const knownMap = ctx.knownNames[p.id];
+    let knownNamesList: string[] = [];
+    if (knownMap) knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
+    knownNamesList = knownNamesList.slice(0, 1);
+    if (knownNamesList.length > 0) return `${knownNamesList.join(', ')}'s`;
+    return `${tag}'s`; // NO TRUE NAME FALLBACK
   });
 
-  const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames));
+  const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const charactersPossessiveList = ctx.participants.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
-    const knownName = getKnownDisplayName(p, ctx.knownNames);
-    return `${knownName ?? tag}'s`;
+    if (p.id === ctx.characterId) {
+      const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
+      const resolvedNames = variants.slice(0, 1);
+      if (resolvedNames.length > 0) return `${resolvedNames.join(', ')}'s`;
+      return `${tag}'s`;
+    }
+    const knownMap = ctx.knownNames[p.id];
+    let knownNamesList: string[] = [];
+    if (knownMap) knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
+    knownNamesList = knownNamesList.slice(0, 1);
+    if (knownNamesList.length > 0) return `${knownNamesList.join(', ')}'s`;
+    return `${tag}'s`; // NO TRUE NAME FALLBACK
   });
 
   const baseContext: TemplateContext = {
     characterParticipantTag: ctx.characterParticipantTag,
     characterName: ctx.characterName,
-    protagonistDisplayString: buildProtagonistDisplayString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames),
-    protagonistPossessiveString: buildProtagonistPossessiveString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames),
+    protagonistDisplayString: buildProtagonistDisplayString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.characterId),
+    protagonistPossessiveString: buildProtagonistPossessiveString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.characterId),
     protagonists: protagonistsList,
     "protagonists'": protagonistsPossessiveList,
     characters: charactersList,
@@ -1501,41 +1586,6 @@ function getParticipantsForScopeAndInsertion(
     );
     return talked;
   });
-}
-
-function getDisplayName(
-  participant: Character, 
-  ctx: PromptBuildContext, 
-  limit: number | undefined
-): string {
-  const tag = getParticipantTag(participant, ctx.participants);
-  
-  if (limit === 0) {
-    return tag;
-  }
-
-  if (limit === undefined) {
-    const knownName = getKnownDisplayName(participant, ctx.knownNames);
-    return knownName ? `${tag} (${knownName})` : tag;
-  }
-
-  const knownMap = ctx.knownNames[participant.id];
-  let knownNamesList: string[] = [];
-  if (knownMap) {
-    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
-  }
-
-  if (limit > 0) {
-    knownNamesList = knownNamesList.slice(0, limit);
-  }
-
-  if (knownNamesList.length > 0) {
-    return `${tag} (${knownNamesList.join(', ')})`;
-  }
-  
-  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
-  const fallbackName = variants[0] || participant.name || 'Unknown';
-  return `${tag} (${fallbackName})`;
 }
 
 function buildCharacterTagsText(
@@ -2197,7 +2247,6 @@ export async function createChatHistoryArray(
     let historyText = p.text;
     const isSelf = p.msg.character.id === ctx.characterId;
     if (!isSelf) {
-      // 🛠️ HIDE THINKING AND TOOLS FROM OTHER CHARACTERS
       historyText = sanitizeThinkingSyntax(historyText);
       historyText = sanitizeToolSyntax(
         historyText,
@@ -2654,7 +2703,7 @@ export async function buildPrompt(
         }
         if (!base64Data) continue;
         const id = nextGlobalId();
-        const displayName = getFullDisplayName(char, ctx.participants, ctx.knownNames);
+        const displayName = getFullDisplayName(char, ctx.participants, ctx.knownNames, ctx.characterId);
         trackedImages.push({
           globalId: id,
           entityType: 'character',
@@ -2695,14 +2744,20 @@ export async function buildPrompt(
   const ctxImgStr = ctxImgInst.length > 0 ? `${delimiters.blockStart('system')}${ctxImgInst.join(', ')}${delimiters.blockEnd}` : '';
   const locImgStr = locImgInst.length > 0 ? `${delimiters.blockStart('system')}${locImgInst.join(', ')}${delimiters.blockEnd}` : '';
   
-  const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames));
+  const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
+    if (p.id === ctx.characterId) {
+      const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
+      const resolvedNames = variants.slice(0, 1);
+      if (resolvedNames.length > 0) return `${resolvedNames.join(', ')}'s`;
+      return `${tag}'s`;
+    }
     const knownName = getKnownDisplayName(p, ctx.knownNames);
     return `${knownName ?? tag}'s`;
   });
 
-  const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames));
+  const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const charactersPossessiveList = ctx.participants.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
     const knownName = getKnownDisplayName(p, ctx.knownNames);
@@ -2712,8 +2767,8 @@ export async function buildPrompt(
   const templateContext: TemplateContext = {
     characterParticipantTag: ctx.characterParticipantTag,
     characterName: ctx.characterName,
-    protagonistDisplayString: buildProtagonistDisplayString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames),
-    protagonistPossessiveString: buildProtagonistPossessiveString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames),
+    protagonistDisplayString: buildProtagonistDisplayString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.characterId),
+    protagonistPossessiveString: buildProtagonistPossessiveString(ctx.coLocatedProtagonists, ctx.participants, ctx.knownNames, ctx.characterId),
     protagonists: protagonistsList,
     "protagonists'": protagonistsPossessiveList,
     characters: charactersList,
