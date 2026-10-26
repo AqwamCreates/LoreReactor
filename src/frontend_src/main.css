@@ -399,6 +399,12 @@ box-sizing: border-box;
 transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
 overflow: visible;
 }
+.message-bubble,
+.message-text {
+    min-width: 0;
+    max-width: 100%;
+}
+
 @media (hover: hover) and (pointer: fine) {
 .message-bubble:hover .message-toolbar { opacity: 1; }
 }
@@ -6553,6 +6559,7 @@ CODE BLOCKS & INLINE CODE
     background: var(--bg);
     overflow: hidden;
     max-width: 100%;
+    min-width: 0; /* <-- CRITICAL FIX */
 }
 .fmt-code-block-header {
     display: flex;
@@ -6591,13 +6598,14 @@ CODE BLOCKS & INLINE CODE
 .fmt-code-block-pre {
     margin: 0;
     padding: 12px;
-    overflow-x: auto;
+    overflow-x: auto; /* Allows horizontal scrolling */
     background: var(--code-bg);
     font-family: var(--mono);
     font-size: 0.85rem;
     line-height: 1.5;
     color: var(--text-h);
     text-align: left;
+    max-width: 100%;
 }
 .fmt-inline-code {
     font-family: var(--mono);
@@ -6607,4 +6615,6 @@ CODE BLOCKS & INLINE CODE
     font-size: 0.9em;
     color: var(--text-h);
     border: 1px solid var(--border);
+    word-break: break-word; /* <-- CRITICAL FIX */
+    white-space: pre-wrap;  /* <-- CRITICAL FIX */
 }
