@@ -1,6 +1,6 @@
 // src/frontend_src/services/DataPortabilityEngine.ts
 import type {
-    Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock,
+    Character, Context, Location, AudioTrack, World, LanguageModel, SpatiotemporalModel, Sampler, PromptBlock,
     StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, InteractionData, InterjectableAction, Memory,
     Account, MultiplayerData, SessionData, MultiplayerJoinData, ActionFormatData, BudgetData,
     EntityFolder,
@@ -13,6 +13,7 @@ import {
     loadRawAudioTrack, saveRawAudioTrack,
     loadRawWorld, saveRawWorld,
     loadRawLanguageModel, saveRawLanguageModel,
+    loadRawSpatiotemporalModel, saveRawSpatiotemporalModel,
     loadRawSampler, saveRawSampler,
     loadRawPromptBlock, saveRawPromptBlock,
     loadRawStopPattern, saveRawStopPattern,
@@ -44,6 +45,7 @@ export interface LoreReactorExport {
     audioTracks: AudioTrack[];
     worlds: World[];
     languageModels: LanguageModel[];
+    spatiotemporalModels: SpatiotemporalModel[];
     samplers: Sampler[];
     promptBlocks: PromptBlock[];
     stopPatterns: StopPattern[];
@@ -68,7 +70,7 @@ export interface ImportResult {
     success: boolean;
     counts: {
         chats: number; characters: number; contexts: number; locations: number; audioTracks: number;
-        worlds: number; languageModels: number; samplers: number; promptBlocks: number; stopPatterns: number;
+        worlds: number; languageModels: number; spatiotemporalModels: number; samplers: number; promptBlocks: number; stopPatterns: number;
         retrievalConfigurations: number; budgetStrategies: number; profiles: number; memories: number; accounts: number;
         multiplayerData: number; entityFolders: number; interjectableActions: number; formatPreferences: number;
     };
@@ -87,6 +89,7 @@ export function validateExport(data: unknown): data is LoreReactorExport {
     if (!Array.isArray(d.audioTracks)) return false;
     if (!Array.isArray(d.worlds)) return false;
     if (!Array.isArray(d.languageModels)) return false;
+    if (d.spatiotemporalModels !== undefined && !Array.isArray(d.spatiotemporalModels)) return false;
     if (!Array.isArray(d.samplers)) return false;
     if (!Array.isArray(d.promptBlocks)) return false;
     if (!Array.isArray(d.stopPatterns)) return false;
@@ -105,6 +108,9 @@ export function normalizeExport(data: LoreReactorExport): LoreReactorExport {
     if (typeof data.exportedAt === 'string') {
         data.exportedAt = new Date(data.exportedAt).getTime() || Date.now();
     }
+    if (!data.spatiotemporalModels) {
+        data.spatiotemporalModels = [];
+    }
     return data;
 }
 
@@ -116,6 +122,7 @@ export async function exportSelectedData(selection: {
     audioTrackIds: string[];
     worldIds: string[];
     languageModelIds: string[];
+    spatiotemporalModelIds: string[];
     samplerIds: string[];
     promptBlockIds: string[];
     stopPatternIds: string[];
@@ -135,7 +142,7 @@ export async function exportSelectedData(selection: {
     const data: LoreReactorExport = {
         version: dataPortabilityVersion, exportedAt: Date.now(),
         chats: [], characters: [], contexts: [], locations: [], audioTracks: [],
-        worlds: [], languageModels: [], samplers: [], promptBlocks: [], stopPatterns: [],
+        worlds: [], languageModels: [], spatiotemporalModels: [], samplers: [], promptBlocks: [], stopPatterns: [],
         retrievalConfigurations: [],
         budgetStrategies: [], profiles: [], memories: [], accounts: [],
         multiplayerData: [], entityFolders: [], interjectableActions: [],
@@ -176,6 +183,10 @@ export async function exportSelectedData(selection: {
     for (const id of selection.languageModelIds) {
         const full = await loadRawLanguageModel(id);
         if (full) data.languageModels.push(full);
+    }
+    for (const id of selection.spatiotemporalModelIds) {
+        const full = await loadRawSpatiotemporalModel(id);
+        if (full) data.spatiotemporalModels.push(full);
     }
     for (const id of selection.samplerIds) {
         const full = await loadRawSampler(id);
@@ -250,7 +261,7 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
         success: true,
         counts: {
             chats: 0, characters: 0, contexts: 0, locations: 0, audioTracks: 0,
-            worlds: 0, languageModels: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
+            worlds: 0, languageModels: 0, spatiotemporalModels: 0, samplers: 0, promptBlocks: 0, stopPatterns: 0,
             retrievalConfigurations: 0, budgetStrategies: 0, profiles: 0, memories: 0, accounts: 0,
             multiplayerData: 0, entityFolders: 0, interjectableActions: 0, formatPreferences: 0,
         },
@@ -285,6 +296,10 @@ export async function importSelectedData(data: LoreReactorExport): Promise<Impor
     for (const m of data.languageModels) {
         try { await saveRawLanguageModel(m); result.counts.languageModels++; }
         catch (e) { result.errors.push(`Model "${m.name || m.id}": ${(e as Error).message}`); }
+    }
+    for (const m of (data.spatiotemporalModels ?? [])) {
+        try { await saveRawSpatiotemporalModel(m); result.counts.spatiotemporalModels++; }
+        catch (e) { result.errors.push(`Spatiotemporal Model "${m.name || m.id}": ${(e as Error).message}`); }
     }
     for (const s of data.samplers) {
         try { await saveRawSampler(s); result.counts.samplers++; }

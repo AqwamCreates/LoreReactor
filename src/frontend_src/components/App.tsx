@@ -1450,7 +1450,7 @@ function App() {
                             allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allPromptBlocks={promptBlocks.promptBlocks}
                             allSamplers={samplers.Samplers} allStopPatterns={stopPatterns.stopPatterns} allProfiles={profiles.profiles}
                             allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
-                            // allSpatiotemporalModels={spatiotemporalModels.spatiotemporalModels}
+                            allSpatiotemporalModels={spatiotemporalModels.spatiotemporalModels}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
                             onToggleMicrophone={handleToggleMic} onSend={() => handleSend()}
                             onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} allLanguageModels={languageModels.languageModels} allBudgetStrategies={budgetStrategies.strategies}

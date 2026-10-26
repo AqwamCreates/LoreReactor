@@ -1007,9 +1007,7 @@ export function AppModals({
                     allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
                     allAudioTracks={allAudioTracks} allPromptBlocks={allPromptBlocks} allEntityFolders={allEntityFolders}
                     allLanguageModels={allLanguageModels}
-                    allSpatiotemporalModels={allSpatiotemporalModels}
                     runningLanguageModels={runningLanguageModels}
-                    runningSpatiotemporalModels={runningSpatiotemporalModels}
                 />
             )}
 
@@ -1018,10 +1016,9 @@ export function AppModals({
                     onClose={modals.restrictionReduction.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     allCharacters={allCharacters} allProfiles={allProfiles} 
-                    allLanguageModels={allLanguageModels} allSpatiotemporalModels={allSpatiotemporalModels} 
+                    allLanguageModels={allLanguageModels}
                     allSamplers={allSamplers}
                     runningLanguageModels={runningLanguageModels} 
-                    runningSpatiotemporalModels={runningSpatiotemporalModels}
                 />
             )}
 

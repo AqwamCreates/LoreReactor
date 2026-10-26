@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataExportModal.tsx
 import { useState } from 'react';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, Sampler, PromptBlock, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, SpatiotemporalModel, Sampler, PromptBlock, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
@@ -13,6 +13,7 @@ interface DataExportModalProps {
     allAudioTracks: AudioTrack[];
     allWorlds: World[];
     allLanguageModels: LanguageModel[];
+    allSpatiotemporalModels: SpatiotemporalModel[];
     allSamplers: Sampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
@@ -29,7 +30,7 @@ interface DataExportModalProps {
 export function DataExportModal({
     onClose,
     allCharacters, allContexts, allLocations, allAudioTracks,
-    allWorlds, allLanguageModels, allSamplers, allPromptBlocks, allStopPatterns,
+    allWorlds, allLanguageModels, allSpatiotemporalModels, allSamplers, allPromptBlocks, allStopPatterns,
     allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
     allEntityFolders, allRawInteractionDataShells,
 }: DataExportModalProps) {
@@ -44,6 +45,7 @@ export function DataExportModal({
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
     const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
     const [selectedLanguageModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
+    const [selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds] = useState<string[]>([]);
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
@@ -69,6 +71,7 @@ export function DataExportModal({
     const [audioTrackSearch, setAudioTrackSearch] = useState('');
     const [worldSearch, setWorldSearch] = useState('');
     const [languageModelSearch, setLanguageModelSearch] = useState('');
+    const [spatiotemporalModelSearch, setSpatiotemporalModelSearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
@@ -84,7 +87,7 @@ export function DataExportModal({
         setSummary(null); setError(null); setIsExporting(false);
         setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
-        setSelectedLanguageModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
+        setSelectedLanguageModelIds([]); setSelectedSpatiotemporalModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedRetrievalConfigurationIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setSelectedEntityFolderIds([]);
@@ -94,7 +97,7 @@ export function DataExportModal({
         setIncludeSessionData(true);
         setIncludeBudgetData(true);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
-        setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSamplerSearch('');
+        setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSpatiotemporalModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setRetrievalConfigurationSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
         setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch(''); setEntityFolderSearch('');
     };
@@ -107,7 +110,7 @@ export function DataExportModal({
 
     const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
-        selectedLanguageModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
+        selectedLanguageModelIds.length + selectedSpatiotemporalModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedRetrievalConfigurationIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         selectedEntityFolderIds.length +
@@ -123,6 +126,7 @@ export function DataExportModal({
                 chatIds: selectedChatIds,
                 characterIds: selectedCharacterIds, contextIds: selectedContextIds, locationIds: selectedLocationIds,
                 audioTrackIds: selectedAudioTrackIds, worldIds: selectedWorldIds, languageModelIds: selectedLanguageModelIds,
+                spatiotemporalModelIds: selectedSpatiotemporalModelIds,
                 samplerIds: selectedSamplerIds, promptBlockIds: selectedPromptBlockIds,
                 stopPatternIds: selectedStopPatternIds, retrievalConfigurationIds: selectedRetrievalConfigurationIds, budgetStrategyIds: selectedBudgetStrategyIds,
                 profileIds: selectedProfileIds, memoryIds: selectedMemoryIds,
@@ -186,6 +190,8 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                 <EntitySelectList label="Language Models" items={allLanguageModels} selectedIds={selectedLanguageModelIds}
                                     onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
+                                <EntitySelectList label="Spatiotemporal Models" items={allSpatiotemporalModels} selectedIds={selectedSpatiotemporalModelIds}
+                                    onToggle={(id) => toggle(selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds, id)} searchQuery={spatiotemporalModelSearch} onSearchChange={setSpatiotemporalModelSearch} />
                                 <EntitySelectList label="Samplers" items={allSamplers} selectedIds={selectedSamplerIds}
                                     onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
                                 <EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={selectedPromptBlockIds}
@@ -259,6 +265,7 @@ export function DataExportModal({
                                     <div><strong>Audio Tracks:</strong> {summary.audioTracks.length}</div>
                                     <div><strong>Worlds:</strong> {summary.worlds.length}</div>
                                     <div><strong>Language Models:</strong> {summary.languageModels.length}</div>
+                                    <div><strong>Spatiotemporal Models:</strong> {summary.spatiotemporalModels?.length ?? 0}</div>
                                     <div><strong>Samplers:</strong> {summary.samplers.length}</div>
                                     <div><strong>Prompt Blocks:</strong> {summary.promptBlocks.length}</div>
                                     <div><strong>Stop Patterns:</strong> {summary.stopPatterns.length}</div>
