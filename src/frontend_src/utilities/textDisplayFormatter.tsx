@@ -1,12 +1,11 @@
 // src/frontend_src/utilities/textDisplayFormatter.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { textType } from '../types';
 
 const LEFT_DOUBLE_QUOTE = '\u201C'; // “
 const RIGHT_DOUBLE_QUOTE = '\u201D'; // ”
 
-// Extend textType with parser-specific structural nodes
-type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item' | 'code_block' | 'inline_code';
+type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item';
 
 interface MatchCandidate {
     type: FormatterMatchType;
@@ -16,9 +15,23 @@ interface MatchCandidate {
     bullet?: string;
     indent?: number;
     language?: string;
+    blockKey?: string;
 }
 
 const NO_PARAGRAPH_BREAK = '(?:[^\r\n]|(?<!\r?\n)\r?\n(?!\r?\n))+?';
+
+// ── Persistent Expansion Memory ──────────────────────────────────────────────
+// Remembers user clicks so re-renders/streaming tokens don't reset your open/close choice
+const THINK_STATE_MAX = 500;
+const thinkExpansionState = new Map<string, boolean>();
+
+function setThinkState(key: string, state: boolean) {
+    if (thinkExpansionState.size > THINK_STATE_MAX) {
+        const firstKey = thinkExpansionState.keys().next().value;
+        if (firstKey !== undefined) thinkExpansionState.delete(firstKey);
+    }
+    thinkExpansionState.set(key, state);
+}
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
     const [copied, setCopied] = useState(false);
@@ -44,6 +57,62 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
     );
 }
 
+function CollapsibleThinkBlock({ 
+    children, 
+    rawContent, 
+    blockKey,
+}: { 
+    children: React.ReactNode; 
+    rawContent: string; 
+    blockKey: string;
+}) {
+    // Strictly closed by default unless the user previously toggled it open
+    const [isExpanded, setIsExpanded] = useState<boolean>(() => {
+        return thinkExpansionState.get(blockKey) ?? false;
+    });
+
+    // Synchronize if user toggled state in cache
+    useEffect(() => {
+        const cached = thinkExpansionState.get(blockKey);
+        if (cached !== undefined && cached !== isExpanded) {
+            setIsExpanded(cached);
+        }
+    }, [blockKey]);
+
+    const handleToggle = () => {
+        setIsExpanded(prev => {
+            const next = !prev;
+            setThinkState(blockKey, next);
+            return next;
+        });
+    };
+
+    const wordCount = rawContent.trim() ? rawContent.trim().split(/\s+/).length : 0;
+
+    return (
+        <div className={`fmt-think-container ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
+            <button
+                type="button"
+                className="fmt-think-header"
+                onClick={handleToggle}
+                aria-expanded={isExpanded}
+            >
+                <div className="fmt-think-label">
+                    <span className="fmt-think-icon">💭</span>
+                    <span className="fmt-think-title">Thinking</span>
+                    <span className="fmt-think-count">({wordCount} words)</span>
+                </div>
+                <span className="fmt-think-chevron">{isExpanded ? '▾' : '▸'}</span>
+            </button>
+            {isExpanded && (
+                <div className="fmt-think-body">
+                    {children}
+                </div>
+            )}
+        </div>
+    );
+}
+
 function parseFormattedText(
     text: string,
     isTopLevel: boolean,
@@ -57,7 +126,22 @@ function parseFormattedText(
     while (remaining.length > 0) {
         const candidates: MatchCandidate[] = [];
 
-        // 0.1. Fenced Code Block (Checked first to protect contents from being parsed as formatting)
+        // 0.0. Thinking Block (DeepSeek, Qwen, Mistral, Gemma 4)
+        const thinkMatch = remaining.match(/(?:<think>|\[THINK\]|<\|channel>thought)([\s\S]*?)(?:<\/think>|\[\/THINK\]|<channel\|>|$)/i);
+        if (thinkMatch && thinkMatch.index !== undefined) {
+            const inner = thinkMatch[1].trim();
+            // Generate a deterministic fingerprint key from position + start of thought
+            const blockKey = `think_${thinkMatch.index}_${inner.slice(0, 40).trim()}`;
+            candidates.push({
+                type: 'think_block',
+                index: thinkMatch.index,
+                length: thinkMatch[0].length,
+                innerContent: inner,
+                blockKey,
+            });
+        }
+
+        // 0.1. Fenced Code Block
         const codeBlockMatch = remaining.match(/```(?:([a-zA-Z0-9_+-]+)\r?\n)?([\s\S]*?)```/);
         if (codeBlockMatch && codeBlockMatch.index !== undefined) {
             candidates.push({
@@ -245,6 +329,19 @@ function parseFormattedText(
         }
 
         switch (match.type) {
+            case 'think_block':
+                // Stable React key prevents unmounting while tokens stream in
+                nodes.push(
+                    <CollapsibleThinkBlock
+                        key={`think_node_${match.index}`}
+                        blockKey={match.blockKey || `think_${match.index}`}
+                        rawContent={match.innerContent ?? ''}
+                    >
+                        {parseFormattedText(match.innerContent ?? '', false, keyGen)}
+                    </CollapsibleThinkBlock>
+                );
+                break;
+
             case 'code_block':
                 nodes.push(
                     <CodeBlock 

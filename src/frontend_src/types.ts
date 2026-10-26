@@ -894,7 +894,8 @@ export type textType =
   | "brace" 
   | "strikethrough"
   | "inline_code"
-  | "code_block";
+  | "code_block"
+  | "think_block";
 
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 
@@ -962,7 +963,6 @@ export interface Profile extends ObjectData {
   textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
   narrateTexts: Record<textType, boolean>;
   narrateTextCharacterIds: Record<textType, string>; // Text type -> character Id that will narrate this text type.
-  stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
   promptFormatMode: promptFormatMode;
@@ -1031,7 +1031,6 @@ export interface RawProfile extends RawData {
   textGenerationBehaviourOnNarration: textGenerationBehaviourOnNarration,
   narrateTexts: Record<textType, boolean>;
   narrateTextCharacterIds: Record<textType, string>; // Text type -> character Id that will narrate this text type.
-  stripThinkTokens: boolean;
   tools: Record<tool, tristateInteger>;
   inputStrategy: (promptBlockType | string)[];
   promptFormatMode: promptFormatMode;

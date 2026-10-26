@@ -98,7 +98,6 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
     const [textGenerationBehaviourOnNarration, setTextGenerationBehaviourOnNarration] = useState<textGenerationBehaviourOnNarration>(ep?.textGenerationBehaviourOnNarration ?? 'wait');
     
     const [volume, setVolume] = useState<number>(ep?.volume ?? -1);
-    const [stripThinkTokens, setStripThinkTokens] = useState(ep?.stripThinkTokens ?? false);
     
     // ✅ Merged with defaultNarrateTexts to safely hydrate older profiles lacking 'underlined'
     const [narrateTexts, setNarrateTexts] = useState<Record<textType, boolean>>({
@@ -127,7 +126,7 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
             voiceActivityProbabilityThreshold,
             forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression,
             textGenerationBehaviourOnNarration,
-            volume, stripThinkTokens, 
+            volume,
             narrateTexts: { ...narrateTexts },
             narrateTextCharacterIds: { ...narrateTextCharacterIds },
             lastUpdatedTimestamp: Date.now(),
@@ -289,11 +288,6 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
                                 />
                             </div>
                         ))}
-                    </div>
-
-                    <div className="editor-section">
-                        <span className="editor-section-title">Output Processing</span>
-                        <ProfileCheckbox checked={stripThinkTokens} onChange={setStripThinkTokens} label="Strip Think Tokens" hint="Remove thinking tokens from displayed output." />
                     </div>
                 </div>
             </div>

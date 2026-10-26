@@ -30,7 +30,8 @@ export interface FormatPreferenceData {
 // ✅ UPDATED: Strict stem forms, including 'brace' and 'strikethrough'
 const ALL_CATEGORIES: textType[] = [
     'normal', 'italic', 'bold', 'underline', 'strikethrough',
-    'quote', 'parenthesis', 'bracket', 'brace', 'inline_code', 'code_block'
+    'quote', 'parenthesis', 'bracket', 'brace',
+    'inline_code', 'code_block', 'think_block'
 ];
 
 const AUTO_APPLY_THRESHOLD = 0.75;

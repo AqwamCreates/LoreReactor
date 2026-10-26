@@ -402,7 +402,7 @@ export function resolveTemplate(
             if (isPossessive) {
               return asLengthOrValue(getIdentityPossessiveName(participant, pCtx, limitOverride));
             }
-            return asLengthOrValue(getDisplayName(participant, pCtx, limitOverride));
+            return asLengthOrValue(getIdentityDisplayName(participant, pCtx, limitOverride));
           }
           return asLengthOrValue(isPossessive ? "Unknown's" : "Unknown");
         }
@@ -458,7 +458,8 @@ export function resolveTemplate(
               targetLocations = buildLocationsArray(pCtx, delimiters, scope, insertionOverride, withDescriptions);
           }
 
-          const getResolvedName = (p: Character) => getDisplayName(p, pCtx, limitOverride);
+          // CRITICAL FIX: Identity tags use getIdentityDisplayName to bypass knownNames and pull true names/aliases
+          const getResolvedName = (p: Character) => getIdentityDisplayName(p, pCtx, limitOverride);
           const getResolvedPossessive = (p: Character) => getIdentityPossessiveName(p, pCtx, limitOverride);
 
           if (isLocationKey) {
@@ -717,41 +718,54 @@ function buildProtagonistPossessiveString(
   return `${name}'s`;
 }
 
+/**
+ * Resolves identity display name using variant indexing.
+ * Bypasses knownNames map to strictly use the character's true name and aliases.
+ * ?1 (or default) = True Name
+ * ?2 = First Alias
+ * ?3 = Second Alias, etc.
+ * ?0 = Tag only (hides name)
+ */
+function getIdentityDisplayName(
+  participant: Character,
+  ctx: PromptBuildContext,
+  limit: number | undefined
+): string {
+  const tag = getParticipantTag(participant, ctx.participants);
+  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
+  
+  if (limit === 0) {
+    return tag;
+  }
+  
+  let variantIndex = 0;
+  if (limit !== undefined && limit > 0) {
+    variantIndex = Math.min(limit - 1, variants.length - 1);
+  }
+  
+  const resolvedName = variants[variantIndex] || participant.name || 'Unknown';
+  return `${tag} (${resolvedName})`;
+}
+
 function getIdentityPossessiveName(
   participant: Character,
   ctx: PromptBuildContext,
   limit: number | undefined
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
-  const knownMap = ctx.knownNames[participant.id];
-  const hasKnownName = !!knownMap && Object.keys(knownMap).length > 0;
+  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
   
-  let revealName = false;
-  if (limit !== undefined && limit >= 0) {
-    if (limit === 0) {
-      revealName = false;
-    } else {
-      let knownCount = 0;
-      for (const p of ctx.participants) {
-        const pKnownMap = ctx.knownNames[p.id];
-        const pHasKnown = !!pKnownMap && Object.keys(pKnownMap).length > 0;
-        if (p.id === participant.id) {
-          revealName = pHasKnown && knownCount < limit;
-          break;
-        }
-        if (pHasKnown) knownCount++;
-      }
-    }
-  } else {
-    revealName = hasKnownName;
+  if (limit === 0) {
+    return `${tag}'s`;
   }
 
-  if (revealName && hasKnownName) {
-    const knownName = getKnownDisplayName(participant, ctx.knownNames);
-    if (knownName) return `${knownName}'s`;
+  let variantIndex = 0;
+  if (limit !== undefined && limit > 0) {
+    variantIndex = Math.min(limit - 1, variants.length - 1);
   }
   
-  return `${tag}'s`;
+  const resolvedName = variants[variantIndex] || participant.name || tag;
+  return `${resolvedName}'s`;
 }
 
 export function resolveInnerText(
@@ -1426,6 +1440,10 @@ function getParticipantsForScopeAndInsertion(
   });
 }
 
+/**
+ * Used strictly for Character Tags and Appearance Prompts.
+ * Respects the knownNames map (what the POV character knows).
+ */
 function getDisplayName(
   participant: Character, 
   ctx: PromptBuildContext, 

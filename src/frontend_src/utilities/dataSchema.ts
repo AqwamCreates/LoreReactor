@@ -319,7 +319,6 @@ ${narrateTextsSchema}
     "narrateTextCharacterIds": {
 ${narrateTextCharacterIdsSchema}
     },
-    "stripThinkTokens": "boolean (default true)",
     "tools": {
 ${profileToolsSchema}
     },

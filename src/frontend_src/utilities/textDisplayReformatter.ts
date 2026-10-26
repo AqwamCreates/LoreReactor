@@ -35,6 +35,7 @@ export const CATEGORY_LABELS: Record<textType, string> = {
     brace: 'Curly Braces',
     inline_code: 'Inline Code',
     code_block: 'Code Block',
+    think_block: 'Thinking',
 };
 
 export const TARGET_OPTIONS: { value: textType; label: string }[] = [
@@ -49,6 +50,7 @@ export const TARGET_OPTIONS: { value: textType; label: string }[] = [
     { value: 'brace', label: 'Curly Braces' },
     { value: 'inline_code', label: 'Inline Code' },
     { value: 'code_block', label: 'Code Block' },
+    { value: 'think_block', label: 'Thinking' },
 ];
 
 export const DEFAULT_CONVERSIONS: Record<textType, textType> = {
@@ -63,6 +65,7 @@ export const DEFAULT_CONVERSIONS: Record<textType, textType> = {
     brace: 'brace',
     inline_code: 'inline_code',
     code_block: 'code_block',
+    think_block: 'think_block',
 };
 
 interface RawMatch {
@@ -76,11 +79,17 @@ interface RawMatch {
 const NO_PARAGRAPH_BREAK = '(?:[^\r\n]|(?<!\r?\n)\r?\n(?!\r?\n))+?';
 
 const PATTERNS: { regex: RegExp; category: textType; innerGroup: number }[] = [
-    // ✅ Code blocks and inline code MUST go first so syntax inside isn't parsed as formatting
+    // 1. Thinking blocks (DeepSeek <think>, Mistral [THINK], Gemma 4 <|channel>thought)
+    { 
+        regex: /(?:<think>|\[THINK\]|<\|channel>thought)([\s\S]*?)(?:<\/think>|\[\/THINK\]|<channel\|>|$)/gi, 
+        category: 'think_block', 
+        innerGroup: 1 
+    },
+    // 2. Code blocks & inline code
     { regex: /```(?:[a-zA-Z0-9_+-]+\r?\n)?([\s\S]*?)```/g, category: 'code_block', innerGroup: 1 },
     { regex: /(?<!`)`([^`]+)`(?!`)/g, category: 'inline_code', innerGroup: 1 },
-    
-    // Standard formatting patterns
+    // 3. Text markdown
+    { regex: new RegExp(`(?<!\\*)\\*\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*\\*(?!\\*)`, 'g'), category: 'bold', innerGroup: 1 },
     { regex: new RegExp(`(?<!\\*)\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*(?!\\*)`, 'g'), category: 'bold', innerGroup: 1 },
     { regex: new RegExp(`(?<!\\*)\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*(?!\\*)`, 'g'), category: 'italic', innerGroup: 1 },
     { regex: new RegExp(`(?<!\\w)_(?!\\s|_)(${NO_PARAGRAPH_BREAK})(?<!\\s|_)_(?!\\w)`, 'g'), category: 'underline', innerGroup: 1 },
@@ -274,6 +283,7 @@ export function wrapCoreText(core: string, target: textType): string {
         case 'brace': return `{${core}}`;
         case 'inline_code': return `\`${core}\``;
         case 'code_block': return `\`\`\`\n${core}\n\`\`\``;
+        case 'think_block': return `<think>\n${core}\n</think>`;
         default: return core;
     }
 }
@@ -351,7 +361,7 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
     const counts: Record<textType, number> = {
         normal: 0, italic: 0, bold: 0, underline: 0,
         strikethrough: 0, quote: 0, parenthesis: 0, bracket: 0, brace: 0,
-        inline_code: 0, code_block: 0,
+        inline_code: 0, code_block: 0, think_block: 0,
     };
 
     for (const seg of segments) counts[seg.category]++;
@@ -359,7 +369,7 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
     const order: textType[] = [
         'normal', 'italic', 'bold', 'underline', 'strikethrough', 
         'quote', 'parenthesis', 'bracket', 'brace',
-        'inline_code', 'code_block'
+        'inline_code', 'code_block', 'think_block'
     ];
 
     return order
@@ -421,7 +431,7 @@ export function learnFromManualEdits(originalText: string, finalText: string): v
         if (!origCore) continue;
 
         const matchingFinal = finalSegments.find(fSeg => {
-            const finalCore = fSeg.innerText
+            const finalCore = fSeg.innerText;
             return finalCore === origCore && fSeg.category !== origSeg.category;
         });
 

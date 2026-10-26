@@ -681,10 +681,10 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             brace: (rawNarrateTexts.brace as boolean) ?? defaultNarrateTexts.brace,
             strikethrough: (rawNarrateTexts.strikethrough as boolean) ?? defaultNarrateTexts.strikethrough,
             inline_code: (rawNarrateTexts.inline_code as boolean) ?? defaultNarrateTexts.inline_code,
-            code_block: (rawNarrateTexts.inline_code as boolean) ?? defaultNarrateTexts.code_block
+            code_block: (rawNarrateTexts.code_block as boolean) ?? defaultNarrateTexts.code_block,
+            think_block: (rawNarrateTexts.think_block as boolean) ?? defaultNarrateTexts.think_block,
         },
         narrateTextCharacterIds: parseNarrateTextCharacterIds(p.narrateTextCharacterIds),
-        stripThinkTokens: (p.stripThinkTokens as boolean) ?? true,
         tools: parseToolsRecord(p.tools, defaultProfileTools) as Record<tool, tristateInteger>,
         inputStrategy: (p.inputStrategy as Profile['inputStrategy']) || [...defaultInputStrategy],
         promptFormatMode: parsePromptFormatMode(p.promptFormatMode),

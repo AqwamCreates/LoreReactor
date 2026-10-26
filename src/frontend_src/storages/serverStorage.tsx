@@ -1083,7 +1083,6 @@ const profileRepo = createRepository<Profile, RawProfile>({
         participantsKnownNamesLimits: { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 } as Record<cacheConfigurationType, number>,
         minimalVolatileCacheMode: false,
         doNotInjectDefaultStopTokens: false,
-        stripThinkTokens: false,
         tools: {} as Record<tool, tristateInteger>,
         inputStrategy: [...defaultInputStrategy],
         enableSpeculativeMarkov: false,

@@ -85,16 +85,8 @@ export async function buildRequestBody(
 }
 
 export function convertIdsToDisplayNames(text: string, interactionData: InteractionData, character: Character): string {
-    const profile = interactionData.profile;
-    const stripThinkTokens = profile?.stripThinkTokens ?? false;
 
     let result = text;
-
-    if (stripThinkTokens) {
-        result = result.replace(/[\s\S]*?<\/think>/g, '');
-        result = result.replace(/<\|channel>[\s\S]*?<channel\|>/g, '');
-        result = result.replace(/\n\s*\n\s*\n/g, '\n\n');
-    }
 
     result = result.replace(/<memory>\}/g, '');
     result = result.replace(/<memory>[\s\S]*?\}/g, '');
