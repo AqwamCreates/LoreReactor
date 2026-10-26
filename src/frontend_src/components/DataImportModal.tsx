@@ -33,6 +33,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     const [selectedAudioTrackIds, setSelectedAudioTrackIds] = useState<string[]>([]);
     const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
     const [selectedLanguageModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
+    const [selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds] = useState<string[]>([]);
     const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
@@ -58,6 +59,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     const [audioTrackSearch, setAudioTrackSearch] = useState('');
     const [worldSearch, setWorldSearch] = useState('');
     const [languageModelSearch, setLanguageModelSearch] = useState('');
+    const [spatiotemporalModelSearch, setSpatiotemporalModelSearch] = useState('');
     const [samplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
@@ -73,7 +75,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
         setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
-        setSelectedLanguageModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
+        setSelectedLanguageModelIds([]); setSelectedSpatiotemporalModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedRetrievalConfigurationIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setSelectedEntityFolderIds([]);
@@ -85,7 +87,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setPasteText('');
         setSchemaCopied(false);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
-        setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSamplerSearch('');
+        setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSpatiotemporalModelSearch(''); setSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setRetrievalConfigurationSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
         setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch(''); setEntityFolderSearch('');
     };
@@ -104,6 +106,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setSelectedAudioTrackIds(json.audioTracks.map((t: { id: string }) => t.id));
         setSelectedWorldIds(json.worlds?.map(w => w.id) ?? []);
         setSelectedLanguageModelIds(json.languageModels.map((m: { id: string }) => m.id));
+        setSelectedSpatiotemporalModelIds(json.spatiotemporalModels?.map((m: { id: string }) => m.id) ?? []);
         setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
         setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
         setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
@@ -183,6 +186,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                 audioTracks: schemaEntities.includes('AudioTrack') ? "/* see _entitySchema */" : [],
                 worlds: [],
                 languageModels: [],
+                spatiotemporalModels: schemaEntities.includes('SpatiotemporalModel') ? "/* see _entitySchema */" : [],
                 samplers: [],
                 promptBlocks: schemaEntities.includes('PromptBlock') ? "/* see _entitySchema */" : [],
                 stopPatterns: [],
@@ -232,6 +236,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
             audioTracks: parsedData.audioTracks.filter(t => selectedAudioTrackIds.includes(t.id)),
             worlds: parsedData.worlds?.filter(w => selectedWorldIds.includes(w.id)) ?? [],
             languageModels: parsedData.languageModels?.filter(m => selectedLanguageModelIds.includes(m.id)) ?? [],
+            spatiotemporalModels: parsedData.spatiotemporalModels?.filter(m => selectedSpatiotemporalModelIds.includes(m.id)) ?? [],
             samplers: parsedData.samplers.filter(s => selectedSamplerIds.includes(s.id)),
             promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
@@ -262,14 +267,14 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
 
     const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
-        selectedLanguageModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
+        selectedLanguageModelIds.length + selectedSpatiotemporalModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedRetrievalConfigurationIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         selectedEntityFolderIds.length +
         (includeActions ? 1 : 0) + (includeActionFormatData ? 1 : 0) + 
         (includeFormatPreferences ? 1 : 0) + (includeSessionData ? 1 : 0) + (includeBudgetData ? 1 : 0);
 
-    const SCHEMA_ENTITY_OPTIONS = ['Character', 'Context', 'Location', 'AudioTrack', 'PromptBlock', 'Profile', 'EntityFolder'] as const;
+    const SCHEMA_ENTITY_OPTIONS = ['Character', 'Context', 'Location', 'AudioTrack', 'PromptBlock', 'Profile', 'EntityFolder', 'SpatiotemporalModel'] as const;
 
     return (
         <div className="modal-overlay" onClick={handleClose}>
@@ -447,12 +452,16 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                                             onToggle={(id) => toggle(selectedAudioTrackIds, setSelectedAudioTrackIds, id)} searchQuery={audioTrackSearch} onSearchChange={setAudioTrackSearch} />
                                     )}
                                     {(parsedData.worlds?.length ?? 0) > 0 && (
-                                        <EntitySelectList label="Worlds" items={parsedData.worlds} selectedIds={selectedWorldIds}
+                                        <EntitySelectList label="Worlds" items={parsedData.worlds || []} selectedIds={selectedWorldIds}
                                             onToggle={(id) => toggle(selectedWorldIds, setSelectedWorldIds, id)} searchQuery={worldSearch} onSearchChange={setWorldSearch} />
                                     )}
                                     {parsedData.languageModels.length > 0 && (
                                         <EntitySelectList label="Language Models" items={parsedData.languageModels} selectedIds={selectedLanguageModelIds}
                                             onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
+                                    )}
+                                    {(parsedData.spatiotemporalModels?.length ?? 0) > 0 && (
+                                        <EntitySelectList label="Spatiotemporal Models" items={parsedData.spatiotemporalModels || []} selectedIds={selectedSpatiotemporalModelIds}
+                                            onToggle={(id) => toggle(selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds, id)} searchQuery={spatiotemporalModelSearch} onSearchChange={setSpatiotemporalModelSearch} />
                                     )}
                                     {parsedData.samplers.length > 0 && (
                                         <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
@@ -479,119 +488,120 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                                             onToggle={(id) => toggle(selectedProfileIds, setSelectedProfileIds, id)} searchQuery={profileSearch} onSearchChange={setProfileSearch} />
                                     )}
                                     {(parsedData.memories?.length ?? 0) > 0 && (
-                                        <EntitySelectList label="Memories" items={parsedData.memories} selectedIds={selectedMemoryIds}
+                                        <EntitySelectList label="Memories" items={parsedData.memories || []} selectedIds={selectedMemoryIds}
                                             onToggle={(id) => toggle(selectedMemoryIds, setSelectedMemoryIds, id)} searchQuery={memorySearch} onSearchChange={setMemorySearch} />
                                     )}
                                     {(parsedData.accounts?.length ?? 0) > 0 && (
-                                        <EntitySelectList label="Accounts" items={parsedData.accounts} selectedIds={selectedAccountIds}
+                                        <EntitySelectList label="Accounts" items={parsedData.accounts || []} selectedIds={selectedAccountIds}
                                             onToggle={(id) => toggle(selectedAccountIds, setSelectedAccountIds, id)} searchQuery={accountSearch} onSearchChange={setAccountSearch} />
                                     )}
                                     {(parsedData.multiplayerData?.length ?? 0) > 0 && (
-                                        <EntitySelectList label="Multiplayer Data" items={parsedData.multiplayerData} selectedIds={selectedMultiplayerDataIds}
+                                        <EntitySelectList label="Multiplayer Data" items={parsedData.multiplayerData || []} selectedIds={selectedMultiplayerDataIds}
                                             onToggle={(id) => toggle(selectedMultiplayerDataIds, setSelectedMultiplayerDataIds, id)} searchQuery={multiplayerDataSearch} onSearchChange={setMultiplayerDataSearch} />
                                     )}
                                     {(parsedData.entityFolders?.length ?? 0) > 0 && (
-                                        <EntitySelectList label="Entity Folders" items={parsedData.entityFolders} selectedIds={selectedEntityFolderIds}
+                                        <EntitySelectList label="Entity Folders" items={parsedData.entityFolders || []} selectedIds={selectedEntityFolderIds}
                                             onToggle={(id) => toggle(selectedEntityFolderIds, setSelectedEntityFolderIds, id)} searchQuery={entityFolderSearch} onSearchChange={setEntityFolderSearch} />
                                     )}
 
-                                <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                                    <span className="editor-section-title" style={{ fontSize: '0.8rem' }}>Singleton Data</span>
-                                    {parsedData.interjectableActions.length > 0 && (
-                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                            <input type="checkbox" checked={includeActions} onChange={e => setIncludeActions(e.target.checked)} className="editor-checkbox-input" />
-                                            <span>Interjectable Actions ({parsedData.interjectableActions.length})</span>
-                                        </label>
-                                    )}
-                                    {parsedData.actionFormatData && (
-                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                            <input type="checkbox" checked={includeActionFormatData} onChange={e => setIncludeActionFormatData(e.target.checked)} className="editor-checkbox-input" />
-                                            <span>Action Format Data</span>
-                                        </label>
-                                    )}
-                                    {parsedData.formatPreferences && (
-                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                            <input type="checkbox" checked={includeFormatPreferences} onChange={e => setIncludeFormatPreferences(e.target.checked)} className="editor-checkbox-input" />
-                                            <span>Format Preferences</span>
-                                        </label>
-                                    )}
-                                    {(parsedData.sessionData || parsedData.multiplayerJoinData) && (
-                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                            <input type="checkbox" checked={includeSessionData} onChange={e => setIncludeSessionData(e.target.checked)} className="editor-checkbox-input" />
-                                            <span>Session & Multiplayer Join Data</span>
-                                        </label>
-                                    )}
-                                    {parsedData.budgetData && (
-                                        <label className="editor-checkbox-label" style={{ margin: 0 }}>
-                                            <input type="checkbox" checked={includeBudgetData} onChange={e => setIncludeBudgetData(e.target.checked)} className="editor-checkbox-input" />
-                                            <span>Budget Data (Includes Factorization Machine state)</span>
-                                        </label>
-                                    )}
-                                </div>
-                            </div>
-
-                            <div className="entity-action-buttons">
-                                <button type="button" className="editor-button editor-button-cancel" onClick={reset}>Choose Different Source</button>
-                                <button type="button" className="editor-button editor-button-save" onClick={handleConfirmImport} disabled={totalSelected === 0}>
-                                    Import {totalSelected > 0 ? `${totalSelected} Selected` : ''}
-                                </button>
-                            </div>
-                        </>
-                    )}
-
-                    {isImporting && (
-                        <div className="entity-loading-state">
-                            <div className="entity-loading-icon">⏳</div>
-                            <div className="entity-loading-text">Importing selected data...</div>
-                        </div>
-                    )}
-
-                    {importResult && !isImporting && (
-                        <>
-                            <div className="editor-section">
-                                <span className="editor-section-title">
-                                    {importResult.success ? '✅ Import Successful' : '⚠️ Import Completed with Errors'}
-                                </span>
-                                <div className="entity-preview-grid">
-                                    <div><strong>Chats:</strong> {importResult.counts.chats}</div>
-                                    <div><strong>Characters:</strong> {importResult.counts.characters}</div>
-                                    <div><strong>Contexts:</strong> {importResult.counts.contexts}</div>
-                                    <div><strong>Locations:</strong> {importResult.counts.locations}</div>
-                                    <div><strong>Audio Tracks:</strong> {importResult.counts.audioTracks}</div>
-                                    <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
-                                    <div><strong>Language Models:</strong> {importResult.counts.languageModels}</div>
-                                    <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
-                                    <div><strong>Prompt Blocks:</strong> {importResult.counts.promptBlocks}</div>
-                                    <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
-                                    <div><strong>Retrieval Configurations:</strong> {importResult.counts.retrievalConfigurations ?? 0}</div>
-                                    <div><strong>Budget Strategies:</strong> {importResult.counts.budgetStrategies}</div>
-                                    <div><strong>Profiles:</strong> {importResult.counts.profiles}</div>
-                                    <div><strong>Memories:</strong> {importResult.counts.memories ?? 0}</div>
-                                    <div><strong>Accounts:</strong> {importResult.counts.accounts ?? 0}</div>
-                                    <div><strong>Multiplayer Data:</strong> {importResult.counts.multiplayerData ?? 0}</div>
-                                    <div><strong>Entity Folders:</strong> {importResult.counts.entityFolders ?? 0}</div>
-                                    <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
-                                    <div><strong>Format Preferences:</strong> {importResult.counts.formatPreferences}</div>
-                                </div>
-                            </div>
-
-                            {importResult.errors.length > 0 && (
-                                <div className="editor-section">
-                                    <span className="editor-section-title">Errors ({importResult.errors.length})</span>
-                                    <div className="entity-error-list">
-                                        {importResult.errors.map((err, i) => (
-                                            <div key={i} className="entity-error-item">• {err}</div>
-                                        ))}
+                                    <div style={{ marginTop: '16px', paddingTop: '12px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                                        <span className="editor-section-title" style={{ fontSize: '0.8rem' }}>Singleton Data</span>
+                                        {parsedData.interjectableActions.length > 0 && (
+                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                <input type="checkbox" checked={includeActions} onChange={e => setIncludeActions(e.target.checked)} className="editor-checkbox-input" />
+                                                <span>Interjectable Actions ({parsedData.interjectableActions.length})</span>
+                                            </label>
+                                        )}
+                                        {parsedData.actionFormatData && (
+                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                <input type="checkbox" checked={includeActionFormatData} onChange={e => setIncludeActionFormatData(e.target.checked)} className="editor-checkbox-input" />
+                                                <span>Action Format Data</span>
+                                            </label>
+                                        )}
+                                        {parsedData.formatPreferences && (
+                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                <input type="checkbox" checked={includeFormatPreferences} onChange={e => setIncludeFormatPreferences(e.target.checked)} className="editor-checkbox-input" />
+                                                <span>Format Preferences</span>
+                                            </label>
+                                        )}
+                                        {(parsedData.sessionData || parsedData.multiplayerJoinData) && (
+                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                <input type="checkbox" checked={includeSessionData} onChange={e => setIncludeSessionData(e.target.checked)} className="editor-checkbox-input" />
+                                                <span>Session & Multiplayer Join Data</span>
+                                            </label>
+                                        )}
+                                        {parsedData.budgetData && (
+                                            <label className="editor-checkbox-label" style={{ margin: 0 }}>
+                                                <input type="checkbox" checked={includeBudgetData} onChange={e => setIncludeBudgetData(e.target.checked)} className="editor-checkbox-input" />
+                                                <span>Budget Data (Includes Factorization Machine state)</span>
+                                            </label>
+                                        )}
                                     </div>
                                 </div>
-                            )}
 
-                            <div className="entity-import-done-hint">Refresh the page or reopen managers to see imported data.</div>
-                        </>
-                    )}
-                </div>
-            </FileDropArea>
+                                <div className="entity-action-buttons">
+                                    <button type="button" className="editor-button editor-button-cancel" onClick={reset}>Choose Different Source</button>
+                                    <button type="button" className="editor-button editor-button-save" onClick={handleConfirmImport} disabled={totalSelected === 0}>
+                                        Import {totalSelected > 0 ? `${totalSelected} Selected` : ''}
+                                    </button>
+                                </div>
+                            </>
+                        )}
+
+                        {isImporting && (
+                            <div className="entity-loading-state">
+                                <div className="entity-loading-icon">⏳</div>
+                                <div className="entity-loading-text">Importing selected data...</div>
+                            </div>
+                        )}
+
+                        {importResult && !isImporting && (
+                            <>
+                                <div className="editor-section">
+                                    <span className="editor-section-title">
+                                        {importResult.success ? '✅ Import Successful' : '⚠️ Import Completed with Errors'}
+                                    </span>
+                                    <div className="entity-preview-grid">
+                                        <div><strong>Chats:</strong> {importResult.counts.chats}</div>
+                                        <div><strong>Characters:</strong> {importResult.counts.characters}</div>
+                                        <div><strong>Contexts:</strong> {importResult.counts.contexts}</div>
+                                        <div><strong>Locations:</strong> {importResult.counts.locations}</div>
+                                        <div><strong>Audio Tracks:</strong> {importResult.counts.audioTracks}</div>
+                                        <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
+                                        <div><strong>Language Models:</strong> {importResult.counts.languageModels}</div>
+                                        <div><strong>Spatiotemporal Models:</strong> {importResult.counts.spatiotemporalModels ?? 0}</div>
+                                        <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
+                                        <div><strong>Prompt Blocks:</strong> {importResult.counts.promptBlocks}</div>
+                                        <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
+                                        <div><strong>Retrieval Configurations:</strong> {importResult.counts.retrievalConfigurations ?? 0}</div>
+                                        <div><strong>Budget Strategies:</strong> {importResult.counts.budgetStrategies}</div>
+                                        <div><strong>Profiles:</strong> {importResult.counts.profiles}</div>
+                                        <div><strong>Memories:</strong> {importResult.counts.memories ?? 0}</div>
+                                        <div><strong>Accounts:</strong> {importResult.counts.accounts ?? 0}</div>
+                                        <div><strong>Multiplayer Data:</strong> {importResult.counts.multiplayerData ?? 0}</div>
+                                        <div><strong>Entity Folders:</strong> {importResult.counts.entityFolders ?? 0}</div>
+                                        <div><strong>Actions:</strong> {importResult.counts.interjectableActions}</div>
+                                        <div><strong>Format Preferences:</strong> {importResult.counts.formatPreferences}</div>
+                                    </div>
+                                </div>
+
+                                {importResult.errors.length > 0 && (
+                                    <div className="editor-section">
+                                        <span className="editor-section-title">Errors ({importResult.errors.length})</span>
+                                        <div className="entity-error-list">
+                                            {importResult.errors.map((err, i) => (
+                                                <div key={i} className="entity-error-item">• {err}</div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="entity-import-done-hint">Refresh the page or reopen managers to see imported data.</div>
+                            </>
+                        )}
+                    </div>
+                </FileDropArea>
+            </div>
         </div>
-    </div>
-);
+    );
 }

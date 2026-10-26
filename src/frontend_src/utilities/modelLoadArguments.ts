@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/modelLoadArguments.ts
-import type { LanguageModel } from '../types';
+import type { LanguageModel, SpatiotemporalModel } from '../types';
 
 /**
  * Build llama-server CLI args from a LanguageModel's parameters.
@@ -69,4 +69,8 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
     if (extraFlags) args.push(...extraFlags.split(/\s+/));
 
     return args;
+}
+
+export function buildSpatiotemporalModelLoadArguments(_model: SpatiotemporalModel): string[] {
+    return ['']
 }

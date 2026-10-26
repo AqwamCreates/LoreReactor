@@ -14,7 +14,7 @@ import { loadRawInteractionData } from '../storages/serverStorage';
 import { isChatSaveable } from '../utilities/chatSaveHelper';
 import { ManagerModal } from './ManagerModal';
 import {
-    renderModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, 
+    renderLanguageModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, 
     renderInteractionDataSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext
 } from './renderHelpers';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
@@ -740,7 +740,7 @@ export function AppModals({
                     onSelect={(model: LanguageModel) => languageModelModalProperties.open(model)} 
                     onDelete={onDeleteModel} 
                     onCreateNew={() => languageModelModalProperties.open()}
-                    renderSubtext={(model: LanguageModel) => renderModelSubtext(model, runningLanguageModels, selectedModelId)}
+                    renderSubtext={(model: LanguageModel) => renderLanguageModelSubtext(model, runningLanguageModels, selectedModelId)}
                     emptyMessage="No models available." 
                     actionLabel="Delete" 
                     orderedListMode={false}
@@ -776,7 +776,7 @@ export function AppModals({
                     onSelect={(model: SpatiotemporalModel) => spatiotemporalModelModalProperties.open(model)} 
                     onDelete={onDeleteSpatiotemporalModel} 
                     onCreateNew={() => spatiotemporalModelModalProperties.open()}
-                    renderSubtext={(model: SpatiotemporalModel) => renderModelSubtext(model, runningSpatiotemporalModels, selectedSpatiotemporalModelId)}
+                    renderSubtext={(model: SpatiotemporalModel) => renderLanguageModelSubtext(model, runningSpatiotemporalModels, selectedSpatiotemporalModelId)}
                     emptyMessage="No models available." 
                     actionLabel="Delete" 
                     orderedListMode={false}
@@ -1070,11 +1070,11 @@ export function AppModals({
                     allContexts={allContexts} 
                     allLocations={allLocations} 
                     allAudioTracks={allAudioTracks}
-                    allWorlds={allWorlds} 
+                    allWorlds={allWorlds}
+                    allPromptBlocks={allPromptBlocks}
                     allLanguageModels={allLanguageModels} 
                     allSpatiotemporalModels={allSpatiotemporalModels}
                     allSamplers={allSamplers} 
-                    allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} 
                     allRetrievalConfigurations={allRetrievalConfigurations}
                     allBudgetStrategies={allBudgetStrategies} 

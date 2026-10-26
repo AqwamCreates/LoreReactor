@@ -1463,7 +1463,9 @@ function App() {
             <AppModals
                 isMultiplayerClient={mp.isMultiplayerClient}
                 modals={modals} entityModals={entityModals}
-                runningLanguageModels={languageModels.runningLanguageModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
+                runningLanguageModels={languageModels.runningLanguageModels}
+                runningSpatiotemporalModels={spatiotemporalModels.runningSpatiotemporalModels}
+                allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
                 allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
                 allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
                 allSpatiotemporalModels={spatiotemporalModels.spatiotemporalModels}

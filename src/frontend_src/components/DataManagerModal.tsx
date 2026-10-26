@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, EntityFolder } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, SpatiotemporalModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, EntityFolder } from '../types';
 import { useToast } from '../context/ToastContext';
 import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue, deleteFormatPreferences } from '../storages/serverStorage';
 import '../main.css';
@@ -14,6 +14,7 @@ interface DataManagerModalProps {
     allWorlds: World[];
     allPromptBlocks: PromptBlock[];
     allLanguageModels: LanguageModel[];
+    allSpatiotemporalModels: SpatiotemporalModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
@@ -31,6 +32,7 @@ interface DataManagerModalProps {
     onDeleteWorld: (id: string) => void;
     onDeletePromptBlock: (id: string) => void;
     onDeleteModel: (id: string) => void;
+    onDeleteSpatiotemporalModel: (id: string) => void;
     onDeleteSampler: (id: string) => void;
     onDeleteStopPattern: (id: string) => void;
     onDeleteRetrievalConfiguration: (id: string) => void;
@@ -45,7 +47,7 @@ interface DataManagerModalProps {
 
 type TabId = 'storage' | 'cleanup' | 'integrity' | 'cache' | 'bulk' | 'danger';
 
-type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'languageModel' | 'sampler' | 'stopPattern' | 'retrievalConfiguration' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
+type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'languageModel' | 'spatiotemporalModel' | 'sampler' | 'stopPattern' | 'retrievalConfiguration' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
 
 type SortField = 'name' | 'type' | 'lastUpdated' | 'flags';
 type SortDirection = 'asc' | 'desc';
@@ -91,6 +93,7 @@ const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     world: { icon: '🌍', label: 'Worlds' },
     promptBlock: { icon: '🧱', label: 'Prompt Blocks' },
     languageModel: { icon: '🤖', label: 'Language Models' },
+    spatiotemporalModel: { icon: '🎨', label: 'Spatiotemporal Models' },
     sampler: { icon: '🎚️', label: 'Samplers' },
     stopPattern: { icon: '🛑', label: 'Stop Patterns' },
     retrievalConfiguration: { icon: '🧭', label: 'Retrieval Configurations' },
@@ -165,6 +168,10 @@ function isEntityHollow(
             const m = entity as LanguageModel;
             return !m.model && !m.apiKey;
         }
+        case 'spatiotemporalModel': {
+            const m = entity as SpatiotemporalModel;
+            return !m.model && !m.apiKey;
+        }
         case 'sampler': {
             const s = entity as Sampler;
             const hasParams = s.parameters && Object.keys(s.parameters).length > 0;
@@ -222,6 +229,7 @@ export function DataManagerModal({
     allWorlds,
     allPromptBlocks,
     allLanguageModels,
+    allSpatiotemporalModels,
     allSamplers,
     allStopPatterns,
     allRetrievalConfigurations,
@@ -239,6 +247,7 @@ export function DataManagerModal({
     onDeleteWorld,
     onDeletePromptBlock,
     onDeleteModel,
+    onDeleteSpatiotemporalModel,
     onDeleteSampler,
     onDeleteStopPattern,
     onDeleteRetrievalConfiguration,
@@ -294,6 +303,7 @@ export function DataManagerModal({
             { label: 'Worlds', icon: '🌍', count: allWorlds.length, estimatedSizeKb: estimateKb(allWorlds, 1024) },
             { label: 'Prompt Blocks', icon: '🧱', count: allPromptBlocks.length, estimatedSizeKb: estimateKb(allPromptBlocks, 1536) },
             { label: 'Language Models', icon: '🤖', count: allLanguageModels.length, estimatedSizeKb: estimateKb(allLanguageModels, 1024) },
+            { label: 'Spatiotemporal Models', icon: '🎨', count: allSpatiotemporalModels.length, estimatedSizeKb: estimateKb(allSpatiotemporalModels, 1024) },
             { label: 'Samplers', icon: '🎚️', count: allSamplers.length, estimatedSizeKb: estimateKb(allSamplers, 512) },
             { label: 'Stop Patterns', icon: '🛑', count: allStopPatterns.length, estimatedSizeKb: estimateKb(allStopPatterns, 256) },
             { label: 'Retrieval Configurations', icon: '🧭', count: allRetrievalConfigurations.length, estimatedSizeKb: estimateKb(allRetrievalConfigurations, 256) },
@@ -305,7 +315,7 @@ export function DataManagerModal({
             { label: 'Folders', icon: '📁', count: allEntityFolders.length, estimatedSizeKb: estimateKb(allEntityFolders, 1024) },
             { label: 'Sessions', icon: '💬', count: allRawInteractionDataShells.length, estimatedSizeKb: estimateKb(allRawInteractionDataShells, 8192) },
         ];
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const scanCleanup = useCallback(() => {
         setIsScanning(true);
@@ -315,6 +325,7 @@ export function DataManagerModal({
         const locIdSet = new Set(allLocations.map(l => l.id));
         const audioIdSet = new Set(allAudioTracks.map(a => a.id));
         const modelIdSet = new Set(allLanguageModels.map(m => m.id));
+        const spatiotemporalModelIdSet = new Set(allSpatiotemporalModels.map(m => m.id));
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const retrievalConfigIdSet = new Set(allRetrievalConfigurations.map(rc => rc.id));
@@ -329,6 +340,7 @@ export function DataManagerModal({
         const referencedAudioIds = new Set<string>();
         const referencedPbIds = new Set<string>();
         const referencedModelIds = new Set<string>();
+        const referencedSpatiotemporalModelIds = new Set<string>();
         const referencedSamplerIds = new Set<string>();
         const referencedStopPatternIds = new Set<string>();
         const referencedRetrievalConfigIds = new Set<string>();
@@ -480,6 +492,7 @@ export function DataManagerModal({
         for (const w of allWorlds) check('world', w.id, w.name, w.lastUpdatedTimestamp, true, w);
         for (const b of allPromptBlocks) check('promptBlock', b.id, b.name, b.lastUpdatedTimestamp, referencedPbIds.has(b.id), b);
         for (const m of allLanguageModels) check('languageModel', m.id, m.name, m.lastUpdatedTimestamp, referencedModelIds.has(m.id), m);
+        for (const m of allSpatiotemporalModels) check('spatiotemporalModel', m.id, m.name, m.lastUpdatedTimestamp, referencedSpatiotemporalModelIds.has(m.id), m);
         for (const s of allSamplers) check('sampler', s.id, s.name, s.lastUpdatedTimestamp, referencedSamplerIds.has(s.id), s);
         for (const sp of allStopPatterns) check('stopPattern', sp.id, sp.name, sp.lastUpdatedTimestamp, referencedStopPatternIds.has(sp.id), sp);
         for (const rc of allRetrievalConfigurations) check('retrievalConfiguration', rc.id, rc.name, rc.lastUpdatedTimestamp, referencedRetrievalConfigIds.has(rc.id), rc);
@@ -494,7 +507,7 @@ export function DataManagerModal({
         setSelectedIds(new Set());
         setSearchQuery('');
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
     const scanIntegrity = useCallback(() => {
         setIsScanning(true);
@@ -504,6 +517,7 @@ export function DataManagerModal({
         const locIdSet = new Set(allLocations.map(l => l.id));
         const audioIdSet = new Set(allAudioTracks.map(a => a.id));
         const modelIdSet = new Set(allLanguageModels.map(m => m.id));
+        const spatiotemporalModelIdSet = new Set(allSpatiotemporalModels.map(m => m.id));
         const samplerIdSet = new Set(allSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const retrievalConfigIdSet = new Set(allRetrievalConfigurations.map(rc => rc.id));
@@ -521,6 +535,7 @@ export function DataManagerModal({
         allWorlds.forEach(w => globalEntityIds.add(w.id));
         allPromptBlocks.forEach(p => globalEntityIds.add(p.id));
         allLanguageModels.forEach(m => globalEntityIds.add(m.id));
+        allSpatiotemporalModels.forEach(m => globalEntityIds.add(m.id));
         allSamplers.forEach(s => globalEntityIds.add(s.id));
         allStopPatterns.forEach(sp => globalEntityIds.add(sp.id));
         allRetrievalConfigurations.forEach(rc => globalEntityIds.add(rc.id));
@@ -726,7 +741,7 @@ export function DataManagerModal({
 
         setIntegrityIssues(issues);
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const filteredAndSorted = useMemo(() => {
         const query = searchQuery.toLowerCase();
@@ -796,6 +811,7 @@ export function DataManagerModal({
                 case 'world': onDeleteWorld(item.id); break;
                 case 'promptBlock': onDeletePromptBlock(item.id); break;
                 case 'languageModel': onDeleteModel(item.id); break;
+                case 'spatiotemporalModel': onDeleteSpatiotemporalModel(item.id); break;
                 case 'sampler': onDeleteSampler(item.id); break;
                 case 'stopPattern': onDeleteStopPattern(item.id); break;
                 case 'retrievalConfiguration': onDeleteRetrievalConfiguration(item.id); break;
@@ -967,6 +983,7 @@ export function DataManagerModal({
             case 'worlds': for (const w of allWorlds) { onDeleteWorld(w.id); count++; } break;
             case 'promptBlocks': for (const b of allPromptBlocks) { onDeletePromptBlock(b.id); count++; } break;
             case 'models': for (const m of allLanguageModels) { onDeleteModel(m.id); count++; } break;
+            case 'spatiotemporalModels': for (const m of allSpatiotemporalModels) { onDeleteSpatiotemporalModel(m.id); count++; } break;
             case 'samplers': for (const s of allSamplers) { onDeleteSampler(s.id); count++; } break;
             case 'stopPatterns': for (const sp of allStopPatterns) { onDeleteStopPattern(sp.id); count++; } break;
             case 'retrievalConfigurations': for (const rc of allRetrievalConfigurations) { onDeleteRetrievalConfiguration(rc.id); count++; } break;
@@ -1323,6 +1340,7 @@ export function DataManagerModal({
                                         { key: 'worlds', label: 'All Worlds', count: allWorlds.length },
                                         { key: 'promptBlocks', label: 'All Prompt Blocks', count: allPromptBlocks.length },
                                         { key: 'models', label: 'All Language Models', count: allLanguageModels.length },
+                                        { key: 'spatiotemporalModels', label: 'All Spatiotemporal Models', count: allSpatiotemporalModels.length },
                                         { key: 'samplers', label: 'All Samplers', count: allSamplers.length },
                                         { key: 'stopPatterns', label: 'All Stop Patterns', count: allStopPatterns.length },
                                         { key: 'retrievalConfigurations', label: 'All Retrieval Configs', count: allRetrievalConfigurations.length },

@@ -9,7 +9,7 @@ export function getRenderSubTextForTriStates(value: number, text: string): React
     return `${text} Enabled`;
 }
 
-export function renderModelSubtext(
+export function renderLanguageModelSubtext(
     model: LanguageModel,
     runningLanguageModels: Record<string, { isRunning?: boolean; isIdle?: boolean }>,
     selectedModelId: string | null,
