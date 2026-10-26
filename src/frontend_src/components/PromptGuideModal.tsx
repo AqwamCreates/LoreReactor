@@ -183,7 +183,7 @@ const mockLocationHistory: ChatMessage[] = [
 
 // Aqwam knows Alice's true name & title, doesn't know Bob, knows Charlie only by his scout aliases, and knows Dave as Gatekeeper.
 const mockKnownNames = {
-    'uuid-aqwam': { 'Aqwam': true, 'The Creator': true, 'The LoreReactor Creator': true, 'The DataPredict Creator': true },
+    'uuid-aqwam': { 'Aqwam': true, 'The LoreReactor Creator': true, 'The DataPredict Creator': true },
     'uuid-alice': { 'Alice': true, 'The Silver Lady': true },
     'uuid-bob': {}, // Bob is unrevealed
     'uuid-charlie': { 'Scout': true, 'Eagle Eye': true }, // Charlie known only by aliases
@@ -662,7 +662,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                             {renderComparison(
                                 '{{character?3}}',
                                 resolveTemplate('{{character?3}}', mockTemplateContext, mockDelimiters),
-                                '?3 reveals the tag and up to 3 oldest known names (e.g., "Character 1 (Aqwam, The Architect, The Creator)").'
+                                '?3 reveals the tag and up to 3 oldest known names (e.g., "Character 1 (Aqwam, The LoreReactor Creator)").'
                             )}
                             {renderComparison(
                                 '{{characters?2}}',
