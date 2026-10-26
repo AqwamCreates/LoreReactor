@@ -3587,10 +3587,18 @@ padding: 0 4px;
 .editor-row { grid-template-columns: 1fr; gap: 8px; }
 }
 @media (max-width: 768px) {
-.editor-modal-columns { flex-direction: column; height: auto; }
-.editor-left-column { width: 100%; flex-direction: row; flex-wrap: wrap; }
-.editor-image-upload-container { width: 120px; }
-.editor-stats-grid { grid-template-columns: 1fr; }
+    .editor-modal-columns { flex-direction: column; height: auto; }
+    .editor-left-column { 
+        width: 100%; 
+        flex-direction: column; /* Stack cleanly instead of breaking in a row */
+        flex-wrap: nowrap; 
+    }
+    .editor-image-upload-container { 
+        width: 150px; 
+        align-self: center; /* Center the avatar beautifully */
+        margin-bottom: 4px;
+    }
+    .editor-stats-grid { grid-template-columns: 1fr; }
 }
 /* =============================================================================
 EDITOR BULK ACTION BUTTONS (Tactile Feedback)
