@@ -108,11 +108,11 @@ function ContextEditorModalInner({
 
     useEffect(() => {
         const state = useChatStore.getState();
-        const selectedModel = state.selectedModel;
-        const runningModels = state.runningModels;
-        if (selectedModel) {
-            tokenEngine.setRunningModels(runningModels ?? {});
-            tokenEngine.setContext(selectedModel);
+        const selectedLanguageModel = state.selectedLanguageModel;
+        const runningLanguageModels = state.runningLanguageModels;
+        if (selectedLanguageModel) {
+            tokenEngine.setRunningModels(runningLanguageModels ?? {});
+            tokenEngine.setContext(selectedLanguageModel);
         }
         const initialText = existingContext?.text || '';
         if (!initialText) return;

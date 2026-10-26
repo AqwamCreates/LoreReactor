@@ -11,10 +11,10 @@ export function getRenderSubTextForTriStates(value: number, text: string): React
 
 export function renderModelSubtext(
     model: LanguageModel,
-    runningModels: Record<string, { isRunning?: boolean; isIdle?: boolean }>,
+    runningLanguageModels: Record<string, { isRunning?: boolean; isIdle?: boolean }>,
     selectedModelId: string | null,
 ): React.ReactNode {
-    const ms = runningModels[model.id];
+    const ms = runningLanguageModels[model.id];
     const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend as cloudBackend);
 
     return (

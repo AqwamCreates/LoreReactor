@@ -10,7 +10,7 @@ import { localURL } from '../../configurations';
 
 interface ChatSessionEffectsParams {
     interactionData: InteractionData | null;
-    selectedModel: LanguageModel | null;
+    selectedLanguageModel: LanguageModel | null;
     autonomousMode: boolean;
     isMultiplayerClient: boolean;
     requestPeerInferenceRef: RefObject<((peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>) | undefined>;
@@ -28,7 +28,7 @@ interface ChatSessionEffectsParams {
 
 export function useChatSessionEffects({
     interactionData,
-    selectedModel,
+    selectedLanguageModel,
     autonomousMode,
     isMultiplayerClient,
     requestPeerInferenceRef,
@@ -102,8 +102,8 @@ export function useChatSessionEffects({
 
     // 4. Model Context Sync
     useEffect(() => {
-        if (selectedModel) engine.setContext(selectedModel);
-    }, [selectedModel, engine]);
+        if (selectedLanguageModel) engine.setContext(selectedLanguageModel);
+    }, [selectedLanguageModel, engine]);
 
     // 5. Context Token Accounting (Batch-count all messages in a single request)
     useEffect(() => {

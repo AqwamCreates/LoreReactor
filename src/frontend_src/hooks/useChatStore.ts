@@ -11,8 +11,8 @@ const engine = getLanguageModelEngine();
 interface ChatState {
     interactionData: InteractionData | null;
     localProtagonist: Character | null;
-    selectedModel: LanguageModel | null;
-    runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
+    selectedLanguageModel: LanguageModel | null;
+    runningLanguageModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     activeStrategy: BudgetStrategy | null;
     selectedModelId: string | null;
     budgetData: BudgetData | null;
@@ -69,7 +69,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
         });
 
     return {
-        interactionData: null, localProtagonist: null, selectedModel: null, runningModels: {},
+        interactionData: null, localProtagonist: null, selectedLanguageModel: null, runningLanguageModels: {},
         activeStrategy: null, selectedModelId: null, budgetData: null, numberOfTokens: 0,
         sessionStartTimestamp: null, currentAccountId: null, multiplayerData: null,
         selectedBudgetStrategyId: null, selectedCharacterId: null, selectedProfileId: null,
@@ -83,9 +83,9 @@ export const useChatStore = create<ChatState>()((set, get) => {
         },
         setLocalProtagonist: (character) => set({ localProtagonist: character }),
         setActiveStrategy: (strategy) => set({ activeStrategy: strategy }),
-        setSelectedModel: (model) => set({ selectedModel: model }),
+        setSelectedModel: (model) => set({ selectedLanguageModel: model }),
         updateRunningModels: (models) => {
-            set({ runningModels: models });
+            set({ runningLanguageModels: models });
             engine.setRunningModels(models);
         },
         setBudgetData: (data) => set({ budgetData: data }),

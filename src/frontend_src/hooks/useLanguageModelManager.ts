@@ -30,12 +30,12 @@ export function useLanguageModelManager() {
     const [selectedLanguageModelId, setSelectedLanguageModelId] = useState<string | null>(null);
 
     const sessionLoadedRef = useRef(false);
-    const runningLanguageModels = useChatStore(s => s.runningModels) as Record<string, LanguageModelState>;
+    const runningLanguageModels = useChatStore(s => s.runningLanguageModels) as Record<string, LanguageModelState>;
 
     const setRunningLanguageModels = useCallback((update: Record<string, LanguageModelState> | ((prev: Record<string, LanguageModelState>) => Record<string, LanguageModelState>)) => {
         useChatStore.setState(prev => ({
-            runningModels: typeof update === 'function'
-                ? update(prev.runningModels as Record<string, LanguageModelState>)
+            runningLanguageModels: typeof update === 'function'
+                ? update(prev.runningLanguageModels as Record<string, LanguageModelState>)
                 : update,
         }));
     }, []);
@@ -83,9 +83,9 @@ export function useLanguageModelManager() {
     useEffect(() => {
         if (selectedLanguageModelId) {
             const languageModel = languageModels.find(m => m.id === selectedLanguageModelId);
-            useChatStore.setState({ selectedModel: languageModel ?? null });
+            useChatStore.setState({ selectedLanguageModel: languageModel ?? null });
         } else {
-            useChatStore.setState({ selectedModel: null });
+            useChatStore.setState({ selectedLanguageModel: null });
         }
     }, [selectedLanguageModelId, languageModels]);
 

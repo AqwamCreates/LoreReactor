@@ -71,10 +71,10 @@ export const MessageBubble = React.memo(function MessageBubble({
 }: MessageBubbleProps) {
     const isModelReady = useChatStore(s => {
         if (s.activeStrategy) return true;
-        const m = s.selectedModel;
+        const m = s.selectedLanguageModel;
         if (!m) return false;
         if (m.apiKey && m.backend) return true;
-        const status = s.runningModels[m.id];
+        const status = s.runningLanguageModels[m.id];
         return status?.isRunning && status?.isIdle;
     });
 

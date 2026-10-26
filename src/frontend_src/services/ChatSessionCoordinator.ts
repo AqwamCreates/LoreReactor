@@ -245,8 +245,8 @@ class ChatSessionCoordinator {
                 data: activeData,
                 character,
                 signal: this.abortController.signal,
-                selectedModel: currentState.selectedModel,
-                runningModels: currentState.runningModels,
+                selectedLanguageModel: currentState.selectedLanguageModel,
+                runningLanguageModels: currentState.runningLanguageModels,
                 activeStrategy: currentState.activeStrategy,
                 allPromptBlocks: promptBlocks,
                 existingCharacterText: currentExistingText,
@@ -416,10 +416,10 @@ class ChatSessionCoordinator {
                 const bse = getBudgetStrategyEngine();
                 const res = await bse.generateCompletion(requestBody, signal);
                 selected = res.text;
-            } else if (state.selectedModel) {
+            } else if (state.selectedLanguageModel) {
                 const engine = getLanguageModelEngine();
-                engine.setRunningModels(state.runningModels);
-                engine.setContext(state.selectedModel);
+                engine.setRunningModels(state.runningLanguageModels);
+                engine.setContext(state.selectedLanguageModel);
                 const res = await engine.generateCompletion(requestBody);
                 selected = res.text;
             }
@@ -742,7 +742,7 @@ class ChatSessionCoordinator {
         const text = genState.streamingText;
         if (!text) return;
 
-        const matchingEndToken = findActiveThinkEndToken(text, chatState.selectedModel);
+        const matchingEndToken = findActiveThinkEndToken(text, chatState.selectedLanguageModel);
         if (!matchingEndToken) return;
 
         this.isSkippingThinking = true;

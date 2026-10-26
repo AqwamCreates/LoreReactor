@@ -163,7 +163,7 @@ const FM_MIN_SAMPLES_FOR_CONFIDENCE = 5;
 export class BudgetStrategyEngine {
     private strategy: BudgetStrategy;
     private budgetData: BudgetData;
-    private runningModels: Record<string, RunningModelState>;
+    private runningLanguageModels: Record<string, RunningModelState>;
     private loadLocalModel: ((id: string) => Promise<number | null>) | null;
     private allLanguageModelsById: Map<string, LanguageModel>;
     private engine = getLanguageModelEngine();
@@ -183,13 +183,13 @@ export class BudgetStrategyEngine {
     constructor(
         strategy: BudgetStrategy,
         budgetData: BudgetData,
-        runningModels: Record<string, RunningModelState>,
+        runningLanguageModels: Record<string, RunningModelState>,
         allLanguageModels: LanguageModel[],
         loadLocalModel?: (id: string) => Promise<number | null>,
     ) {
         this.strategy = strategy;
         this.budgetData = budgetData;
-        this.runningModels = runningModels;
+        this.runningLanguageModels = runningLanguageModels;
         this.allLanguageModelsById = new Map(allLanguageModels.map(m => [m.id, m]));
         this.loadLocalModel = loadLocalModel ?? null;
 
@@ -231,9 +231,9 @@ export class BudgetStrategyEngine {
         applyResetIfDue(this.budgetData);
     }
 
-    setRunningModels(runningModels: Record<string, RunningModelState>): void {
-        this.runningModels = runningModels;
-        this.engine.setRunningModels(runningModels);
+    setRunningModels(runningLanguageModels: Record<string, RunningModelState>): void {
+        this.runningLanguageModels = runningLanguageModels;
+        this.engine.setRunningModels(runningLanguageModels);
     }
 
     setallLanguageModels(allLanguageModels: LanguageModel[]): void {
@@ -570,28 +570,28 @@ export class BudgetStrategyEngine {
                 ranked.push(freeModel);
             }
 
-            const selectedModel = ranked[0];
+            const selectedLanguageModel = ranked[0];
 
             while (true) {
-                const loaded = await this.ensureModelLoaded(selectedModel);
+                const loaded = await this.ensureModelLoaded(selectedLanguageModel);
                 if (!loaded) {
-                    failedIds.add(selectedModel.id);
-                    this.recordError(selectedModel.id);
+                    failedIds.add(selectedLanguageModel.id);
+                    this.recordError(selectedLanguageModel.id);
                     this.recordOutcome({
-                        modelId: selectedModel.id,
+                        modelId: selectedLanguageModel.id,
                         prompt: promptText,
                         metadata,
                         success: false, accepted: false,
                         censored: false, rateLimited: false, broken: false,
                     });
-                    console.warn(`Model ${selectedModel.name} could not be loaded, skipping.`);
+                    console.warn(`Model ${selectedLanguageModel.name} could not be loaded, skipping.`);
                     break;
                 }
 
-                this.engine.setContext(selectedModel);
-                this._selectedModelId = selectedModel.id;
-                this.recordRequestTimestamp(selectedModel.id);
-                const pricing = buildPricing(selectedModel);
+                this.engine.setContext(selectedLanguageModel);
+                this._selectedModelId = selectedLanguageModel.id;
+                this.recordRequestTimestamp(selectedLanguageModel.id);
+                const pricing = buildPricing(selectedLanguageModel);
                 const sessionStart = Date.now();
 
                 try {
@@ -611,7 +611,7 @@ export class BudgetStrategyEngine {
                         if (isInputFilterError(e) && Array.isArray(requestBody._injectionStrings) && requestBody._injectionStrings.length > 0 && typeof requestBody._basePrompt === 'string') {
                             const nextInjection = requestBody._injectionStrings.shift();
                             requestBody.prompt = nextInjection + requestBody._basePrompt;
-                            console.warn(`Model ${selectedModel.name} hit input filter. Retrying with randomized injection (${requestBody._injectionStrings.length} retries left).`);
+                            console.warn(`Model ${selectedLanguageModel.name} hit input filter. Retrying with randomized injection (${requestBody._injectionStrings.length} retries left).`);
                             continue;
                         }
 
@@ -619,42 +619,42 @@ export class BudgetStrategyEngine {
                     }
 
                     const sessionDuration = Date.now() - sessionStart;
-                    this.recordSessionDuration(selectedModel.id, sessionDuration);
+                    this.recordSessionDuration(selectedLanguageModel.id, sessionDuration);
 
-                    if (result.msPerToken && result.msPerToken > 0) this.recordLatency(selectedModel.id, result.msPerToken);
-                    if (result.timeToFirstToken && result.timeToFirstToken > 0) this.recordTTFT(selectedModel.id, result.timeToFirstToken);
+                    if (result.msPerToken && result.msPerToken > 0) this.recordLatency(selectedLanguageModel.id, result.msPerToken);
+                    if (result.timeToFirstToken && result.timeToFirstToken > 0) this.recordTTFT(selectedLanguageModel.id, result.timeToFirstToken);
 
                     const promptTokens = requiredContextTokens || await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cachedTokens = result.cachedTokens ?? 0;
                     const cost = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
-                    this.recordSuccess(selectedModel.id, cost.totalCost);
+                    this.recordSuccess(selectedLanguageModel.id, cost.totalCost);
 
                     // Output text is result.text, preventing duplicated responses
                     const fullOutput = result.text || accumulatedPartialText;
 
                     if (!fullOutput) {
-                        this.recordBroken(selectedModel.id);
-                        failedIds.add(selectedModel.id);
+                        this.recordBroken(selectedLanguageModel.id);
+                        failedIds.add(selectedLanguageModel.id);
                         this.recordOutcome({
-                            modelId: selectedModel.id,
+                            modelId: selectedLanguageModel.id,
                             prompt: promptText,
                             metadata,
                             success: false, accepted: false,
                             censored: false, rateLimited: false, broken: true,
                         });
-                        console.warn(`Model ${selectedModel.name} returned empty/broken response, rotating.`);
+                        console.warn(`Model ${selectedLanguageModel.name} returned empty/broken response, rotating.`);
                         break;
                     }
 
                     const censored = isCensorshipRefusal(result.text);
                     if (censored) {
-                        this.recordCensorship(selectedModel.id);
-                        console.warn(`Model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
+                        this.recordCensorship(selectedLanguageModel.id);
+                        console.warn(`Model ${selectedLanguageModel.name} returned censorship refusal — returning text as-is.`);
                     }
 
                     this.recordOutcome({
-                        modelId: selectedModel.id,
+                        modelId: selectedLanguageModel.id,
                         prompt: promptText,
                         metadata,
                         success: true,
@@ -669,16 +669,16 @@ export class BudgetStrategyEngine {
                     if (abortController.signal.aborted) throw e;
 
                     const sessionDuration = Date.now() - sessionStart;
-                    this.recordSessionDuration(selectedModel.id, sessionDuration);
+                    this.recordSessionDuration(selectedLanguageModel.id, sessionDuration);
 
                     if (isNetworkError(e)) {
                         throw e;
                     }
 
                     if (!isQuotaError(e)) {
-                        this.recordError(selectedModel.id);
+                        this.recordError(selectedLanguageModel.id);
                         this.recordOutcome({
-                            modelId: selectedModel.id,
+                            modelId: selectedLanguageModel.id,
                             prompt: promptText,
                             metadata,
                             success: false, accepted: false,
@@ -687,17 +687,17 @@ export class BudgetStrategyEngine {
                         throw e;
                     }
 
-                    failedIds.add(selectedModel.id);
-                    this.recordRateLimitHit(selectedModel.id);
-                    this.recordQuotaError(selectedModel.id);
+                    failedIds.add(selectedLanguageModel.id);
+                    this.recordRateLimitHit(selectedLanguageModel.id);
+                    this.recordQuotaError(selectedLanguageModel.id);
                     this.recordOutcome({
-                        modelId: selectedModel.id,
+                        modelId: selectedLanguageModel.id,
                         prompt: promptText,
                         metadata,
                         success: false, accepted: false,
                         censored: false, rateLimited: true, broken: false,
                     });
-                    console.warn(`Model ${selectedModel.name} hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating.`);
+                    console.warn(`Model ${selectedLanguageModel.name} hit quota/rate limit after partial output (${accumulatedPartialText.length} chars), rotating.`);
                     break;
                 }
             }
@@ -729,55 +729,55 @@ export class BudgetStrategyEngine {
                 ranked.push(freeModel);
             }
 
-            const selectedModel = ranked[0];
+            const selectedLanguageModel = ranked[0];
 
             while (true) {
-                const loaded = await this.ensureModelLoaded(selectedModel);
+                const loaded = await this.ensureModelLoaded(selectedLanguageModel);
                 if (!loaded) {
-                    failedIds.add(selectedModel.id);
-                    this.recordError(selectedModel.id);
+                    failedIds.add(selectedLanguageModel.id);
+                    this.recordError(selectedLanguageModel.id);
                     break;
                 }
 
-                this.engine.setContext(selectedModel);
-                this._selectedModelId = selectedModel.id;
-                this.recordRequestTimestamp(selectedModel.id);
-                const pricing = buildPricing(selectedModel);
+                this.engine.setContext(selectedLanguageModel);
+                this._selectedModelId = selectedLanguageModel.id;
+                this.recordRequestTimestamp(selectedLanguageModel.id);
+                const pricing = buildPricing(selectedLanguageModel);
                 const sessionStart = Date.now();
 
                 try {
                     const result = await this.engine.generateCompletion(requestBody);
                     const sessionDuration = Date.now() - sessionStart;
-                    this.recordSessionDuration(selectedModel.id, sessionDuration);
+                    this.recordSessionDuration(selectedLanguageModel.id, sessionDuration);
 
                     const promptTokens = requiredContextTokens || await this.engine.countTokens(promptText);
                     const completionTokens = await this.engine.countTokens(result.text);
                     const cachedTokens = result.cachedTokens ?? 0;
                     const cost = calculateRequestCost(promptTokens, cachedTokens, completionTokens, pricing);
-                    this.recordSuccess(selectedModel.id, cost.totalCost);
+                    this.recordSuccess(selectedLanguageModel.id, cost.totalCost);
 
                     if (!result.text) {
-                        this.recordBroken(selectedModel.id);
-                        failedIds.add(selectedModel.id);
-                        console.warn(`Completion model ${selectedModel.name} returned empty/broken response, rotating.`);
+                        this.recordBroken(selectedLanguageModel.id);
+                        failedIds.add(selectedLanguageModel.id);
+                        console.warn(`Completion model ${selectedLanguageModel.name} returned empty/broken response, rotating.`);
                         break;
                     }
 
                     const censored = isCensorshipRefusal(result.text);
                     if (censored) {
-                        this.recordCensorship(selectedModel.id);
-                        console.warn(`Completion model ${selectedModel.name} returned censorship refusal — returning text as-is.`);
+                        this.recordCensorship(selectedLanguageModel.id);
+                        console.warn(`Completion model ${selectedLanguageModel.name} returned censorship refusal — returning text as-is.`);
                     }
 
-                    return { text: result.text, modelId: selectedModel.id };
+                    return { text: result.text, modelId: selectedLanguageModel.id };
                 } catch (e) {
                     const sessionDuration = Date.now() - sessionStart;
-                    this.recordSessionDuration(selectedModel.id, sessionDuration);
+                    this.recordSessionDuration(selectedLanguageModel.id, sessionDuration);
 
                     if (isInputFilterError(e) && Array.isArray(requestBody._injectionStrings) && requestBody._injectionStrings.length > 0 && typeof requestBody._basePrompt === 'string') {
                         const nextInjection = requestBody._injectionStrings.shift();
                         requestBody.prompt = nextInjection + requestBody._basePrompt;
-                        console.warn(`Completion model ${selectedModel.name} hit input filter. Retrying with randomized injection (${requestBody._injectionStrings.length} retries left).`);
+                        console.warn(`Completion model ${selectedLanguageModel.name} hit input filter. Retrying with randomized injection (${requestBody._injectionStrings.length} retries left).`);
                         continue;
                     }
 
@@ -786,13 +786,13 @@ export class BudgetStrategyEngine {
                     }
 
                     if (!isQuotaError(e)) {
-                        this.recordError(selectedModel.id);
+                        this.recordError(selectedLanguageModel.id);
                         throw e;
                     }
 
-                    failedIds.add(selectedModel.id);
-                    this.recordRateLimitHit(selectedModel.id);
-                    this.recordQuotaError(selectedModel.id);
+                    failedIds.add(selectedLanguageModel.id);
+                    this.recordRateLimitHit(selectedLanguageModel.id);
+                    this.recordQuotaError(selectedLanguageModel.id);
                     break;
                 }
             }
@@ -914,7 +914,7 @@ export class BudgetStrategyEngine {
     private isModelReady(model: LanguageModel): boolean {
         const isCloud = !!model.apiKey && !!model.backend;
         if (isCloud) return true;
-        const running = this.runningModels[model.id];
+        const running = this.runningLanguageModels[model.id];
         return !!(running?.port || (model.parameters as Record<string, unknown>)?._runtimePort);
     }
 
@@ -926,8 +926,8 @@ export class BudgetStrategyEngine {
         try {
             const port = await this.loadLocalModel(model.id);
             if (port) {
-                this.runningModels = { ...this.runningModels, [model.id]: { isRunning: true, port } };
-                this.engine.setRunningModels(this.runningModels);
+                this.runningLanguageModels = { ...this.runningLanguageModels, [model.id]: { isRunning: true, port } };
+                this.engine.setRunningModels(this.runningLanguageModels);
                 return true;
             }
         } catch (e) { console.warn(`Failed to auto-load model ${model.name}:`, e); }
@@ -960,11 +960,11 @@ export function getBudgetStrategyEngine(): BudgetStrategyEngine {
 export function initializeBudgetStrategyEngine(
     strategy: BudgetStrategy,
     budgetData: BudgetData,
-    runningModels: Record<string, RunningModelState>,
+    runningLanguageModels: Record<string, RunningModelState>,
     allLanguageModels: LanguageModel[],
     loadLocalModel?: (id: string) => Promise<number | null>,
 ): BudgetStrategyEngine {
-    instance = new BudgetStrategyEngine(strategy, budgetData, runningModels, allLanguageModels, loadLocalModel);
+    instance = new BudgetStrategyEngine(strategy, budgetData, runningLanguageModels, allLanguageModels, loadLocalModel);
     return instance;
 }
 

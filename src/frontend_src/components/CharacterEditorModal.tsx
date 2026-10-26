@@ -82,8 +82,8 @@ interface CharacterEditorModalProps {
     allSamplers: Sampler[];
     allRetrievalConfigurations: RetrievalConfiguration[];
     isLoadingSamplers?: boolean;
-    selectedModel?: LanguageModel | null;
-    runningModels?: Record<string, any>;
+    selectedLanguageModel?: LanguageModel | null;
+    runningLanguageModels?: Record<string, any>;
     interactionData?: InteractionData | null;
     allRawInteractionDataShells: RawInteractionData[];
     localProtagonistId?: string | null;
@@ -92,7 +92,7 @@ interface CharacterEditorModalProps {
 export function CharacterEditorModal({
     onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
     allCharacters, allLocations, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
-    selectedModel, runningModels,
+    selectedLanguageModel, runningLanguageModels,
     interactionData, allRawInteractionDataShells, localProtagonistId,
     isReadOnly = false,
 }: CharacterEditorModalProps) {
@@ -459,9 +459,9 @@ export function CharacterEditorModal({
     }, []);
 
     useEffect(() => {
-        if (selectedModel) {
-            tokenEngine.setRunningModels(runningModels ?? {});
-            tokenEngine.setContext(selectedModel);
+        if (selectedLanguageModel) {
+            tokenEngine.setRunningModels(runningLanguageModels ?? {});
+            tokenEngine.setContext(selectedLanguageModel);
         }
 
         const rafId = requestAnimationFrame(() => {
@@ -483,7 +483,7 @@ export function CharacterEditorModal({
         });
 
         return () => cancelAnimationFrame(rafId);
-    }, [selectedModel, runningModels, existingCharacter]);
+    }, [selectedLanguageModel, runningLanguageModels, existingCharacter]);
 
     const handleSystemPromptBlur = () => {
         if (isReadOnly) return;

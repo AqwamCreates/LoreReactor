@@ -339,7 +339,7 @@ function App() {
         allBudgetStrategies: budgetStrategies.strategies,
         setActiveBudgetStrategy,
         allLanguageModels,
-        runningModels: languageModels.runningLanguageModels,
+        runningLanguageModels: languageModels.runningLanguageModels,
         setSelectedGlobalModel,
         selectedCharacterId,
         allCharacters: characters.characters,
@@ -542,7 +542,7 @@ function App() {
         interactionData,
         selectedModelId: languageModels.selectedLanguageModelId,
         allLanguageModels,
-        runningModels: languageModels.runningLanguageModels,
+        runningLanguageModels: languageModels.runningLanguageModels,
         activeStrategy,
     });
 
@@ -1454,7 +1454,7 @@ function App() {
             <AppModals
                 isMultiplayerClient={mp.isMultiplayerClient}
                 modals={modals} entityModals={entityModals}
-                runningModels={languageModels.runningLanguageModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
+                runningLanguageModels={languageModels.runningLanguageModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
                 allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
                 allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
                 allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}

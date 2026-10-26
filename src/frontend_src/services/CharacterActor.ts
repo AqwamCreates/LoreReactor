@@ -66,8 +66,8 @@ export interface TurnExecutionParams {
     data: InteractionData;
     character: Character;
     signal: AbortSignal;
-    selectedModel: LanguageModel | null;
-    runningModels: Record<string, { isRunning: boolean; port?: number }>;
+    selectedLanguageModel: LanguageModel | null;
+    runningLanguageModels: Record<string, { isRunning: boolean; port?: number }>;
     activeStrategy: BudgetStrategy | null;
     strategyOverride?: BudgetStrategy | null;
     existingCharacterText?: string;
@@ -277,7 +277,7 @@ export class CharacterActor {
     async executeTurn(params: TurnExecutionParams): Promise<{ result: TurnResult } | { error: TurnError }> {
         const {
             data, character, signal,
-            selectedModel, runningModels, activeStrategy,
+            selectedLanguageModel, runningLanguageModels, activeStrategy,
             strategyOverride, existingCharacterText, prefillText, allPromptBlocks, callbacks,
             isMultiplayerClient, borrowedModel, metadata,
             toolContext,
@@ -372,7 +372,7 @@ export class CharacterActor {
                 ? borrowedModel.id
                 : strat
                     ? ((await getBudgetStrategyEngine().selectModelForRequest({ prompt: '' }, metadata))?.modelId || '')
-                    : (selectedModel?.id || '');
+                    : (selectedLanguageModel?.id || '');
             if (probeModelId) {
                 try {
                     const probeResult = await buildRequestBody(dataForPrompt, character, knownCharacterNames, '', allPromptBlocks, probeModelId, isToolMessage, toolContext.allRawInteractionDataShells);
@@ -525,7 +525,7 @@ export class CharacterActor {
             };
 
             if (borrowedModel) {
-                this.engine.setRunningModels(runningModels);
+                this.engine.setRunningModels(runningLanguageModels);
                 this.engine.setContext(borrowedModel);
 
                 const modelId = borrowedModel.id;
@@ -578,7 +578,7 @@ export class CharacterActor {
             } else if (strat) {
                 const bse = getBudgetStrategyEngine();
                 bse.setStrategy(strat);
-                bse.setRunningModels(runningModels);
+                bse.setRunningModels(runningLanguageModels);
 
                 let bd: BudgetData | null = bse.getBudgetData();
                 if (!bd) {
@@ -660,20 +660,20 @@ export class CharacterActor {
                 }
 
             } else {
-                if (!selectedModel) {
+                if (!selectedLanguageModel) {
                     return { error: { message: 'No model selected', type: 'no_model' } };
                 }
 
-                const port = selectedModel.id ? runningModels[selectedModel.id]?.port : undefined;
-                const ep = port || (selectedModel.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
-                if (!ep && !selectedModel.apiKey) {
+                const port = selectedLanguageModel.id ? runningLanguageModels[selectedLanguageModel.id]?.port : undefined;
+                const ep = port || (selectedLanguageModel.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
+                if (!ep && !selectedLanguageModel.apiKey) {
                     return { error: { message: 'Model not ready', type: 'no_model' } };
                 }
 
-                this.engine.setRunningModels(runningModels);
-                this.engine.setContext(selectedModel);
+                this.engine.setRunningModels(runningLanguageModels);
+                this.engine.setContext(selectedLanguageModel);
 
-                const modelId = selectedModel.id || '';
+                const modelId = selectedLanguageModel.id || '';
 
                 while (true) {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };

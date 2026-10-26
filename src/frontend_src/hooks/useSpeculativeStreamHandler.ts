@@ -46,7 +46,7 @@ export function useSpeculativeStreamHandler({
 
         const profile = getState().interactionData?.profile;
         if (profile?.enableSpeculativeMarkov && char && msgId && abortControllerRef.current && !isSpeculatingRef.current) {
-            const model = getState().selectedModel;
+            const model = getState().selectedLanguageModel;
             const currentData = getState().interactionData;
             const currentDataId = currentData?.id || 'unknown';
             const budgetData = getState().budgetData;

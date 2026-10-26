@@ -315,7 +315,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
             // Deselect any active model from session state
             setSelectedModelId?.(null);
-            useChatStore.setState({ selectedModel: null, selectedModelId: null });
+            useChatStore.setState({ selectedLanguageModel: null, selectedModelId: null });
             saveRawSessionData({ selectedModelId: null });
 
             // ✅ CRITICAL FIX: Unload all currently running local models from VRAM

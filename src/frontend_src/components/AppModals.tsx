@@ -71,7 +71,7 @@ interface ApplicationModalsProperties {
     entityModals: {
         getModalProperties: (entityType: entityType) => EntityModalController;
     };
-    runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
+    runningLanguageModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     allRawInteractionDataShells: RawInteractionData[];
     allCharacters: Character[];
     allContexts: Context[];
@@ -176,7 +176,7 @@ export function AppModals({
     isMultiplayerClient = false,
     modals,
     entityModals,
-    runningModels,
+    runningLanguageModels,
     allRawInteractionDataShells,
     allCharacters,
     allContexts,
@@ -251,7 +251,7 @@ export function AppModals({
 }: ApplicationModalsProperties) {
     const interactionData = useChatStore(state => state.interactionData);
     const activeStrategy = useChatStore(state => state.activeStrategy);
-    const selectedModelId = useChatStore(state => state.selectedModel?.id ?? null);
+    const selectedModelId = useChatStore(state => state.selectedLanguageModel?.id ?? null);
     const selectedBudgetStrategyId = useChatStore(state => state.activeStrategy?.id ?? null);
     const currentAccountId = useChatStore(state => state.currentAccountId);
     const multiplayerData = useChatStore(state => state.multiplayerData);
@@ -729,7 +729,7 @@ export function AppModals({
                     onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
                     onDelete={onDeleteModel} 
                     onCreateNew={() => modelModalProperties.open()}
-                    renderSubtext={(model: LanguageModel) => renderModelSubtext(model, runningModels, selectedModelId)}
+                    renderSubtext={(model: LanguageModel) => renderModelSubtext(model, runningLanguageModels, selectedModelId)}
                     emptyMessage="No models available." 
                     actionLabel="Delete" 
                     orderedListMode={false}
@@ -737,7 +737,7 @@ export function AppModals({
                     secondaryActiveIds={strategyModelIds}
                     onSelectItem={(model: LanguageModel) => onToggleModelLoad(model.id)}
                     specialActionTooltip={(model: LanguageModel) => {
-                        const modelStatus = runningModels[model.id];
+                        const modelStatus = runningLanguageModels[model.id];
                         const isCloud = !!model.apiKey && !!model.backend && cloudBackends.includes(model.backend as cloudBackend);
                         const inStrategy = strategyModelIds.has(model.id);
                         if (inStrategy && activeStrategy && selectedModelId !== model.id) return `★ In strategy "${activeStrategy.name}" — Click to select & override strategy`;
@@ -963,7 +963,7 @@ export function AppModals({
                     allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
                     allAudioTracks={allAudioTracks} allPromptBlocks={allPromptBlocks} allEntityFolders={allEntityFolders}
                     allLanguageModels={allLanguageModels} // ✅ PASS ALL LANGUAGE MODELS
-                    runningModels={runningModels}
+                    runningLanguageModels={runningLanguageModels}
                 />
             )}
 
@@ -972,7 +972,7 @@ export function AppModals({
                     onClose={modals.restrictionReduction.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     allCharacters={allCharacters} allProfiles={allProfiles} allLanguageModels={allLanguageModels} allSamplers={allSamplers}
-                    runningModels={runningModels} 
+                    runningLanguageModels={runningLanguageModels} 
                 />
             )}
 
@@ -1161,8 +1161,8 @@ export function AppModals({
                     allLocations={allLocations}
                     localProtagonistId={localProtagonistId}
                     interactionData={interactionData}
-                    selectedModel={effectiveTokenizerModel} 
-                    runningModels={runningModels} 
+                    selectedLanguageModel={effectiveTokenizerModel} 
+                    runningLanguageModels={runningLanguageModels} 
                     allRawInteractionDataShells={allRawInteractionDataShells} 
                 />
             )}

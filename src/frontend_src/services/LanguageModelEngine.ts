@@ -151,11 +151,11 @@ export class LanguageModelEngine {
 
   private model: LanguageModel | null = null;
   private runtimePort: number | undefined = undefined;
-  private runningModels: Record<string, { isRunning: boolean; port?: number }> = {};
+  private runningLanguageModels: Record<string, { isRunning: boolean; port?: number }> = {};
 
   setContext(model: LanguageModel): void {
     this.model = model;
-    const running = model.id ? this.runningModels[model.id] : undefined;
+    const running = model.id ? this.runningLanguageModels[model.id] : undefined;
     this.runtimePort = running?.port
       ?? (model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
   }
@@ -168,10 +168,10 @@ export class LanguageModelEngine {
     return this.model?.id ?? null;
   }
 
-  setRunningModels(runningModels: Record<string, { isRunning: boolean; port?: number }>): void {
-    this.runningModels = runningModels;
+  setRunningModels(runningLanguageModels: Record<string, { isRunning: boolean; port?: number }>): void {
+    this.runningLanguageModels = runningLanguageModels;
     if (this.model) {
-      const running = this.model.id ? this.runningModels[this.model.id] : undefined;
+      const running = this.model.id ? this.runningLanguageModels[this.model.id] : undefined;
       this.runtimePort = running?.port
         ?? (this.model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
     }

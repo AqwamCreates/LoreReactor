@@ -8,7 +8,7 @@ interface UseTokenCounterOptions {
     interactionData: InteractionData | null;
     selectedModelId: string | null;
     allLanguageModels: LanguageModel[];
-    runningModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
+    runningLanguageModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     activeStrategy: BudgetStrategy | null;
 }
 
@@ -19,7 +19,7 @@ interface CachedTokenEntry {
 }
 
 export function useTokenCounter(options: UseTokenCounterOptions) {
-    const { messages, interactionData, selectedModelId, allLanguageModels, runningModels, activeStrategy } = options;
+    const { messages, interactionData, selectedModelId, allLanguageModels, runningLanguageModels, activeStrategy } = options;
     const [maxTokens, setMaxTokens] = useState(0);
 
     const abortRef = useRef<AbortController | null>(null);
@@ -62,7 +62,7 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
 
             try {
                 const engine = getLanguageModelEngine();
-                engine.setRunningModels(runningModels);
+                engine.setRunningModels(runningLanguageModels);
                 engine.setContext(tokenizer);
 
                 const cache = tokenCacheRef.current;
@@ -163,7 +163,7 @@ export function useTokenCounter(options: UseTokenCounterOptions) {
                 abortRef.current = null; 
             }
         };
-    }, [messages, selectedModelId, allLanguageModels, runningModels, activeStrategy, interactionData]);
+    }, [messages, selectedModelId, allLanguageModels, runningLanguageModels, activeStrategy, interactionData]);
 
     return maxTokens;
 }

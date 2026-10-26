@@ -99,7 +99,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     // ─── 3. Background Effects (Budget, Polling, Tokens, FM Unload) ───
     const interactionData = useChatStore(s => s.interactionData);
-    const selectedModel = useChatStore(s => s.selectedModel);
+    const selectedLanguageModel = useChatStore(s => s.selectedLanguageModel);
     const setBudgetData = useChatStore(s => s.setBudgetData);
     const updateRunningModels = useChatStore(s => s.updateRunningModels);
     const setNumberOfTokens = useChatStore(s => s.setNumberOfTokens);
@@ -138,8 +138,8 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     // Model Context Syncing
     useEffect(() => {
-        if (selectedModel) lmEngine.setContext(selectedModel);
-    }, [selectedModel, lmEngine]);
+        if (selectedLanguageModel) lmEngine.setContext(selectedLanguageModel);
+    }, [selectedLanguageModel, lmEngine]);
 
     // Context Token Accounting
     useEffect(() => {
@@ -173,7 +173,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     // ─── 4. State Subscriptions & UI Bindings ───
     const localProtagonist = useChatStore(s => s.localProtagonist);
     const activeStrategy = useChatStore(s => s.activeStrategy);
-    const runningModels = useChatStore(s => s.runningModels);
+    const runningLanguageModels = useChatStore(s => s.runningLanguageModels);
     const budgetData = useChatStore(s => s.budgetData);
     const selectedModelId = useChatStore(s => s.selectedModelId);
 
@@ -200,8 +200,8 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [setInteractionData, setSelectedCharacter]);
 
     return {
-        interactionData, localProtagonist, activeStrategy, selectedModel, 
-        runningModels, budgetData, selectedModelId, isLoading, 
+        interactionData, localProtagonist, activeStrategy, selectedLanguageModel, 
+        runningLanguageModels, budgetData, selectedModelId, isLoading, 
         currentCharacterExpression, streamingCharacter,
         
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,

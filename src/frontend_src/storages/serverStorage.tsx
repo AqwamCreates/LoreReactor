@@ -1,6 +1,7 @@
 // src/frontend_src/storages/serverStorage.tsx
 import type { 
   StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
+  SpatiotemporalModel, RawSpatiotemporalModel,
   Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData, EntityFolder, RawEntityFolder,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
   SummarizationStep, RawSummarizationStep, Webpage, RawWebpage,
@@ -54,6 +55,7 @@ const ENTITY_REGISTRY = {
   locations: { dir: 'location_data', hasManifest: true },
   locationImages: { dir: 'location_images', hasManifest: false },
   languageModels: { dir: 'language_model_data', hasManifest: true },
+  spatiotemporalModels: { dir: 'spatiotemporal_model_data', hasManifest: true },
   stopPatterns: { dir: 'stop_pattern_data', hasManifest: true },
   retrievalConfigurations: { dir: 'retrieval_configuration_data', hasManifest: true },
   interactionMessages: { dir: 'interaction_messages', hasManifest: false },
@@ -945,6 +947,24 @@ export const loadRawLanguageModel = modelRepo.loadRaw;
 export const loadAllRawModels = modelRepo.loadAll;
 export const saveRawLanguageModel = modelRepo.save;
 export const deleteRawModel = modelRepo.remove;
+
+// =============================================================================
+// SPATIOTEMPORAL MODEL REPOSITORY
+// =============================================================================
+
+const spatiotemporalModelRepo = createRepository<SpatiotemporalModel, RawSpatiotemporalModel>({
+  entityKey: 'spatiotemporalModels',
+  hydrate: (raw, id) => hydrateEntity<SpatiotemporalModel, RawSpatiotemporalModel>(raw, id, {
+    name: 'Unknown Model',
+    backend: 'stable-diffusion.cpp',
+  }),
+});
+
+export const loadRawSpatiotemporalModelManifest = spatiotemporalModelRepo.loadManifest;
+export const loadRawSpatiotemporalModel = spatiotemporalModelRepo.loadRaw;
+export const loadAllRawSpatiotemporalModels = spatiotemporalModelRepo.loadAll;
+export const saveRawSpatiotemporalModel = spatiotemporalModelRepo.save;
+export const deleteRawSpatiotemporalModel = spatiotemporalModelRepo.remove;
 
 // =============================================================================
 // BUDGET STRATEGY REPOSITORY

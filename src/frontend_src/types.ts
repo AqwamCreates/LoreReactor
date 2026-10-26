@@ -197,7 +197,7 @@ export interface RawLocation extends RawData {
 export type localBackend =
   | 'Llama.cpp' | 'Transformers' | 'ExLlamaV3' | 'ExLlamaV3 HF'
   | 'ExLlamaV2' | 'TensorRT-LLM' | 'Ollama'
-  | 'vLLM' | 'SGLang' | 'LM Studio' | 'LocalAI' | 'mistral.rs';
+  | 'vLLM' | 'SGLang' | 'LM Studio' | 'LocalAI' | 'mistral.rs' | 'stable-diffusion.cpp';
 
 export type cloudBackend = 'DeepSeek' | 'Qwen' | 'Kimi' | 'GLM' | 'MiMo' | 'Minimax' | 'Google' | 'OpenAI' | 'Anthropic' | 'Mistral' | 'Grok' | 'Groq' | 'YandexGPT' | 'OpenRouter' | 'Inworld' | 'Cohere' | 'AI21' | 'Perplexity' | 'NovelAI' | 'Other'
 
@@ -230,6 +230,20 @@ export interface RawLanguageModel extends RawData {
   cacheHitCostPerOneMillionOfTokens?: number;
   cacheMissCostPerOneMillionOfTokens?: number;
   outputGenerationCostPerOneMillionOfTokens?: number;
+}
+
+export interface SpatiotemporalModel extends ObjectData {
+  backend: backend;
+  model?: string;
+  apiKey?: string;
+  parameters?: Record<string, unknown>;
+}
+
+export interface RawSpatiotemporalModel extends RawData {
+  backend: backend;
+  model?: string;
+  apiKey?: string;
+  parameters?: Record<string, unknown>;
 }
 
 export interface Voice {
@@ -672,7 +686,7 @@ export interface InteractionData extends ObjectData {
   parentInteractionDataId?: string | null;
   parentMessageId?: string | null;
   profile?: Profile;
-  worldIds?: string[]; // ✅ ADD THIS
+  worldIds?: string[];
 }
 
 export interface RawInteractionData extends RawData {
@@ -685,7 +699,7 @@ export interface RawInteractionData extends RawData {
   parentInteractionDataId?: string | null;
   parentMessageId?: string | null;
   profileId?: string;
-  worldIds?: string[]; // ✅ ADD THIS
+  worldIds?: string[];
 }
 
 export interface EntityFolder extends ObjectData {
@@ -1137,6 +1151,7 @@ export interface RawAudioTrack extends RawData {
 export interface SessionData {
     selectedCharacterId?: string | null;
     selectedModelId?: string | null;
+    selectedSpatiotemporalModelId?: string | null;
     selectedProfileId?: string | null;
     selectedBudgetStrategyId?: string | null;
     activeChatId?: string | null;
@@ -1168,6 +1183,7 @@ export type Entity =
   | World 
   | PromptBlock 
   | LanguageModel 
+  | SpatiotemporalModel
   | Sampler 
   | StopPattern 
   | Profile 
@@ -1183,6 +1199,7 @@ export type entityType =
   | 'world' 
   | 'interactionData' 
   | 'model' 
+  | 'spatiotemporalModel'
   | 'sampler' 
   | 'promptBlock' 
   | 'stopPattern'

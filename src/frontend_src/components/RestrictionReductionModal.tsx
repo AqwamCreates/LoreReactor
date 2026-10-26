@@ -49,7 +49,7 @@ interface RestrictionReductionModalProps {
     allProfiles: Profile[];
     allLanguageModels: LanguageModel[];
     allSamplers: Sampler[];
-    runningModels: Record<string, { isRunning: boolean; port?: number }>;
+    runningLanguageModels: Record<string, { isRunning: boolean; port?: number }>;
     restrictionSampler?: Sampler;
 }
 
@@ -286,7 +286,7 @@ function isBasicKeywordRefusal(text: string): boolean {
 
 export function RestrictionReductionModal({
      onClose, onSaveCharacter, allCharacters, allProfiles, allLanguageModels,
-    allSamplers, runningModels, restrictionSampler
+    allSamplers, runningLanguageModels, restrictionSampler
 }: RestrictionReductionModalProps) {
     const [step, setStep] = useState<RestrictionStep>('config');
     const [activeConfigurationTab, setActiveConfigurationTab] = useState<ConfigurationTabIdentifier>('characters');
@@ -463,7 +463,7 @@ export function RestrictionReductionModal({
 
     const callLanguageModelStream = async (targetModel: LanguageModel, prompt: string, maxTokens: number): Promise<string> => {
         languageModelEngine.setContext(targetModel);
-        languageModelEngine.setRunningModels(runningModels);
+        languageModelEngine.setRunningModels(runningLanguageModels);
         
         const requestBody = buildGenericCompletionBody(prompt, maxTokens, resolvedSampler || undefined, []);
         const controller = new AbortController();

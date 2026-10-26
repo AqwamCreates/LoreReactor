@@ -39,7 +39,7 @@ interface AIRecommendationModalProps {
     allPromptBlocks: PromptBlock[];
     allEntityFolders: EntityFolder[];
     allLanguageModels: LanguageModel[];
-    runningModels: Record<string, { isRunning: boolean; port?: number }>;
+    runningLanguageModels: Record<string, { isRunning: boolean; port?: number }>;
 }
 
 export function AIRecommendationModal({
@@ -47,7 +47,7 @@ export function AIRecommendationModal({
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
     allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], 
     allLanguageModels,
-    runningModels
+    runningLanguageModels
 }: AIRecommendationModalProps) {
     const [selectedEntities, setSelectedEntities] = useState<EntityType[]>(['Character']);
     const [userPrompt, setUserPrompt] = useState('');
@@ -299,7 +299,7 @@ export function AIRecommendationModal({
         if (selectedEntities.length === 0) { setError('Select at least one entity type.'); return; }
         if (!activeModel) { setError('No model selected. Please choose a language model for generation.'); return; }
 
-        recommendationEngine.setRunningModels(runningModels);
+        recommendationEngine.setRunningModels(runningLanguageModels);
         recommendationEngine.setContext(activeModel);
 
         let imgDesc = '';
