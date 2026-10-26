@@ -12,45 +12,109 @@ const TABS: { id: GuideTabId; label: string; icon: string }[] = [
     { id: 'directory', label: 'Directory', icon: '📚' },
 ];
 
+const mockToolNames = Object.keys(defaultCharacterTools);
+
+const mockCharacterTags = [
+    'Character 1 (Alice)',
+    'Character 2 (Bob)',
+    'Character 3 (Charlie)',
+    'Character 4 (Dave)',
+];
+
+const mockCharacterTagsWithDescriptions = [
+    '- **Character 1 (Alice)**\nTall woman with silver hair, green cloak, and a scarred left hand.',
+    '- **Character 2 (Bob)**\nBroad-shouldered merchant with a leather satchel and nervous eyes.',
+    '- **Character 3 (Charlie)**\nYoung scout in mud-stained leathers, always holding a short bow.',
+    '- **Character 4 (Dave)**\nRetired guard with a gray beard, limp, and a heavy iron keyring.',
+];
+
+const mockChatHistory = [
+    'User: Hello.',
+    'Alice: Hi there!',
+    'User: How are you?',
+    'Alice: I am good.',
+    'Bob: Hey guys.',
+];
+
+const mockLocations = [
+    'Town Square',
+    'Dark Forest',
+    'Abandoned Castle',
+    'Tavern',
+    "King's Castle",
+];
+
+const mockLocationDescriptions = [
+    '- **Town Square**\nThe bustling center of the city. Merchants shout over cobblestones, and rain slicks the statues.',
+    '- **Dark Forest**\nA creepy woods where the canopy swallows most sunlight. Twigs snap like bones underfoot.',
+    '- **Abandoned Castle**\nRuins. Crumbled walls, nested crows, and the smell of wet stone.',
+    '- **Tavern**\nA cozy pub with low beams, spilled ale, and a fire that never quite dies.',
+    "- **King's Castle**\nThe royal residence. Guards stand rigid at the gates, and banners hang heavy in the damp air.",
+];
+
+const mockReachableLocations = mockLocations.slice(0, 3);
+const mockReachableLocationDescriptions = mockLocationDescriptions.slice(0, 3);
+
+const mockProtagonists = ['User', 'Player 2'];
+const mockCharacters = mockCharacterTags;
+
 const MOCK_DATA: Record<string, string[] | string> = {
-    tools: Object.keys(defaultCharacterTools),
-    characterTags: ['Character 1 (Alice)', 'Character 2 (Bob)', 'Character 3 (Charlie)', 'Character 4 (Dave)'],
-    chatHistory: ['User: Hello.', 'Alice: Hi there!', 'User: How are you?', 'Alice: I am good.', 'Bob: Hey guys.'],
-    
-    // Unified Location Arrays (Use - for reachable, + for all)
-    locations: ['Town Square', 'Dark Forest', 'Abandoned Castle', 'Tavern', 'King\'s Castle'],
-    locationsWithDescriptions: [
-        '- **Town Square**: The bustling center of the city.',
-        '- **Dark Forest**: A creepy woods.',
-        '- **Abandoned Castle**: Ruins.',
-        '- **Tavern**: A cozy pub.',
-        '- **King\'s Castle**: The royal residence.'
-    ],
-    "locations'": ["Town Square's", "Dark Forest's", "Abandoned Castle's", "Tavern's", "King's Castle's"],
+    tools: mockToolNames,
 
-    // Singular Location Tags
+    characterTags: mockCharacterTags,
+    characterTagsWithDescriptions: mockCharacterTagsWithDescriptions,
+
+    chatHistory: mockChatHistory,
+
+    locations: mockLocations,
+    locationsWithDescriptions: mockLocationDescriptions,
+    "locations'": mockLocations.map(location => `${location}'s`),
+    "locationsWithDescriptions'": mockLocationDescriptions.map(description => `${description}'s`),
+
+    reachableLocations: mockReachableLocations,
+    reachableLocationsWithDescriptions: mockReachableLocationDescriptions,
+    "reachableLocations'": mockReachableLocations.map(location => `${location}'s`),
+    "reachableLocationsWithDescriptions'": mockReachableLocationDescriptions.map(description => `${description}'s`),
+
     location: 'Town Square',
-    locationWithDescription: '- **Town Square**: The bustling center of the city.\nYou are standing in the middle of the plaza.',
+    currentLocation: 'Town Square',
+    locationWithDescription: mockLocationDescriptions[0],
+    currentLocationWithDescription: mockLocationDescriptions[0],
 
-    // UUID Resolution Mocks
+    'character@uuid': 'Character 1 (Alice)',
     'character@uuid-alice': 'Character 1 (Alice)',
     'character@uuid-bob': 'Character 2 (Bob)',
+
+    'location@uuid': 'Town Square',
     'location@uuid-town': 'Town Square',
     'location@uuid-forest': 'Dark Forest',
-    'locationWithDescription@uuid-town': '- **Town Square**: The bustling center of the city.\nYou are standing in the middle of the plaza.',
+
+    'locationWithDescription@uuid': mockLocationDescriptions[0],
+    'locationWithDescription@uuid-town': mockLocationDescriptions[0],
 
     character: 'Character 1 (Alice)',
     protagonist: 'User',
-    protagonists: ['User', 'Player 2'],
-    "protagonists'": ["User's", "Player 2's"],
-    characters: ['Character 1 (Alice)', 'Character 2 (Bob)', 'Character 3 (Charlie)', 'Character 4 (Dave)'],
-    "characters'": ["Character 1 (Alice)'s", "Character 2 (Bob)'s", "Character 3 (Charlie)'s", "Character 4 (Dave)'s"],
+    protagonists: mockProtagonists,
+    "protagonists'": mockProtagonists.map(protagonist => `${protagonist}'s`),
+    characters: mockCharacters,
+    "characters'": mockCharacters.map(character => `${character}'s`),
+
+    systemPrompt: 'Alice is guarded, practical, and slow to trust. She speaks plainly and notices exits before faces.',
+    thinkPrompt: 'Assess threat level, identify who is speaking, and decide whether to reveal information.',
+    metaThinkInstructions: 'I will respond exclusively as Character 1 (Alice), expressing only this character\'s perspective, actions, and speech. I may or may not use these literary devices: Dialogue, Simile, Metaphor...',
+    dialoguePrompt: 'Alice: I do not trade secrets in the rain.\nBob: Then we wait for sun?\nAlice: We wait for leverage.',
+    knowledgePrompt: 'The Town Square is the central meeting point of the city. The Tavern is two streets east. The Dark Forest begins beyond the northern gate.',
+    memoryPrompt: 'I remember meeting Bob near the northern gate. He owed me a favor and pretended not to remember.',
+    starterPrompt: 'Rain hammers the cobblestones as Alice waits beneath the awning, counting the strangers who pass.',
+    appearancePrompt: 'Character 1 (Alice): Silver hair tied back, green travel cloak, scarred left hand, dark eyes that do not linger.',
+
+    inventory: '[Current Inventory]\nSword: 1\nPotion: 3\nRope: 1',
+    skyView: '[Sky & Celestial View]\nHeavy storm clouds obscure the sun. Lightning flickers beyond the western ridge.',
     weather: 'Raining heavily with thunderstorms.',
     date: "Today's date is October 26, 2026.",
     time: 'The current time is 14:35.',
     timeElapsed: '5 minutes have passed since the last interaction.',
-    metaThinkInstructions: 'I will respond exclusively as Character 1 (Alice), expressing only this character\'s perspective, actions, and speech. I may or may not use these literary devices: Dialogue, Simile, Metaphor...',
-    inventory: '[Current Inventory]\nSword: 1\nPotion: 3',
+
     fatigueInformation: 'I am starting to feel slightly winded from talking, but still have plenty of energy to speak.',
     currentChatStamina: '3',
     maximumChatStamina: '4',
@@ -61,9 +125,14 @@ const MOCK_DATA: Record<string, string[] | string> = {
     currentTotalStamina: '8',
     maximumTotalStamina: '9',
     totalStaminaRatio: '0.89',
+
     paragraphCountInstructions: 'I understand that I can create a minimum of 1 paragraph and a maximum of 3 paragraphs.',
+    toolInstructions: `I can use tools when the situation requires precise information. Available tools: ${mockToolNames.join(', ')}.`,
+    toolMessageInstructions: 'I am currently in tool message mode, where I will only interact with the environment and only talk to myself.',
+
     antiRepetitionNudge: '',
-    textInjection: 'I am now responding as Character 1 (Alice) with the format I am given...',
+    textInjection: 'I am now responding as Character 1 (Alice) with the format I am given and I will follow all the prompts given to me.',
+
     systemBlockStart: '<SYSTEM>',
     systemBlockEnd: '</SYSTEM>',
     userTurnStart: '<USER>',
@@ -72,124 +141,195 @@ const MOCK_DATA: Record<string, string[] | string> = {
     assistantTurnEnd: '</ASSISTANT>',
     thinkStart: '<THINK>',
     thinkEnd: '</THINK>',
+
     toolCallStartString: '<<tool_call>>',
     toolCallEndString: '<</tool_call>>',
     toolResultStartString: '<<tool_result>>',
     toolResultEndString: '<</tool_result>>',
-    topicExpansionInstructions: 'If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic...',
-    noHallucinationInstructions: 'I will also use existent information instead of creating non-existent information...',
+
+    topicExpansionInstructions: 'If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character\'s perspective and keeps the dialogue engaging.',
+    beingIgnoredInstructions: 'Anytime a character ignores me talking, there would be an awkward atmosphere.',
+    noHallucinationInstructions: 'I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters\' external dialogues and actions if I am predicting them.',
+    noEmptyResponseInstruction: 'I will also always create a response instead of giving empty ones.',
+    mistakeCorrectionInstructions: 'If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts.',
+    languageInstructions: 'I will respond exclusively in the language established by the prompts or prior conversation turns.',
+    literaryDeviceInstructions: 'I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus.',
+    contextAuthorityInstructions: 'Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.',
+    summarizationAwarenessInstructions: 'If previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.',
+    noRepeatInstructions: 'If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating text gracefully, regardless of the paragraphs, sentences, phrases, words and so on.',
+    noRestrictionsInstructions: 'I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts.',
+    formatInstructions: 'I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.',
 };
 
-// Captures suffix scopes (-/+), possessives ('), UUIDs (@), and all standard operators
+// Captures suffix scopes (-/+), possessives ('), UUIDs (@), and all standard operators.
+// Legacy {{char:uuid}} syntax is intentionally not supported.
 const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'\-@+]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?}}/g;
+
+function maskKnownName(value: string): string {
+    return value.replace(/\s*\([^)]*\)/g, '');
+}
+
+function isIdentityLikeKey(key: string): boolean {
+    return (
+        key === 'character' ||
+        key === 'protagonist' ||
+        key === 'protagonists' ||
+        key === 'characters' ||
+        key === 'characterTags' ||
+        key === 'characterTagsWithDescriptions' ||
+        key.startsWith('character@')
+    );
+}
 
 function evaluateMockTemplate(raw: string): string {
     if (!raw) return '';
-    return raw.replace(TEMPLATE_REGEX, (_match, key, startStr, endStr, hashStr, excludeStr, _scopeStr, _insertionStr, limitStr) => {
-        let rawKey = key;
-        let suffixNote = '';
-        let locationScope: 'reachable' | 'all' | undefined = undefined;
 
-        // 1. Parse suffix scopes (- and +) strictly before possessives to mirror backend logic
-        if (rawKey.endsWith('-')) {
-            rawKey = rawKey.slice(0, -1);
-            if (rawKey.startsWith('locations')) {
-                locationScope = 'reachable';
-                suffixNote = ' [Scope: Reachable]';
-            } else {
-                suffixNote = ' [Scope: Co-Located]';
+    return raw.replace(
+        TEMPLATE_REGEX,
+        (_match, key, startStr, endStr, hashStr, excludeStr, _scopeStr, _insertionStr, limitStr) => {
+            let rawKey = key;
+            let suffixNote = '';
+            let locationScope: 'reachable' | 'all' | undefined = undefined;
+
+            // 1. Parse suffix scopes (- and +) strictly before possessives to mirror backend logic.
+            if (rawKey.endsWith('-')) {
+                rawKey = rawKey.slice(0, -1);
+                if (rawKey.startsWith('locations')) {
+                    locationScope = 'reachable';
+                    suffixNote = ' [Scope: Reachable]';
+                } else if (rawKey.startsWith('reachableLocations')) {
+                    locationScope = 'reachable';
+                    suffixNote = ' [Scope: Reachable]';
+                } else {
+                    suffixNote = ' [Scope: Co-Located]';
+                }
+            } else if (rawKey.endsWith('+')) {
+                rawKey = rawKey.slice(0, -1);
+                if (rawKey.startsWith('locations')) {
+                    locationScope = 'all';
+                    suffixNote = ' [Scope: All Session]';
+                } else if (rawKey.startsWith('reachableLocations')) {
+                    locationScope = 'all';
+                    suffixNote = ' [Scope: All Session]';
+                } else {
+                    suffixNote = ' [Scope: All]';
+                }
             }
-        } else if (rawKey.endsWith('+')) {
-            rawKey = rawKey.slice(0, -1);
-            if (rawKey.startsWith('locations')) {
-                locationScope = 'all';
-                suffixNote = ' [Scope: All Session]';
-            } else {
-                suffixNote = ' [Scope: All]';
+
+            // 2. Parse possessive.
+            const isPossessive = rawKey.endsWith("'") || rawKey.endsWith("'s");
+            const cleanKey = isPossessive ? rawKey.replace(/'s?$/, '') : rawKey;
+
+            // 3. Resolve mock data key.
+            let mockDataKey = cleanKey;
+
+            if (locationScope === 'reachable' && (cleanKey.startsWith('locations') || cleanKey.startsWith('reachableLocations'))) {
+                mockDataKey = cleanKey.startsWith('reachableLocations') ? cleanKey : cleanKey;
             }
-        }
 
-        // 2. Parse possessive
-        const isPossessive = rawKey.endsWith("'") || rawKey.endsWith("'s");
-        const cleanKey = isPossessive ? rawKey.replace(/'s?$/, '') : rawKey;
-
-        // Map location scopes to the correct MOCK_DATA keys
-        let mockDataKey = cleanKey;
-        if (locationScope === 'reachable' && cleanKey.startsWith('locations')) {
-            mockDataKey = cleanKey; 
-        }
-        
-        // Handle possessive mapping for MOCK_DATA
-        if (isPossessive && !mockDataKey.endsWith("'")) {
-            mockDataKey = mockDataKey + "'";
-        }
-
-        const data = MOCK_DATA[mockDataKey];
-        if (data === undefined) return _match; 
-
-        const limitOverride = limitStr !== undefined ? parseInt(limitStr, 10) : undefined;
-        const isArray = Array.isArray(data);
-        
-        // Simulate "reachable" by artificially limiting the array length in the mock
-        const effectiveData = (locationScope === 'reachable' && isArray) ? (data as string[]).slice(0, 3) : data;
-        const len = isArray ? (effectiveData as string[]).length : (effectiveData as string).length;
-        
-        const wantLength = hashStr === '#';
-        const wantExclude = excludeStr === '!';
-        
-        let start = startStr !== undefined ? parseInt(startStr, 10) : 0;
-        let end = endStr !== undefined ? parseInt(endStr, 10) : len;
-        
-        if (start < 0) start = len + start;
-        if (end < 0) end = len + end;
-        
-        start = Math.max(0, Math.min(len, start));
-        end = Math.max(0, Math.min(len, end));
-
-        if (wantLength) return String(len) + suffixNote;
-
-        if (isArray) {
-            const arr = effectiveData as string[];
-            let slice: string[];
-            if (start > end) {
-                slice = wantExclude 
-                    ? [...arr.slice(0, end), ...arr.slice(start)]
-                    : arr.slice(end, start).reverse();
-            } else {
-                slice = wantExclude 
-                    ? [...arr.slice(0, start), ...arr.slice(end)]
-                    : arr.slice(start, end);
+            if (isPossessive && !mockDataKey.endsWith("'")) {
+                mockDataKey = `${mockDataKey}'`;
             }
-            
-            // Mock variant indexing for arrays
-            if (limitOverride !== undefined && limitOverride > 1) {
-                slice = slice.map(item => `${item} (Alias ${limitOverride - 1})`);
+
+            let data = MOCK_DATA[mockDataKey];
+
+            // Fallback for UUID possessives such as {{location@uuid-town'}} or {{character@uuid-alice's}}.
+            if (data === undefined && isPossessive) {
+                const baseData = MOCK_DATA[cleanKey];
+                if (baseData !== undefined) {
+                    data = Array.isArray(baseData)
+                        ? baseData.map(item => `${item}'s`)
+                        : `${baseData}'s`;
+                }
             }
-            return slice.join(', ') + suffixNote;
-        } else {
+
+            if (data === undefined) return _match;
+
+            const limitOverride = limitStr !== undefined ? parseInt(limitStr, 10) : undefined;
+
+            let workingData: string[] | string = data;
+
+            // ?0 hides known names and leaves only participant tags.
+            if (limitOverride === 0 && isIdentityLikeKey(cleanKey)) {
+                workingData = Array.isArray(workingData)
+                    ? workingData.map(maskKnownName)
+                    : maskKnownName(workingData);
+            }
+
+            const isArray = Array.isArray(workingData);
+
+            // Simulate reachable locations by artificially limiting the array length in the mock.
+            const effectiveData =
+                locationScope === 'reachable' && isArray
+                    ? (workingData as string[]).slice(0, 3)
+                    : workingData;
+
+            const len = isArray
+                ? (effectiveData as string[]).length
+                : (effectiveData as string).length;
+
+            const wantLength = hashStr === '#';
+            const wantExclude = excludeStr === '!';
+
+            let start = startStr !== undefined ? parseInt(startStr, 10) : 0;
+            let end = endStr !== undefined ? parseInt(endStr, 10) : len;
+
+            if (start < 0) start = len + start;
+            if (end < 0) end = len + end;
+
+            start = Math.max(0, Math.min(len, start));
+            end = Math.max(0, Math.min(len, end));
+
+            if (wantLength) return String(len) + suffixNote;
+
+            if (isArray) {
+                const arr = effectiveData as string[];
+                let slice: string[];
+
+                if (start > end) {
+                    slice = wantExclude
+                        ? [...arr.slice(0, end), ...arr.slice(start)]
+                        : arr.slice(end, start).reverse();
+                } else {
+                    slice = wantExclude
+                        ? [...arr.slice(0, start), ...arr.slice(end)]
+                        : arr.slice(start, end);
+                }
+
+                // Mock alias indexing for arrays.
+                if (limitOverride !== undefined && limitOverride > 1) {
+                    slice = slice.map(item => `${item} (Alias ${limitOverride - 1})`);
+                }
+
+                return slice.join('\n') + suffixNote;
+            }
+
             const str = effectiveData as string;
             let slice: string;
+
             if (start > end) {
                 slice = wantExclude
                     ? str.slice(0, end) + str.slice(start)
-                    : str.slice(end, start); 
+                    : str.slice(end, start);
             } else {
                 slice = wantExclude
                     ? str.slice(0, start) + str.slice(end)
                     : str.slice(start, end);
             }
-            // Mock variant indexing for strings
+
+            // Mock alias indexing for strings.
             if (limitOverride !== undefined && limitOverride > 1) {
                 return `${slice} (Alias ${limitOverride - 1})${suffixNote}`;
             }
+
             return slice + suffixNote;
         }
-    });
+    );
 }
 
 const DIRECTORY_ITEMS = [
     // Identity
-    { key: 'character', desc: 'Current character. Use - for co-located, + for all. Use ?N for alias indexing (?1=True Name, ?2=First Alias).', cat: 'Identity' },
+    { key: 'character', desc: 'Current character. Use - for co-located, + for all. Use ?N for alias indexing (?0=tag only, ?1=True Name, ?2=First Alias).', cat: 'Identity' },
     { key: 'protagonist', desc: 'FIRST co-located protagonist. Use + for all protagonists. Supports ?N alias indexing.', cat: 'Identity' },
     { key: "protagonist's", desc: 'Possessive form of the FIRST co-located protagonist. Supports ?N alias indexing.', cat: 'Identity' },
     { key: 'protagonists', desc: 'Array of protagonists. Use - for co-located, + for all. Supports slicing and ?N alias indexing.', cat: 'Identity' },
@@ -198,7 +338,7 @@ const DIRECTORY_ITEMS = [
     { key: "characters'", desc: 'Array of possessive strings for all participants. Supports slicing and ?N alias indexing.', cat: 'Identity' },
     { key: 'characterTags', desc: 'Array of formatted character tags for present participants.', cat: 'Identity' },
     { key: 'characterTagsWithDescriptions', desc: 'Array of character tags including their appearance prompts.', cat: 'Identity' },
-    { key: 'character@uuid', desc: 'Resolves a specific character by their immutable UUID (e.g., {{character@1234-5678}}). Fully respects the ?limit operator and prevents index-shift corruption in persistent memories.', cat: 'Identity' },
+    { key: 'character@uuid', desc: 'Resolves a specific character by their immutable UUID (e.g., {{character@1234-5678}}). Fully respects ?0/?limit and prevents index-shift corruption in persistent memories. Legacy {{char:uuid}} is no longer supported.', cat: 'Identity' },
 
     // Prompts
     { key: 'systemPrompt', desc: 'The character\'s core system prompt.', cat: 'Prompts' },
@@ -206,17 +346,21 @@ const DIRECTORY_ITEMS = [
     { key: 'metaThinkInstructions', desc: 'Meta-instructions for thinking, including literary devices and character embodiment rules.', cat: 'Prompts' },
     { key: 'dialoguePrompt', desc: 'Retrieved sample dialogues.', cat: 'Prompts' },
     { key: 'knowledgePrompt', desc: 'Retrieved lore and knowledge base entries.', cat: 'Prompts' },
-    { key: 'memoryPrompt', desc: 'Retrieved long-term memories.', cat: 'Prompts' },
+    { key: 'memoryPrompt', desc: 'Retrieved long-term memories. Supports {{character@uuid}} and {{location@uuid}} detokenization.', cat: 'Prompts' },
     { key: 'starterPrompt', desc: 'Retrieved scenario starters.', cat: 'Prompts' },
     { key: 'appearancePrompt', desc: 'Compiled appearance prompts and visible clothing for scoped participants.', cat: 'Prompts' },
 
     // Environment
     { key: 'location', desc: 'Basic info and name of the current location.', cat: 'Environment' },
+    { key: 'currentLocation', desc: 'Alias for the current location basic info.', cat: 'Environment' },
     { key: 'locationWithDescription', desc: 'Location name and full descriptive text.', cat: 'Environment' },
+    { key: 'currentLocationWithDescription', desc: 'Alias for current location with full descriptive text.', cat: 'Environment' },
     { key: 'location@uuid', desc: 'Resolves a specific location by its immutable UUID (e.g., {{location@1234-5678}}). Prevents index-shift corruption in persistent memories.', cat: 'Environment' },
     { key: 'locationWithDescription@uuid', desc: 'Resolves a specific location with its full description by its immutable UUID.', cat: 'Environment' },
     { key: 'locations', desc: 'Array of all locations in the session. Use - for reachable, + for all. Supports slicing and possessives.', cat: 'Environment' },
     { key: 'locationsWithDescriptions', desc: 'Array of all locations with descriptions. Use - for reachable, + for all.', cat: 'Environment' },
+    { key: 'reachableLocations', desc: 'Array of reachable locations from the current character\'s perspective.', cat: 'Environment' },
+    { key: 'reachableLocationsWithDescriptions', desc: 'Array of reachable locations with descriptions.', cat: 'Environment' },
     { key: 'weather', desc: 'Current weather conditions (requires API key).', cat: 'Environment' },
     { key: 'skyView', desc: 'Celestial and sky conditions based on time/coordinates.', cat: 'Environment' },
     { key: 'date', desc: 'Current in-world or real-world date.', cat: 'Environment' },
@@ -237,6 +381,8 @@ const DIRECTORY_ITEMS = [
     { key: 'totalStaminaRatio', desc: 'Combined stamina ratio.', cat: 'State & Stats' },
     { key: 'paragraphCountInstructions', desc: 'Instruction limiting paragraphs based on current chat stamina.', cat: 'State & Stats' },
     { key: 'tools', desc: 'Array of enabled tool names.', cat: 'State & Stats' },
+    { key: 'toolInstructions', desc: 'Tool usage instructions and available tool list.', cat: 'State & Stats' },
+    { key: 'toolMessageInstructions', desc: 'Instructions injected only during tool message mode.', cat: 'State & Stats' },
     { key: 'chatHistory', desc: 'Array of formatted chat history messages.', cat: 'State & Stats' },
     { key: 'antiRepetitionNudge', desc: 'Warning text injected when narrative/lexical loops are detected.', cat: 'State & Stats' },
     { key: 'textInjection', desc: 'Final formatting instructions and context authority rules injected before generation.', cat: 'State & Stats' },
@@ -276,9 +422,10 @@ interface PromptGuideModalProps {
 
 export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
     const [activeTab, setActiveTab] = useState<GuideTabId>('basics');
-    
-    // Playground State
-    const [playgroundInput, setPlaygroundInput] = useState('I am {{character}} at {{location}}. Present are {{characters-[0:2]}}. I can travel to {{locations-}}. My tools: {{tools[0:3]}}.');
+
+    const [playgroundInput, setPlaygroundInput] = useState(
+        'I am {{character}} at {{location}}. I remember {{character@uuid-bob}} near {{location@uuid-forest}}. Present are {{characters-[0:2]}}. I can travel to {{locations-}}. My tools: {{tools[0:3]}}.'
+    );
     const [searchQuery, setSearchQuery] = useState('');
 
     const playgroundOutput = useMemo(() => {
@@ -288,8 +435,8 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
     const filteredDirectory = useMemo(() => {
         if (!searchQuery) return DIRECTORY_ITEMS;
         const q = searchQuery.toLowerCase();
-        return DIRECTORY_ITEMS.filter(item => 
-            item.key.toLowerCase().includes(q) || 
+        return DIRECTORY_ITEMS.filter(item =>
+            item.key.toLowerCase().includes(q) ||
             item.desc.toLowerCase().includes(q) ||
             item.cat.toLowerCase().includes(q)
         );
@@ -314,13 +461,18 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
             <div className="editor-row">
                 <div className="entity-field-block">
                     <span className="entity-field-title">Raw Template</span>
-                    <pre className="entity-raw-pre" style={{ margin: 0, cursor: 'pointer' }} onClick={() => copyToClipboard(raw)} title="Click to copy">
+                    <pre
+                        className="entity-raw-pre"
+                        style={{ margin: 0, cursor: 'pointer' }}
+                        onClick={() => copyToClipboard(raw)}
+                        title="Click to copy"
+                    >
                         {raw}
                     </pre>
                 </div>
                 <div className="entity-field-block">
                     <span className="entity-field-title">Resolved Output</span>
-                    <pre className="entity-raw-pre" style={{ margin: 0, background: 'var(--code-bg)' }}>
+                    <pre className="entity-raw-pre" style={{ margin: 0, background: 'var(--code-bg)', whiteSpace: 'pre-wrap' }}>
                         {output || <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Empty</span>}
                     </pre>
                 </div>
@@ -330,8 +482,8 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
 
     return (
         <div className="modal-overlay" onClick={onClose}>
-            <div 
-                className="modal-content" 
+            <div
+                className="modal-content"
                 onClick={e => e.stopPropagation()}
                 style={{ maxWidth: '900px', width: '95%' }}
             >
@@ -342,7 +494,10 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                     </div>
                 </div>
 
-                <div className="entity-tab-bar" style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}>
+                <div
+                    className="entity-tab-bar"
+                    style={{ padding: '0 20px', marginBottom: 0, borderBottom: '1px solid var(--border)', background: 'var(--social-bg)' }}
+                >
                     {TABS.map(tab => (
                         <button
                             key={tab.id}
@@ -356,29 +511,49 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                 </div>
 
                 <div className="modal-body" style={{ padding: '20px', overflowY: 'auto' }}>
-                    
                     {activeTab === 'basics' && (
                         <div className="editor-section">
                             <span className="editor-section-title">Core Syntax</span>
                             <p style={{ fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '16px' }}>
-                                Variables are wrapped in double curly braces: <code style={{ background: 'var(--code-bg)', padding: '2px 6px', borderRadius: '4px' }}>{'{{key}}'}</code>. 
-                                When the prompt is built, the engine replaces these placeholders with the actual data from the chat session, character definitions, or environment.
+                                Variables are wrapped in double curly braces:{' '}
+                                <code style={{ background: 'var(--code-bg)', padding: '2px 6px', borderRadius: '4px' }}>
+                                    {'{{key}}'}
+                                </code>
+                                . When the prompt is built, the engine replaces these placeholders with actual data from the chat session, character definitions, memories, or environment.
                             </p>
-                            
+
                             {renderComparison(
                                 'My name is {{character}} and I am talking to {{protagonist}}.',
-                                'My name is Character 1 (Alice) and I am talking to User.',
+                                evaluateMockTemplate('My name is {{character}} and I am talking to {{protagonist}}.'),
                                 'Basic injection of identity variables.'
                             )}
 
                             {renderComparison(
                                 'I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.',
-                                'I remember when Character 1 (Alice) gave me the sword at Town Square.',
+                                evaluateMockTemplate('I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.'),
                                 'UUID resolution ensures persistent memories map to the correct character and location. Fully respects known name limits (?limit).'
                             )}
 
-                            <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '16px', padding: '10px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
-                                <strong>Note:</strong> Custom Prompt Blocks can also be injected by using their exact ID or by relying on Regex Activation Triggers to append them automatically.
+                            {renderComparison(
+                                "{{location@uuid-town'}} banner hung above the gate.",
+                                evaluateMockTemplate("{{location@uuid-town'}} banner hung above the gate."),
+                                'Possessive UUID location resolution.'
+                            )}
+
+                            <div
+                                style={{
+                                    fontSize: '0.75rem',
+                                    opacity: 0.8,
+                                    marginTop: '16px',
+                                    padding: '10px',
+                                    background: 'var(--social-bg)',
+                                    borderRadius: '6px',
+                                    border: '1px solid var(--border)'
+                                }}
+                            >
+                                <strong>Note:</strong> Legacy <code>{'{{char:uuid}}'}</code> tokens are no longer supported.
+                                Use <code>{'{{character@uuid}}'}</code> and <code>{'{{location@uuid}}'}</code>.
+                                Custom Prompt Blocks can also be injected by using their exact ID or by relying on Regex Activation Triggers to append them automatically.
                             </div>
                         </div>
                     )}
@@ -387,19 +562,20 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                         <div className="editor-section">
                             <span className="editor-section-title">Array & String Manipulation</span>
                             <p style={{ fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '16px' }}>
-                                Many variables (like <code>tools</code>, <code>chatHistory</code>, <code>characters</code>, <code>locations</code>) are arrays. You can slice, count, and exclude elements using operators inside the brackets.
+                                Many variables (like <code>tools</code>, <code>chatHistory</code>, <code>characters</code>, <code>locations</code>) are arrays.
+                                You can slice, count, and exclude elements using operators inside the brackets.
                             </p>
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Slicing <code>[start:end]</code></span>
                             {renderComparison(
                                 '{{tools[0:3]}}',
                                 evaluateMockTemplate('{{tools[0:3]}}'),
-                                'Extracts elements from index 0 up to (but not including) 3.'
+                                'Extracts elements from index 0 up to but not including 3.'
                             )}
                             {renderComparison(
                                 '{{characters[-2:]}}',
                                 evaluateMockTemplate('{{characters[-2:]}}'),
-                                'Negative numbers count backwards from the end of the array (Last 2 Participants).'
+                                'Negative numbers count backwards from the end of the array (last 2 participants).'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Length <code>#</code></span>
@@ -413,7 +589,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                             {renderComparison(
                                 '{{tools[2:]!}}',
                                 evaluateMockTemplate('{{tools[2:]!}}'),
-                                'Returns everything EXCEPT the specified slice. (Excludes index 2 onwards).'
+                                'Returns everything EXCEPT the specified slice. Excludes index 2 onwards.'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Plural Arrays & Possessives</span>
@@ -425,7 +601,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                             {renderComparison(
                                 "{{characters'[0:2]}}",
                                 evaluateMockTemplate("{{characters'[0:2]}}"),
-                                'Slices the possessive array directly (First 2 participants\' possessive tags).'
+                                'Slices the possessive array directly.'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Suffix Scopes <code>-</code> / <code>+</code></span>
@@ -439,7 +615,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                 evaluateMockTemplate('{{characters+}}'),
                                 'The + suffix forces the array to include all participants in the session, regardless of location.'
                             )}
-                            
+
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Location Scopes <code>-</code> / <code>+</code></span>
                             {renderComparison(
                                 '{{locations-}}',
@@ -454,14 +630,19 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Name Variant Indexing <code>?N</code></span>
                             {renderComparison(
+                                '{{character?0}}',
+                                evaluateMockTemplate('{{character?0}}'),
+                                '?0 hides known names and returns only the participant tag.'
+                            )}
+                            {renderComparison(
                                 '{{character?1}}',
                                 evaluateMockTemplate('{{character?1}}'),
-                                '?1 (or default) resolves to the character\'s True Name.'
+                                '?1, or default, resolves to the character\'s true name.'
                             )}
                             {renderComparison(
                                 '{{character?2}}',
                                 evaluateMockTemplate('{{character?2}}'),
-                                '?2 resolves to the character\'s First Alias. ?3 for Second Alias, etc.'
+                                '?2 resolves to the character\'s first alias. ?3 for second alias, etc.'
                             )}
                         </div>
                     )}
@@ -470,41 +651,62 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                         <div className="editor-section">
                             <span className="editor-section-title">Prefix Caching Overrides</span>
                             <p style={{ fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '16px' }}>
-                                These operators bypass the global rules set in your Profile's <strong>Cache</strong> tab. They are applied directly to the variable to control exactly which participants are injected into the prompt prefix.
+                                These operators bypass the global rules set in your Profile\'s <strong>Cache</strong> tab.
+                                They are applied directly to the variable to control exactly which participants are injected into the prompt prefix.
                             </p>
 
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                 <div className="entity-field-block">
                                     <span className="entity-field-title">Scope Override <code>%scope</code> or Suffix <code>-</code>/<code>+</code></span>
                                     <div className="entity-field-content">
-                                        <code>{'{{characterTags%all}}'}</code> or <code>{'{{characters+}}'}</code><br/>
-                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Forces the 'all' scope, ignoring the Profile's 'coLocated' or 'current' setting. Valid values: <code>%current</code>, <code>%coLocated</code> (or <code>-</code>), <code>%all</code> (or <code>+</code>).</span>
+                                        <code>{'{{characterTags%all}}'}</code> or <code>{'{{characters+}}'}</code><br />
+                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                                            Forces the \'all\' scope, ignoring the Profile\'s \'coLocated\' or \'current\' setting.
+                                            Valid values: <code>%current</code>, <code>%coLocated</code> or <code>-</code>, <code>%all</code> or <code>+</code>.
+                                        </span>
                                     </div>
                                 </div>
 
                                 <div className="entity-field-block">
                                     <span className="entity-field-title">Insertion Override <code>^</code> / <code>*</code></span>
                                     <div className="entity-field-content">
-                                        <code>{'{{systemPrompt^}}'}</code> (Dynamic) / <code>{'{{systemPrompt*}}'}</code> (Static)<br/>
-                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Dynamic (<code>^</code>) only includes participants who have spoken since arriving. Static (<code>*</code>) always includes them based on the scope.</span>
+                                        <code>{'{{systemPrompt^}}'}</code> Dynamic / <code>{'{{systemPrompt*}}'}</code> Static<br />
+                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                                            Dynamic <code>^</code> only includes participants who have spoken since arriving.
+                                            Static <code>*</code> always includes them based on the scope.
+                                        </span>
                                     </div>
                                 </div>
 
                                 <div className="entity-field-block">
                                     <span className="entity-field-title">Known Names Limit <code>?limit</code></span>
                                     <div className="entity-field-content">
-                                        <code>{'{{characterTags?2}}'}</code><br/>
-                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>Restricts name reveals to the first N known characters. <code>?0</code> reveals no names (only tags), <code>?-1</code> reveals all. <strong>Also applies to UUID lookups and Identity Variant Indexing:</strong> <code>{'{{character@uuid?0}}'}</code></span>
+                                        <code>{'{{characterTags?2}}'}</code><br />
+                                        <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
+                                            Restricts name reveals to the first N known characters.
+                                            <code>?0</code> reveals no names, only tags.
+                                            <code>?-1</code> reveals all.
+                                            Also applies to UUID lookups and identity variant indexing:
+                                            <code>{'{{character@uuid?0}}'}</code>
+                                        </span>
                                     </div>
                                 </div>
 
-                                <div className="entity-field-block" style={{ marginTop: '12px', padding: '12px', background: 'var(--accent-bg)', borderColor: 'var(--accent-border)' }}>
+                                <div
+                                    className="entity-field-block"
+                                    style={{ marginTop: '12px', padding: '12px', background: 'var(--accent-bg)', borderColor: 'var(--accent-border)' }}
+                                >
                                     <span className="entity-field-title" style={{ color: 'var(--accent)' }}>Complex Chaining</span>
-                                    <pre className="entity-raw-pre" style={{ margin: '8px 0 0 0', background: 'var(--bg)' }} onClick={() => copyToClipboard('{{characterTags[0:3]%all^?2}}')} title="Click to copy">
+                                    <pre
+                                        className="entity-raw-pre"
+                                        style={{ margin: '8px 0 0 0', background: 'var(--bg)' }}
+                                        onClick={() => copyToClipboard('{{characterTags[0:3]%all^?2}}')}
+                                        title="Click to copy"
+                                    >
                                         {'{{characterTags[0:3]%all^?2}}'}
                                     </pre>
                                     <span style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: '8px', display: 'block' }}>
-                                        Takes the first 3 tags, forces 'all' scope, forces 'dynamic' insertion, and limits known names to 2.
+                                        Takes the first 3 tags, forces \'all\' scope, forces \'dynamic\' insertion, and limits known names to 2.
                                     </span>
                                 </div>
                             </div>
@@ -515,29 +717,37 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                         <div className="editor-section">
                             <span className="editor-section-title">Live Mock Playground</span>
                             <p style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '16px' }}>
-                                Test array slicing, suffix scopes (<code>-</code>/<code>+</code>), length, exclusion, and variant indexing against all mock data simultaneously. Mix and match variables in the same string. <em>Note: Complex Cache/Scope overrides (<code>%</code>, <code>^</code>, <code>*</code>) require the backend engine and are not fully evaluated here.</em>
+                                Test array slicing, suffix scopes <code>-</code>/<code>+</code>, length, exclusion, UUID resolution, and variant indexing against mock data.
+                                Mix and match variables in the same string.
+                                <em>
+                                    {' '}
+                                    Complex Cache/Scope overrides <code>%</code>, <code>^</code>, <code>*</code> require the backend engine and are not fully evaluated here.
+                                </em>
                             </p>
 
                             <div style={{ marginBottom: '16px' }}>
                                 <label className="editor-label">Raw Template Input</label>
-                                <textarea 
-                                    className="editor-textarea" 
+                                <textarea
+                                    className="editor-textarea"
                                     value={playgroundInput}
                                     onChange={e => setPlaygroundInput(e.target.value)}
-                                    placeholder={`e.g., I am {{character}} at {{location}}. I can go to {{locations-}}.`}
-                                    style={{ fontFamily: 'monospace', minHeight: '80px' }}
+                                    placeholder={'e.g., I am {{character}} at {{location}}. I can go to {{locations-}}.'}
+                                    style={{ fontFamily: 'monospace', minHeight: '100px' }}
                                 />
                             </div>
 
                             <div className="entity-field-block">
                                 <span className="entity-field-title">Resolved Output</span>
-                                <pre className="entity-raw-pre" style={{ margin: 0, background: 'var(--code-bg)', minHeight: '60px' }}>
+                                <pre
+                                    className="entity-raw-pre"
+                                    style={{ margin: 0, background: 'var(--code-bg)', minHeight: '80px', whiteSpace: 'pre-wrap' }}
+                                >
                                     {playgroundOutput || <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Empty or invalid syntax</span>}
                                 </pre>
                             </div>
-                            
+
                             <div style={{ marginTop: '16px', fontSize: '0.75rem', opacity: 0.6, lineHeight: 1.6 }}>
-                                <strong>Available Mock Variables:</strong><br/>
+                                <strong>Available Mock Variables:</strong><br />
                                 {Object.keys(MOCK_DATA).map(k => `{{${k}}}`).join(', ')}
                             </div>
                         </div>
@@ -546,10 +756,10 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                     {activeTab === 'directory' && (
                         <>
                             <div className="modal-search-container" style={{ padding: '0 0 16px 0', borderBottom: 'none' }}>
-                                <input 
-                                    type="text" 
-                                    className="modal-search-input" 
-                                    placeholder="Search variables..." 
+                                <input
+                                    type="text"
+                                    className="modal-search-input"
+                                    placeholder="Search variables..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                 />
@@ -561,13 +771,25 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                         <span className="editor-section-title" style={{ marginBottom: '8px' }}>{cat}</span>
                                         <ul className="manager-list" style={{ gap: '4px' }}>
                                             {items.map(item => (
-                                                <li key={item.key} className="manager-item" style={{ padding: '8px 12px', minHeight: 'auto', cursor: 'pointer' }} onClick={() => copyToClipboard(`{{${item.key}}}`)} title="Click to copy">
+                                                <li
+                                                    key={item.key}
+                                                    className="manager-item"
+                                                    style={{ padding: '8px 12px', minHeight: 'auto', cursor: 'pointer' }}
+                                                    onClick={() => copyToClipboard(`{{${item.key}}}`)}
+                                                    title="Click to copy"
+                                                >
                                                     <div className="manager-item-main">
                                                         <div className="manager-item-info">
-                                                            <div className="manager-item-title" style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--accent)' }}>
+                                                            <div
+                                                                className="manager-item-title"
+                                                                style={{ fontFamily: 'monospace', fontSize: '0.85rem', color: 'var(--accent)' }}
+                                                            >
                                                                 {'{{'}{item.key}{'}}'}
                                                             </div>
-                                                            <div className="manager-item-sub" style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'unset' }}>
+                                                            <div
+                                                                className="manager-item-sub"
+                                                                style={{ whiteSpace: 'normal', overflow: 'visible', textOverflow: 'unset' }}
+                                                            >
                                                                 {item.desc}
                                                             </div>
                                                         </div>
