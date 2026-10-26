@@ -39,7 +39,7 @@ import { toolCallStartString, toolCallEndString, toolResultStartString, toolResu
 import { type TimeData, fetchCurrentWeather, generateSkyViewText, getLocation, getTimeDataFromCoordinates } from '../services/LocationEngine';
 import { getCoLocatedProtagonists, getCoLocatedParticipants, getReachableLocationsByCharacter, getCurrentLocationId } from './locationLogic';
 import { defaultInputStrategy } from '../dictionaries/defaults';
-import { getModelTemplate } from '../dictionaries/modelTemplates';
+import { getModelTemplate, getModelThinkTokenPairs } from '../dictionaries/modelTemplates';
 import { generateLocationVisitSummary } from '../services/TextMessageSummarizationEngine';
 import { findLatestMessage } from './messageLogic';
 import { getLocalMessageHistory, getLatestLocalLocationMessageHistory } from './timelineLogic';
@@ -134,6 +134,22 @@ export function sanitizeToolSyntax(
   sanitized = sanitized.replace(callRegex, '');
   
   return sanitized.replace(/\s{2,}/g, ' ');
+}
+
+/**
+ * Strips model thinking blocks (<think>...</think>, [THINK]...[/THINK], <|channel>thought...<channel|>)
+ * so a character's internal thoughts are never leaked to other characters in the prompt.
+ */
+export function sanitizeThinkingSyntax(text: string): string {
+  if (!text) return text;
+  const pairs = getModelThinkTokenPairs();
+  if (pairs.length === 0) return text;
+  const escapeRegex = (str: string) => str.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
+  const startPattern = pairs.map(p => escapeRegex(p.start)).join('|');
+  const endPattern = pairs.map(p => escapeRegex(p.end)).join('|');
+
+  const thinkRegex = new RegExp(`(?:${startPattern})[\\s\\S]*?(?:${endPattern}|$)[ \\t]*\\r?\\n?`, 'gi');
+  return text.replace(thinkRegex, '').trim();
 }
 
 const GLOBAL_STRINGS: Record<string, string> = {
@@ -387,7 +403,7 @@ export function resolveTemplate(
 
       const effectiveScope = suffixScope ?? scopeOverride;
 
-      // UUID Resolution (e.g., {{character@uuid}}, {{location@uuid}}, {{locationWithDescription@uuid}})
+      // UUID Resolution
       const isCharacterUuidKey = cleanKey.startsWith('character@');
       const isLocationUuidKey = cleanKey.startsWith('location@');
       const isLocationDescUuidKey = cleanKey.startsWith('locationWithDescription@');
@@ -458,7 +474,6 @@ export function resolveTemplate(
               targetLocations = buildLocationsArray(pCtx, delimiters, scope, insertionOverride, withDescriptions);
           }
 
-          // CRITICAL FIX: Identity tags use getIdentityDisplayName to bypass knownNames and pull true names/aliases
           const getResolvedName = (p: Character) => getIdentityDisplayName(p, pCtx, limitOverride);
           const getResolvedPossessive = (p: Character) => getIdentityPossessiveName(p, pCtx, limitOverride);
 
@@ -510,7 +525,6 @@ export function resolveTemplate(
         }
       }
 
-      // EXPLICIT TAG-TO-PROPERTY MAPPING FOR NEW LOCATION TAGS
       if (key === 'location') return asLengthOrValue(ctx.currentLocation);
       if (key === 'locationWithDescription') return asLengthOrValue(ctx.currentLocationWithDescription);
 
@@ -718,14 +732,6 @@ function buildProtagonistPossessiveString(
   return `${name}'s`;
 }
 
-/**
- * Resolves identity display name using variant indexing.
- * Bypasses knownNames map to strictly use the character's true name and aliases.
- * ?1 (or default) = True Name
- * ?2 = First Alias
- * ?3 = Second Alias, etc.
- * ?0 = Tag only (hides name)
- */
 function getIdentityDisplayName(
   participant: Character,
   ctx: PromptBuildContext,
@@ -1357,7 +1363,12 @@ function buildPromptContext(
   for (const msg of localHistory) {
     if (isTextMessage(msg) && isMessageVisibleTo(msg, characterId)) {
       characterIdArray.push(msg.character.id);
-      textContentArray.push(sanitizeToolSyntax(msg.textContent, (msg as ChatMessage).toolExecutionResults, true));
+      const isSelf = msg.character.id === characterId;
+      let text = msg.textContent;
+      if (!isSelf) {
+        text = sanitizeThinkingSyntax(text);
+      }
+      textContentArray.push(sanitizeToolSyntax(text, (msg as ChatMessage).toolExecutionResults, true));
     }
   }
   const currentLocationId = getCurrentLocationId(interactionData, character);
@@ -1412,13 +1423,12 @@ function getParticipantsForScopeAndInsertion(
     const coLocatedIds = new Set(ctx.coLocatedParticipants.map(p => p.id));
     coLocatedIds.add(ctx.characterId);
     candidates = ctx.participants.filter(p => coLocatedIds.has(p.id));
-  } else { // 'all'
+  } else {
     candidates = ctx.participants;
   }
   
   if (insertion === 'static') return candidates;
   
-  // insertion === 'dynamic'
   const currentLocationId = ctx.currentLocationId;
   if (!currentLocationId) return ctx.participants.filter(p => p.id === ctx.characterId);
 
@@ -1440,10 +1450,6 @@ function getParticipantsForScopeAndInsertion(
   });
 }
 
-/**
- * Used strictly for Character Tags and Appearance Prompts.
- * Respects the knownNames map (what the POV character knows).
- */
 function getDisplayName(
   participant: Character, 
   ctx: PromptBuildContext, 
@@ -1533,9 +1539,7 @@ function buildAppearanceText(
     if (!appearancePrompt) continue;
     
     const displayName = getDisplayName(participant, ctx, limit);
-    
     const finalAppearancePrompt = resolveInnerText(appearancePrompt, ctx, ctx.delimiters);
-    
     const roleStr = displayName;
     const appearanceText = `${ctx.delimiters.blockStart(roleStr)}${finalAppearancePrompt}${ctx.delimiters.blockEnd}`;
     lines.push(appearanceText);
@@ -1677,7 +1681,12 @@ async function buildMemoryPromptText(ctx: PromptBuildContext): Promise<string> {
   const socialHistoryText = ctx.localHistory
     .filter(m => isTextMessage(m) && coLocatedIds.has(m.character.id))
     .map(m => {
-        const cleanText = sanitizeToolSyntax((m as TextMessage).textContent, (m as ChatMessage).toolExecutionResults, true);
+        const isSelf = m.character.id === ctx.characterId;
+        let text = (m as TextMessage).textContent;
+        if (!isSelf) {
+          text = sanitizeThinkingSyntax(text);
+        }
+        const cleanText = sanitizeToolSyntax(text, (m as ChatMessage).toolExecutionResults, true);
         return `[${m.character.name}]: ${cleanText}`;
     })
     .join('\n');
@@ -1714,7 +1723,14 @@ async function buildStarterPromptText(ctx: PromptBuildContext): Promise<string> 
     const preArrivalHistory = getLatestLocalLocationMessageHistory(ctx.interactionData, ['chat', 'whisper']);
     if (preArrivalHistory.length > 0) {
       const historyText = preArrivalHistory
-        .map(m => `[${m.character.name}]: ${sanitizeToolSyntax((m as TextMessage).textContent, (m as ChatMessage).toolExecutionResults, true)}`)
+        .map(m => {
+          const isSelf = m.character.id === ctx.characterId;
+          let text = (m as TextMessage).textContent;
+          if (!isSelf) {
+            text = sanitizeThinkingSyntax(text);
+          }
+          return `[${m.character.name}]: ${sanitizeToolSyntax(text, (m as ChatMessage).toolExecutionResults, true)}`;
+        })
         .join('\n');
       const queryVector = await embeddingEngine.embed(historyText);
       if (queryVector) {
@@ -2130,6 +2146,8 @@ export async function createChatHistoryArray(
     let historyText = p.text;
     const isSelf = p.msg.character.id === ctx.characterId;
     if (!isSelf) {
+      // 🛠️ HIDE THINKING AND TOOLS FROM OTHER CHARACTERS
+      historyText = sanitizeThinkingSyntax(historyText);
       historyText = sanitizeToolSyntax(
         historyText,
         (p.msg as ChatMessage).toolExecutionResults,
@@ -2798,6 +2816,7 @@ export async function buildPrompt(
         const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
         let content = selectModelSummary(msg, modelId);
         if (msg.character.id !== ctx.characterId) {
+          content = sanitizeThinkingSyntax(content);
           content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
         }
         content = resolveInnerText(content, ctx, ctx.delimiters);
@@ -2828,6 +2847,7 @@ export async function buildPrompt(
         const role = protagonistIdSet.has(msg.character.id) ? 'user' : 'assistant';
         let content = selectModelSummary(msg, modelId);
         if (msg.character.id !== ctx.characterId) {
+          content = sanitizeThinkingSyntax(content);
           content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
         }
         content = resolveInnerText(content, ctx, ctx.delimiters);
