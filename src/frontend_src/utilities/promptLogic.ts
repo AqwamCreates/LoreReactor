@@ -57,7 +57,7 @@ import { resolveEffectiveStopTokens } from './chatSessionLogic';
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. ";
 const beingIgnoredInstructions = "Anytime a character ignore me talking, there would be an awkward atmosphere. ";
 const noHallucinationInstructions = "I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters' external dialogues and actions if I am predicting them. ";
-const noEmptyResponseInstructions = "I will also always create a response instead of giving empty ones. ";
+const noEmptyResponseInstruction = "I will also always create a response instead of giving empty ones. ";
 const mistakeCorrectionInstructions = "If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts. ";
 const languageInstructions = "I will respond exclusively in the language established by the prompts or prior conversation turns. ";
 const literaryDeviceInstructions = "I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus. ";
@@ -74,8 +74,7 @@ const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 const RECENT_INTERACTION_WINDOW = 20;
 
 // 1=key, 2=slice start, 3=slice end, 4=#, 5=!, 6=%scope, 7=^ or *, 8=?limit
-// Added + and - to the %scope capture group to support %+ and %-
-const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'@\-]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?}}/g;
+const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'@\-+]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?}}/g;
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -141,7 +140,7 @@ const GLOBAL_STRINGS: Record<string, string> = {
   topicExpansionInstructions,
   beingIgnoredInstructions,
   noHallucinationInstructions,
-  noEmptyResponseInstructions,
+  noEmptyResponseInstruction,
   mistakeCorrectionInstructions,
   languageInstructions,
   literaryDeviceInstructions,
@@ -269,10 +268,10 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   'Chat History': "{{systemBlockStart}}Start Of The Memory.{{systemBlockEnd}}\n{{chatHistory}}\n{{systemBlockStart}}End Of The Memory.{{systemBlockEnd}} ",
   'Appearance Prompt': "{{systemBlockStart}}Start Of The Characters' Appearances List.{{systemBlockEnd}}\n{{appearancePrompt}}\n{{systemBlockStart}}End Of The Characters' Appearances List.{{systemBlockEnd}} ",
   'Context': "{{systemBlockStart}}Start Of The Context.{{systemBlockEnd}}\n{{context}}\n{{systemBlockStart}}End Of The Context.{{systemBlockEnd}} ",
-  'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{currentLocation}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}} ",
-  'Current Location With Description': "{{systemBlockStart}}Start Of Current Location With Description.{{systemBlockEnd}}\n{{currentLocationWithDescription}}\n{{systemBlockStart}}End Of Current Location With Description.{{systemBlockEnd}} ",
-  'Reachable Locations': "{{systemBlockStart}}Reachable Locations:\n{{reachableLocations}}{{systemBlockEnd}} ",
-  'Reachable Locations With Descriptions': "{{systemBlockStart}}Reachable Locations With Descriptions:\n{{reachableLocationsWithDescriptions}}{{systemBlockEnd}} ",
+  'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{location}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}} ",
+  'Current Location With Description': "{{systemBlockStart}}Start Of Current Location With Description.{{systemBlockEnd}}\n{{locationWithDescription}}\n{{systemBlockStart}}End Of Current Location With Description.{{systemBlockEnd}} ",
+  'Reachable Locations': "{{systemBlockStart}}Reachable Locations:\n{{locations-}}{{systemBlockEnd}} ",
+  'Reachable Locations With Descriptions': "{{systemBlockStart}}Reachable Locations With Descriptions:\n{{locationsWithDescriptions-}}{{systemBlockEnd}} ",
   'Sky View': "{{systemBlockStart}}{{skyView}}{{systemBlockEnd}} ",
   'Weather': "{{systemBlockStart}}{{weather}}{{systemBlockEnd}} ",
   'Inventory': "{{systemBlockStart}}{{inventory}}{{systemBlockEnd}} ",
@@ -287,6 +286,47 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   'Starter Prompt': "{{systemBlockStart}}Start Of This Character's Starter Prompt.{{systemBlockEnd}}\n{{starterPrompt}}\n{{systemBlockStart}}End Of This Character's Starter Prompt.{{systemBlockEnd}} ",
   'Text Injection': "{{systemBlockStart}}{{textInjection}}{{systemBlockEnd}}\n{{characterTurnStart}}{{text}} "
 };
+
+function buildLocationsArray(
+  ctx: PromptBuildContext,
+  delimiters: PromptDelimiters,
+  scope: 'reachable' | 'all',
+  insertion: 'dynamic' | 'static' | undefined,
+  withDescriptions: boolean
+): string[] {
+  let locs = ctx.interactionData.locations || [];
+  
+  if (scope === 'reachable') {
+    const reachableIds = new Set(getReachableLocationsByCharacter(ctx.interactionData, ctx.character).map(l => l.id));
+    locs = locs.filter(l => reachableIds.has(l.id));
+  }
+  
+  if (insertion === 'dynamic') {
+    const visitedLocIds = new Set(
+      Object.entries(ctx.interactionData.interactionHistories || {})
+        .filter(([_, msgs]) => msgs.length > 0)
+        .map(([id, _]) => id)
+    );
+    locs = locs.filter(l => visitedLocIds.has(l.id));
+  }
+  
+  const result: string[] = [];
+  for (const loc of locs) {
+    const locName = resolveInnerText(loc.name || 'Unknown Location', ctx, delimiters);
+    if (withDescriptions) {
+      let desc = `- **${locName}**`;
+      if (loc.text) {
+        const replacedText = resolveInnerText(loc.text, ctx, delimiters);
+        const indentedText = replacedText.split('\n').map(line => `${line}`).join('\n');
+        desc += `\n${indentedText}`;
+      }
+      result.push(desc);
+    } else {
+      result.push(`- ${locName}`);
+    }
+  }
+  return result;
+}
 
 export function resolveTemplate(
   template: string,
@@ -314,15 +354,24 @@ export function resolveTemplate(
       };
 
       // 1. Parse suffix scope operators (- and +)
-      let rawKey = key;
+      let locationScope: 'reachable' | 'all' | undefined = undefined;
       let suffixScope: participantScopeMode | undefined = undefined;
+      let rawKey = key;
 
       if (rawKey.endsWith('-')) {
-          suffixScope = 'coLocated';
           rawKey = rawKey.slice(0, -1);
+          if (rawKey.startsWith('locations')) {
+              locationScope = 'reachable';
+          } else {
+              suffixScope = 'coLocated';
+          }
       } else if (rawKey.endsWith('+')) {
-          suffixScope = 'all';
           rawKey = rawKey.slice(0, -1);
+          if (rawKey.startsWith('locations')) {
+              locationScope = 'all';
+          } else {
+              suffixScope = 'all';
+          }
       }
 
       // 2. Parse possessive
@@ -357,25 +406,40 @@ export function resolveTemplate(
 
       const pCtx = ctx.promptBuildContext;
 
-      // Unified Identity Resolution with Scope Awareness
-      if (pCtx && (cleanKey === 'character' || cleanKey === 'protagonist' || cleanKey === 'protagonists' || cleanKey === 'characters')) {
+      // Unified Identity & Location Resolution with Scope & Insertion Awareness
+      if (pCtx && (
+        cleanKey === 'character' || cleanKey === 'protagonist' || cleanKey === 'protagonists' || 
+        cleanKey === 'characters' || cleanKey === 'locations' || cleanKey === 'locationsWithDescriptions'
+      )) {
           let targetParticipants: Character[] = [];
+          let targetLocations: string[] = [];
           
-          if (cleanKey === 'character') {
-              targetParticipants = [pCtx.character];
-          } else if (cleanKey === 'protagonist' || cleanKey === 'protagonists') {
-              const allProtagonists = pCtx.participants.filter(p => pCtx.protagonistIds.has(p.id));
-              if (effectiveScope === 'coLocated' || effectiveScope === 'current') {
-                  targetParticipants = allProtagonists.filter(p => pCtx.coLocatedProtagonists.some(cp => cp.id === p.id));
-              } else {
-                  targetParticipants = allProtagonists;
+          const isLocationKey = cleanKey === 'locations' || cleanKey === 'locationsWithDescriptions';
+          
+          if (!isLocationKey) {
+              if (cleanKey === 'character') {
+                  targetParticipants = [pCtx.character];
+              } else if (cleanKey === 'protagonist' || cleanKey === 'protagonists') {
+                  const scopedParticipants = getParticipantsForScopeAndInsertion(pCtx, effectiveScope ?? 'all', insertionOverride ?? 'dynamic');
+                  targetParticipants = scopedParticipants.filter(p => pCtx.protagonistIds.has(p.id));
+              } else if (cleanKey === 'characters') {
+                  targetParticipants = getParticipantsForScopeAndInsertion(pCtx, effectiveScope ?? 'all', insertionOverride ?? 'dynamic');
               }
-          } else if (cleanKey === 'characters') {
-              targetParticipants = getParticipantsForScopeAndInsertion(pCtx, effectiveScope ?? 'all', insertionOverride ?? 'dynamic');
+          } else {
+              const withDescriptions = cleanKey.includes('Descriptions');
+              let scope: 'reachable' | 'all' = locationScope ?? 'all';
+              targetLocations = buildLocationsArray(pCtx, delimiters, scope, insertionOverride, withDescriptions);
           }
 
           const getResolvedName = (p: Character) => getDisplayName(p, pCtx, limitOverride);
           const getResolvedPossessive = (p: Character) => getIdentityPossessiveName(p, pCtx, limitOverride);
+
+          if (isLocationKey) {
+              if (isPossessive) {
+                  return asLengthOrValue(targetLocations.map(l => `${l}'s`));
+              }
+              return asLengthOrValue(targetLocations);
+          }
 
           if (cleanKey === 'character' || cleanKey === 'protagonist') {
               const p = targetParticipants[0];
@@ -417,6 +481,10 @@ export function resolveTemplate(
           return asLengthOrValue(buildThinkPromptText(pCtx!, effectiveScopeThink, effectiveInsertionThink));
         }
       }
+
+      // EXPLICIT TAG-TO-PROPERTY MAPPING FOR NEW LOCATION TAGS
+      if (key === 'location') return asLengthOrValue(ctx.currentLocation);
+      if (key === 'locationWithDescription') return asLengthOrValue(ctx.currentLocationWithDescription);
 
       if (key === 'tools') {
         return formatToolsPlaceholder(
@@ -1396,20 +1464,8 @@ function buildCharacterTagsText(
 }
 
 function buildReachableLocationsText(ctx: PromptBuildContext): { names: string[]; withDescriptions: string[] } {
-  const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
-  const names: string[] = [];
-  const withDescriptions: string[] = [];
-  for (const loc of reachable) {
-    const locName = resolveInnerText(loc.name || 'Unknown Location', ctx, ctx.delimiters);
-    names.push(`- ${locName}`);
-    let desc = `- **${locName}**`;
-    if (loc.text) {
-      const replacedText = resolveInnerText(loc.text, ctx, ctx.delimiters);
-      const indentedText = replacedText.split('\n').map(line => `${line}`).join('\n');
-      desc += `\n${indentedText}`;
-    }
-    withDescriptions.push(desc);
-  }
+  const names = buildLocationsArray(ctx, ctx.delimiters, 'reachable', undefined, false);
+  const withDescriptions = buildLocationsArray(ctx, ctx.delimiters, 'reachable', undefined, true);
   return { names, withDescriptions };
 }
 
@@ -1489,7 +1545,7 @@ function buildThinkPromptText(
 
 function buildMetaThinkText(ctx: PromptBuildContext): string {
   const characterInstructions = `I will respond exclusively as ${ctx.characterParticipantTag}, expressing only this character's perspective, actions, and speech. I will also match the vocabulary, grammar, formality and verbosity for the spoken dialogue that ${ctx.characterParticipantTag} is likely to use.`;
-  return `${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstructions} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions}`;
+  return `${topicExpansionInstructions} ${beingIgnoredInstructions} ${noHallucinationInstructions} ${noEmptyResponseInstruction} ${mistakeCorrectionInstructions} ${characterInstructions} ${languageInstructions} ${literaryDeviceInstructions}`;
 }
 
 async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string> {

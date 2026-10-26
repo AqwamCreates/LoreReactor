@@ -16,7 +16,22 @@ const MOCK_DATA: Record<string, string[] | string> = {
     tools: Object.keys(defaultCharacterTools),
     characterTags: ['Character 1 (Alice)', 'Character 2 (Bob)', 'Character 3 (Charlie)', 'Character 4 (Dave)'],
     chatHistory: ['User: Hello.', 'Alice: Hi there!', 'User: How are you?', 'Alice: I am good.', 'Bob: Hey guys.'],
-    reachableLocations: ['Town Square', 'Dark Forest', 'Abandoned Castle'],
+    
+    // Unified Location Arrays (Use - for reachable, + for all)
+    locations: ['Town Square', 'Dark Forest', 'Abandoned Castle', 'Tavern', 'King\'s Castle'],
+    locationsWithDescriptions: [
+        '- **Town Square**: The bustling center of the city.',
+        '- **Dark Forest**: A creepy woods.',
+        '- **Abandoned Castle**: Ruins.',
+        '- **Tavern**: A cozy pub.',
+        '- **King\'s Castle**: The royal residence.'
+    ],
+    "locations'": ["Town Square's", "Dark Forest's", "Abandoned Castle's", "Tavern's", "King's Castle's"],
+
+    // Singular Location Tags
+    location: 'Town Square',
+    locationWithDescription: '- **Town Square**: The bustling center of the city.\nYou are standing in the middle of the plaza.',
+
     character: 'Character 1 (Alice)',
     protagonist: 'User',
     protagonists: ['User', 'Player 2'],
@@ -25,7 +40,6 @@ const MOCK_DATA: Record<string, string[] | string> = {
     "characters'": ["Character 1 (Alice)'s", "Character 2 (Bob)'s", "Character 3 (Charlie)'s", "Character 4 (Dave)'s"],
     'character@uuid-alice': 'Character 1 (Alice)',
     'character@uuid-bob': 'Character 2 (Bob)',
-    currentLocation: 'Town Square',
     weather: 'Raining heavily with thunderstorms.',
     date: "Today's date is October 26, 2026.",
     time: 'The current time is 14:35.',
@@ -61,30 +75,62 @@ const MOCK_DATA: Record<string, string[] | string> = {
     noHallucinationInstructions: 'I will also use existent information instead of creating non-existent information...',
 };
 
-// Updated to capture suffix scopes (-/+) on keys and %scope overrides
+// Captures suffix scopes (-/+), possessives ('), UUIDs (@), and all standard operators
 const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'\-@+]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?}}/g;
 
 function evaluateMockTemplate(raw: string): string {
     if (!raw) return '';
     return raw.replace(TEMPLATE_REGEX, (_match, key, startStr, endStr, hashStr, excludeStr, scopeStr, insertionStr, limitStr) => {
-        let cleanKey = key;
+        let rawKey = key;
         let suffixNote = '';
-        
-        // Parse suffix scopes
-        if (cleanKey.endsWith('-')) {
-            suffixNote = ' [Scope: Co-Located]';
-            cleanKey = cleanKey.slice(0, -1);
-        } else if (cleanKey.endsWith('+')) {
-            suffixNote = ' [Scope: All]';
-            cleanKey = cleanKey.slice(0, -1);
+        let locationScope: 'reachable' | 'all' | undefined = undefined;
+
+        // 1. Parse suffix scopes (- and +) strictly before possessives to mirror backend logic
+        if (rawKey.endsWith('-')) {
+            rawKey = rawKey.slice(0, -1);
+            if (rawKey.startsWith('locations')) {
+                locationScope = 'reachable';
+                suffixNote = ' [Scope: Reachable]';
+            } else {
+                suffixNote = ' [Scope: Co-Located]';
+            }
+        } else if (rawKey.endsWith('+')) {
+            rawKey = rawKey.slice(0, -1);
+            if (rawKey.startsWith('locations')) {
+                locationScope = 'all';
+                suffixNote = ' [Scope: All Session]';
+            } else {
+                suffixNote = ' [Scope: All]';
+            }
         }
 
-        const data = MOCK_DATA[cleanKey];
+        // 2. Parse possessive
+        const isPossessive = rawKey.endsWith("'") || rawKey.endsWith("'s");
+        const cleanKey = isPossessive ? rawKey.replace(/'s?$/, '') : rawKey;
+
+        // Map location scopes to the correct MOCK_DATA keys
+        let mockDataKey = cleanKey;
+        if (locationScope === 'reachable' && cleanKey.startsWith('locations')) {
+            // In a real backend, this queries the reachable graph. 
+            // For the mock, we just slice the first 3 items to simulate "reachable" vs "all".
+            mockDataKey = cleanKey; 
+        }
+        
+        // Handle possessive mapping for MOCK_DATA
+        if (isPossessive && !mockDataKey.endsWith("'")) {
+            mockDataKey = mockDataKey + "'";
+        }
+
+        const data = MOCK_DATA[mockDataKey];
         if (data === undefined) return _match; 
 
         const limitOverride = limitStr !== undefined ? parseInt(limitStr, 10) : undefined;
         const isArray = Array.isArray(data);
-        const len = isArray ? data.length : (data as string).length;
+        
+        // Simulate "reachable" by artificially limiting the array length in the mock
+        const effectiveData = (locationScope === 'reachable' && isArray) ? (data as string[]).slice(0, 3) : data;
+        const len = isArray ? (effectiveData as string[]).length : (effectiveData as string).length;
+        
         const wantLength = hashStr === '#';
         const wantExclude = excludeStr === '!';
         
@@ -100,7 +146,7 @@ function evaluateMockTemplate(raw: string): string {
         if (wantLength) return String(len) + suffixNote;
 
         if (isArray) {
-            const arr = data as string[];
+            const arr = effectiveData as string[];
             let slice: string[];
             if (start > end) {
                 slice = wantExclude 
@@ -118,7 +164,7 @@ function evaluateMockTemplate(raw: string): string {
             }
             return slice.join(', ') + suffixNote;
         } else {
-            const str = data as string;
+            const str = effectiveData as string;
             let slice: string;
             if (start > end) {
                 slice = wantExclude
@@ -162,10 +208,10 @@ const DIRECTORY_ITEMS = [
     { key: 'appearancePrompt', desc: 'Compiled appearance prompts and visible clothing for scoped participants.', cat: 'Prompts' },
 
     // Environment
-    { key: 'currentLocation', desc: 'Basic info and name of the current location.', cat: 'Environment' },
-    { key: 'currentLocationWithDescription', desc: 'Location name and full descriptive text.', cat: 'Environment' },
-    { key: 'reachableLocations', desc: 'List of adjacent locations.', cat: 'Environment' },
-    { key: 'reachableLocationsWithDescriptions', desc: 'List of adjacent locations with their descriptions.', cat: 'Environment' },
+    { key: 'location', desc: 'Basic info and name of the current location.', cat: 'Environment' },
+    { key: 'locationWithDescription', desc: 'Location name and full descriptive text.', cat: 'Environment' },
+    { key: 'locations', desc: 'Array of all locations in the session. Use - for reachable, + for all. Supports slicing and possessives.', cat: 'Environment' },
+    { key: 'locationsWithDescriptions', desc: 'Array of all locations with descriptions. Use - for reachable, + for all.', cat: 'Environment' },
     { key: 'weather', desc: 'Current weather conditions (requires API key).', cat: 'Environment' },
     { key: 'skyView', desc: 'Celestial and sky conditions based on time/coordinates.', cat: 'Environment' },
     { key: 'date', desc: 'Current in-world or real-world date.', cat: 'Environment' },
@@ -208,7 +254,7 @@ const DIRECTORY_ITEMS = [
     { key: 'topicExpansionInstructions', desc: 'Instruction to naturally introduce fresh topics if conversation stagnates.', cat: 'Global Instructions' },
     { key: 'beingIgnoredInstructions', desc: 'Instruction regarding awkward atmospheres when ignored.', cat: 'Global Instructions' },
     { key: 'noHallucinationInstructions', desc: 'Instruction to use existent information and avoid hallucinations.', cat: 'Global Instructions' },
-    { key: 'noEmptyResponseInstructions', desc: 'Instruction to always create a response instead of empty ones.', cat: 'Global Instructions' },
+    { key: 'noEmptyResponseInstruction', desc: 'Instruction to always create a response instead of empty ones.', cat: 'Global Instructions' },
     { key: 'mistakeCorrectionInstructions', desc: 'Instruction to fix deviations from prompts by creating new text.', cat: 'Global Instructions' },
     { key: 'languageInstructions', desc: 'Instruction to respond exclusively in the established language.', cat: 'Global Instructions' },
     { key: 'literaryDeviceInstructions', desc: 'List of allowed literary devices (Simile, Metaphor, etc.).', cat: 'Global Instructions' },
@@ -227,7 +273,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
     const [activeTab, setActiveTab] = useState<GuideTabId>('basics');
     
     // Playground State
-    const [playgroundInput, setPlaygroundInput] = useState('I am {{character}}. Present are {{characters-[0:2]}}. My tools: {{tools[0:3]}}. Location: {{currentLocation}}.');
+    const [playgroundInput, setPlaygroundInput] = useState('I am {{character}} at {{location}}. Present are {{characters-[0:2]}}. I can travel to {{locations-}}. My tools: {{tools[0:3]}}.');
     const [searchQuery, setSearchQuery] = useState('');
 
     const playgroundOutput = useMemo(() => {
@@ -336,7 +382,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                         <div className="editor-section">
                             <span className="editor-section-title">Array & String Manipulation</span>
                             <p style={{ fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '16px' }}>
-                                Many variables (like <code>tools</code>, <code>chatHistory</code>, <code>characters</code>) are arrays. You can slice, count, and exclude elements using operators inside the brackets.
+                                Many variables (like <code>tools</code>, <code>chatHistory</code>, <code>characters</code>, <code>locations</code>) are arrays. You can slice, count, and exclude elements using operators inside the brackets.
                             </p>
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Slicing <code>[start:end]</code></span>
@@ -387,6 +433,18 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                 '{{characters+}}',
                                 evaluateMockTemplate('{{characters+}}'),
                                 'The + suffix forces the array to include all participants in the session, regardless of location.'
+                            )}
+                            
+                            <span className="editor-section-title" style={{ marginTop: '20px' }}>Location Scopes <code>-</code> / <code>+</code></span>
+                            {renderComparison(
+                                '{{locations-}}',
+                                evaluateMockTemplate('{{locations-}}'),
+                                'The - suffix restricts the array to strictly reachable locations.'
+                            )}
+                            {renderComparison(
+                                '{{locations+}}',
+                                evaluateMockTemplate('{{locations+}}'),
+                                'The + suffix forces the array to include all locations in the entire session/world.'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Name Variant Indexing <code>?N</code></span>
@@ -461,7 +519,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     className="editor-textarea" 
                                     value={playgroundInput}
                                     onChange={e => setPlaygroundInput(e.target.value)}
-                                    placeholder={`e.g., I am {{character}}. Present are {{characters-[0:2]}}.`}
+                                    placeholder={`e.g., I am {{character}} at {{location}}. I can go to {{locations-}}.`}
                                     style={{ fontFamily: 'monospace', minHeight: '80px' }}
                                 />
                             </div>
