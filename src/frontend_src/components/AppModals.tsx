@@ -2,7 +2,7 @@
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import type {
     Character, Context, Location, Sampler, StopPattern, RetrievalConfiguration,
-    LanguageModel, BudgetStrategy, Profile, Extension,
+    LanguageModel, SpatiotemporalModel, BudgetStrategy, Profile, Extension,
     InteractionData, World, AudioTrack, PromptBlock,
     RawInteractionData, Memory, MultiplayerData, Account,
     EntityFolder,
@@ -22,7 +22,8 @@ import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useChatStore } from '../hooks/useChatStore';
 
 import { CharacterEditorModal } from './CharacterEditorModal';
-import { ModelEditorModal } from './ModelEditorModal';
+import { LanguageModelEditorModal } from './LanguageModelEditorModal';
+import { SpatiotemporalLanguageModelEditorModal } from './SpatiotemporalLanguageModelEditorModal';
 import { SamplerEditorModal } from './SamplerEditorModal';
 import { PromptBlockEditorModal } from './PromptBlockEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
@@ -72,6 +73,7 @@ interface ApplicationModalsProperties {
         getModalProperties: (entityType: entityType) => EntityModalController;
     };
     runningLanguageModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
+    runningSpatiotemporalModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     allRawInteractionDataShells: RawInteractionData[];
     allCharacters: Character[];
     allContexts: Context[];
@@ -79,6 +81,7 @@ interface ApplicationModalsProperties {
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
     allLanguageModels: LanguageModel[];
+    allSpatiotemporalModels: SpatiotemporalModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
@@ -116,6 +119,8 @@ interface ApplicationModalsProperties {
     onDeletePromptBlock: (identifier: string) => void;
     onDeleteModel: (identifier: string) => void;
     onToggleModelLoad: (identifier: string) => void;
+    onDeleteSpatiotemporalModel: (identifier: string) => void;
+    onToggleSpatiotemporalModelLoad: (identifier: string) => void;
     onDeleteSampler: (identifier: string) => void;
     onDeleteStopPattern: (identifier: string) => void;
     onDeleteRetrievalConfiguration: (identifier: string) => void;
@@ -177,6 +182,7 @@ export function AppModals({
     modals,
     entityModals,
     runningLanguageModels,
+    runningSpatiotemporalModels,
     allRawInteractionDataShells,
     allCharacters,
     allContexts,
@@ -186,6 +192,7 @@ export function AppModals({
     allStopPatterns,
     allRetrievalConfigurations,
     allLanguageModels,
+    allSpatiotemporalModels,
     allBudgetStrategies,
     allProfiles,
     allExtensions,
@@ -219,6 +226,8 @@ export function AppModals({
     onDeletePromptBlock,
     onDeleteModel,
     onToggleModelLoad,
+    onDeleteSpatiotemporalModel,
+    onToggleSpatiotemporalModelLoad,
     onDeleteSampler,
     onDeleteStopPattern,
     onDeleteRetrievalConfiguration,
@@ -252,6 +261,7 @@ export function AppModals({
     const interactionData = useChatStore(state => state.interactionData);
     const activeStrategy = useChatStore(state => state.activeStrategy);
     const selectedModelId = useChatStore(state => state.selectedLanguageModel?.id ?? null);
+    const selectedSpatiotemporalModelId = useChatStore(state => state.selectedSpatiotemporalModel?.id ?? null);
     const selectedBudgetStrategyId = useChatStore(state => state.activeStrategy?.id ?? null);
     const currentAccountId = useChatStore(state => state.currentAccountId);
     const multiplayerData = useChatStore(state => state.multiplayerData);
@@ -262,6 +272,7 @@ export function AppModals({
     const audioTrackModalProperties = entityModals.getModalProperties('audioTrack');
     const worldModalProperties = entityModals.getModalProperties('world');
     const languageModelModalProperties = entityModals.getModalProperties('languageModel');
+    const spatiotemporalModelModalProperties = entityModals.getModalProperties('spatiotemporalModel');
     const samplerModalProperties = entityModals.getModalProperties('sampler');
     const promptBlockModalProperties = entityModals.getModalProperties('promptBlock');
     const stopPatternModalProperties = entityModals.getModalProperties('stopPattern');
@@ -756,6 +767,39 @@ export function AppModals({
                 />
             )}
 
+            {modals.spatiotemporalModelList.isOpen && (
+                <ManagerModal 
+                    title="Spatiotemporal Models" 
+                    entityType={'spatiotemporalModel' as entityType}
+                    localLibraryItems={allSpatiotemporalModels} 
+                    onClose={modals.spatiotemporalModelList.close}
+                    onSelect={(model: SpatiotemporalModel) => spatiotemporalModelModalProperties.open(model)} 
+                    onDelete={onDeleteSpatiotemporalModel} 
+                    onCreateNew={() => spatiotemporalModelModalProperties.open()}
+                    renderSubtext={(model: SpatiotemporalModel) => renderModelSubtext(model, runningSpatiotemporalModels, selectedSpatiotemporalModelId)}
+                    emptyMessage="No models available." 
+                    actionLabel="Delete" 
+                    orderedListMode={false}
+                    selectedId={selectedSpatiotemporalModelId || undefined} 
+                    onSelectItem={(model: SpatiotemporalModel) => onToggleSpatiotemporalModelLoad(model.id)}
+                    specialActionTooltip={(model: SpatiotemporalModel) => {
+                        const modelStatus = runningSpatiotemporalModels[model.id];
+                        const isCloud = !!model.apiKey && !!model.backend && cloudBackends.includes(model.backend as cloudBackend);
+                        if (isCloud && selectedSpatiotemporalModelId === model.id) return '☁️ Cloud Model — Click to Deselect';
+                        if (isCloud) return '☁️ Cloud Model — Click to Select';
+                        if (modelStatus?.isRunning && modelStatus?.isIdle && selectedSpatiotemporalModelId === model.id) return '⏹ Stop & Deselect';
+                        if (modelStatus?.isRunning && modelStatus?.isIdle) return '⏹ Stop Model';
+                        if (modelStatus?.isRunning && !modelStatus?.isIdle) return '⏳ Loading...';
+                        if (selectedSpatiotemporalModelId === model.id) return '✓ Already Selected — Click to Load';
+                        return '▶ Load & Select Model';
+                    }} 
+                    allEntityFolders={allEntityFolders}
+                    onSaveEntityFolder={onSaveEntityFolder}
+                    onDeleteEntityFolder={onDeleteEntityFolder}
+                    addToast={addToast}
+                />
+            )}
+
             {modals.samplerList.isOpen && (
                 <ManagerModal 
                     title="Samplers" 
@@ -962,8 +1006,10 @@ export function AppModals({
                     onOpenProfileEditor={(profile, onApplyToRecommendation) => { setAiProfileSaveRedirect(() => onApplyToRecommendation); profileModalProperties.open(profile ?? undefined); }}
                     allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
                     allAudioTracks={allAudioTracks} allPromptBlocks={allPromptBlocks} allEntityFolders={allEntityFolders}
-                    allLanguageModels={allLanguageModels} // ✅ PASS ALL LANGUAGE MODELS
+                    allLanguageModels={allLanguageModels}
+                    allSpatiotemporalModels={allSpatiotemporalModels}
                     runningLanguageModels={runningLanguageModels}
+                    runningSpatiotemporalModels={runningSpatiotemporalModels}
                 />
             )}
 
@@ -971,8 +1017,11 @@ export function AppModals({
                 <RestrictionReductionModal 
                     onClose={modals.restrictionReduction.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
-                    allCharacters={allCharacters} allProfiles={allProfiles} allLanguageModels={allLanguageModels} allSamplers={allSamplers}
+                    allCharacters={allCharacters} allProfiles={allProfiles} 
+                    allLanguageModels={allLanguageModels} allSpatiotemporalModels={allSpatiotemporalModels} 
+                    allSamplers={allSamplers}
                     runningLanguageModels={runningLanguageModels} 
+                    runningSpatiotemporalModels={runningSpatiotemporalModels}
                 />
             )}
 
@@ -1009,7 +1058,7 @@ export function AppModals({
                 <DataExportModal
                     onClose={modals.exportData.close}
                     allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
-                    allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
+                    allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSpatiotemporalModels={allSpatiotemporalModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} allRetrievalConfigurations={allRetrievalConfigurations} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
                     allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
@@ -1026,6 +1075,7 @@ export function AppModals({
                     allAudioTracks={allAudioTracks}
                     allWorlds={allWorlds} 
                     allLanguageModels={allLanguageModels} 
+                    allSpatiotemporalModels={allSpatiotemporalModels}
                     allSamplers={allSamplers} 
                     allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} 
@@ -1043,6 +1093,7 @@ export function AppModals({
                     onDeleteAudioTrack={onDeleteAudioTrack} 
                     onDeleteWorld={onDeleteWorld} 
                     onDeleteModel={onDeleteModel}
+                    onDeleteSpatiotemporalModel={onDeleteSpatiotemporalModel}
                     onDeleteSampler={onDeleteSampler} 
                     onDeletePromptBlock={onDeletePromptBlock} 
                     onDeleteStopPattern={onDeleteStopPattern}
@@ -1068,6 +1119,7 @@ export function AppModals({
                     allWorlds={allWorlds}
                     allPromptBlocks={allPromptBlocks}
                     allLanguageModels={allLanguageModels}
+                    allSpatiotemporalModels={allSpatiotemporalModels}
                     allSamplers={allSamplers}
                     allStopPatterns={allStopPatterns}
                     allRetrievalConfigurations={allRetrievalConfigurations}
@@ -1088,6 +1140,7 @@ export function AppModals({
                             case 'world': worldModalProperties.open(entity, isReadOnly); break;
                             case 'promptBlock': promptBlockModalProperties.open(entity, isReadOnly); break;
                             case 'languageModel': languageModelModalProperties.open(entity, isReadOnly); break;
+                            case 'spatiotemporalModel': spatiotemporalModelModalProperties.open(entity, isReadOnly); break;
                             case 'sampler': samplerModalProperties.open(entity, isReadOnly); break;
                             case 'stopPattern': stopPatternModalProperties.open(entity, isReadOnly); break;
                             case 'retrievalConfiguration': retrievalConfigurationModalProperties.open(entity, isReadOnly); break;
@@ -1241,10 +1294,19 @@ export function AppModals({
             )}
 
             {languageModelModalProperties.isOpen && (
-                <ModelEditorModal 
+                <LanguageModelEditorModal 
                     onClose={languageModelModalProperties.close} 
                     onSave={languageModelModalProperties.save}
                     existingModel={languageModelModalProperties.item} 
+                    allStopPatterns={allStopPatterns} 
+                />
+            )}
+
+            {spatiotemporalModelModalProperties.isOpen && (
+                <SpatiotemporalLanguageModelEditorModal 
+                    onClose={spatiotemporalModelModalProperties.close} 
+                    onSave={spatiotemporalModelModalProperties.save}
+                    existingModel={spatiotemporalModelModalProperties.item} 
                     allStopPatterns={allStopPatterns} 
                 />
             )}
@@ -1328,6 +1390,7 @@ export function AppModals({
                     existingAccount={accountModalProperties.item}
                     allCharacters={allCharacters}
                     allLanguageModels={allLanguageModels}
+                    // allSpatiotemporalModels={allSpatiotemporalModels}
                 />
             )}
 

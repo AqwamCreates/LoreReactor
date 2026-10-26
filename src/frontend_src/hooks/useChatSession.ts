@@ -19,7 +19,7 @@ import { localURL } from '../../configurations';
 import type {
     Character, PromptBlock, Profile, InteractionData, Context, Location, AudioTrack,
     Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, World, Memory, Account,
-    MultiplayerData, EntityFolder, RawInteractionData, HistoryMessage, LanguageModel, InterjectableAction
+    MultiplayerData, EntityFolder, RawInteractionData, HistoryMessage, LanguageModel, SpatiotemporalModel, InterjectableAction
 } from '../types';
 
 interface UseChatSessionOptions {
@@ -33,6 +33,7 @@ interface UseChatSessionOptions {
     allAudioTracks: AudioTrack[];
     allPromptBlocks: PromptBlock[];
     allLanguageModels: LanguageModel[];
+    allSpatiotemporalModels: SpatiotemporalModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
@@ -66,6 +67,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             allAudioTracks: options.allAudioTracks,
             allWorlds: options.allWorlds,
             allLanguageModels: options.allLanguageModels,
+            allSpatiotemporalModels: options.allSpatiotemporalModels,
             allSamplers: options.allSamplers,
             allPromptBlocks: options.allPromptBlocks,
             allStopPatterns: options.allStopPatterns,
@@ -100,8 +102,10 @@ export function useChatSession(options: UseChatSessionOptions) {
     // ─── 3. Background Effects (Budget, Polling, Tokens, FM Unload) ───
     const interactionData = useChatStore(s => s.interactionData);
     const selectedLanguageModel = useChatStore(s => s.selectedLanguageModel);
+    const selectedSpatiotemporalModel = useChatStore(s => s.selectedSpatiotemporalModel);
     const setBudgetData = useChatStore(s => s.setBudgetData);
     const updateRunningLanguageModels = useChatStore(s => s.updateRunningLanguageModels);
+    const updateRunningSpatiotemporalModels = useChatStore(s => s.updateRunningSpatiotemporalModels);
     const setNumberOfTokens = useChatStore(s => s.setNumberOfTokens);
 
     // Budget Data Hydration
@@ -118,7 +122,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         return () => { cancelled = true; };
     }, [setBudgetData]);
 
-    // Model Status Polling
+    // Language Model Status Polling
     useEffect(() => {
         let cancelled = false;
         (async () => {
@@ -135,6 +139,24 @@ export function useChatSession(options: UseChatSessionOptions) {
         })();
         return () => { cancelled = true; };
     }, [updateRunningLanguageModels, addToast]);
+
+    // Spatiotemporal Model Status Polling
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const response = await fetch(`${localURL}/spatiotemporal_models/status`);
+                if (!response.ok || cancelled) return;
+                const data = await response.json();
+                const status: Record<string, { isRunning: boolean; port?: number }> = {};
+                for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
+                if (!cancelled) updateRunningSpatiotemporalModels(status);
+            } catch (e) {
+                if (!cancelled) addToast(`Failed to fetch spatiotemporal models status: ${e}`, 'error');
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [updateRunningSpatiotemporalModels, addToast]);
 
     // Model Context Syncing
     useEffect(() => {
@@ -174,8 +196,10 @@ export function useChatSession(options: UseChatSessionOptions) {
     const localProtagonist = useChatStore(s => s.localProtagonist);
     const activeStrategy = useChatStore(s => s.activeStrategy);
     const runningLanguageModels = useChatStore(s => s.runningLanguageModels);
+    const runningSpatiotemporalModels = useChatStore(s => s.runningSpatiotemporalModels);
     const budgetData = useChatStore(s => s.budgetData);
     const selectedModelId = useChatStore(s => s.selectedModelId);
+    const selectedSpatiotemporalModelId = useChatStore(s => s.selectedSpatiotemporalModelId);
 
     const isLoading = useGenerationStore(s => s.isLoading);
     const currentCharacterExpression = useGenerationStore(s => s.currentCharacterExpression);
@@ -185,6 +209,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const setSelectedCharacter = useChatStore(s => s.setLocalProtagonist);
     const setActiveBudgetStrategy = useChatStore(s => s.setActiveStrategy);
     const setSelectedGlobalModel = useChatStore(s => s.setSelectedLanguageModel);
+    const setSelectedGlobalSpatiotemporalModel = useChatStore(s => s.setSelectedSpatiotemporalModel);
 
     const isAtBottomRef = useRef(true);
     const ui = useChatUI(interactionData, isAtBottomRef, options.allCharacters);
@@ -201,11 +226,13 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     return {
         interactionData, localProtagonist, activeStrategy, selectedLanguageModel, 
-        runningLanguageModels, budgetData, selectedModelId, isLoading, 
+        selectedSpatiotemporalModel, runningLanguageModels, runningSpatiotemporalModels,
+        budgetData, selectedModelId, selectedSpatiotemporalModelId, isLoading, 
         currentCharacterExpression, streamingCharacter,
         
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
-        setSelectedGlobalModel, updateRunningLanguageModels,
+        setSelectedGlobalModel, setSelectedGlobalSpatiotemporalModel,
+        updateRunningLanguageModels, updateRunningSpatiotemporalModels,
         ...ui,
 
         sendMessage: (text: string, files?: File[], frontCameraImageBase64?: string) => chatCoordinator.sendMessage(text, files, frontCameraImageBase64),

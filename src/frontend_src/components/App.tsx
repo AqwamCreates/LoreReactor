@@ -36,6 +36,7 @@ import { useContextManager } from '../hooks/useContextManager';
 import { useLocationManager } from '../hooks/useLocationManager';
 import { useAudioTrackManager } from '../hooks/useAudioTrackManager';
 import { useLanguageModelManager } from '../hooks/useLanguageModelManager';
+import { useSpatiotemporalModelManager } from '../hooks/useSpatiotemporalModelManager';
 import { useSamplerManager } from '../hooks/useSamplerManager';
 import { usePromptBlockManager } from '../hooks/usePromptBlockManager';
 import { useStopPatternManager } from '../hooks/useStopPatternManager';
@@ -121,6 +122,7 @@ function App() {
     const audioTracks = useAudioTrackManager();
     const worlds = useWorldManager();
     const languageModels = useLanguageModelManager();
+    const spatiotemporalModels = useSpatiotemporalModelManager();
     const samplers = useSamplerManager();
     const promptBlocks = usePromptBlockManager();
     const stopPatterns = useStopPatternManager();
@@ -142,6 +144,7 @@ function App() {
         audioTrack: { saveFunction: audioTracks.saveAudioTrack, deleteFunction: audioTracks.deleteAudioTrack, entityLabel: 'Audio Track' },
         world: { saveFunction: worlds.saveWorld, deleteFunction: worlds.deleteWorld, entityLabel: 'World' },
         languageModel: { saveFunction: languageModels.saveLanguageModel, deleteFunction: languageModels.deleteLanguageModel, entityLabel: 'Language Model' },
+        spatiotemporalModel: { saveFunction: spatiotemporalModels.saveSpatiotemporalModel, deleteFunction: spatiotemporalModels.deleteSpatiotemporalModel, entityLabel: 'Spatiotemporal Model' },
         sampler: { saveFunction: samplers.saveSampler, deleteFunction: samplers.deleteSampler, entityLabel: 'Sampler' },
         promptBlock: { saveFunction: promptBlocks.savePromptBlock, deleteFunction: promptBlocks.deletePromptBlock, entityLabel: 'Prompt Block' },
         stopPattern: { saveFunction: stopPatterns.saveStopPattern, deleteFunction: stopPatterns.deleteStopPattern, entityLabel: 'Stop Pattern' },
@@ -192,6 +195,7 @@ function App() {
         allAudioTracks: audioTracks.audioTracks,
         allPromptBlocks: promptBlocks.promptBlocks,
         allLanguageModels: languageModels.languageModels,
+        allSpatiotemporalModels: spatiotemporalModels.spatiotemporalModels,
         allSamplers: samplers.Samplers,
         allStopPatterns: stopPatterns.stopPatterns,
         allRetrievalConfigurations: retrievalConfigurations.retrievalConfigurations,
@@ -392,6 +396,7 @@ function App() {
             contexts: contexts.refresh,
             locations: locations.refresh,
             models: languageModels.refresh,
+            spatiotemporalModels: spatiotemporalModels.refresh,
             samplers: samplers.refresh,
             worlds: worlds.refresh,
             profiles: profiles.refresh,
@@ -628,6 +633,7 @@ function App() {
         { id: 'worlds', label: 'Worlds', icon: '🌍', done: !worlds.isLoading },
         { id: 'promptBlocks', label: 'Prompt Blocks', icon: '🧱', done: !promptBlocks.isLoading },
         { id: 'models', label: 'Language Models', icon: '🤖', done: !languageModels.isLoading },
+        { id: 'spatiotemporalModels', label: 'Spatiotemporal Models', icon: '🎨', done: !spatiotemporalModels.isLoading },
         { id: 'samplers', label: 'Samplers', icon: '🎚️', done: !samplers.isLoading },
         { id: 'stopPatterns', label: 'Stop Patterns', icon: '🛑', done: !stopPatterns.isLoading },
         { id: 'retrievalConfigurations', label: 'Retrieval Configurations', icon: '🧭', done: !retrievalConfigurations.isLoading },
@@ -635,7 +641,7 @@ function App() {
         { id: 'profiles', label: 'Profiles', icon: '👤', done: !profiles.isLoading },
         { id: 'accounts', label: 'Accounts', icon: '🔑', done: !accounts.isLoading },
         { id: 'multiplayerData', label: 'Multiplayer Data', icon: '👥', done: !multiplayerDatas.isLoading },
-    ], [sessionLoaded, interactionDatas, entityFolders, characters, actions.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, languageModels, samplers, stopPatterns, retrievalConfigurations, budgetStrategies, profiles, accounts, multiplayerDatas]);
+    ], [sessionLoaded, interactionDatas, entityFolders, characters, actions.actionsLoading, contexts, locations, audioTracks, worlds, promptBlocks, languageModels, spatiotemporalModels, samplers, stopPatterns, retrievalConfigurations, budgetStrategies, profiles, accounts, multiplayerDatas]);
 
     const [isInitializing, setIsInitializing] = useState(true);
     const [isFadeOut, setIsFadeOut] = useState(false);
@@ -1151,6 +1157,7 @@ function App() {
             interactionData,
             localProtagonist,
             allLanguageModels: languageModels.languageModels,
+            allSpatiotemporalModels: spatiotemporalModels.spatiotemporalModels,
             selectedModelId: languageModels.selectedLanguageModelId,
             allBudgetStrategies: budgetStrategies.strategies,
             selectedBudgetStrategyId: selectedBudgetStrategyId,
@@ -1171,6 +1178,7 @@ function App() {
         characters.characters, locations.locations, contexts.contexts, audioTracks.audioTracks,
         accounts.accounts, multiplayerDatas.multiplayerData,
         languageModels.languageModels, languageModels.selectedLanguageModelId, budgetStrategies.strategies, selectedBudgetStrategyId,
+        spatiotemporalModels.spatiotemporalModels,
         profiles.profiles, worlds.worlds, samplers.Samplers, stopPatterns.stopPatterns, retrievalConfigurations.retrievalConfigurations,
         promptBlocks.promptBlocks, memories.memories
     ]);
@@ -1442,6 +1450,7 @@ function App() {
                             allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allPromptBlocks={promptBlocks.promptBlocks}
                             allSamplers={samplers.Samplers} allStopPatterns={stopPatterns.stopPatterns} allProfiles={profiles.profiles}
                             allMemories={memories.memories} allAccounts={accounts.accounts} allMultiplayerData={multiplayerDatas.multiplayerData}
+                            // allSpatiotemporalModels={spatiotemporalModels.spatiotemporalModels}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
                             onToggleMicrophone={handleToggleMic} onSend={() => handleSend()}
                             onStopGeneration={stopGeneration} onOpenModels={modals.modelList.open} allLanguageModels={languageModels.languageModels} allBudgetStrategies={budgetStrategies.strategies}
@@ -1457,6 +1466,7 @@ function App() {
                 runningLanguageModels={languageModels.runningLanguageModels} allRawInteractionDataShells={interactionDatas.allRawInteractionDataShells}
                 allCharacters={characters.characters} allContexts={contexts.contexts} allLocations={locations.locations}
                 allAudioTracks={audioTracks.audioTracks} allWorlds={worlds.worlds} allLanguageModels={allLanguageModels}
+                allSpatiotemporalModels={spatiotemporalModels.spatiotemporalModels}
                 allSamplers={samplers.Samplers} allPromptBlocks={promptBlocks.promptBlocks} allStopPatterns={stopPatterns.stopPatterns}
                 allRetrievalConfigurations={retrievalConfigurations.retrievalConfigurations}
                 allBudgetStrategies={budgetStrategies.strategies} allProfiles={profiles.profiles} allExtensions={extensions.extensions}
@@ -1488,6 +1498,8 @@ function App() {
                 onDeleteWorld={entityModals.getModalProperties('world').delete}
                 onDeleteModel={entityModals.getModalProperties('languageModel').delete} 
                 onToggleModelLoad={languageModels.toggleLanguageModelLoad}
+                onDeleteSpatiotemporalModel={entityModals.getModalProperties('spatiotemporalModel').delete} 
+                onToggleSpatiotemporalModelLoad={spatiotemporalModels.toggleSpatiotemporalModelLoad}
                 onDeleteSampler={entityModals.getModalProperties('sampler').delete} 
                 onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}
                 onDeleteStopPattern={entityModals.getModalProperties('stopPattern').delete} 

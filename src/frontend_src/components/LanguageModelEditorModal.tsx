@@ -1,4 +1,4 @@
-// src/frontend_src/components/ModelEditorModal.tsx
+// src/frontend_src/components/LanguageModelEditorModal.tsx
 import { useState, useEffect, useRef } from 'react';
 import type { backend, cloudBackend, LanguageModel, StopPattern } from '../types';
 import { useVramUseEstimation } from '../hooks/useVramUseEstimation';
@@ -7,7 +7,7 @@ import { backends, cloudBackends } from '../dictionaries/languageModelInformatio
 import { getChatTemplateOptions, getInstructionTemplateOptions, autoDetectTemplate, getModelTemplate } from '../dictionaries/modelTemplates';
 import '../main.css';
 
-interface ModelEditorModalProps {
+interface LanguageModelEditorModalProps {
     onClose: () => void;
     onSave: (model: LanguageModel) => void;
     existingModel?: LanguageModel | null;
@@ -158,13 +158,13 @@ const syncKVFromCombined = (combinedValue: string): { k: string; v: string } => 
 
 type ModelTabId = 'general' | 'templates' | 'inference' | 'advanced' | 'cost';
 
-export function ModelEditorModal({
+export function LanguageModelEditorModal({
     
     onClose,
     onSave,
     existingModel,
     allStopPatterns,
-}: ModelEditorModalProps) {
+}: LanguageModelEditorModalProps) {
     const [activeTab, setActiveTab] = useState<ModelTabId>('general');
 
     const [name, setName] = useState('');

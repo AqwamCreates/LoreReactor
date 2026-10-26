@@ -9,7 +9,7 @@ import type {
     InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage,
     PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory,
     Extension, Account, MultiplayerData, toolUsageDisplayMode, ToolMessage,
-    tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel,
+    tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel, SpatiotemporalModel,
     entityType, ActiveToolActions, PendingToolAction, PendingToolActionType,
     TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry, TradeOffer
 } from '../types';
@@ -51,6 +51,7 @@ export interface ToolExecutionContext {
     allAudioTracks: AudioTrack[];
     allWorlds: World[];
     allLanguageModels: LanguageModel[];
+    allSpatiotemporalModels: SpatiotemporalModel[];
     allSamplers: Sampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
@@ -70,7 +71,7 @@ export interface ToolExecutionContext {
 // ─── Canonical entityType Mapping ───────────────────────────────────
 export const VALID_ENTITY_TYPES: entityType[] = [
     'character', 'context', 'location', 'audioTrack', 'world',
-    'interactionData', 'languageModel', 'sampler', 'promptBlock', 'stopPattern',
+    'interactionData', 'languageModel', 'spatiotemporalModel', 'sampler', 'promptBlock', 'stopPattern',
     'retrievalConfiguration', 'budgetStrategy', 'profile', 'account',
     'multiplayerData', 'entityFolder'
 ];
@@ -89,6 +90,9 @@ export function normalizeEntityType(raw: string): entityType | null {
         chat: 'interactionData', chats: 'interactionData',
         model: 'languageModel', models: 'languageModel',
         languagemodel: 'languageModel', languagemodels: 'languageModel',
+        spatiotemporalmodel: 'spatiotemporalModel', spatiotemporalmodels: 'spatiotemporalModel',
+        imagemodel: 'spatiotemporalModel', imagemodels: 'spatiotemporalModel',
+        videomodel: 'spatiotemporalModel', videomodels: 'spatiotemporalModel',
         sampler: 'sampler', samplers: 'sampler',
         promptblock: 'promptBlock', promptblocks: 'promptBlock',
         stoppattern: 'stopPattern', stoppatterns: 'stopPattern',
@@ -113,6 +117,7 @@ function getEntitiesByType(context: ToolExecutionContext | undefined, type: enti
         case 'world': return context.allWorlds || [];
         case 'interactionData': return context.allRawInteractionDataShells || [];
         case 'languageModel': return context.allLanguageModels || [];
+        case 'spatiotemporalModel': return context.allSpatiotemporalModels || [];
         case 'sampler': return context.allSamplers || [];
         case 'promptBlock': return context.allPromptBlocks || [];
         case 'stopPattern': return context.allStopPatterns || [];
@@ -165,6 +170,7 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
     if (!trimmed) return new ArgAccessor([], {}, rawArgs);
 
     let input = trimmed;
+
     const fnMatch = input.match(/^[a-zA-Z_]\w*\s*\(([\s\S]*)\)$/);
     if (fnMatch) {
         input = fnMatch[1];
@@ -201,6 +207,7 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
             escapeNext = false;
             continue;
         }
+
         if (char === '\\') {
             escapeNext = true;
             continue;
@@ -225,6 +232,7 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
             current += char;
             continue;
         }
+
         if (char === ')' || char === ']' || char === '}') {
             depth--;
             current += char;
@@ -359,7 +367,6 @@ export function getFallbackToolResult(innerString: string): ToolResult {
     }
 
     const emoji = TOOL_EMOJI_MAP[toolType.toLowerCase() as tool] || '🔧';
-
     return {
         toolType, args, textContent: args, displayReplacement: `[${emoji} ${toolType}${args ? `: ${args}` : ''}]`
     };
@@ -371,7 +378,7 @@ export async function executeTool(
     const toolType = invocation.toolType as tool;
     const args = invocation.args;
 
-    // ✅ FIX: Wrap system-level meta-errors in observation markers so sanitizeToolSyntax 
+    // ✅ FIX: Wrap system-level meta-errors in observation markers so sanitizeToolSyntax
     // strips them from the AI's context, preventing fourth-wall breaks.
     if (nextMessage.character.tools && nextMessage.character.tools[toolType] === false) {
         return { toolType, args, textContent: `${toolResultStartString}Tool disabled${toolResultEndString}`, displayReplacement: "" };
@@ -533,15 +540,13 @@ function executeMindReader(args: string, _nextMessage: BaseMessage, interactionD
 
     const history = getGlobalMessageHistory(interactionData);
     const targetMessages = history.filter(m => m.character.id === targetChar.id && (m.messageType === 'chat' || m.messageType === 'whisper'));
-    
     const extractedThoughts: string[] = [];
     const thinkRegex = /⟪think\(([\s\S]*?)\)⟫|⟦think\(([\s\S]*?)\)⟧/g;
-    
+
     // Iterate backwards to get the most recent think calls
     for (let i = targetMessages.length - 1; i >= 0; i--) {
         const msg = targetMessages[i] as ChatMessage | WhisperMessage;
         const text = msg.textContent || '';
-        
         const matches = [...text.matchAll(thinkRegex)];
         for (const m of matches) {
             const rawArgs = m[1] || m[2];
@@ -551,7 +556,6 @@ function executeMindReader(args: string, _nextMessage: BaseMessage, interactionD
                 extractedThoughts.unshift(reasoning);
             }
         }
-        
         if (extractedThoughts.length >= limit) {
             break;
         }
@@ -570,7 +574,7 @@ function executeMindReader(args: string, _nextMessage: BaseMessage, interactionD
 
     const compiledThoughts = finalThoughts.map((t, idx) => `Thought ${idx + 1}: "${t}"`).join('\n---\n');
     const resultText = `[mind_reader: You peer into ${targetChar.name}'s mind and hear their unspoken thoughts:\n${compiledThoughts}]`;
-    
+
     return {
         toolType: 'mind_reader',
         args,
@@ -656,12 +660,10 @@ interface RollGroup { count: number; sides: number }
 function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: number; rolls: number[]; total: number } | null {
     const sanitized = expr.toLowerCase().replace(/\s+/g, '');
     if (!sanitized) return null;
-
     const rollGroupRegex = /(\d*)d(\d+)/gi;
     const groups: RollGroup[] = [];
     let match: RegExpExecArray | null;
     let lastIndex = 0;
-
     while ((match = rollGroupRegex.exec(sanitized)) !== null) {
         const count = match[1] ? Number.parseInt(match[1], 10) : 1;
         const sides = Number.parseInt(match[2], 10);
@@ -669,7 +671,6 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
         groups.push({ count, sides });
         lastIndex = match.index + match[0].length;
     }
-
     if (groups.length === 0) return null;
 
     let modifier = 0;
@@ -688,7 +689,6 @@ function parseRollExpression(expr: string): { groups: RollGroup[]; modifier: num
         }
     }
     const total = allRolls.reduce((sum, r) => sum + r, 0) + modifier;
-
     return { groups, modifier, rolls: allRolls, total };
 }
 
@@ -769,7 +769,6 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
     const lines = tableContext.text.split('\n').filter(Boolean);
     const entries: { min: number; max: number; result: string }[] = [];
     let globalMax = 0;
-
     for (const line of lines) {
         const rangeMatch = line.match(/^(\d+)\s*[-–]\s*(\d+)\s*[:=]\s*(.+)$/);
         const singleMatch = line.match(/^(\d+)\s*[:=]\s*(.+)$/);
@@ -790,7 +789,6 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
 
     const roll = Math.floor(Math.random() * globalMax) + 1;
     const matched = entries.find(e => roll >= e.min && roll <= e.max);
-
     return {
         toolType: 'rng', args, textContent: matched ? matched.result : `Rolled ${roll}, no match`, displayReplacement: `[🎲 ${tableContext.name}: ${matched ? matched.result : 'no match'}]`
     };
@@ -858,18 +856,14 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
 function parseDurationToMs(input: string): number | null {
     const trimmed = input.toLowerCase();
     let totalMs = 0, matched = false;
-
     const hourMatch = trimmed.match(/(\d+)\s*h(?:ours?|r)?/);
     if (hourMatch) { totalMs += Number.parseInt(hourMatch[1], 10) * 3600000; matched = true; }
-
     const minMatch = trimmed.match(/(\d+)\s*m(?:in(?:utes?|s))?/);
     if (minMatch) { totalMs += Number.parseInt(minMatch[1], 10) * 60000; matched = true; }
-
     const secMatch = trimmed.match(/(\d+)\s*s(?:ec(?:onds?|s))?/);
     if (secMatch) { totalMs += Number.parseInt(secMatch[1], 10) * 1000; matched = true; }
 
     if (!matched) { const plain = Number.parseInt(trimmed, 10); return !Number.isNaN(plain) && plain > 0 ? plain * 1000 : null; }
-
     return totalMs > 0 ? totalMs : null;
 }
 
@@ -889,11 +883,9 @@ function formatDuration(ms: number): string {
 function executeTimer(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-
     if (!action) {
         return helpResult('timer', 'action="set|check|delete|list", name="...", duration="..."', 'manage countdown timers');
     }
-
     const activeActions = resolveActiveToolActions(nextMessage, interactionData);
     const timers = activeActions.timers ? [...activeActions.timers] : [];
     const now = Date.now();
@@ -946,11 +938,9 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     const name = pArgs.get(1, 'name', 'stopwatch_name');
-
     if (!action) {
         return helpResult('stopwatch', 'action="start|stop|pause|resume|reset|check|list", name="..."', 'manage stopwatch counters');
     }
-
     const activeActions = resolveActiveToolActions(nextMessage, interactionData);
     const stopwatches = activeActions.stopwatches ? [...activeActions.stopwatches] : [];
     const now = Date.now();
@@ -1023,11 +1013,9 @@ function executeStopwatch(args: string, nextMessage: BaseMessage, interactionDat
 function executeSchedule(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-
     if (!action) {
         return helpResult('schedule', 'action="set|set_repeat|cancel|cancel_all|list", name="...", duration="...", action_desc="..."', 'schedule automated actions');
     }
-
     const activeActions = resolveActiveToolActions(nextMessage, interactionData);
     const schedules = activeActions.schedules ? [...activeActions.schedules] : [];
     const now = Date.now();
@@ -1131,7 +1119,6 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     const allDialoguePrompts = nextMessage.character.dialoguePrompts || [];
-
     if (!action) {
         return helpResult('dialogue', 'action="list|recall", prompt_id="..."', 'manage dialogue prompts');
     }
@@ -1163,7 +1150,6 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
     if (action === 'recall') {
         const queryId = pArgs.get(1, 'prompt_id', 'id') || pArgs.positional.slice(1).join(' ');
         const matched = activeDialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
-
         if (matched.length > 0) {
             const recalled = await collectActiveDialoguePromptContent(matched, evalContext);
             return { toolType: 'dialogue', args, textContent: recalled.join('\n') || 'No active instructions', displayReplacement: `[💬 Recalled ${recalled.length} instruction(s)]` };
@@ -1198,7 +1184,6 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage, interact
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     const allKnowledgePrompts = nextMessage.character.knowledgePrompts || [];
-
     if (!action) {
         return helpResult('knowledge', 'action="list|recall|fuzzy_recall", id="..."', 'inspect character knowledge base');
     }
@@ -1209,7 +1194,6 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage, interact
     const characterIdArray = filteredHistory.map(m => m.character.id);
     const textArray = filteredHistory.map(m => m.textContent);
     const searchSpace = textArray.join('\n');
-
     const combinationCache: CombinationCache = {};
 
     const activeKnowledgePrompts = allKnowledgePrompts.filter(kp =>
@@ -1320,7 +1304,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                 context.allRawInteractionDataShells,
                 knownNames,
             );
-
             if (retrieved) {
                 return {
                     toolType: 'memory',
@@ -1339,7 +1322,6 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
             context.allRawInteractionDataShells,
             knownNames,
         );
-
         return {
             toolType: 'memory',
             args,
@@ -1448,10 +1430,12 @@ function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: 
         audioEngine.startTrack(track);
         return { toolType: 'audio', args, textContent: `Playing "${track.name}".`, displayReplacement: `[🔊 Playing "${track.name}"]` };
     }
+
     if (action === 'stop') {
         if (track) audioEngine.stopTrack(track.id);
         return { toolType: 'audio', args, textContent: track ? `Stopped "${track.name}".` : 'Stopped audio.', displayReplacement: `[🔇 Stopped audio]` };
     }
+
     return { toolType: 'audio', args, textContent: `[Error: Unknown audio action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
@@ -1459,7 +1443,6 @@ function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: 
 function executeNote(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-
     if (!action) {
         return helpResult('note', 'action="set|get|delete|list", key="...", text="..."', 'manage persistent character notes');
     }
@@ -1501,7 +1484,6 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
 function executeInventory(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-
     if (!action) {
         return helpResult('inventory', 'action="list|add|remove|set", item="...", qty=1, value=None', 'manage character inventory items');
     }
@@ -1580,15 +1562,19 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         if (!targetQuery || !item) {
             return { toolType: 'trade', args, textContent: '[Error: trade(action="give", target="...", item="...", qty=1) requires target and item]', displayReplacement: '[Error: Usage]' };
         }
+
         const targetChar = resolveCharacter(targetQuery, interactionData, context.allCharacters || []);
         if (!targetChar) return { toolType: 'trade', args, textContent: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
         const targetLatest = findLatestMessage(interactionData, targetChar);
         if (!targetLatest) return { toolType: 'trade', args, textContent: `[Error: Target "${targetChar.name}" has no message history]`, displayReplacement: '[Error: Target missing]' };
+
         const targetInv: Inventory = targetLatest.message.inventory ? { ...targetLatest.message.inventory } : {};
         const myQty = typeof myInv[item] === 'number' ? (myInv[item] as number) : 0;
         if (myQty < qty) return { toolType: 'trade', args, textContent: `[Error: Not enough "${item}". Have ${myQty}, need ${qty}]`, displayReplacement: '[Error: Lacks items]' };
+
         if (myQty <= qty) delete myInv[item]; else myInv[item] = myQty - qty;
         targetInv[item] = (typeof targetInv[item] === 'number' ? (targetInv[item] as number) : 0) + qty;
+
         nextMessage.inventory = myInv;
         targetLatest.message.inventory = targetInv;
         return { toolType: 'trade', args, textContent: `Gave ${qty}x "${item}" to ${targetChar.name}.`, displayReplacement: `[🤝 Gave ${qty}x ${item} to ${targetChar.name}]` };
@@ -1601,15 +1587,19 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         if (!targetQuery || !item) {
             return { toolType: 'trade', args, textContent: '[Error: trade(action="take", target="...", item="...", qty=1) requires target and item]', displayReplacement: '[Error: Usage]' };
         }
+
         const targetChar = resolveCharacter(targetQuery, interactionData, context.allCharacters || []);
         if (!targetChar) return { toolType: 'trade', args, textContent: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
         const targetLatest = findLatestMessage(interactionData, targetChar);
         if (!targetLatest) return { toolType: 'trade', args, textContent: `[Error: Target "${targetChar.name}" has no message history]`, displayReplacement: '[Error: Target missing]' };
+
         const targetInv: Inventory = targetLatest.message.inventory ? { ...targetLatest.message.inventory } : {};
         const theirQty = typeof targetInv[item] === 'number' ? (targetInv[item] as number) : 0;
         if (theirQty < qty) return { toolType: 'trade', args, textContent: `[Error: ${targetChar.name} only has ${theirQty}x "${item}"]`, displayReplacement: '[Error: Target lacks items]' };
+
         if (theirQty <= qty) delete targetInv[item]; else targetInv[item] = theirQty - qty;
         myInv[item] = (typeof myInv[item] === 'number' ? (myInv[item] as number) : 0) + qty;
+
         nextMessage.inventory = myInv;
         targetLatest.message.inventory = targetInv;
         return { toolType: 'trade', args, textContent: `Took ${qty}x "${item}" from ${targetChar.name}.`, displayReplacement: `[🤝 Took ${qty}x ${item} from ${targetChar.name}]` };
@@ -1622,6 +1612,7 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         if (!targetQuery || !giveRaw || !takeRaw) {
             return { toolType: 'trade', args, textContent: '[Error: trade(action="offer", target="...", give_items="...", take_items="...") requires all parameters]', displayReplacement: '[Error: Usage]' };
         }
+
         const targetChar = resolveCharacter(targetQuery, interactionData, context.allCharacters || []);
         if (!targetChar) return { toolType: 'trade', args, textContent: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
 
@@ -1660,8 +1651,10 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
     const pArgs = parsePythonArgs(args);
     const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id') || pArgs.positional.join(' ');
     if (!targetQuery) return helpResult('invite', 'character_id="..."', 'bring existing participant to current location');
+
     const targetChar = resolveCharacter(targetQuery, interactionData, context.allCharacters || []);
     if (!targetChar) return { toolType: 'invite', args, textContent: `[Error: Character "${targetQuery}" not found]`, displayReplacement: '[Error: Target not found]' };
+
     appendPendingAction(nextMessage, { type: 'invite', payload: { characterId: targetChar.id, characterName: targetChar.name } });
     return { toolType: 'invite', args, textContent: `Invited ${targetChar.name}.`, displayReplacement: `[📨 Invited ${targetChar.name}]` };
 }
@@ -1842,6 +1835,7 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
         }
         return { toolType: 'key', args, textContent: `Locked "${targetLoc.name}".`, displayReplacement: `[🔒 Locked "${targetLoc.name}"]` };
     }
+
     if (action === 'unlock') {
         for (const t of targets) {
             appendPendingAction(nextMessage, { type: 'unlock_location', payload: { characterId: t.id, locationId: targetLoc.id } });
@@ -1884,6 +1878,7 @@ function executeClothing(args: string, nextMessage: BaseMessage, interactionData
         nextMessage.characterClothingWearingStatuses = wearing;
         return { toolType: 'clothing', args, textContent: `${targetChar.name} wore "${clothing.name}".`, displayReplacement: `[👕 Wore "${clothing.name}"]` };
     }
+
     if (action === 'remove') {
         wearing[clothing.id] = false;
         nextMessage.characterClothingWearingStatuses = wearing;
@@ -1956,10 +1951,12 @@ function executeAdministrator(
         if (!resolvedType) {
             return { toolType: 'administrator', args, textContent: `[Error: administrator(action="list_entities", entity_type="...") requires an entity type. Valid: ${VALID_ENTITY_TYPES.join(', ')}]`, displayReplacement: '[Error: Usage]' };
         }
+
         const entities = getEntitiesByType(context, resolvedType);
         if (entities.length === 0) {
             return { toolType: 'administrator', args, textContent: `No entities found for type "${resolvedType}".`, displayReplacement: `[📁 0 ${resolvedType}]` };
         }
+
         const lines = entities.map((item: any) => {
             const label = item.name || item.username || item.id;
             const extra = item.entityType ? ` (Type: ${item.entityType}, ${item.itemIds?.length ?? 0} items)`
@@ -1968,6 +1965,7 @@ function executeAdministrator(
                 : item.id === interactionData.id ? ' (current)' : '';
             return `• [${item.id}] "${label}"${extra}`;
         });
+
         return { toolType: 'administrator', args, textContent: `Entities for "${resolvedType}" (${entities.length}):\n${lines.join('\n')}`, displayReplacement: `[🔧 ${entities.length} ${resolvedType}(s)]` };
     }
 
@@ -1978,6 +1976,7 @@ function executeAdministrator(
         if (!resolvedType || !query) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="view_entity", entity_type="...", entity_id="...") requires entity_type and entity_id]', displayReplacement: '[Error: Usage]' };
         }
+
         const entities = getEntitiesByType(context, resolvedType);
         const item = entities.find((x: any) =>
             x.id?.toLowerCase() === query.toLowerCase() ||
@@ -1985,9 +1984,11 @@ function executeAdministrator(
             (x.username && x.username.toLowerCase() === query.toLowerCase()) ||
             x.id?.startsWith(query.toLowerCase())
         );
+
         if (!item) {
             return { toolType: 'administrator', args, textContent: `[Error: ${resolvedType} entity "${query}" not found]`, displayReplacement: '[Error: Not found]' };
         }
+
         const { kvCacheTextContentPaths, kvCacheInteractionTextContentSummaries, ...displayItem } = item;
         return { toolType: 'administrator', args, textContent: `[Entity: ${resolvedType}]\n${JSON.stringify(displayItem, null, 2)}`, displayReplacement: `[🔧 View: ${item.name || item.username || item.id}]` };
     }
@@ -1998,16 +1999,20 @@ function executeAdministrator(
         const field = pArgs.get(3, 'field', 'key');
         const value = pArgs.get(4, 'value', 'val') || pArgs.positional.slice(4).join(' ');
         const resolvedType = normalizeEntityType(rawType);
+
         if (!resolvedType || !entityId || !field || value === undefined) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="edit_entity", entity_type="...", entity_id="...", field="...", value="...") requires all arguments]', displayReplacement: '[Error: Usage]' };
         }
+
         const entities = getEntitiesByType(context, resolvedType);
         const item = entities.find((x: any) =>
             x.id?.toLowerCase() === entityId.toLowerCase() ||
             (x.name && x.name.toLowerCase() === entityId.toLowerCase())
         );
+
         const targetId = item ? item.id : entityId;
         const targetName = item?.name || item?.username || entityId;
+
         appendPendingAction(nextMessage, { type: 'administrator_edit_entity', payload: { entityType: resolvedType, entityId: targetId, field, value } });
         context.addToast?.(`Administrator: Edit ${resolvedType} "${targetName}" [${field}] initiated.`, 'info');
         return { toolType: 'administrator', args, textContent: `Requested edit on ${resolvedType} "${targetName}": set ${field} = "${value}".`, displayReplacement: `[🔧 Edit: ${targetName}.${field}]` };
@@ -2019,10 +2024,12 @@ function executeAdministrator(
         if (!entityFolderQuery || !itemId) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="add_to_entity_folder", entity_folder_id="...", item_id="...") requires entity folder and item ID]', displayReplacement: '[Error: Usage]' };
         }
+
         const folders = context.allEntityFolders || [];
         const f = folders.find(x => x.id.toLowerCase() === entityFolderQuery.toLowerCase() || x.name.toLowerCase() === entityFolderQuery.toLowerCase() || x.id.startsWith(entityFolderQuery.toLowerCase()));
         const folderId = f ? f.id : entityFolderQuery;
         const folderName = f ? f.name : entityFolderQuery;
+
         appendPendingAction(nextMessage, { type: 'administrator_add_to_entity_folder', payload: { entityFolderId: folderId, entityFolderName: folderName, itemId } });
         return { toolType: 'administrator', args, textContent: `Requested adding item "${itemId}" to entity folder "${folderName}".`, displayReplacement: `[🔧 Add to entity folder: ${folderName}]` };
     }
@@ -2033,10 +2040,12 @@ function executeAdministrator(
         if (!entityFolderQuery || !itemId) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="remove_from_entity_folder", entity_folder_id="...", item_id="...") requires entity folder and item ID]', displayReplacement: '[Error: Usage]' };
         }
+
         const folders = context.allEntityFolders || [];
         const f = folders.find(x => x.id.toLowerCase() === entityFolderQuery.toLowerCase() || x.name.toLowerCase() === entityFolderQuery.toLowerCase() || x.id.startsWith(entityFolderQuery.toLowerCase()));
         const folderId = f ? f.id : entityFolderQuery;
         const folderName = f ? f.name : entityFolderQuery;
+
         appendPendingAction(nextMessage, { type: 'administrator_remove_from_entity_folder', payload: { entityFolderId: folderId, entityFolderName: folderName, itemId } });
         return { toolType: 'administrator', args, textContent: `Requested removing item "${itemId}" from entity folder "${folderName}".`, displayReplacement: `[🔧 Remove from entity folder: ${folderName}]` };
     }
@@ -2134,15 +2143,14 @@ function executeScheduleResponse(args: string, nextMessage: BaseMessage, interac
     const pArgs = parsePythonArgs(args);
     const durationRaw = pArgs.get(0, 'duration', 'time', 'delay');
     const thought = pArgs.get(1, 'thought', 'reason', 'prompt') || pArgs.positional.slice(1).join(' ') || 'Checking in later';
-    const durationMs = durationRaw ? parseDurationToMs(durationRaw) : null;
 
+    const durationMs = durationRaw ? parseDurationToMs(durationRaw) : null;
     if (!durationMs) {
         return helpResult('schedule_response', 'duration="2h", thought="Check if Sensei is awake"', 'schedule a delayed follow-up response from this character');
     }
 
     const activeActions = resolveActiveToolActions(nextMessage, interactionData);
     const scheduled = activeActions.scheduledResponses ? [...activeActions.scheduledResponses] : [];
-
     scheduled.push({
         characterId: nextMessage.character.id,
         characterName: nextMessage.character.name,
@@ -2150,7 +2158,6 @@ function executeScheduleResponse(args: string, nextMessage: BaseMessage, interac
         thought,
         createdAt: Date.now()
     });
-
     activeActions.scheduledResponses = scheduled;
     nextMessage.activeToolActions = activeActions;
 
@@ -2191,11 +2198,13 @@ async function executeGpu(args: string): Promise<ToolResult> {
         const tempStr = data.temperatureC !== null ? `${data.temperatureC}°C` : null;
         const powerStr = data.powerWatts !== null ? `${data.powerWatts}W` : null;
         const vramPercent = data.memoryTotalMB > 0 ? ((data.memoryUsedMB / data.memoryTotalMB) * 100).toFixed(1) : '0.0';
+
         const telemetryParts = [
             `Model: ${data.name} (${data.vendor.toUpperCase()})`, `Utilization: ${data.utilizationPercent}%`,
             `VRAM: ${data.memoryUsedMB}MB / ${data.memoryTotalMB}MB (${vramPercent}%)`, tempStr ? `Temperature: ${tempStr}` : null,
             powerStr ? `Power Draw: ${powerStr}` : null,
         ].filter(Boolean);
+
         const vramUsedGB = (data.memoryUsedMB / 1024).toFixed(1);
         const vramTotalGB = (data.memoryTotalMB / 1024).toFixed(1);
         const tempBadge = data.temperatureC !== null ? ` | ${data.temperatureC}°C` : '';
@@ -2230,6 +2239,7 @@ async function executeNotify(args: string, _nextMessage: BaseMessage, _interacti
     if (!res.success) {
         return { toolType: 'notify', args, textContent: `[Error: ${res.error || 'Failed to send notification'}]`, displayReplacement: '[❌ Notification failed]' };
     }
+
     context.addToast?.(`Notification sent: ${title}`, 'success');
     return { toolType: 'notify', args, textContent: `Sent OS notification "${title}": ${message}`, displayReplacement: `[🔔 Notification sent]` };
 }
@@ -2244,6 +2254,7 @@ async function executeVolumeControl(args: string): Promise<ToolResult> {
     if (!res.success) {
         return { toolType: 'volume_control', args, textContent: `[Error: ${res.error}]`, displayReplacement: '[❌ Volume error]' };
     }
+
     if (action === 'get') {
         return { toolType: 'volume_control', args, textContent: `Master Volume: ${res.volume}% (Muted: ${res.muted})`, displayReplacement: `[🔊 Volume: ${res.volume}%]` };
     }
@@ -2253,6 +2264,7 @@ async function executeVolumeControl(args: string): Promise<ToolResult> {
     if (action === 'mute' || action === 'unmute') {
         return { toolType: 'volume_control', args, textContent: `Audio ${action}d successfully.`, displayReplacement: action === 'mute' ? '[🔇 Muted]' : '[🔊 Unmuted]' };
     }
+
     return helpResult('volume_control', 'action="get|set|mute|unmute", level=50', 'adjust host system master volume');
 }
 
@@ -2292,6 +2304,7 @@ async function executeClipboard(args: string, _nextMessage: BaseMessage, _intera
     if (!res.success) {
         return { toolType: 'clipboard', args, textContent: `[Error: ${res.error || 'Clipboard action failed'}]`, displayReplacement: '[❌ Clipboard failed]' };
     }
+
     if (action === 'read') {
         return { toolType: 'clipboard', args, textContent: res.content || '', displayReplacement: `[📋 Clipboard read]` };
     } else {
@@ -2307,11 +2320,13 @@ async function executeScreenshot(args: string, nextMessage: BaseMessage, _intera
         return { toolType: 'screenshot', args, textContent: `[Error: ${res.error || 'Failed to capture screenshot'}]`, displayReplacement: '[❌ Screenshot failed]' };
     }
     const dataUrl = `data:${res.contentType || 'image/jpeg'};base64,${res.base64}`;
+
     if ('files' in nextMessage) {
         const msg = nextMessage as TextMessage;
         if (!msg.files) msg.files = [];
         msg.files.push(dataUrl);
     }
+
     context.addToast?.('Screenshot captured and sent to the language model', 'success');
     return { toolType: 'screenshot', args, textContent: `Screenshot captured and attached to visual input.`, displayReplacement: `[📸 Screenshot captured]` };
 }
@@ -2321,15 +2336,18 @@ async function executeFrontCamera(args: string, nextMessage: BaseMessage, _inter
     if (!context.captureFrontCameraImage) {
         return { toolType: 'front_camera', args, textContent: '[Error: Front camera capture is not available in this context.]', displayReplacement: '[❌ front_camera unavailable]' };
     }
+
     const dataUrl = await context.captureFrontCameraImage();
     if (!dataUrl) {
         return { toolType: 'front_camera', args, textContent: '[Error: Failed to capture front_camera snapshot. Permission denied or hardware error.]', displayReplacement: '[❌ front_camera error]' };
     }
+
     if ('files' in nextMessage) {
         const msg = nextMessage as TextMessage;
         if (!msg.files) msg.files = [];
         msg.files.push(dataUrl);
     }
+
     context.addToast?.('Front camera snapshot captured and sent to language model', 'success');
     return { toolType: 'front_camera', args, textContent: 'Front camera snapshot captured and attached to visual input.', displayReplacement: '[📷 Front Camera Snapshot]' };
 }
@@ -2351,10 +2369,12 @@ async function executeTrash(args: string, _nextMessage: BaseMessage, _interactio
     if (!targetPath) {
         return helpResult('trash', 'path="..."', 'safely move a file or folder to OS recycle bin / trash');
     }
+
     const res = await moveToTrash(targetPath);
     if (!res.success) {
         return { toolType: 'trash', args, textContent: `[Error: ${res.error}]`, displayReplacement: '[❌ Trash error]' };
     }
+
     context.addToast?.(`Moved to Recycle Bin: ${targetPath}`, 'info');
     return { toolType: 'trash', args, textContent: `Moved "${res.path || targetPath}" to the operating system recycle bin.`, displayReplacement: `[🗑️ Trashed: "${targetPath}"]` };
 }
@@ -2370,6 +2390,7 @@ async function executeFileWatcher(args: string): Promise<ToolResult> {
         if (!res.success) return { toolType: 'file_watcher', args, textContent: `[Error: ${res.error}]`, displayReplacement: '[❌ Watcher failed]' };
         return { toolType: 'file_watcher', args, textContent: `Now watching folder: ${res.path}`, displayReplacement: `[📂 Watching: ${targetPath}]` };
     }
+
     if (action === 'check') {
         const res = await getFileWatcherEvents();
         if (!res.events || res.events.length === 0) {
@@ -2378,6 +2399,7 @@ async function executeFileWatcher(args: string): Promise<ToolResult> {
         const summary = res.events.map((e: any) => `[${e.event.toUpperCase()}] ${e.path}`).join('\n');
         return { toolType: 'file_watcher', args, textContent: summary, displayReplacement: `[📂 ${res.events.length} file change(s)]` };
     }
+
     return helpResult('file_watcher', 'action="start|check", path="..."', 'monitor workspace folders for changes');
 }
 
@@ -2391,6 +2413,7 @@ async function executeProcessMonitor(args: string): Promise<ToolResult> {
     if (!res.success || !res.processes) {
         return { toolType: 'process_monitor', args, textContent: '[Error: Failed to query processes]', displayReplacement: '[❌ Process error]' };
     }
+
     const summary = res.processes.map((p: any) => `${p.name} (PID: ${p.pid}, CPU: ${p.cpu}%, Mem: ${p.memPercent}%)`).join('\n');
     return { toolType: 'process_monitor', args, textContent: `Running (${res.runningCount}/${res.totalCount} active):\n${summary}`, displayReplacement: `[⚙️ ${res.processes.length} process(es)]` };
 }
@@ -2413,6 +2436,7 @@ async function executeBrowser(args: string, _nextMessage: BaseMessage, _interact
 
     const isDirectUrl = /^https?:\/\//i.test(input) || /^[\w-]+\.[\w-]+(\S*)/i.test(input);
     const finalUrl = isDirectUrl ? (/^https?:\/\//i.test(input) ? input : `https://${input}`) : buildSearchUrl([input], 'Google');
+
     const res = await readFile(finalUrl);
     if (!res.success) {
         return { toolType: 'browser', args, textContent: `[Error: ${res.error || 'Failed to open browser'}]`, displayReplacement: '[❌ Browser failed]' };
@@ -2489,11 +2513,13 @@ async function executeVirtualHearing(args: string, _nextMessage: BaseMessage, _i
         context.addToast?.('🎧 Virtual hearing: Ears opened on server', 'info');
         return { toolType: 'virtual_hearing', args, textContent: res.message || `Virtual hearing started on host server (${duration}s).`, displayReplacement: `[🎧 Hearing Started (${duration}s)]` };
     }
+
     if (action === 'stop') {
         context.addToast?.('🎧 Virtual hearing: Ears closed & audio analyzed', 'info');
         const badgeText = res.melody?.length ? `🎵 ${res.melody[0]}` : res.events?.length ? res.events[0] : 'Analyzed';
         return { toolType: 'virtual_hearing', args, textContent: res.rawObservation || '[Virtual Hearing Perception]\n- Ambient silence.', displayReplacement: `[🎧 ${badgeText}]` };
     }
+
     return { toolType: 'virtual_hearing', args, textContent: res.message || (res.active ? 'Hearing is ACTIVE.' : 'Hearing is IDLE.'), displayReplacement: res.active ? '[🎧 Hearing: Active]' : '[🎧 Hearing: Idle]' };
 }
 
@@ -2512,6 +2538,7 @@ async function executeVirtualVision(args: string, _nextMessage: BaseMessage, _in
     if (!res.success || !res.base64) {
         return { toolType: 'virtual_vision', args, textContent: `[Error: ${res.error || 'Failed to capture targeted vision'}]`, displayReplacement: '[❌ Vision failed]' };
     }
+
     context.addToast?.(`Captured target: ${res.target}`, 'info');
     return { toolType: 'virtual_vision', args, textContent: `[Vision Captured: ${res.target} | Base64 Length: ${res.base64.length} bytes]`, displayReplacement: `[👁️ Vision: ${res.target}]` };
 }
@@ -2520,6 +2547,7 @@ async function executeVirtualVision(args: string, _nextMessage: BaseMessage, _in
 async function executeVirtualInput(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
+
     if (!action) {
         return helpResult('virtual_input', 'action="move|click|type|press|scroll|screen_size", x=0, y=0, text="...", key="..."', 'control host mouse and keyboard');
     }
@@ -2552,7 +2580,6 @@ async function executeVirtualInput(args: string, _nextMessage: BaseMessage, _int
 async function executeVirtualController(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const rawFirst = pArgs.get(0, 'action', 'command')?.toLowerCase();
-
     const BUTTON_SET = new Set([
         'a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'l1', 'r1', 'l2', 'r2', 'l3', 'r3',
         'ls', 'rs', 'start', 'back', 'select', 'menu', 'guide', 'home',
@@ -2630,12 +2657,14 @@ async function executeHardwareControl(args: string): Promise<ToolResult> {
         const list = res.ports.map((p: any) => `${p.path} (${p.manufacturer || 'Generic'})`).join(', ');
         return { toolType: 'hardware_control', args, textContent: `Available Ports: ${list}`, displayReplacement: `[🔌 ${res.ports.length} port(s)]` };
     }
+
     if (action === 'send') {
         if (!port || !command) return { toolType: 'hardware_control', args, textContent: '[Error: port and command required]', displayReplacement: '[Error: Missing args]' };
         const res = await sendHardwareCommand(port, command);
         if (!res.success) return { toolType: 'hardware_control', args, textContent: `[Error: ${res.error}]`, displayReplacement: '[❌ Hardware error]' };
         return { toolType: 'hardware_control', args, textContent: `Sent "${command}" to ${port}`, displayReplacement: `[🔌 Sent to ${port}]` };
     }
+
     return helpResult('hardware_control', 'action="list|send", port="...", command="..."', 'communicate with external USB/serial hardware');
 }
 
@@ -2664,6 +2693,7 @@ export function processPendingToolActions(
         const actions = targetMsg.pendingToolActions!;
         for (const action of actions) {
             sequenceTime++;
+
             switch (action.type) {
                 // ─── 1. MOVE ──────────────────────────────────────────────
                 case 'move': {
@@ -2671,7 +2701,6 @@ export function processPendingToolActions(
                     const destLocName = action.payload.destinationLocationName || destLocId;
                     const isQuietLeave = action.payload.quietLeave === 'true';
                     const isQuietEnter = action.payload.quietEnter === 'true';
-
                     if (destLocId) {
                         const prevMsg = findPrevMsg(updatedData, targetMsg.character.id);
                         let updatedActionStamina = prevMsg?.remainingActionStamina;
@@ -2682,11 +2711,9 @@ export function processPendingToolActions(
                                 updatedActionStamina = Math.max(0, updatedActionStamina - movementCost);
                             }
                         }
-
                         if (!updatedData.interactionHistories[destLocId]) {
                             updatedData.interactionHistories[destLocId] = [];
                         }
-
                         const moveMsg = createMessage(targetMsg.character, {
                             ...(isQuietEnter ? {} : { textContent: `[Entered "${destLocName}"]` }),
                             remainingActionStamina: updatedActionStamina,
@@ -2698,7 +2725,6 @@ export function processPendingToolActions(
                         currentLastMessageId = moveMsg.id;
                         updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], moveMsg];
                         changed = true;
-
                         if (!isQuietLeave && !isQuietEnter) {
                             options?.onToast?.(`🚶 ${targetMsg.character.name} moved to ${destLocName}.`, 'info');
                         } else if (!isQuietLeave) {
@@ -2707,20 +2733,17 @@ export function processPendingToolActions(
                     }
                     break;
                 }
-
                 // ─── 2. TELEPORT ──────────────────────────────────────────
                 case 'teleport': {
                     const destLocId = action.payload.destinationLocationId;
                     const destLocName = action.payload.destinationLocationName || destLocId;
                     const isQuietLeave = action.payload.quietLeave === 'true';
                     const isQuietEnter = action.payload.quietEnter === 'true';
-
                     if (destLocId) {
                         const prevMsg = findPrevMsg(updatedData, targetMsg.character.id);
                         if (!updatedData.interactionHistories[destLocId]) {
                             updatedData.interactionHistories[destLocId] = [];
                         }
-
                         const teleportMsg = createMessage(targetMsg.character, {
                             ...(isQuietEnter ? {} : { textContent: `[Entered "${destLocName}"]` }),
                             timestamp: sequenceTime,
@@ -2731,7 +2754,6 @@ export function processPendingToolActions(
                         currentLastMessageId = teleportMsg.id;
                         updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], teleportMsg];
                         changed = true;
-
                         if (!isQuietLeave && !isQuietEnter) {
                             options?.onToast?.(`⚡ ${targetMsg.character.name} teleported to ${destLocName}.`, 'info');
                         } else if (!isQuietLeave) {
@@ -2740,7 +2762,6 @@ export function processPendingToolActions(
                     }
                     break;
                 }
-
                 // ─── 3. WHISPER ───────────────────────────────────────────
                 case 'whisper': {
                     const targetIds = action.payload.targetCharacterIds.split(',');
@@ -2748,7 +2769,6 @@ export function processPendingToolActions(
                     const senderLatest = findLatestMessage(updatedData, targetMsg.character);
                     const locId = senderLatest?.locationId || 'global';
                     const prevMsg = findPrevMsg(updatedData, targetMsg.character.id);
-
                     const whisperMsg = createMessage(targetMsg.character, {
                         textContent: text,
                         targetCharacterIds: targetIds,
@@ -2758,26 +2778,22 @@ export function processPendingToolActions(
                         interactionData: updatedData,
                     });
                     currentLastMessageId = whisperMsg.id;
-
                     if (!updatedData.interactionHistories[locId]) updatedData.interactionHistories[locId] = [];
                     updatedData.interactionHistories[locId] = [...updatedData.interactionHistories[locId], whisperMsg];
                     updatedData = { ...updatedData, lastUpdatedTimestamp: sequenceTime };
                     changed = true;
                     break;
                 }
-
                 // ─── 4. INVITE ────────────────────────────────────────────
                 case 'invite': {
                     const charId = action.payload.characterId;
                     let invitedChar = (updatedData.participants || []).find(p => p.id === charId);
                     if (!invitedChar) invitedChar = allCharacters.find(c => c.id === charId);
-
                     if (invitedChar) {
                         const charToInvite = invitedChar;
                         const inviterLoc = getCurrentLocation(updatedData, targetMsg.character);
                         const currentLocId = inviterLoc?.id;
                         const prevInvitedMsg = findPrevMsg(updatedData, charToInvite.id);
-
                         const inviteMsg = createMessage(charToInvite, {
                             timestamp: sequenceTime,
                             parentMessageId: currentLastMessageId,
@@ -2785,12 +2801,10 @@ export function processPendingToolActions(
                             interactionData: updatedData,
                         });
                         currentLastMessageId = inviteMsg.id;
-
                         if (currentLocId) {
                             if (!updatedData.interactionHistories[currentLocId]) updatedData.interactionHistories[currentLocId] = [];
                             updatedData.interactionHistories[currentLocId] = [...updatedData.interactionHistories[currentLocId], inviteMsg];
                         }
-
                         const isAlreadyPart = (updatedData.participants || []).some(p => p.id === charToInvite.id);
                         const newParticipants = isAlreadyPart ? (updatedData.participants || []) : [...(updatedData.participants || []), { ...charToInvite }];
                         updatedData = { ...updatedData, participants: newParticipants, lastUpdatedTimestamp: sequenceTime };
@@ -2799,24 +2813,20 @@ export function processPendingToolActions(
                     }
                     break;
                 }
-
                 // ─── 5. KICK ──────────────────────────────────────────────
                 case 'kick': {
                     const sessionParticipants = updatedData.participants || [];
                     const kickedChar = sessionParticipants.find(p => p.id === action.payload.characterId);
                     const isQuietLeave = action.payload.quietLeave === 'true';
                     const isQuietEnter = action.payload.quietEnter === 'true';
-
                     if (kickedChar) {
                         const destLocId = action.payload.destinationLocationId;
                         const destLocName = action.payload.destinationLocationName || destLocId;
                         const prevKickedMsg = findPrevMsg(updatedData, kickedChar.id);
-
                         if (destLocId) {
                             if (!updatedData.interactionHistories[destLocId]) {
                                 updatedData.interactionHistories[destLocId] = [];
                             }
-
                             const kickMsg = createMessage(kickedChar, {
                                 ...(isQuietEnter ? {} : { textContent: `[Entered "${destLocName}"]` }),
                                 timestamp: sequenceTime,
@@ -2827,10 +2837,8 @@ export function processPendingToolActions(
                             currentLastMessageId = kickMsg.id;
                             updatedData.interactionHistories[destLocId] = [...updatedData.interactionHistories[destLocId], kickMsg];
                         }
-
                         updatedData = { ...updatedData, lastUpdatedTimestamp: sequenceTime };
                         changed = true;
-
                         if (!isQuietLeave && !isQuietEnter) {
                             options?.onToast?.(`👢 ${action.payload.characterName} kicked to ${destLocName}.`, 'info');
                         } else if (!isQuietLeave) {
@@ -2839,33 +2847,27 @@ export function processPendingToolActions(
                     }
                     break;
                 }
-
                 // ─── 6. SUMMON ────────────────────────────────────────────
                 case 'summon': {
                     const charId = action.payload.characterId;
                     const sessionParticipants = updatedData.participants || [];
                     if (sessionParticipants.some(p => p.id === charId)) break;
-
                     const realCharacter = allCharacters.find(c => c.id === charId);
                     if (!realCharacter) { options?.onToast?.(`⚠️ Cannot summon "${action.payload.characterName}": not found.`, 'error'); break; }
-
                     updatedData = { ...updatedData, participants: [...sessionParticipants, { ...realCharacter }], lastUpdatedTimestamp: sequenceTime };
                     changed = true;
                     options?.onToast?.(`✨ ${realCharacter.name} joined.`, 'info');
                     break;
                 }
-
                 // ─── LOCK / UNLOCK LOCATION ─────────────────────────
                 case 'lock_location': {
                     const charId = action.payload.characterId;
                     const locId = action.payload.locationId;
                     const realChar = allCharacters.find(c => c.id === charId) || updatedData.participants.find(p => p.id === charId);
                     if (!realChar) break;
-
                     const prevMsg = findPrevMsg(updatedData, charId);
                     const newLocks = { ...(prevMsg?.characterLockedLocations ?? {}) };
                     newLocks[locId] = true;
-
                     const lockMsg = createMessage(realChar, {
                         characterLockedLocations: newLocks,
                         timestamp: sequenceTime,
@@ -2874,24 +2876,20 @@ export function processPendingToolActions(
                         interactionData: updatedData,
                     });
                     currentLastMessageId = lockMsg.id;
-
                     const charCurrentLocId = getCurrentLocation(updatedData, realChar)?.id || 'global';
                     if (!updatedData.interactionHistories[charCurrentLocId]) updatedData.interactionHistories[charCurrentLocId] = [];
                     updatedData.interactionHistories[charCurrentLocId] = [...updatedData.interactionHistories[charCurrentLocId], lockMsg];
                     changed = true;
                     break;
                 }
-
                 case 'unlock_location': {
                     const charId = action.payload.characterId;
                     const locId = action.payload.locationId;
                     const realChar = allCharacters.find(c => c.id === charId) || updatedData.participants.find(p => p.id === charId);
                     if (!realChar) break;
-
                     const prevMsg = findPrevMsg(updatedData, charId);
                     const newLocks = { ...(prevMsg?.characterLockedLocations ?? {}) };
                     delete newLocks[locId];
-
                     const unlockMsg = createMessage(realChar, {
                         characterLockedLocations: newLocks,
                         timestamp: sequenceTime,
@@ -2900,14 +2898,12 @@ export function processPendingToolActions(
                         interactionData: updatedData,
                     });
                     currentLastMessageId = unlockMsg.id;
-
                     const charCurrentLocId = getCurrentLocation(updatedData, realChar)?.id || 'global';
                     if (!updatedData.interactionHistories[charCurrentLocId]) updatedData.interactionHistories[charCurrentLocId] = [];
                     updatedData.interactionHistories[charCurrentLocId] = [...updatedData.interactionHistories[charCurrentLocId], unlockMsg];
                     changed = true;
                     break;
                 }
-
                 // ─── 7. ADMINISTRATOR COMMANDS ────────────────────────────
                 case 'administrator_switch_model': options?.onToast?.(`🔧 Switch to "${action.payload.modelName}" requested.`, 'info'); break;
                 case 'administrator_toggle_account': options?.onToast?.(`🔑 Toggle account "${action.payload.accountId}" requested.`, 'info'); break;

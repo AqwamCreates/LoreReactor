@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import type { 
     Character, Context, Location, AudioTrack, World, PromptBlock, 
-    LanguageModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, 
+    LanguageModel, SpatiotemporalModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, 
     Memory, Account, MultiplayerData, EntityFolder, RawInteractionData, InteractionData, 
     ObjectData, ChatMessage
 } from '../types';
@@ -13,6 +13,7 @@ export type SearchTabId =
     | 'all' 
     | 'message' 
     | 'interactionData'
+    | 'entityFolder'
     | 'character' 
     | 'context' 
     | 'location' 
@@ -20,6 +21,7 @@ export type SearchTabId =
     | 'world' 
     | 'promptBlock' 
     | 'languageModel' 
+    | 'spatiotemporalModel'
     | 'sampler' 
     | 'stopPattern' 
     | 'retrievalConfiguration'
@@ -28,7 +30,6 @@ export type SearchTabId =
     | 'memory' 
     | 'account' 
     | 'multiplayerData'
-    | 'entityFolder'
 
 export interface SuperSearchModalProps {
     onClose: () => void;
@@ -40,6 +41,7 @@ export interface SuperSearchModalProps {
     allWorlds: World[];
     allPromptBlocks: PromptBlock[];
     allLanguageModels: LanguageModel[];
+    allSpatiotemporalModels: SpatiotemporalModel[];
     allSamplers: Sampler[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
@@ -95,7 +97,8 @@ const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'promptBlock', label: 'Prompts', icon: '🧱' },
     { id: 'audioTrack', label: 'Audio', icon: '🔊' },
     { id: 'world', label: 'Worlds', icon: '🌍' },
-    { id: 'languageModel', label: 'Models', icon: '🤖' },
+    { id: 'languageModel', label: 'LLMs', icon: '🤖' },
+    { id: 'spatiotemporalModel', label: 'Image/Video', icon: '🎨' },
     { id: 'sampler', label: 'Samplers', icon: '🎚️' },
     { id: 'stopPattern', label: 'Stop Patterns', icon: '🛑' },
     { id: 'retrievalConfiguration', label: 'Retrieval', icon: '🧭' },
@@ -195,6 +198,7 @@ export function SuperSearchModal({
     allWorlds,
     allPromptBlocks,
     allLanguageModels,
+    allSpatiotemporalModels,
     allSamplers,
     allStopPatterns,
     allRetrievalConfigurations,
@@ -347,7 +351,7 @@ export function SuperSearchModal({
     const categorizedResults = useMemo<Record<SearchTabId, SearchMatchResult[]>>(() => {
         const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
             all: [], message: [], interactionData: [], entityFolder: [], character: [], context: [],
-            location: [], promptBlock: [], audioTrack: [], world: [], languageModel: [],
+            location: [], promptBlock: [], audioTrack: [], world: [], languageModel: [], spatiotemporalModel: [],
             sampler: [], stopPattern: [], retrievalConfiguration: [], budgetStrategy: [], profile: [], memory: [],
             account: [], multiplayerData: []
         };
@@ -392,6 +396,7 @@ export function SuperSearchModal({
         emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`);
         emptyMap.world = scanEntities(allWorlds, 'world', w => `🌍 ${w.name}`);
         emptyMap.languageModel = scanEntities(allLanguageModels, 'languageModel', m => `🤖 ${m.name}`);
+        emptyMap.spatiotemporalModel = scanEntities(allSpatiotemporalModels, 'spatiotemporalModel', m => `🎨 ${m.name}`);
         emptyMap.sampler = scanEntities(allSamplers, 'sampler', s => `🎚️ ${s.name}`);
         emptyMap.stopPattern = scanEntities(allStopPatterns, 'stopPattern', sp => `🛑 ${sp.name}`);
         emptyMap.retrievalConfiguration = scanEntities(allRetrievalConfigurations, 'retrievalConfiguration', rc => `🧭 ${rc.name}`);
@@ -476,6 +481,7 @@ export function SuperSearchModal({
             ...emptyMap.promptBlock.slice(0, 5),
             ...emptyMap.world.slice(0, 5),
             ...emptyMap.languageModel.slice(0, 5),
+            ...emptyMap.spatiotemporalModel.slice(0, 5),
             ...emptyMap.sampler.slice(0, 5),
             ...emptyMap.stopPattern.slice(0, 5),
             ...emptyMap.retrievalConfiguration.slice(0, 5),
@@ -488,7 +494,7 @@ export function SuperSearchModal({
         ];
 
         return emptyMap;
-    }, [lowerQuery, searchableCharacters, searchableContexts, searchableLocations, searchableAudioTracks, allPromptBlocks, allWorlds, allLanguageModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, currentInteractionData, allCharacters, messageToChatsMap, serverMessages, characterMap]);
+    }, [lowerQuery, searchableCharacters, searchableContexts, searchableLocations, searchableAudioTracks, allPromptBlocks, allWorlds, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, currentInteractionData, allCharacters, messageToChatsMap, serverMessages, characterMap]);
 
     const displayedResults = useMemo(() => {
         return categorizedResults[activeTab] || [];

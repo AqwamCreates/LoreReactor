@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/slashCommandLogic.ts
-import type { Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel } from '../types';
+import type { Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel, SpatiotemporalModel } from '../types';
 import { getLocalMessageHistory } from './timelineLogic';
 import { getReachableLocationsByCharacter, getCoLocatedParticipants } from './locationLogic';
 
@@ -11,7 +11,7 @@ export type ArgType =
     | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' 
     | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' 
     | 'world' | 'account' | 'multiplayer_session' 
-    | 'language_model' | 'budget_strategy';
+    | 'language_model' | 'spatiotemporal_model' | 'budget_strategy';
 
 export interface SlashArg { name: string; type: ArgType; desc: string; optional?: boolean; example?: string; }
 export interface SlashSub { name: string; desc: string; args?: SlashArg[]; }
@@ -29,7 +29,7 @@ export interface AutocompleteOption {
 export const VALID_ENTITY_TYPES = [
     'character', 'context', 'location', 'audio_track', 'prompt_block', 
     'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 
-    'memory', 'account', 'multiplayer_data', 'language_model'
+    'memory', 'account', 'multiplayer_data', 'language_model', 'spatiotemporal_model'
 ];
 
 export const COMMAND_TREE: SlashCmd[] = [
@@ -182,6 +182,7 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'list_accounts', desc: 'List all accounts' },
         { name: 'list_multiplayer', desc: 'List multiplayer sessions' },
         { name: 'list_models', desc: 'List all language models' },
+        { name: 'list_spatiotemporal_models', desc: 'List all spatiotemporal models' },
         { name: 'list_budget_strategies', desc: 'List all budget strategies' },
         { name: 'move_protagonist', desc: 'Move to session', args: [{ name: 'chat_id', type: 'text', desc: 'Session ID' }] },
         { name: 'switch_model', desc: 'Switch active model', args: [{ name: 'languageModel', type: 'language_model', desc: 'Language model' }] },
@@ -301,6 +302,8 @@ export function getEntityOptions(
     allContexts: Context[] = [],
     allAudioTracks: AudioTrack[] = [],
     allPromptBlocks: PromptBlock[] = [],
+    allLanguageModels: LanguageModel[] = [],
+    allSpatiotemporalModels: SpatiotemporalModel[] = [],
     allSamplers: Sampler[] = [],
     allStopPatterns: StopPattern[] = [],
     allProfiles: Profile[] = [],
@@ -308,7 +311,6 @@ export function getEntityOptions(
     allMemories: Memory[] = [],
     allAccounts: Account[] = [],
     allMultiplayerData: MultiplayerData[] = [],
-    allLanguageModels: LanguageModel[] = [],
     allBudgetStrategies: BudgetStrategy[] = [],
     localCharacter: Character | null = null
 ): EntityOption[] {
@@ -351,7 +353,7 @@ export function getEntityOptions(
             }));
     }
 
-    if (!data && type !== 'account' && type !== 'multiplayer_session' && type !== 'language_model' && type !== 'budget_strategy') return [];
+    if (!data && type !== 'account' && type !== 'multiplayer_session' && type !== 'language_model' && type !== 'spatiotemporal_model' && type !== 'budget_strategy') return [];
 
     if (type === 'reachable_location') {
         if (!data || !activeChar) {
@@ -415,6 +417,15 @@ export function getEntityOptions(
             label: m.name || m.model || m.id,
             id: m.id.substring(0, 8),
             extra: `${m.backend} | ${m.contextLength} ctx`
+        }));
+    }
+
+    if (type === 'spatiotemporal_model') {
+        return allSpatiotemporalModels.map(m => ({
+            value: m.id,
+            label: m.name || m.model || m.id,
+            id: m.id.substring(0, 8),
+            extra: `${m.backend}`
         }));
     }
 
@@ -580,6 +591,7 @@ export function computeSlashAutocomplete(
     allProfiles: Profile[] = [], 
     allPromptBlocks: PromptBlock[] = [], 
     allLanguageModels: LanguageModel[] = [], 
+    allSpatiotemporalModels: SpatiotemporalModel[] = [],
     allSamplers: Sampler[] = [], 
     allStopPatterns: StopPattern[] = [], 
     allBudgetStrategies: BudgetStrategy[] = [], 
@@ -661,9 +673,9 @@ export function computeSlashAutocomplete(
 
             const entities = getEntityOptions(
                 arg.type, interactionData, allCharacters, allLocations, allContexts,
-                allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
-                allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
-                allLanguageModels, allBudgetStrategies, localProtagonist
+                allAudioTracks, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, 
+                allSamplers, allStopPatterns, allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
+                allBudgetStrategies, localProtagonist
             );
 
             let queryForFilter = effectiveQuery;
@@ -727,9 +739,9 @@ export function computeSlashAutocomplete(
 
         const entities = getEntityOptions(
             arg.type, interactionData, allCharacters, allLocations, allContexts,
-            allAudioTracks, allPromptBlocks, allSamplers, allStopPatterns,
+            allAudioTracks, allPromptBlocks, allLanguageModels, allSpatiotemporalModels,allSamplers, allStopPatterns,
             allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
-            allLanguageModels, allBudgetStrategies, localProtagonist
+            allBudgetStrategies, localProtagonist
         );
 
         let queryForFilter = effectiveQuery;

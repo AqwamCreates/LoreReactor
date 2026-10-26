@@ -28,7 +28,7 @@ import { learnFromUserMessage } from './ActionFormatEngine';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { findActiveThinkEndToken } from '../dictionaries/modelTemplates';
 
-import type { Character, InteractionData, PromptBlock, Context, Location, AudioTrack, World, LanguageModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder, ChatMessage, HistoryMessage, InterjectableAction, NarrationMessage, TextMessage, InteractionMessage } from '../types';
+import type { Character, InteractionData, PromptBlock, Context, Location, AudioTrack, World, LanguageModel, SpatiotemporalModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder, ChatMessage, HistoryMessage, InterjectableAction, NarrationMessage, TextMessage, InteractionMessage } from '../types';
 
 export interface CoordinatorDependencies {
     isMultiplayerClient: boolean;
@@ -39,6 +39,7 @@ export interface CoordinatorDependencies {
     allAudioTracks: AudioTrack[];
     allWorlds: World[];
     allLanguageModels: LanguageModel[];
+    allSpatiotemporalModels: SpatiotemporalModel[];
     allSamplers: Sampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
@@ -127,6 +128,7 @@ class ChatSessionCoordinator {
             allAudioTracks: this.deps.allAudioTracks,
             allWorlds: this.deps.allWorlds,
             allLanguageModels: this.deps.allLanguageModels,
+            allSpatiotemporalModels: this.deps.allSpatiotemporalModels,
             allSamplers: this.deps.allSamplers,
             allPromptBlocks: this.deps.allPromptBlocks,
             allStopPatterns: this.deps.allStopPatterns,
