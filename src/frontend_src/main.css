@@ -1993,7 +1993,6 @@ min-height: 24px;
 .vn-nav-arrow { width: 36px; height: 36px; font-size: 1rem; }
 .vn-nav-group:first-child { left: 8px; }
 .vn-nav-group:last-child { right: 8px; }
-.vn-reformat-grid { grid-template-columns: 1fr; }
 .vn-branch-button { font-size: 0.65rem; padding: 4px 12px; }
 .vn-branch-indicator {
 top: 60px; /* Pushes below the stacked mobile header */
@@ -2008,6 +2007,7 @@ top: 60px; /* Pushes below the stacked mobile header */
 .vn-message-toolbar { top: -10px; right: 8px; padding: 2px 3px; gap: 1px; }
 .vn-toolbar-btn { font-size: 0.75rem; padding: 2px 3px; min-width: 24px; min-height: 24px; }
 .vn-nav-arrow { width: 32px; height: 32px; font-size: 0.9rem; }
+.vn-reformat-grid { grid-template-columns: 1fr; }
 }
 @keyframes vn-breathe-calm {
 0%, 100% { transform: translateY(0); }
@@ -2615,6 +2615,22 @@ CARD VIEW REFORMATTER (Solid, High-Contrast, & Scrollable)
 .fate-card .vn-reformat-arrow {
     color: var(--accent) !important;
     font-size: 0.8rem !important;
+}
+
+.fate-card .vn-reformat-grid {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 4px 10px !important;
+}
+
+/* Adjust row spacing so the dropdown and label sit cleanly side-by-side */
+.fate-card .vn-reformat-row,
+.vn-reformat-row {
+    display: grid;
+    grid-template-columns: 1fr 14px minmax(0, 1fr);
+    gap: 4px;
+    align-items: center;
+    min-width: 0;
 }
 
 /* =============================================================================
