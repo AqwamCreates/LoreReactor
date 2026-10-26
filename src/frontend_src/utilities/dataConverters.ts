@@ -196,7 +196,7 @@ function parsePromptFormatMode(raw: unknown): promptFormatMode {
 
 const VALID_ENTITY_TYPES: entityType[] = [
     'character', 'context', 'location', 'audioTrack', 
-    'world', 'interactionData', 'model', 'sampler', 'promptBlock', 
+    'world', 'interactionData', 'languageModel', 'sampler', 'promptBlock', 
     'stopPattern', 'budgetStrategy', 'profile', 
     'account', 'multiplayerData'
 ];

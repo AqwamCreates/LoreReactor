@@ -19,7 +19,7 @@ export type SearchTabId =
     | 'audioTrack' 
     | 'world' 
     | 'promptBlock' 
-    | 'model' 
+    | 'languageModel' 
     | 'sampler' 
     | 'stopPattern' 
     | 'retrievalConfiguration'
@@ -95,7 +95,7 @@ const TAB_CONFIG: { id: SearchTabId; label: string; icon: string }[] = [
     { id: 'promptBlock', label: 'Prompts', icon: '🧱' },
     { id: 'audioTrack', label: 'Audio', icon: '🔊' },
     { id: 'world', label: 'Worlds', icon: '🌍' },
-    { id: 'model', label: 'Models', icon: '🤖' },
+    { id: 'languageModel', label: 'Models', icon: '🤖' },
     { id: 'sampler', label: 'Samplers', icon: '🎚️' },
     { id: 'stopPattern', label: 'Stop Patterns', icon: '🛑' },
     { id: 'retrievalConfiguration', label: 'Retrieval', icon: '🧭' },
@@ -347,7 +347,7 @@ export function SuperSearchModal({
     const categorizedResults = useMemo<Record<SearchTabId, SearchMatchResult[]>>(() => {
         const emptyMap: Record<SearchTabId, SearchMatchResult[]> = {
             all: [], message: [], interactionData: [], entityFolder: [], character: [], context: [],
-            location: [], promptBlock: [], audioTrack: [], world: [], model: [],
+            location: [], promptBlock: [], audioTrack: [], world: [], languageModel: [],
             sampler: [], stopPattern: [], retrievalConfiguration: [], budgetStrategy: [], profile: [], memory: [],
             account: [], multiplayerData: []
         };
@@ -391,7 +391,7 @@ export function SuperSearchModal({
 
         emptyMap.promptBlock = scanEntities(allPromptBlocks, 'promptBlock', p => `🧱 ${p.name}`);
         emptyMap.world = scanEntities(allWorlds, 'world', w => `🌍 ${w.name}`);
-        emptyMap.model = scanEntities(allLanguageModels, 'model', m => `🤖 ${m.name}`);
+        emptyMap.languageModel = scanEntities(allLanguageModels, 'languageModel', m => `🤖 ${m.name}`);
         emptyMap.sampler = scanEntities(allSamplers, 'sampler', s => `🎚️ ${s.name}`);
         emptyMap.stopPattern = scanEntities(allStopPatterns, 'stopPattern', sp => `🛑 ${sp.name}`);
         emptyMap.retrievalConfiguration = scanEntities(allRetrievalConfigurations, 'retrievalConfiguration', rc => `🧭 ${rc.name}`);
@@ -475,7 +475,7 @@ export function SuperSearchModal({
             ...emptyMap.location.slice(0, 5),
             ...emptyMap.promptBlock.slice(0, 5),
             ...emptyMap.world.slice(0, 5),
-            ...emptyMap.model.slice(0, 5),
+            ...emptyMap.languageModel.slice(0, 5),
             ...emptyMap.sampler.slice(0, 5),
             ...emptyMap.stopPattern.slice(0, 5),
             ...emptyMap.retrievalConfiguration.slice(0, 5),

@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useChatStore.ts
 import { create } from 'zustand';
-import type { Character, InteractionData, BudgetStrategy, LanguageModel, BudgetData, MultiplayerData, EntityFolder } from '../types';
+import type { Character, InteractionData, BudgetStrategy, LanguageModel, SpatiotemporalModel, BudgetData, MultiplayerData, EntityFolder } from '../types';
 import { loadRawSessionData, saveRawSessionData, saveRawInteractionData } from '../storages/serverStorage';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { deleteMessage, branchMessage, cloneChatUpToMessage } from '../utilities/messageLogic';
@@ -12,9 +12,12 @@ interface ChatState {
     interactionData: InteractionData | null;
     localProtagonist: Character | null;
     selectedLanguageModel: LanguageModel | null;
+    selectedSpatiotemporalModel: SpatiotemporalModel | null;
     runningLanguageModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
+    runningSpatiotemporalModels: Record<string, { isRunning: boolean; isIdle?: boolean; port?: number }>;
     activeStrategy: BudgetStrategy | null;
     selectedModelId: string | null;
+    selectedSpatiotemporalModelId: string | null;
     budgetData: BudgetData | null;
     numberOfTokens: number;
     sessionStartTimestamp: number | null;
@@ -31,15 +34,18 @@ interface ChatState {
     setInteractionData: (data: InteractionData | null | ((prev: InteractionData | null) => InteractionData | null)) => void;
     setLocalProtagonist: (character: Character | null) => void;
     setActiveStrategy: (strategy: BudgetStrategy | null) => void;
-    setSelectedModel: (model: LanguageModel | null) => void;
-    updateRunningModels: (models: Record<string, any>) => void;
+    setSelectedLanguageModel: (model: LanguageModel | null) => void;
+    setSelectedSpatiotemporalModel: (model: SpatiotemporalModel | null) => void;
+    updateRunningLanguageModels: (models: Record<string, any>) => void;
+    updateRunningSpatiotemporalModels: (models: Record<string, any>) => void;
     setBudgetData: (data: BudgetData | null) => void;
     setLastSelectedModelId: (id: string | null) => void;
+    setSelectedSpatiotemporalModelId: (id: string | null) => void;
     setNumberOfTokens: (count: number) => void;
     setAllEntityFolders: (folders: EntityFolder[]) => void;
     setSaveEntityFolder: (fn: ((folder: EntityFolder) => Promise<boolean>) | null) => void;
     setSelectedCharacterId: (id: string | null) => void;
-    setSelectedModelId: (id: string | null) => void;
+    setSelectedLanguageModelId: (id: string | null) => void;
     setSelectedProfileId: (id: string | null) => void;
     setSelectedBudgetStrategyId: (id: string | null) => void;
     setActiveChatId: (id: string | null) => void;
@@ -58,6 +64,7 @@ export const useChatStore = create<ChatState>()((set, get) => {
         .then((session) => {
             const updates: Partial<ChatState> = { sessionLoaded: true };
             if (session.selectedModelId !== undefined) updates.selectedModelId = session.selectedModelId;
+            if (session.selectedSpatiotemporalModelId !== undefined) updates.selectedSpatiotemporalModelId = session.selectedSpatiotemporalModelId;
             if (session.selectedBudgetStrategyId !== undefined) updates.selectedBudgetStrategyId = session.selectedBudgetStrategyId;
             if (session.selectedCharacterId !== undefined) updates.selectedCharacterId = session.selectedCharacterId;
             if (session.currentAccountId !== undefined) updates.currentAccountId = session.currentAccountId;
@@ -69,8 +76,8 @@ export const useChatStore = create<ChatState>()((set, get) => {
         });
 
     return {
-        interactionData: null, localProtagonist: null, selectedLanguageModel: null, runningLanguageModels: {},
-        activeStrategy: null, selectedModelId: null, budgetData: null, numberOfTokens: 0,
+        interactionData: null, localProtagonist: null, selectedLanguageModel: null, selectedSpatiotemporalModel: null, runningLanguageModels: {}, runningSpatiotemporalModels: {},
+        activeStrategy: null, selectedModelId: null, selectedSpatiotemporalModelId: null, budgetData: null, numberOfTokens: 0,
         sessionStartTimestamp: null, currentAccountId: null, multiplayerData: null,
         selectedBudgetStrategyId: null, selectedCharacterId: null, selectedProfileId: null,
         activeExtensionIds: [], allEntityFolders: [], saveEntityFolder: null, sessionLoaded: false,
@@ -83,18 +90,23 @@ export const useChatStore = create<ChatState>()((set, get) => {
         },
         setLocalProtagonist: (character) => set({ localProtagonist: character }),
         setActiveStrategy: (strategy) => set({ activeStrategy: strategy }),
-        setSelectedModel: (model) => set({ selectedLanguageModel: model }),
-        updateRunningModels: (models) => {
+        setSelectedLanguageModel: (model) => set({ selectedLanguageModel: model }),
+        setSelectedSpatiotemporalModel: (model) => set({ selectedSpatiotemporalModel: model }),
+        updateRunningLanguageModels: (models) => {
             set({ runningLanguageModels: models });
             engine.setRunningModels(models);
         },
+        updateRunningSpatiotemporalModels: (models) => {
+            set({ runningSpatiotemporalModels: models });
+        },
         setBudgetData: (data) => set({ budgetData: data }),
         setLastSelectedModelId: (id) => set({ selectedModelId: id }),
+        setSelectedSpatiotemporalModelId: (id) => { set({ selectedSpatiotemporalModelId: id }); saveRawSessionData({ selectedSpatiotemporalModelId: id }); },
         setNumberOfTokens: (count) => set({ numberOfTokens: count }),
         setAllEntityFolders: (folders) => set({ allEntityFolders: folders }),
         setSaveEntityFolder: (fn) => set({ saveEntityFolder: fn }),
         setSelectedCharacterId: (id) => { set({ selectedCharacterId: id }); saveRawSessionData({ selectedCharacterId: id }); },
-        setSelectedModelId: (id) => { set({ selectedModelId: id }); saveRawSessionData({ selectedModelId: id }); },
+        setSelectedLanguageModelId: (id) => { set({ selectedModelId: id }); saveRawSessionData({ selectedModelId: id }); },
         setSelectedProfileId: (id) => { set({ selectedProfileId: id }); saveRawSessionData({ selectedProfileId: id }); },
         setSelectedBudgetStrategyId: (id) => { set({ selectedBudgetStrategyId: id }); saveRawSessionData({ selectedBudgetStrategyId: id }); },
         setActiveChatId: (id) => { saveRawSessionData({ activeChatId: id }); },

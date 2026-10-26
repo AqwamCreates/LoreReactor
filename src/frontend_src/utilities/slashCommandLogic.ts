@@ -184,7 +184,7 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'list_models', desc: 'List all language models' },
         { name: 'list_budget_strategies', desc: 'List all budget strategies' },
         { name: 'move_protagonist', desc: 'Move to session', args: [{ name: 'chat_id', type: 'text', desc: 'Session ID' }] },
-        { name: 'switch_model', desc: 'Switch active model', args: [{ name: 'model', type: 'language_model', desc: 'Language model' }] },
+        { name: 'switch_model', desc: 'Switch active model', args: [{ name: 'languageModel', type: 'language_model', desc: 'Language model' }] },
         { name: 'switch_budget_strategy', desc: 'Switch active budget strategy', args: [{ name: 'strategy', type: 'budget_strategy', desc: 'Budget strategy' }] },
         { name: 'toggle_account', desc: 'Toggle account active state', args: [{ name: 'account', type: 'account', desc: 'Account to toggle' }] },
         { name: 'join_session', desc: 'Join multiplayer session', args: [

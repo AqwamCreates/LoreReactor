@@ -45,7 +45,7 @@ interface DataManagerModalProps {
 
 type TabId = 'storage' | 'cleanup' | 'integrity' | 'cache' | 'bulk' | 'danger';
 
-type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'model' | 'sampler' | 'stopPattern' | 'retrievalConfiguration' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
+type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'languageModel' | 'sampler' | 'stopPattern' | 'retrievalConfiguration' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
 
 type SortField = 'name' | 'type' | 'lastUpdated' | 'flags';
 type SortDirection = 'asc' | 'desc';
@@ -90,7 +90,7 @@ const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     audioTrack: { icon: '🔊', label: 'Audio Tracks' },
     world: { icon: '🌍', label: 'Worlds' },
     promptBlock: { icon: '🧱', label: 'Prompt Blocks' },
-    model: { icon: '🤖', label: 'Language Models' },
+    languageModel: { icon: '🤖', label: 'Language Models' },
     sampler: { icon: '🎚️', label: 'Samplers' },
     stopPattern: { icon: '🛑', label: 'Stop Patterns' },
     retrievalConfiguration: { icon: '🧭', label: 'Retrieval Configurations' },
@@ -161,7 +161,7 @@ function isEntityHollow(
             const p = entity as PromptBlock;
             return !p.textContent && !(p.images?.length);
         }
-        case 'model': {
+        case 'languageModel': {
             const m = entity as LanguageModel;
             return !m.model && !m.apiKey;
         }
@@ -479,7 +479,7 @@ export function DataManagerModal({
         for (const a of allAudioTracks) check('audioTrack', a.id, a.filename || a.name, a.lastUpdatedTimestamp, referencedAudioIds.has(a.id), a);
         for (const w of allWorlds) check('world', w.id, w.name, w.lastUpdatedTimestamp, true, w);
         for (const b of allPromptBlocks) check('promptBlock', b.id, b.name, b.lastUpdatedTimestamp, referencedPbIds.has(b.id), b);
-        for (const m of allLanguageModels) check('model', m.id, m.name, m.lastUpdatedTimestamp, referencedModelIds.has(m.id), m);
+        for (const m of allLanguageModels) check('languageModel', m.id, m.name, m.lastUpdatedTimestamp, referencedModelIds.has(m.id), m);
         for (const s of allSamplers) check('sampler', s.id, s.name, s.lastUpdatedTimestamp, referencedSamplerIds.has(s.id), s);
         for (const sp of allStopPatterns) check('stopPattern', sp.id, sp.name, sp.lastUpdatedTimestamp, referencedStopPatternIds.has(sp.id), sp);
         for (const rc of allRetrievalConfigurations) check('retrievalConfiguration', rc.id, rc.name, rc.lastUpdatedTimestamp, referencedRetrievalConfigIds.has(rc.id), rc);
@@ -795,7 +795,7 @@ export function DataManagerModal({
                 case 'audioTrack': onDeleteAudioTrack(item.id); break;
                 case 'world': onDeleteWorld(item.id); break;
                 case 'promptBlock': onDeletePromptBlock(item.id); break;
-                case 'model': onDeleteModel(item.id); break;
+                case 'languageModel': onDeleteModel(item.id); break;
                 case 'sampler': onDeleteSampler(item.id); break;
                 case 'stopPattern': onDeleteStopPattern(item.id); break;
                 case 'retrievalConfiguration': onDeleteRetrievalConfiguration(item.id); break;

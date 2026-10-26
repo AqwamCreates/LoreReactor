@@ -70,7 +70,7 @@ export interface ToolExecutionContext {
 // ─── Canonical entityType Mapping ───────────────────────────────────
 export const VALID_ENTITY_TYPES: entityType[] = [
     'character', 'context', 'location', 'audioTrack', 'world',
-    'interactionData', 'model', 'sampler', 'promptBlock', 'stopPattern',
+    'interactionData', 'languageModel', 'sampler', 'promptBlock', 'stopPattern',
     'retrievalConfiguration', 'budgetStrategy', 'profile', 'account',
     'multiplayerData', 'entityFolder'
 ];
@@ -87,8 +87,8 @@ export function normalizeEntityType(raw: string): entityType | null {
         interactiondata: 'interactionData', interactiondatas: 'interactionData',
         session: 'interactionData', sessions: 'interactionData',
         chat: 'interactionData', chats: 'interactionData',
-        model: 'model', models: 'model',
-        languagemodel: 'model', languagemodels: 'model',
+        model: 'languageModel', models: 'languageModel',
+        languagemodel: 'languageModel', languagemodels: 'languageModel',
         sampler: 'sampler', samplers: 'sampler',
         promptblock: 'promptBlock', promptblocks: 'promptBlock',
         stoppattern: 'stopPattern', stoppatterns: 'stopPattern',
@@ -112,7 +112,7 @@ function getEntitiesByType(context: ToolExecutionContext | undefined, type: enti
         case 'audioTrack': return context.allAudioTracks || [];
         case 'world': return context.allWorlds || [];
         case 'interactionData': return context.allRawInteractionDataShells || [];
-        case 'model': return context.allLanguageModels || [];
+        case 'languageModel': return context.allLanguageModels || [];
         case 'sampler': return context.allSamplers || [];
         case 'promptBlock': return context.allPromptBlocks || [];
         case 'stopPattern': return context.allStopPatterns || [];
@@ -2055,7 +2055,7 @@ function executeAdministrator(
             return { toolType: 'administrator', args, textContent: `Chat Sessions (${allShells.length}):\n${lines.join('\n')}`, displayReplacement: `[🔧 ${allShells.length} chat(s)]` };
         }
         case 'switch_model': {
-            const modelName = pArgs.get(1, 'model_name', 'name', 'model') || pArgs.positional.slice(1).join(' ');
+            const modelName = pArgs.get(1, 'model_name', 'name', 'languageModel') || pArgs.positional.slice(1).join(' ');
             if (!modelName) return { toolType: 'administrator', args, textContent: '[Error: administrator(action="switch_model", model_name="...") requires model name]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_switch_model', payload: { modelName } });
             return { toolType: 'administrator', args, textContent: `Requested switch to model "${modelName}".`, displayReplacement: `[🔧 Switch: ${modelName}]` };

@@ -141,7 +141,7 @@ function App() {
         location: { saveFunction: locations.saveLocation, deleteFunction: locations.deleteLocation, entityLabel: 'Location' },
         audioTrack: { saveFunction: audioTracks.saveAudioTrack, deleteFunction: audioTracks.deleteAudioTrack, entityLabel: 'Audio Track' },
         world: { saveFunction: worlds.saveWorld, deleteFunction: worlds.deleteWorld, entityLabel: 'World' },
-        model: { saveFunction: languageModels.saveLanguageModel, deleteFunction: languageModels.deleteLanguageModel, entityLabel: 'Language Model' },
+        languageModel: { saveFunction: languageModels.saveLanguageModel, deleteFunction: languageModels.deleteLanguageModel, entityLabel: 'Language Model' },
         sampler: { saveFunction: samplers.saveSampler, deleteFunction: samplers.deleteSampler, entityLabel: 'Sampler' },
         promptBlock: { saveFunction: promptBlocks.savePromptBlock, deleteFunction: promptBlocks.deletePromptBlock, entityLabel: 'Prompt Block' },
         stopPattern: { saveFunction: stopPatterns.saveStopPattern, deleteFunction: stopPatterns.deleteStopPattern, entityLabel: 'Stop Pattern' },
@@ -229,7 +229,7 @@ function App() {
         allRawInteractionDataShells: interactionDatas.allRawInteractionDataShells,
         loadFullCharacter: characters.loadFullCharacter,
         setInteractionData, setSelectedCharacter,
-        setSelectedModelId: languageModels.setSelectedLanguageModelId,
+        setSelectedLanguageModelId: languageModels.setSelectedLanguageModelId,
         startNewChat,
         skipRestoration: mp.isMultiplayerClient,
     });
@@ -334,7 +334,7 @@ function App() {
         interactionDataId: interactionData?.id,
         isMultiplayerClient: mp.isMultiplayerClient,
         selectedModelId: languageModels.selectedLanguageModelId,
-        setSelectedModelId: languageModels.setSelectedLanguageModelId,
+        setSelectedLanguageModelId: languageModels.setSelectedLanguageModelId,
         selectedBudgetStrategyId,
         allBudgetStrategies: budgetStrategies.strategies,
         setActiveBudgetStrategy,
@@ -463,7 +463,7 @@ function App() {
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storeSetSelectedCharacterId,
-        setSelectedModelId: languageModels.setSelectedLanguageModelId,
+        setSelectedLanguageModelId: languageModels.setSelectedLanguageModelId,
         unloadAllRunningModels: languageModels.unloadAllRunningLanguageModels,
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
@@ -1486,7 +1486,7 @@ function App() {
                 onSaveWorld={worlds.saveWorld} 
                 onToggleWorlds={handleLoadWorlds} 
                 onDeleteWorld={entityModals.getModalProperties('world').delete}
-                onDeleteModel={entityModals.getModalProperties('model').delete} 
+                onDeleteModel={entityModals.getModalProperties('languageModel').delete} 
                 onToggleModelLoad={languageModels.toggleLanguageModelLoad}
                 onDeleteSampler={entityModals.getModalProperties('sampler').delete} 
                 onDeletePromptBlock={entityModals.getModalProperties('promptBlock').delete}

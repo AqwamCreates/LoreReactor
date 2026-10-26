@@ -17,7 +17,7 @@ interface ChatSessionEffectsParams {
     isLoadingRef: RefObject<boolean>;
     abortControllerRef: RefObject<AbortController | null>;
     setBudgetData: (data: BudgetData) => void;
-    updateRunningModels: (models: Record<string, { isRunning: boolean; port?: number }>) => void;
+    updateRunningLanguageModels: (models: Record<string, { isRunning: boolean; port?: number }>) => void;
     setNumberOfTokens: (tokens: number) => void;
     getState: () => any;
     setState: (state: any) => void;
@@ -35,7 +35,7 @@ export function useChatSessionEffects({
     isLoadingRef,
     abortControllerRef,
     setBudgetData,
-    updateRunningModels,
+    updateRunningLanguageModels,
     setNumberOfTokens,
     getState,
     setState,
@@ -92,13 +92,13 @@ export function useChatSessionEffects({
                 const data = await response.json();
                 const status: Record<string, { isRunning: boolean; port?: number }> = {};
                 for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
-                if (!cancelled) updateRunningModels(status);
+                if (!cancelled) updateRunningLanguageModels(status);
             } catch (e) {
                 if (!cancelled) addToast(`Failed to fetch models status: ${e}`);
             }
         })();
         return () => { cancelled = true; };
-    }, [updateRunningModels, addToast]);
+    }, [updateRunningLanguageModels, addToast]);
 
     // 4. Model Context Sync
     useEffect(() => {

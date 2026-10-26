@@ -261,7 +261,7 @@ export function AppModals({
     const locationModalProperties = entityModals.getModalProperties('location');
     const audioTrackModalProperties = entityModals.getModalProperties('audioTrack');
     const worldModalProperties = entityModals.getModalProperties('world');
-    const modelModalProperties = entityModals.getModalProperties('model');
+    const languageModelModalProperties = entityModals.getModalProperties('languageModel');
     const samplerModalProperties = entityModals.getModalProperties('sampler');
     const promptBlockModalProperties = entityModals.getModalProperties('promptBlock');
     const stopPatternModalProperties = entityModals.getModalProperties('stopPattern');
@@ -723,12 +723,12 @@ export function AppModals({
             {modals.modelList.isOpen && (
                 <ManagerModal 
                     title="Language Models" 
-                    entityType={'model' as entityType}
+                    entityType={'languageModel' as entityType}
                     localLibraryItems={allLanguageModels} 
                     onClose={modals.modelList.close}
-                    onSelect={(model: LanguageModel) => modelModalProperties.open(model)} 
+                    onSelect={(model: LanguageModel) => languageModelModalProperties.open(model)} 
                     onDelete={onDeleteModel} 
-                    onCreateNew={() => modelModalProperties.open()}
+                    onCreateNew={() => languageModelModalProperties.open()}
                     renderSubtext={(model: LanguageModel) => renderModelSubtext(model, runningLanguageModels, selectedModelId)}
                     emptyMessage="No models available." 
                     actionLabel="Delete" 
@@ -1087,7 +1087,7 @@ export function AppModals({
                             case 'audioTrack': audioTrackModalProperties.open(entity, isReadOnly); break;
                             case 'world': worldModalProperties.open(entity, isReadOnly); break;
                             case 'promptBlock': promptBlockModalProperties.open(entity, isReadOnly); break;
-                            case 'model': modelModalProperties.open(entity, isReadOnly); break;
+                            case 'languageModel': languageModelModalProperties.open(entity, isReadOnly); break;
                             case 'sampler': samplerModalProperties.open(entity, isReadOnly); break;
                             case 'stopPattern': stopPatternModalProperties.open(entity, isReadOnly); break;
                             case 'retrievalConfiguration': retrievalConfigurationModalProperties.open(entity, isReadOnly); break;
@@ -1240,11 +1240,11 @@ export function AppModals({
                 />
             )}
 
-            {modelModalProperties.isOpen && (
+            {languageModelModalProperties.isOpen && (
                 <ModelEditorModal 
-                    onClose={modelModalProperties.close} 
-                    onSave={modelModalProperties.save}
-                    existingModel={modelModalProperties.item} 
+                    onClose={languageModelModalProperties.close} 
+                    onSave={languageModelModalProperties.save}
+                    existingModel={languageModelModalProperties.item} 
                     allStopPatterns={allStopPatterns} 
                 />
             )}

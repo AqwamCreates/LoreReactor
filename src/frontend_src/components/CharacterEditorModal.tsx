@@ -69,7 +69,7 @@ interface TokenCounts {
     appearancePrompt: number | null;
 }
 
-type EditorTabId = 'general' | 'behaviour' | 'stats' | 'tools' | 'model' | 'quick-config';
+type EditorTabId = 'general' | 'behaviour' | 'stats' | 'tools' | 'languageModel' | 'quick-config';
 
 interface CharacterEditorModalProps {
     isReadOnly?: boolean;
@@ -1074,7 +1074,7 @@ export function CharacterEditorModal({
         { id: 'behaviour', label: 'Behaviour', icon: '🧠' },
         { id: 'stats', label: 'Stats', icon: '📊' },
         { id: 'tools', label: 'Tools', icon: '🔧' },
-        { id: 'model', label: 'Model', icon: '🤖' },
+        { id: 'languageModel', label: 'languageModel', icon: '🤖' },
         { id: 'quick-config', label: 'Quick Config', icon: '⚡' },
     ];
 
@@ -1578,7 +1578,7 @@ export function CharacterEditorModal({
                                 </div>
                             )}
 
-                            {activeTab === 'model' && (
+                            {activeTab === 'languageModel' && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     <div className="editor-section">
                                         <span className="editor-section-title">Language Model Sampler (Text Generation)</span>

@@ -54,7 +54,7 @@ export function CompanionOverlay() {
 
     const [showSettingsMenu, setShowSettingsMenu] = useState(false);
     const [showDialogueBox, setShowDialogueBox] = useState(true);
-    const [activeSettingsModal, setActiveSettingsModal] = useState<'profile-list' | 'profile-edit' | 'model' | 'budget' | null>(null);
+    const [activeSettingsModal, setActiveSettingsModal] = useState<'profile-list' | 'profile-edit' | 'languageModel' | 'budget' | null>(null);
     const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
     const [modalSearchQuery, setModalSearchQuery] = useState('');
     const settingsMenuRef = useRef<HTMLDivElement>(null);
@@ -572,7 +572,7 @@ export function CompanionOverlay() {
                     <div className="pip-settings-menu-item" onClick={() => { setActiveSettingsModal('profile-list'); setShowSettingsMenu(false); setModalSearchQuery(''); }}>
                         <span>👤</span> Profile
                     </div>
-                    <div className="pip-settings-menu-item" onClick={() => { setActiveSettingsModal('model'); setShowSettingsMenu(false); setModalSearchQuery(''); }}>
+                    <div className="pip-settings-menu-item" onClick={() => { setActiveSettingsModal('languageModel'); setShowSettingsMenu(false); setModalSearchQuery(''); }}>
                         <span>🤖</span> Model
                     </div>
                     <div className="pip-settings-menu-item" onClick={() => { setActiveSettingsModal('budget'); setShowSettingsMenu(false); setModalSearchQuery(''); }}>
@@ -765,7 +765,7 @@ export function CompanionOverlay() {
                 />
             )}
 
-            {activeSettingsModal === 'model' && (
+            {activeSettingsModal === 'languageModel' && (
                 <div className="modal-overlay pip-modal-overlay" onClick={() => setActiveSettingsModal(null)}>
                     <div className="modal-content pip-modal-content" onClick={e => e.stopPropagation()}>
                         <div className="modal-header pip-modal-header">

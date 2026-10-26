@@ -17,7 +17,7 @@ interface UseChatRestorationOptions {
     loadFullCharacter: (id: string) => Promise<Character | null>;
     setInteractionData: (data: InteractionData) => void;
     setSelectedCharacter: (char: Character | null) => void;
-    setSelectedModelId: (id: string | null) => void;
+    setSelectedLanguageModelId: (id: string | null) => void;
     startNewChat: (char: Character) => void;
     /** Skip active chat loading (e.g., when joiner has persisted join state) */
     skipRestoration?: boolean;
@@ -44,7 +44,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
     const {
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading,
         allCharacters, allRawInteractionDataShells, loadFullCharacter,
-        setInteractionData, setSelectedCharacter, setSelectedModelId, startNewChat,
+        setInteractionData, setSelectedCharacter, setSelectedLanguageModelId, startNewChat,
         skipRestoration = false,
     } = options;
 
@@ -149,7 +149,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
 
                 // Restore selected model from server session
                 if (session.selectedModelId) {
-                    setTimeout(() => setSelectedModelId(session.selectedModelId!), 0);
+                    setTimeout(() => setSelectedLanguageModelId(session.selectedModelId!), 0);
                 }
 
                 // If user explicitly initiated a new chat (activeChatId === null), start fresh
@@ -189,7 +189,7 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
     }, [
         charsLoading, chatsLoading, contextsLoading, locationsLoading, profilesLoading, 
         allCharacters, allRawInteractionDataShells, loadFullCharacter, setInteractionData, 
-        setSelectedCharacter, setSelectedModelId, startNewChat, skipRestoration
+        setSelectedCharacter, setSelectedLanguageModelId, startNewChat, skipRestoration
     ]);
 
     return { activeChatRestored };

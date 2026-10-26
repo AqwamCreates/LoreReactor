@@ -8,7 +8,7 @@ interface UseSessionEffectsOptions {
     interactionDataId: string | null | undefined;
     isMultiplayerClient: boolean;
     selectedModelId: string | null;
-    setSelectedModelId: (id: string | null) => void;
+    setSelectedLanguageModelId: (id: string | null) => void;
     selectedBudgetStrategyId: string | null;
     allBudgetStrategies: BudgetStrategy[];
     setActiveBudgetStrategy: (strategy: BudgetStrategy | null) => void;
@@ -26,7 +26,7 @@ interface UseSessionEffectsOptions {
 
 export function useSessionEffects(options: UseSessionEffectsOptions) {
     const {
-        interactionDataId, isMultiplayerClient, selectedModelId, setSelectedModelId,
+        interactionDataId, isMultiplayerClient, selectedModelId, setSelectedLanguageModelId,
         selectedBudgetStrategyId, allBudgetStrategies, setActiveBudgetStrategy,
         allLanguageModels, runningLanguageModels, setSelectedGlobalModel,
         selectedCharacterId, selectedProfileId, allCharacters, setSelectedCharacter,
@@ -86,16 +86,16 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         if (!selectedModelId || allLanguageModels.length === 0) return;
         const selectedLanguageModel = allLanguageModels.find(m => m.id === selectedModelId);
         if (!selectedLanguageModel) { 
-            setSelectedModelId(null); 
+            setSelectedLanguageModelId(null); 
             return; 
         }
         const isCloudModel = !!(selectedLanguageModel.apiKey && selectedLanguageModel.backend);
         if (isCloudModel) return;
         
         if (!runningLanguageModels[selectedModelId]?.isRunning) {
-            setSelectedModelId(null);
+            setSelectedLanguageModelId(null);
         }
-    }, [selectedModelId, allLanguageModels, runningLanguageModels, setSelectedModelId]);
+    }, [selectedModelId, allLanguageModels, runningLanguageModels, setSelectedLanguageModelId]);
 
     // Apply default character
     useEffect(() => {

@@ -19,7 +19,7 @@ interface UseEntityTogglesOptions {
     selectedBudgetStrategyId: string | null;
     setSelectedBudgetStrategyId: (id: string | null) => void;
     setSelectedCharacterId: (id: string | null) => void;
-    setSelectedModelId?: (id: string | null) => void;
+    setSelectedLanguageModelId?: (id: string | null) => void;
     unloadAllRunningModels?: () => Promise<void>; // ✅ Wired to unloadAllRunningModels
     loadFullCharacter: (id: string) => Promise<Character | null>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
@@ -33,7 +33,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
         selectedBudgetStrategyId,
         setSelectedBudgetStrategyId, setSelectedCharacterId,
-        setSelectedModelId,
+        setSelectedLanguageModelId,
         unloadAllRunningModels,
         loadFullCharacter, addToast,
     } = options;
@@ -314,7 +314,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             saveRawSessionData({ selectedBudgetStrategyId: sid });
 
             // Deselect any active model from session state
-            setSelectedModelId?.(null);
+            setSelectedLanguageModelId?.(null);
             useChatStore.setState({ selectedLanguageModel: null, selectedModelId: null });
             saveRawSessionData({ selectedModelId: null });
 
@@ -325,7 +325,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
             addToast(`Budget strategy "${strategy?.name || sid}" activated!`, 'success');
         }
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, setSelectedModelId, unloadAllRunningModels, addToast]);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, setSelectedLanguageModelId, unloadAllRunningModels, addToast]);
 
     const handleActivateProfile = useCallback((pid: string) => {
         if (!interactionData) return;

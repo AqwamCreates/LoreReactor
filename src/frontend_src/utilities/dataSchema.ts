@@ -369,7 +369,7 @@ ${profileToolsSchema}
     "id": "string (UUID)",
     "name": "string (required, entity folder name)",
     "description": "string (display only, optional)",
-    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'model' | 'sampler' | 'promptBlock' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' (required, entity category for this entity folder)",
+    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'languageModel' | 'sampler' | 'promptBlock' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' (required, entity category for this entity folder)",
     "itemIds": ["string array of entity UUIDs belonging to this entity folder"]
   }]`);
     }

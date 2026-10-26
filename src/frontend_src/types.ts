@@ -1198,7 +1198,7 @@ export type entityType =
   | 'audioTrack' 
   | 'world' 
   | 'interactionData' 
-  | 'model' 
+  | 'languageModel' 
   | 'spatiotemporalModel'
   | 'sampler' 
   | 'promptBlock' 

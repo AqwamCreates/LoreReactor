@@ -101,7 +101,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const interactionData = useChatStore(s => s.interactionData);
     const selectedLanguageModel = useChatStore(s => s.selectedLanguageModel);
     const setBudgetData = useChatStore(s => s.setBudgetData);
-    const updateRunningModels = useChatStore(s => s.updateRunningModels);
+    const updateRunningLanguageModels = useChatStore(s => s.updateRunningLanguageModels);
     const setNumberOfTokens = useChatStore(s => s.setNumberOfTokens);
 
     // Budget Data Hydration
@@ -128,13 +128,13 @@ export function useChatSession(options: UseChatSessionOptions) {
                 const data = await response.json();
                 const status: Record<string, { isRunning: boolean; port?: number }> = {};
                 for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
-                if (!cancelled) updateRunningModels(status);
+                if (!cancelled) updateRunningLanguageModels(status);
             } catch (e) {
                 if (!cancelled) addToast(`Failed to fetch models status: ${e}`, 'error');
             }
         })();
         return () => { cancelled = true; };
-    }, [updateRunningModels, addToast]);
+    }, [updateRunningLanguageModels, addToast]);
 
     // Model Context Syncing
     useEffect(() => {
@@ -184,7 +184,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     const setInteractionData = useChatStore(s => s.setInteractionData);
     const setSelectedCharacter = useChatStore(s => s.setLocalProtagonist);
     const setActiveBudgetStrategy = useChatStore(s => s.setActiveStrategy);
-    const setSelectedGlobalModel = useChatStore(s => s.setSelectedModel);
+    const setSelectedGlobalModel = useChatStore(s => s.setSelectedLanguageModel);
 
     const isAtBottomRef = useRef(true);
     const ui = useChatUI(interactionData, isAtBottomRef, options.allCharacters);
@@ -205,7 +205,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         currentCharacterExpression, streamingCharacter,
         
         setInteractionData, setSelectedCharacter, setActiveBudgetStrategy,
-        setSelectedGlobalModel, updateRunningModels,
+        setSelectedGlobalModel, updateRunningLanguageModels,
         ...ui,
 
         sendMessage: (text: string, files?: File[], frontCameraImageBase64?: string) => chatCoordinator.sendMessage(text, files, frontCameraImageBase64),
