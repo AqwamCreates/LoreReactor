@@ -1441,7 +1441,7 @@ function App() {
                                     onClose={closeHeaderPanel}
                                     onJumpToMessage={(msgId) => {
                                         suppressAutoScrollRef.current = true;
-                                        setFocusedMessageId(msgId); // 👈 THIS fixes Card/VN View!
+                                        setFocusedMessageId(msgId);
                                         suppressAutoScrollRef.current = false
                                     }}
                                 />
