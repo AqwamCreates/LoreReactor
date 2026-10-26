@@ -196,6 +196,13 @@ function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string, exclude
   return safeArr.slice(start, end);
 }
 
+export function joinInlineList(arr: string[]): string {
+  if (!arr || arr.length === 0) return '';
+  if (arr.length === 1) return arr[0];
+  if (arr.length === 2) return `${arr[0]} and ${arr[1]}`;
+  return `${arr.slice(0, -1).join(', ')} and ${arr[arr.length - 1]}`;
+}
+
 export interface TemplateContext {
   characterParticipantTag: string;
   characterName: string;
@@ -355,9 +362,8 @@ export function resolveTemplate(
               .map(item => item.startsWith('- ') ? item : `- ${item}`)
               .join('\n');
           }
-          return slice
-            .map(item => item.replace(/^- /, ''))
-            .join(', ');
+          const cleaned = slice.map(item => item.replace(/^- /, ''));
+          return joinInlineList(cleaned);
         }
 
         if (wantLength) {
@@ -711,7 +717,7 @@ function getSingularDisplayName(
   
   const resolvedNames = variants.slice(0, sliceEnd);
   if (resolvedNames.length > 0) {
-    return `${tag} (${resolvedNames.join(', ')})`;
+    return `${tag} (${joinInlineList(resolvedNames)})`;
   }
   return tag;
 }
@@ -735,7 +741,7 @@ function getSingularPossessiveName(
   
   const resolvedNames = variants.slice(0, sliceEnd);
   if (resolvedNames.length > 0) {
-    return `${resolvedNames.join(', ')}'s`;
+    return `${joinInlineList(resolvedNames)}'s`;
   }
   return `${tag}'s`;
 }
@@ -762,7 +768,7 @@ function getPluralDisplayName(
   }
 
   if (knownNamesList.length > 0) {
-    return `${tag} (${knownNamesList.join(', ')})`;
+    return `${tag} (${joinInlineList(knownNamesList)})`;
   }
   
   return tag; // NO TRUE NAME FALLBACK
@@ -789,7 +795,7 @@ function getPluralPossessiveName(
   }
 
   if (knownNamesList.length > 0) {
-    return `${knownNamesList.join(', ')}'s`;
+    return `${joinInlineList(knownNamesList)}'s`;
   }
   
   return `${tag}'s`; // NO TRUE NAME FALLBACK
@@ -837,7 +843,7 @@ function getFullDisplayName(
   if (targetChar.id === currentCharId) {
     const variants = [targetChar.name, ...(targetChar.aliases ?? [])].filter((v): v is string => Boolean(v));
     const resolvedNames = variants.slice(0, 1);
-    if (resolvedNames.length > 0) return `${tag} (${resolvedNames.join(', ')})`;
+    if (resolvedNames.length > 0) return `${tag} (${joinInlineList(resolvedNames)})`;
     return tag;
   }
 
@@ -849,7 +855,7 @@ function getFullDisplayName(
   knownNamesList = knownNamesList.slice(0, 1);
   
   if (knownNamesList.length > 0) {
-    return `${tag} (${knownNamesList.join(', ')})`;
+    return `${tag} (${joinInlineList(knownNamesList)})`;
   }
   return tag; // NO TRUE NAME FALLBACK
 }
@@ -877,7 +883,7 @@ function buildProtagonistPossessiveString(
   if (p.id === currentCharId) {
     const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
     const resolvedNames = variants.slice(0, 1);
-    if (resolvedNames.length > 0) return `${resolvedNames.join(', ')}'s`;
+    if (resolvedNames.length > 0) return `${joinInlineList(resolvedNames)}'s`;
     return `${tag}'s`;
   }
 
@@ -887,7 +893,7 @@ function buildProtagonistPossessiveString(
   knownNamesList = knownNamesList.slice(0, 1);
   
   if (knownNamesList.length > 0) {
-    return `${knownNamesList.join(', ')}'s`;
+    return `${joinInlineList(knownNamesList)}'s`;
   }
   return `${tag}'s`; // NO TRUE NAME FALLBACK
 }
@@ -905,14 +911,14 @@ export function resolveInnerText(
     if (p.id === ctx.characterId) {
       const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
       const resolvedNames = variants.slice(0, 1);
-      if (resolvedNames.length > 0) return `${resolvedNames.join(', ')}'s`;
+      if (resolvedNames.length > 0) return `${joinInlineList(resolvedNames)}'s`;
       return `${tag}'s`;
     }
     const knownMap = ctx.knownNames[p.id];
     let knownNamesList: string[] = [];
     if (knownMap) knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
     knownNamesList = knownNamesList.slice(0, 1);
-    if (knownNamesList.length > 0) return `${knownNamesList.join(', ')}'s`;
+    if (knownNamesList.length > 0) return `${joinInlineList(knownNamesList)}'s`;
     return `${tag}'s`; // NO TRUE NAME FALLBACK
   });
 
@@ -922,14 +928,14 @@ export function resolveInnerText(
     if (p.id === ctx.characterId) {
       const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
       const resolvedNames = variants.slice(0, 1);
-      if (resolvedNames.length > 0) return `${resolvedNames.join(', ')}'s`;
+      if (resolvedNames.length > 0) return `${joinInlineList(resolvedNames)}'s`;
       return `${tag}'s`;
     }
     const knownMap = ctx.knownNames[p.id];
     let knownNamesList: string[] = [];
     if (knownMap) knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
     knownNamesList = knownNamesList.slice(0, 1);
-    if (knownNamesList.length > 0) return `${knownNamesList.join(', ')}'s`;
+    if (knownNamesList.length > 0) return `${joinInlineList(knownNamesList)}'s`;
     return `${tag}'s`; // NO TRUE NAME FALLBACK
   });
 
@@ -1892,12 +1898,12 @@ function buildLocationText(ctx: PromptBuildContext): { basic: string; withDescri
     const ownerNames = location.ownerBindings
       .map(id => ctx.participants.find(p => p.id === id)?.name)
       .filter((n): n is string => !!n);
-    if (ownerNames.length > 0) basicLines.push(`This location is owned by: ${ownerNames.join(', ')}.`);
+    if (ownerNames.length > 0) basicLines.push(`This location is owned by: ${joinInlineList(ownerNames)}.`);
   }
   const reachable = getReachableLocationsByCharacter(ctx.interactionData, ctx.character);
   if (reachable.length > 0) {
     const reachableNames = reachable.map(r => resolveInnerText(r.name || 'Unknown Location', ctx, ctx.delimiters));
-    basicLines.push(`From ${locationName}, I can travel to: ${reachableNames.join(', ')}.`);
+    basicLines.push(`From ${locationName}, I can travel to: ${joinInlineList(reachableNames)}.`);
   }
   const withDescLines: string[] = [];
   withDescLines.push(`Current Location: ${locationName}`);
@@ -2739,10 +2745,10 @@ export async function buildPrompt(
     }
   }
 
-  const charImgStr = charImgInst.length > 0 ? `${delimiters.blockStart('system')}${charImgInst.join(', ')}${delimiters.blockEnd}` : '';
-  const promptImgStr = promptImgInst.length > 0 ? `${delimiters.blockStart('system')}${promptImgInst.join(', ')}${delimiters.blockEnd}` : '';
-  const ctxImgStr = ctxImgInst.length > 0 ? `${delimiters.blockStart('system')}${ctxImgInst.join(', ')}${delimiters.blockEnd}` : '';
-  const locImgStr = locImgInst.length > 0 ? `${delimiters.blockStart('system')}${locImgInst.join(', ')}${delimiters.blockEnd}` : '';
+  const charImgStr = charImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(charImgInst)}${delimiters.blockEnd}` : '';
+  const promptImgStr = promptImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(promptImgInst)}${delimiters.blockEnd}` : '';
+  const ctxImgStr = ctxImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(ctxImgInst)}${delimiters.blockEnd}` : '';
+  const locImgStr = locImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(locImgInst)}${delimiters.blockEnd}` : '';
   
   const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
@@ -2750,7 +2756,7 @@ export async function buildPrompt(
     if (p.id === ctx.characterId) {
       const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
       const resolvedNames = variants.slice(0, 1);
-      if (resolvedNames.length > 0) return `${resolvedNames.join(', ')}'s`;
+      if (resolvedNames.length > 0) return `${joinInlineList(resolvedNames)}'s`;
       return `${tag}'s`;
     }
     const knownName = getKnownDisplayName(p, ctx.knownNames);

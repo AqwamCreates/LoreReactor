@@ -298,15 +298,15 @@ const mockTemplateContext: TemplateContext = {
 const DIRECTORY_ITEMS = [
     // Identity
     { key: 'character', desc: 'Current character (Singular). Uses the character\'s hardcoded defined aliases. The AI always knows its own identity. ?N reveals up to N defined aliases (comma-separated). ?1 (default) shows the true name.', cat: 'Identity' },
-    { key: 'protagonist', desc: 'FIRST co-located protagonist. If it\'s the AI, uses defined aliases. If it\'s another protagonist, uses interaction history (NO TRUE NAME FALLBACK). Supports ?N.', cat: 'Identity' },
+    { key: 'protagonist', desc: 'FIRST co-located protagonist. If it\'s the AI, uses defined aliases. If it\'s another protagonist, uses interaction history (no true name fallback). Supports ?N.', cat: 'Identity' },
     { key: "protagonist's", desc: 'Possessive form of the FIRST co-located protagonist. Follows the same Singular/Plural rules as {{protagonist}}.', cat: 'Identity' },
     { key: 'protagonists', desc: 'Array of protagonists (Plural). STRICTLY uses interaction history. ZERO FALLBACK TO THE TRUE NAME. If 0 names are known, returns just the tag. ?N reveals up to N oldest learned names.', cat: 'Identity' },
     { key: "protagonists'", desc: 'Array of possessive strings for protagonists. Follows strict Plural interaction history rules.', cat: 'Identity' },
     { key: 'characters', desc: 'Array of participants (Plural). STRICTLY uses the interaction history (knownNames map). ZERO FALLBACK TO THE TRUE NAME. If the AI hasn\'t learned a name, it remains completely anonymous (just the tag). ?N reveals up to N oldest learned names per character.', cat: 'Identity' },
     { key: "characters'", desc: 'Array of possessive strings for participants. Follows strict Plural interaction history rules.', cat: 'Identity' },
-    { key: 'characterTags', desc: 'Formatted character tags (Plural). Same strict interaction history rules as {{characters}}. NO TRUE NAME FALLBACK. Defaults to ?1.', cat: 'Identity' },
+    { key: 'characterTags', desc: 'Formatted character tags (Plural). Same strict interaction history rules as {{characters}}. No true name fallback. Defaults to ?1.', cat: 'Identity' },
     { key: 'characterTagsWithDescriptions', desc: 'Array of character tags with appearance prompts. Follows strict Plural interaction history rules.', cat: 'Identity' },
-    { key: 'character@uuid', desc: 'Resolves a specific character by UUID. If it\'s the AI, uses defined aliases. If it\'s anyone else, STRICTLY uses interaction history (NO TRUE NAME FALLBACK). Fully respects ?N.', cat: 'Identity' },
+    { key: 'character@uuid', desc: 'Resolves a specific character by UUID. If it\'s the AI, uses defined aliases. If it\'s anyone else, STRICTLY uses interaction history (no true name fallback). Fully respects ?N.', cat: 'Identity' },
 
     // Prompts
     { key: 'systemPrompt', desc: 'The character\'s core system prompt.', cat: 'Prompts' },
@@ -361,7 +361,7 @@ const DIRECTORY_ITEMS = [
     { key: '#', desc: 'Count operator. Returns the length/count of items instead of the content (e.g., {{chatHistory#}}).', cat: 'Operators' },
     { key: '!', desc: 'Exclusion operator. Returns everything EXCEPT the specified slice (e.g., {{tools[2:]!}}).', cat: 'Operators' },
     { key: '- / +', desc: 'Scope suffixes. "-" restricts to co-located or reachable; "+" forces all session entities (e.g., {{characters-}}, {{locations+>}}).', cat: 'Operators' },
-    { key: '?N', desc: 'Known names reveal limit. Behavior depends on the target:\n• Singular ({{character}}): Slices the defined aliases array. ?1=True Name, ?2=True Name + 1st Alias, etc.\n• Plural/Others ({{characters}}, {{character@uuid}}): Slices the learned interaction names. ?1=1st learned name, ?2=1st & 2nd learned names. If 0 names are known, returns ONLY the tag. NO TRUE NAME FALLBACK.', cat: 'Operators' },
+    { key: '?N', desc: 'Known names reveal limit. Behavior depends on the target:\n• Singular ({{character}}): Slices the defined aliases array. ?1=True Name, ?2=True Name + 1st Alias, etc.\n• Plural/Others ({{characters}}, {{character@uuid}}): Slices the learned interaction names. ?1=1st learned name, ?2=1st & 2nd learned names. If 0 names are known, returns ONLY the tag. No true name fallback.', cat: 'Operators' },
 
     // Formatting & Tokens
     { key: 'systemBlockStart', desc: 'Opening delimiter for system blocks.', cat: 'Formatting' },
@@ -523,7 +523,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                             {renderComparison(
                                 'I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.',
                                 resolveTemplate('I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.', mockTemplateContext, mockDelimiters),
-                                'UUID resolution ensures persistent memories map to the correct character and location. Fully respects known name limits (?N) and the NO TRUE NAME FALLBACK rule.'
+                                "UUID resolution ensures persistent memories map to the correct character and location. Fully respects known name limits (?N) and the 'no true name fallback' rule."
                             )}
 
                             {renderComparison(
@@ -662,12 +662,12 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                             {renderComparison(
                                 '{{character?3}}',
                                 resolveTemplate('{{character?3}}', mockTemplateContext, mockDelimiters),
-                                '?3 for Singular: Reveals the tag and up to 3 defined aliases (e.g., "Character 1 (Aqwam, The LoreReactor Creator, The DataPredict Creator)").'
+                                '?3 for Singular: Reveals the tag and up to 3 defined aliases.'
                             )}
                             {renderComparison(
                                 '{{characters?2}}',
                                 resolveTemplate('{{characters?2}}', mockTemplateContext, mockDelimiters),
-                                '?2 for Plural: Aqwam shows 2 defined aliases (Singular rule applies to AI), Alice & Charlie show 2 learned names. Bob remains completely anonymous as "Character 3" (NO TRUE NAME FALLBACK).'
+                                '?2 for Plural: Aqwam shows 2 defined aliases (Singular rule applies to AI), Alice & Charlie show 2 learned names. Bob remains completely anonymous as "Character 3" (no true name fallback).'
                             )}
                         </div>
                     )}
@@ -753,7 +753,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     value={playgroundInput}
                                     onChange={e => setPlaygroundInput(e.target.value)}
                                     placeholder={'e.g., I am {{character?2}} (also known as {{character?3}}).\nI am with {{characters-[1:3]?2}}.\n\nAll session characters:\n{{characters+?2>}}'}
-                                    style={{ fontFamily: 'monospace', minHeight: '120px' }}
+                                    style={{ fontFamily: 'monospace', minHeight: '120px', textAlign: 'left' }}
                                 />
                             </div>
 
@@ -761,7 +761,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                 <span className="entity-field-title">Resolved Output</span>
                                 <pre
                                     className="entity-raw-pre"
-                                    style={{ margin: 0, background: 'var(--code-bg)', minHeight: '80px', whiteSpace: 'pre-wrap' }}
+                                    style={{ margin: 0, background: 'var(--code-bg)', minHeight: '80px', whiteSpace: 'pre-wrap', textAlign: 'left' }}
                                 >
                                     {playgroundOutput || <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Empty or invalid syntax</span>}
                                 </pre>
