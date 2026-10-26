@@ -64,3 +64,5 @@ You then can use LoreReactor directly or install the local backends first. The c
 ### Why IDs Instead Of Names For Internal Prompt Creation?
 
 Small models (≤10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
+
+## Image models, coming soon!
