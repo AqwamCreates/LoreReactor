@@ -6542,3 +6542,69 @@ opacity: 0.5;
 font-style: italic;
 font-size: 0.85rem;
 }
+
+/* =============================================================================
+CODE BLOCKS & INLINE CODE
+============================================================================= */
+.fmt-code-block-container {
+    margin: 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    overflow: hidden;
+    max-width: 100%;
+}
+.fmt-code-block-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--social-bg);
+    padding: 6px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.75rem;
+    font-family: var(--sans);
+}
+.fmt-code-language {
+    color: var(--text-h);
+    opacity: 0.7;
+    font-weight: bold;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.fmt-code-copy-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--text-h);
+    cursor: pointer;
+    font-size: 0.7rem;
+    font-weight: bold;
+    border-radius: 4px;
+    padding: 2px 8px;
+    transition: all 0.2s ease;
+    font-family: inherit;
+}
+.fmt-code-copy-btn:hover {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border-color: var(--accent-border);
+}
+.fmt-code-block-pre {
+    margin: 0;
+    padding: 12px;
+    overflow-x: auto;
+    background: var(--code-bg);
+    font-family: var(--mono);
+    font-size: 0.85rem;
+    line-height: 1.5;
+    color: var(--text-h);
+    text-align: left;
+}
+.fmt-inline-code {
+    font-family: var(--mono);
+    background: var(--code-bg);
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    color: var(--text-h);
+    border: 1px solid var(--border);
+}

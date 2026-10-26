@@ -33,6 +33,8 @@ export const CATEGORY_LABELS: Record<textType, string> = {
     parenthesis: 'Parentheses',
     bracket: 'Square Brackets',
     brace: 'Curly Braces',
+    inline_code: 'Inline Code',
+    code_block: 'Code Block',
 };
 
 export const TARGET_OPTIONS: { value: textType; label: string }[] = [
@@ -45,6 +47,8 @@ export const TARGET_OPTIONS: { value: textType; label: string }[] = [
     { value: 'parenthesis', label: 'Parentheses' },
     { value: 'bracket', label: 'Square Brackets' },
     { value: 'brace', label: 'Curly Braces' },
+    { value: 'inline_code', label: 'Inline Code' },
+    { value: 'code_block', label: 'Code Block' },
 ];
 
 export const DEFAULT_CONVERSIONS: Record<textType, textType> = {
@@ -57,6 +61,8 @@ export const DEFAULT_CONVERSIONS: Record<textType, textType> = {
     parenthesis: 'parenthesis',
     bracket: 'bracket',
     brace: 'brace',
+    inline_code: 'inline_code',
+    code_block: 'code_block',
 };
 
 interface RawMatch {
@@ -70,6 +76,11 @@ interface RawMatch {
 const NO_PARAGRAPH_BREAK = '(?:[^\r\n]|(?<!\r?\n)\r?\n(?!\r?\n))+?';
 
 const PATTERNS: { regex: RegExp; category: textType; innerGroup: number }[] = [
+    // ✅ Code blocks and inline code MUST go first so syntax inside isn't parsed as formatting
+    { regex: /```(?:[a-zA-Z0-9_+-]+\r?\n)?([\s\S]*?)```/g, category: 'code_block', innerGroup: 1 },
+    { regex: /(?<!`)`([^`]+)`(?!`)/g, category: 'inline_code', innerGroup: 1 },
+    
+    // Standard formatting patterns
     { regex: new RegExp(`(?<!\\*)\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*(?!\\*)`, 'g'), category: 'bold', innerGroup: 1 },
     { regex: new RegExp(`(?<!\\*)\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*(?!\\*)`, 'g'), category: 'italic', innerGroup: 1 },
     { regex: new RegExp(`(?<!\\w)_(?!\\s|_)(${NO_PARAGRAPH_BREAK})(?<!\\s|_)_(?!\\w)`, 'g'), category: 'underline', innerGroup: 1 },
@@ -78,7 +89,6 @@ const PATTERNS: { regex: RegExp; category: textType; innerGroup: number }[] = [
     { regex: new RegExp(`\\u201C(${NO_PARAGRAPH_BREAK})\\u201D`, 'g'), category: 'quote', innerGroup: 1 },
     { regex: new RegExp(`\\((?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\)`, 'g'), category: 'parenthesis', innerGroup: 1 },
     { regex: new RegExp(`\\[(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\]`, 'g'), category: 'bracket', innerGroup: 1 },
-    // ✅ FIXED: Corrected typo from `(?!)\\s)` to `(?!\\s)`
     { regex: new RegExp(`\\{(?!\\s)(${NO_PARAGRAPH_BREAK})(?<!\\s)\\}`, 'g'), category: 'brace', innerGroup: 1 },
 ];
 
@@ -262,6 +272,8 @@ export function wrapCoreText(core: string, target: textType): string {
         case 'parenthesis': return `(${core})`;
         case 'bracket': return `[${core}]`;
         case 'brace': return `{${core}}`;
+        case 'inline_code': return `\`${core}\``;
+        case 'code_block': return `\`\`\`\n${core}\n\`\`\``;
         default: return core;
     }
 }
@@ -339,11 +351,16 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
     const counts: Record<textType, number> = {
         normal: 0, italic: 0, bold: 0, underline: 0,
         strikethrough: 0, quote: 0, parenthesis: 0, bracket: 0, brace: 0,
+        inline_code: 0, code_block: 0,
     };
 
     for (const seg of segments) counts[seg.category]++;
 
-    const order: textType[] = ['normal', 'italic', 'bold', 'underline', 'strikethrough', 'quote', 'parenthesis', 'bracket', 'brace'];
+    const order: textType[] = [
+        'normal', 'italic', 'bold', 'underline', 'strikethrough', 
+        'quote', 'parenthesis', 'bracket', 'brace',
+        'inline_code', 'code_block'
+    ];
 
     return order
         .filter(category => counts[category] > 0)

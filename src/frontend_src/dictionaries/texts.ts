@@ -98,5 +98,7 @@ export const narrateTextLabels: Record<textType, string> = {
     parenthesis: 'Parenthesized Text',
     bracket: 'Bracketed Text', 
     brace: 'Braced Text',
-    strikethrough: 'Strikethrough Text'
+    strikethrough: 'Strikethrough Text',
+    inline_code: 'Inline Code Text',
+    code_block: 'Code Block Text',
 };

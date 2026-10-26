@@ -1,12 +1,12 @@
 // src/frontend_src/utilities/textDisplayFormatter.tsx
-import type React from 'react';
+import React, { useState } from 'react';
 import type { textType } from '../types';
 
 const LEFT_DOUBLE_QUOTE = '\u201C'; // “
 const RIGHT_DOUBLE_QUOTE = '\u201D'; // ”
 
 // Extend textType with parser-specific structural nodes
-type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item';
+type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item' | 'code_block' | 'inline_code';
 
 interface MatchCandidate {
     type: FormatterMatchType;
@@ -15,9 +15,34 @@ interface MatchCandidate {
     innerContent?: string;
     bullet?: string;
     indent?: number;
+    language?: string;
 }
 
 const NO_PARAGRAPH_BREAK = '(?:[^\r\n]|(?<!\r?\n)\r?\n(?!\r?\n))+?';
+
+function CodeBlock({ code, language }: { code: string; language?: string }) {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = () => {
+        navigator.clipboard.writeText(code.trim());
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+    };
+
+    return (
+        <div className="fmt-code-block-container">
+            <div className="fmt-code-block-header">
+                <span className="fmt-code-language">{language || 'text'}</span>
+                <button className="fmt-code-copy-btn" onClick={handleCopy}>
+                    {copied ? 'Copied!' : 'Copy'}
+                </button>
+            </div>
+            <pre className="fmt-code-block-pre">
+                <code>{code.trim()}</code>
+            </pre>
+        </div>
+    );
+}
 
 function parseFormattedText(
     text: string,
@@ -31,6 +56,29 @@ function parseFormattedText(
 
     while (remaining.length > 0) {
         const candidates: MatchCandidate[] = [];
+
+        // 0.1. Fenced Code Block (Checked first to protect contents from being parsed as formatting)
+        const codeBlockMatch = remaining.match(/```(?:([a-zA-Z0-9_+-]+)\r?\n)?([\s\S]*?)```/);
+        if (codeBlockMatch && codeBlockMatch.index !== undefined) {
+            candidates.push({
+                type: 'code_block',
+                index: codeBlockMatch.index,
+                length: codeBlockMatch[0].length,
+                language: codeBlockMatch[1],
+                innerContent: codeBlockMatch[2],
+            });
+        }
+
+        // 0.2. Inline Code
+        const inlineCodeMatch = remaining.match(/(?<!`)`([^`]+)`(?!`)/);
+        if (inlineCodeMatch && inlineCodeMatch.index !== undefined) {
+             candidates.push({
+                type: 'inline_code',
+                index: inlineCodeMatch.index,
+                length: inlineCodeMatch[0].length,
+                innerContent: inlineCodeMatch[1],
+             });
+        }
 
         // 1. List Item
         const listMatch = remaining.match(/(?:^|\r?\n)([ \t]*)([-*+•]|\d{1,3}[.)])[ \t]+([^\r\n]*)/);
@@ -197,6 +245,24 @@ function parseFormattedText(
         }
 
         switch (match.type) {
+            case 'code_block':
+                nodes.push(
+                    <CodeBlock 
+                        key={keyGen.next()} 
+                        code={match.innerContent || ''} 
+                        language={match.language} 
+                    />
+                );
+                break;
+                
+            case 'inline_code':
+                nodes.push(
+                    <code key={keyGen.next()} className="fmt-inline-code">
+                        {match.innerContent}
+                    </code>
+                );
+                break;
+
             case 'list_item': {
                 const isBullet = /^[-*+•]$/.test(match.bullet ?? '');
                 const displayBullet = isBullet ? '•' : match.bullet;

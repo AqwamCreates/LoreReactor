@@ -892,7 +892,9 @@ export type textType =
   | "parenthesis" 
   | "bracket" 
   | "brace" 
-  | "strikethrough";
+  | "strikethrough"
+  | "inline_code"
+  | "code_block";
 
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 
