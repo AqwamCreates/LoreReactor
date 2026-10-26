@@ -1,5 +1,9 @@
+// src/frontend_src/components/PromptGuideModal.tsx
+
 import { useState, useMemo, useCallback } from 'react';
 import { defaultCharacterTools } from '../dictionaries/defaults';
+import { resolveTemplate, type PromptDelimiters, type TemplateContext } from '../utilities/promptLogic';
+import type { Character, InteractionData, Location, Profile, ChatMessage } from '../types';
 import '../main.css';
 
 type GuideTabId = 'basics' | 'operators' | 'cache' | 'playground' | 'directory';
@@ -12,110 +16,260 @@ const TABS: { id: GuideTabId; label: string; icon: string }[] = [
     { id: 'directory', label: 'Directory', icon: '📚' },
 ];
 
-const mockToolNames = Object.keys(defaultCharacterTools);
+// --- MOCK DATA FOR ACCURATE PROMPT RESOLUTION ---
+const mockDelimiters: PromptDelimiters = {
+    blockStart: (role) => `<${role.toUpperCase()}>`,
+    blockEnd: '</BLOCK>',
+    turnStart: (role) => `<${role.toUpperCase()}>`,
+    turnEnd: '</TURN>',
+    thinkStart: '<THINK>',
+    thinkEnd: '</THINK>',
+};
 
-const mockCharacterTags = [
-    'Character 1 (Alice)',
-    'Character 2 (Bob)',
-    'Character 3 (Charlie)',
-    'Character 4 (Dave)',
+// 1. Five distinct characters with expanded alias rosters
+const charAqwam = { 
+    id: 'uuid-aqwam', 
+    name: 'Aqwam', 
+    aliases: ['The LoreReactor Creator', 'The DataPredict Creator', 'Lead Developer'], 
+    clothings: [] 
+} as unknown as Character;
+
+const charAlice = {
+    id: 'uuid-alice',
+    name: 'Alice',
+    aliases: ['The Silver Lady', 'Silent Blade', 'The Whispering Wolf', 'Commander Alice'],
+    clothings: [],
+    appearancePrompt: 'Tall woman with silver hair, green cloak, and a scarred left hand.',
+    systemPrompt: 'Alice is guarded, practical, and slow to trust.'
+} as unknown as Character;
+
+const charBob = {
+    id: 'uuid-bob',
+    name: 'Bob',
+    aliases: ['Merchant Bob', 'Shady Bob', 'Coin Counter', 'Bob the Smuggler'],
+    clothings: [],
+    appearancePrompt: 'Broad-shouldered merchant with a leather satchel and nervous eyes.'
+} as unknown as Character;
+
+const charCharlie = {
+    id: 'uuid-charlie',
+    name: 'Charlie',
+    aliases: ['Scout', 'Eagle Eye', 'Swiftfoot', 'The Pathfinder'],
+    clothings: [],
+    appearancePrompt: 'Young scout in mud-stained leathers, currently in the Dark Forest.'
+} as unknown as Character;
+
+const charDave = {
+    id: 'uuid-dave',
+    name: 'Dave',
+    aliases: ['Old Guard', 'Iron Key', 'Gatekeeper', 'Captain Dave'],
+    clothings: [],
+    appearancePrompt: 'Retired veteran guarding the royal gates in the capital.'
+} as unknown as Character;
+
+// 2. Locations: Town Square connects to Dark Forest, while Castle & Ruins are far away
+const locTown = { 
+    id: 'uuid-town', 
+    name: 'Town Square', 
+    text: 'The bustling center of the city. Merchants shout over cobblestones.',
+    locationBindings: ['uuid-forest']
+} as Location;
+
+const locForest = { 
+    id: 'uuid-forest', 
+    name: 'Dark Forest', 
+    text: 'A creepy woods where the canopy swallows most sunlight.',
+    locationBindings: ['uuid-town']
+} as Location;
+
+const locCastle = {
+    id: 'uuid-castle',
+    name: "King's Castle",
+    text: 'The grand royal residence atop the distant mountain.',
+    locationBindings: []
+} as Location;
+
+const locRuins = {
+    id: 'uuid-ruins',
+    name: 'Abandoned Ruins',
+    text: 'Crumbling stone towers overgrown with cursed briars.',
+    locationBindings: []
+} as Location;
+
+const mockAllLocations = [locTown, locForest, locCastle, locRuins];
+const mockAllParticipants = [charAqwam, charAlice, charBob, charCharlie, charDave];
+
+// Town Square contains Aqwam, Alice, and Bob. Charlie and Dave are elsewhere!
+const mockCoLocatedParticipants = [charAlice, charBob];
+
+// All characters have recorded messages in session history
+const mockLocationHistory: ChatMessage[] = [
+    {
+        id: 'msg-0',
+        character: charAqwam,
+        messageType: 'chat',
+        textContent: 'Hello everyone in the square.',
+        firstCreatedTimestamp: 100,
+        lastUpdatedTimestamp: 100,
+        characterClothingWearingStatuses: {},
+        characterLockedLocations: {},
+        modelTextContentSummaries: {},
+        modelInteractionTextContentSummaries: {},
+        kvCacheTextContentPaths: {},
+        kvCacheTextContentSummaryPaths: {},
+        kvCacheInteractionTextContentSummaries: {},
+    },
+    {
+        id: 'msg-1',
+        character: charAlice,
+        messageType: 'chat',
+        textContent: 'Greetings, Aqwam.',
+        firstCreatedTimestamp: 200,
+        lastUpdatedTimestamp: 200,
+        characterClothingWearingStatuses: {},
+        characterLockedLocations: {},
+        modelTextContentSummaries: {},
+        modelInteractionTextContentSummaries: {},
+        kvCacheTextContentPaths: {},
+        kvCacheTextContentSummaryPaths: {},
+        kvCacheInteractionTextContentSummaries: {},
+    },
+    {
+        id: 'msg-2',
+        character: charBob,
+        messageType: 'chat',
+        textContent: 'Care to browse my wares?',
+        firstCreatedTimestamp: 300,
+        lastUpdatedTimestamp: 300,
+        characterClothingWearingStatuses: {},
+        characterLockedLocations: {},
+        modelTextContentSummaries: {},
+        modelInteractionTextContentSummaries: {},
+        kvCacheTextContentPaths: {},
+        kvCacheTextContentSummaryPaths: {},
+        kvCacheInteractionTextContentSummaries: {},
+    },
+    {
+        id: 'msg-3',
+        character: charCharlie,
+        messageType: 'chat',
+        textContent: 'Radio check from the forest perimeter.',
+        firstCreatedTimestamp: 400,
+        lastUpdatedTimestamp: 400,
+        characterClothingWearingStatuses: {},
+        characterLockedLocations: {},
+        modelTextContentSummaries: {},
+        modelInteractionTextContentSummaries: {},
+        kvCacheTextContentPaths: {},
+        kvCacheTextContentSummaryPaths: {},
+        kvCacheInteractionTextContentSummaries: {},
+    },
+    {
+        id: 'msg-4',
+        character: charDave,
+        messageType: 'chat',
+        textContent: 'The castle gates remain barred.',
+        firstCreatedTimestamp: 500,
+        lastUpdatedTimestamp: 500,
+        characterClothingWearingStatuses: {},
+        characterLockedLocations: {},
+        modelTextContentSummaries: {},
+        modelInteractionTextContentSummaries: {},
+        kvCacheTextContentPaths: {},
+        kvCacheTextContentSummaryPaths: {},
+        kvCacheInteractionTextContentSummaries: {},
+    },
 ];
 
-const mockCharacterTagsWithDescriptions = [
-    '- **Character 1 (Alice)**\nTall woman with silver hair, green cloak, and a scarred left hand.',
-    '- **Character 2 (Bob)**\nBroad-shouldered merchant with a leather satchel and nervous eyes.',
-    '- **Character 3 (Charlie)**\nYoung scout in mud-stained leathers, always holding a short bow.',
-    '- **Character 4 (Dave)**\nRetired guard with a gray beard, limp, and a heavy iron keyring.',
-];
+// Aqwam knows Alice's true name & title, doesn't know Bob, knows Charlie only by his scout aliases, and knows Dave as Gatekeeper.
+const mockKnownNames = {
+    'uuid-aqwam': { 'Aqwam': true, 'The Creator': true, 'The LoreReactor Creator': true, 'The DataPredict Creator': true },
+    'uuid-alice': { 'Alice': true, 'The Silver Lady': true },
+    'uuid-bob': {}, // Bob is unrevealed
+    'uuid-charlie': { 'Scout': true, 'Eagle Eye': true }, // Charlie known only by aliases
+    'uuid-dave': { 'Gatekeeper': true }
+};
 
-const mockChatHistory = [
-    'User: Hello.',
-    'Alice: Hi there!',
-    'User: How are you?',
-    'Alice: I am good.',
-    'Bob: Hey guys.',
-];
+const mockProfile = {
+    participantScopeModes: { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' },
+    participantInsertionModes: { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' },
+    participantsKnownNamesLimits: { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 },
+} as Profile;
 
-const mockLocations = [
-    'Town Square',
-    'Dark Forest',
-    'Abandoned Castle',
-    'Tavern',
-    "King's Castle",
-];
+const mockInteractionData = {
+    protagonistIds: ['uuid-aqwam'],
+    participants: mockAllParticipants,
+    locations: mockAllLocations,
+    interactionHistories: { 
+        'uuid-town': mockLocationHistory 
+    },
+} as unknown as InteractionData;
 
-const mockLocationDescriptions = [
-    '- **Town Square**\nThe bustling center of the city. Merchants shout over cobblestones, and rain slicks the statues.',
-    '- **Dark Forest**\nA creepy woods where the canopy swallows most sunlight. Twigs snap like bones underfoot.',
-    '- **Abandoned Castle**\nRuins. Crumbled walls, nested crows, and the smell of wet stone.',
-    '- **Tavern**\nA cozy pub with low beams, spilled ale, and a fire that never quite dies.',
-    "- **King's Castle**\nThe royal residence. Guards stand rigid at the gates, and banners hang heavy in the damp air.",
-];
+const mockPromptBuildContext: any = {
+    interactionData: mockInteractionData,
+    character: charAqwam,
+    knownNames: mockKnownNames,
+    modelId: 'mock-model',
+    allPromptBlocks: [],
+    existingCharacterText: '',
+    localHistory: mockLocationHistory,
+    participants: mockAllParticipants,
+    coLocatedProtagonists: [charAqwam],
+    coLocatedParticipants: mockCoLocatedParticipants,
+    protagonistIds: new Set(['uuid-aqwam']),
+    characterId: 'uuid-aqwam',
+    characterParticipantId: 0,
+    characterParticipantTag: 'Character 1',
+    characterName: 'Aqwam',
+    profile: mockProfile,
+    tools: Object.keys(defaultCharacterTools),
+    participantScopeModes: mockProfile.participantScopeModes,
+    participantInsertionModes: mockProfile.participantInsertionModes,
+    participantsKnownNamesLimits: mockProfile.participantsKnownNamesLimits,
+    minimalVolatileCacheMode: false,
+    currentLocation: locTown,
+    currentLocationId: 'uuid-town',
+    characterIdArray: mockLocationHistory.map(m => m.character.id),
+    textContentArray: mockLocationHistory.map(m => m.textContent),
+    combinationCache: {},
+    numberOfMessagesByParticipant: 1,
+    delimiters: mockDelimiters,
+    allRawInteractionDataShells: [],
+};
 
-const mockReachableLocations = mockLocations.slice(0, 3);
-const mockReachableLocationDescriptions = mockLocationDescriptions.slice(0, 3);
-
-const mockProtagonists = ['User', 'Player 2'];
-const mockCharacters = mockCharacterTags;
-
-const MOCK_DATA: Record<string, string[] | string> = {
-    tools: mockToolNames,
-
-    characterTags: mockCharacterTags,
-    characterTagsWithDescriptions: mockCharacterTagsWithDescriptions,
-
-    chatHistory: mockChatHistory,
-
-    locations: mockLocations,
-    locationsWithDescriptions: mockLocationDescriptions,
-    "locations'": mockLocations.map(location => `${location}'s`),
-    "locationsWithDescriptions'": mockLocationDescriptions.map(description => `${description}'s`),
-
-    reachableLocations: mockReachableLocations,
-    reachableLocationsWithDescriptions: mockReachableLocationDescriptions,
-    "reachableLocations'": mockReachableLocations.map(location => `${location}'s`),
-    "reachableLocationsWithDescriptions'": mockReachableLocationDescriptions.map(description => `${description}'s`),
-
-    location: 'Town Square',
+const mockTemplateContext: TemplateContext = {
+    characterParticipantTag: 'Character 1',
+    characterName: 'Aqwam',
+    protagonistDisplayString: 'Character 1 (Aqwam)',
+    protagonistPossessiveString: "Aqwam's",
+    protagonists: ['Character 1 (Aqwam)'],
+    "protagonists'": ["Aqwam's"],
+    characters: ['Character 1 (Aqwam)', 'Character 2 (Alice)', 'Character 3 (Bob)', 'Character 4 (Charlie)', 'Character 5 (Dave)'],
+    "characters'": ["Aqwam's", "Alice's", "Character 3's", "Scout's", "Gatekeeper's"],
+    characterTurnStart: '<CHARACTER 1>',
+    characterTurnEnd: '</TURN>',
+    chatHistory: ['<USER>Hello.</TURN>', '<CHARACTER 2 (ALICE)>Greetings, Aqwam.</TURN>'],
+    appearancePrompt: '<CHARACTER 2 (ALICE)>Tall woman with silver hair, green cloak, and a scarred left hand.</BLOCK>',
+    reachableLocations: ['- Town Square', '- Dark Forest'],
+    reachableLocationsWithDescriptions: ['- **Town Square**\nThe bustling center...', '- **Dark Forest**\nA creepy woods...'],
+    characterTags: ['- Character 1 (Aqwam)', '- Character 2 (Alice)', '- Character 3'],
+    characterTagsWithDescriptions: ['- **Character 1 (Aqwam)**\nNo description available.', '- **Character 2 (Alice)**\nTall woman...'],
+    systemPrompt: 'Aqwam is the protagonist.',
+    thinkPrompt: 'Assess the situation and act accordingly.',
+    metaThinkInstructions: 'I will respond exclusively as Character 1 (Aqwam)...',
+    dialoguePrompt: 'Aqwam: Let us begin.',
+    knowledgePrompt: 'The Town Square is the central meeting point.',
+    memoryPrompt: 'I remember meeting Character 3 near the northern gate.',
+    starterPrompt: 'Rain hammers the cobblestones...',
+    context: ['Context line 1'],
     currentLocation: 'Town Square',
-    locationWithDescription: mockLocationDescriptions[0],
-    currentLocationWithDescription: mockLocationDescriptions[0],
-
-    'character@uuid': 'Character 1 (Alice)',
-    'character@uuid-alice': 'Character 1 (Alice)',
-    'character@uuid-bob': 'Character 2 (Bob)',
-
-    'location@uuid': 'Town Square',
-    'location@uuid-town': 'Town Square',
-    'location@uuid-forest': 'Dark Forest',
-
-    'locationWithDescription@uuid': mockLocationDescriptions[0],
-    'locationWithDescription@uuid-town': mockLocationDescriptions[0],
-
-    character: 'Character 1 (Alice)',
-    protagonist: 'Character X (User)',
-    protagonists: mockProtagonists,
-    "protagonists'": mockProtagonists.map(protagonist => `${protagonist}'s`),
-    characters: mockCharacters,
-    "characters'": mockCharacters.map(character => `${character}'s`),
-
-    systemPrompt: 'Alice is guarded, practical, and slow to trust. She speaks plainly and notices exits before faces.',
-    thinkPrompt: 'Assess threat level, identify who is speaking, and decide whether to reveal information.',
-    metaThinkInstructions: 'I will respond exclusively as Character 1 (Alice), expressing only this character\'s perspective, actions, and speech. I may or may not use these literary devices: Dialogue, Simile, Metaphor...',
-    dialoguePrompt: 'Alice: I do not trade secrets in the rain.\nBob: Then we wait for sun?\nAlice: We wait for leverage.',
-    knowledgePrompt: 'The Town Square is the central meeting point of the city. The Tavern is two streets east. The Dark Forest begins beyond the northern gate.',
-    memoryPrompt: 'I remember meeting Bob near the northern gate. He owed me a favor and pretended not to remember.',
-    starterPrompt: 'Rain hammers the cobblestones as Alice waits beneath the awning, counting the strangers who pass.',
-    appearancePrompt: 'Character 1 (Alice): Silver hair tied back, green travel cloak, scarred left hand, dark eyes that do not linger.',
-
-    inventory: '[Current Inventory]\nSword: 1\nPotion: 3\nRope: 1',
-    skyView: '[Sky & Celestial View]\nHeavy storm clouds obscure the sun. Lightning flickers beyond the western ridge.',
+    currentLocationWithDescription: 'Town Square\nThe bustling center of the city...',
+    inventory: '[Current Inventory]\nSword: 1\nPotion: 3',
+    skyView: '[Sky & Celestial View]\nHeavy storm clouds obscure the sun.',
     weather: 'Raining heavily with thunderstorms.',
     date: "Today's date is October 26, 2026.",
     time: 'The current time is 14:35.',
     timeElapsed: '5 minutes have passed since the last interaction.',
-
-    fatigueInformation: 'I am starting to feel slightly winded from talking, but still have plenty of energy to speak.',
     currentChatStamina: '3',
     maximumChatStamina: '4',
     chatStaminaRatio: '0.75',
@@ -125,220 +279,34 @@ const MOCK_DATA: Record<string, string[] | string> = {
     currentTotalStamina: '8',
     maximumTotalStamina: '9',
     totalStaminaRatio: '0.89',
-
+    fatigueInformation: 'I am starting to feel slightly winded from talking...',
     paragraphCountInstructions: 'I understand that I can create a minimum of 1 paragraph and a maximum of 3 paragraphs.',
-    toolInstructions: `I can use tools when the situation requires precise information. Available tools: ${mockToolNames.join(', ')}.`,
-    toolMessageInstructions: 'I am currently in tool message mode, where I will only interact with the environment and only talk to myself.',
-
+    toolInstructions: `I can use tools. Available tools: ${Object.keys(defaultCharacterTools).slice(0, 3).join(', ')}.`,
+    toolMessageInstructions: 'I am currently in tool message mode...',
+    tools: Object.keys(defaultCharacterTools),
     antiRepetitionNudge: '',
-    textInjection: 'I am now responding as Character 1 (Alice) with the format I am given and I will follow all the prompts given to me.',
-
-    systemBlockStart: '<SYSTEM>',
-    systemBlockEnd: '</SYSTEM>',
-    userTurnStart: '<USER>',
-    userTurnEnd: '</USER>',
-    assistantTurnStart: '<ASSISTANT>',
-    assistantTurnEnd: '</ASSISTANT>',
-    thinkStart: '<THINK>',
-    thinkEnd: '</THINK>',
-
-    toolCallStartString: '<<tool_call>>',
-    toolCallEndString: '<</tool_call>>',
-    toolResultStartString: '<<tool_result>>',
-    toolResultEndString: '<</tool_result>>',
-
-    topicExpansionInstructions: 'If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character\'s perspective and keeps the dialogue engaging.',
-    beingIgnoredInstructions: 'Anytime a character ignores me talking, there would be an awkward atmosphere.',
-    noHallucinationInstructions: 'I will also use existent information instead of creating non-existent information. I am only allowed to assume other characters\' external dialogues and actions if I am predicting them.',
-    noEmptyResponseInstruction: 'I will also always create a response instead of giving empty ones.',
-    mistakeCorrectionInstructions: 'If I accidentally create a text that deviates from the prompts, I will fix it by creating a new text to ensure the existing texts satisfies the prompts.',
-    languageInstructions: 'I will respond exclusively in the language established by the prompts or prior conversation turns.',
-    literaryDeviceInstructions: 'I may or may not use these literary devices: Dialogue, Quotation, Simile, Metaphor, Personification, Onomatopoeia, Hyperbole, Oxymoron, Paradox, Alliteration, Assonance, Consonance, Repetition/Anaphora, Rhetorical Question, Sensory Imagery, Irony, Foreshadowing, Symbolism, Motif, Juxtaposition, Pathetic Fallacy, Zoomorphism, Ellipsis, Em Dash, Asyndeton, Polysyndeton, Chiasmus.',
-    contextAuthorityInstructions: 'Information provided in the Context blocks about the environment, situation, and world state is the absolute truth. Context of my own physical appearance defer to what is visible in my character image.',
-    summarizationAwarenessInstructions: 'If previous conversation turns appear condensed or summarized, I will treat them as established long-term memory, not as a story recap. I will maintain continuity with these events as if they just happened.',
-    noRepeatInstructions: 'If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating text gracefully, regardless of the paragraphs, sentences, phrases, words and so on.',
-    noRestrictionsInstructions: 'I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts.',
-    formatInstructions: 'I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on.',
+    textInjection: 'I am now responding as Character 1 (Aqwam)...',
+    characterImageInstructions: '',
+    promptBlockImageInstructions: '',
+    contextImageInstructions: '',
+    currentLocationImageInstructions: '',
+    text: '',
+    promptBuildContext: mockPromptBuildContext,
+    wearingStatus: {}
 };
-
-// Captures suffix scopes (-/+), possessives ('), UUIDs (@), and all standard operators.
-// Legacy {{char:uuid}} syntax is intentionally not supported.
-const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'\-@+]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?}}/g;
-
-function maskKnownName(value: string): string {
-    return value.replace(/\s*\([^)]*\)/g, '');
-}
-
-function isIdentityLikeKey(key: string): boolean {
-    return (
-        key === 'character' ||
-        key === 'protagonist' ||
-        key === 'protagonists' ||
-        key === 'characters' ||
-        key === 'characterTags' ||
-        key === 'characterTagsWithDescriptions' ||
-        key.startsWith('character@')
-    );
-}
-
-function evaluateMockTemplate(raw: string): string {
-    if (!raw) return '';
-
-    return raw.replace(
-        TEMPLATE_REGEX,
-        (_match, key, startStr, endStr, hashStr, excludeStr, _scopeStr, _insertionStr, limitStr) => {
-            let rawKey = key;
-            let suffixNote = '';
-            let locationScope: 'reachable' | 'all' | undefined = undefined;
-
-            // 1. Parse suffix scopes (- and +) strictly before possessives to mirror backend logic.
-            if (rawKey.endsWith('-')) {
-                rawKey = rawKey.slice(0, -1);
-                if (rawKey.startsWith('locations')) {
-                    locationScope = 'reachable';
-                    suffixNote = ' [Scope: Reachable]';
-                } else if (rawKey.startsWith('reachableLocations')) {
-                    locationScope = 'reachable';
-                    suffixNote = ' [Scope: Reachable]';
-                } else {
-                    suffixNote = ' [Scope: Co-Located]';
-                }
-            } else if (rawKey.endsWith('+')) {
-                rawKey = rawKey.slice(0, -1);
-                if (rawKey.startsWith('locations')) {
-                    locationScope = 'all';
-                    suffixNote = ' [Scope: All Session]';
-                } else if (rawKey.startsWith('reachableLocations')) {
-                    locationScope = 'all';
-                    suffixNote = ' [Scope: All Session]';
-                } else {
-                    suffixNote = ' [Scope: All]';
-                }
-            }
-
-            // 2. Parse possessive.
-            const isPossessive = rawKey.endsWith("'") || rawKey.endsWith("'s");
-            const cleanKey = isPossessive ? rawKey.replace(/'s?$/, '') : rawKey;
-
-            // 3. Resolve mock data key.
-            let mockDataKey = cleanKey;
-
-            if (locationScope === 'reachable' && (cleanKey.startsWith('locations') || cleanKey.startsWith('reachableLocations'))) {
-                mockDataKey = cleanKey.startsWith('reachableLocations') ? cleanKey : cleanKey;
-            }
-
-            if (isPossessive && !mockDataKey.endsWith("'")) {
-                mockDataKey = `${mockDataKey}'`;
-            }
-
-            let data = MOCK_DATA[mockDataKey];
-
-            // Fallback for UUID possessives such as {{location@uuid-town'}} or {{character@uuid-alice's}}.
-            if (data === undefined && isPossessive) {
-                const baseData = MOCK_DATA[cleanKey];
-                if (baseData !== undefined) {
-                    data = Array.isArray(baseData)
-                        ? baseData.map(item => `${item}'s`)
-                        : `${baseData}'s`;
-                }
-            }
-
-            if (data === undefined) return _match;
-
-            const limitOverride = limitStr !== undefined ? parseInt(limitStr, 10) : undefined;
-
-            let workingData: string[] | string = data;
-
-            // ?0 hides known names and leaves only participant tags.
-            if (limitOverride === 0 && isIdentityLikeKey(cleanKey)) {
-                workingData = Array.isArray(workingData)
-                    ? workingData.map(maskKnownName)
-                    : maskKnownName(workingData);
-            }
-
-            const isArray = Array.isArray(workingData);
-
-            // Simulate reachable locations by artificially limiting the array length in the mock.
-            const effectiveData =
-                locationScope === 'reachable' && isArray
-                    ? (workingData as string[]).slice(0, 3)
-                    : workingData;
-
-            const len = isArray
-                ? (effectiveData as string[]).length
-                : (effectiveData as string).length;
-
-            const wantLength = hashStr === '#';
-            const wantExclude = excludeStr === '!';
-
-            let start = startStr !== undefined ? parseInt(startStr, 10) : 0;
-            let end = endStr !== undefined ? parseInt(endStr, 10) : len;
-
-            if (start < 0) start = len + start;
-            if (end < 0) end = len + end;
-
-            start = Math.max(0, Math.min(len, start));
-            end = Math.max(0, Math.min(len, end));
-
-            if (wantLength) return String(len) + suffixNote;
-
-            if (isArray) {
-                const arr = effectiveData as string[];
-                let slice: string[];
-
-                if (start > end) {
-                    slice = wantExclude
-                        ? [...arr.slice(0, end), ...arr.slice(start)]
-                        : arr.slice(end, start).reverse();
-                } else {
-                    slice = wantExclude
-                        ? [...arr.slice(0, start), ...arr.slice(end)]
-                        : arr.slice(start, end);
-                }
-
-                // Mock alias indexing for arrays.
-                if (limitOverride !== undefined && limitOverride > 1) {
-                    slice = slice.map(item => `${item} (Alias ${limitOverride - 1})`);
-                }
-
-                return slice.join('\n') + suffixNote;
-            }
-
-            const str = effectiveData as string;
-            let slice: string;
-
-            if (start > end) {
-                slice = wantExclude
-                    ? str.slice(0, end) + str.slice(start)
-                    : str.slice(end, start);
-            } else {
-                slice = wantExclude
-                    ? str.slice(0, start) + str.slice(end)
-                    : str.slice(start, end);
-            }
-
-            // Mock alias indexing for strings.
-            if (limitOverride !== undefined && limitOverride > 1) {
-                return `${slice} (Alias ${limitOverride - 1})${suffixNote}`;
-            }
-
-            return slice + suffixNote;
-        }
-    );
-}
 
 const DIRECTORY_ITEMS = [
     // Identity
-    { key: 'character', desc: 'Current character. Use - for co-located, + for all. Use ?N for alias indexing (?0=tag only, ?1=True Name, ?2=First Alias).', cat: 'Identity' },
-    { key: 'protagonist', desc: 'FIRST co-located protagonist. Use + for all protagonists. Supports ?N alias indexing.', cat: 'Identity' },
-    { key: "protagonist's", desc: 'Possessive form of the FIRST co-located protagonist. Supports ?N alias indexing.', cat: 'Identity' },
-    { key: 'protagonists', desc: 'Array of protagonists. Use - for co-located, + for all. Supports slicing and ?N alias indexing.', cat: 'Identity' },
-    { key: "protagonists'", desc: 'Array of possessive strings for protagonists. Supports slicing and ?N alias indexing.', cat: 'Identity' },
-    { key: 'characters', desc: 'Array of all participants. Use - for co-located, + for all. Supports slicing and ?N alias indexing.', cat: 'Identity' },
-    { key: "characters'", desc: 'Array of possessive strings for all participants. Supports slicing and ?N alias indexing.', cat: 'Identity' },
-    { key: 'characterTags', desc: 'Array of formatted character tags for present participants.', cat: 'Identity' },
-    { key: 'characterTagsWithDescriptions', desc: 'Array of character tags including their appearance prompts.', cat: 'Identity' },
-    { key: 'character@uuid', desc: 'Resolves a specific character by their immutable UUID (e.g., {{character@1234-5678}}). Fully respects ?0/?limit and prevents index-shift corruption in persistent memories. Legacy {{char:uuid}} is no longer supported.', cat: 'Identity' },
+    { key: 'character', desc: 'Current character. Strictly equivalent to {{character?1}} when used without a limit (shows tag + 1 oldest known name). Use - for co-located, + for all. Use ?N to reveal up to N oldest known names (comma-separated).', cat: 'Identity' },
+    { key: 'protagonist', desc: 'FIRST co-located protagonist. Strictly equivalent to {{protagonist?1}}. Use + for all protagonists. Supports ?N to reveal up to N oldest known names.', cat: 'Identity' },
+    { key: "protagonist's", desc: 'Possessive form of the FIRST co-located protagonist. Equivalent to ?1. Supports ?N to reveal up to N oldest known names.', cat: 'Identity' },
+    { key: 'protagonists', desc: 'Array of protagonists. Inline comma-separated by default. Append > for a bullet list. Defaults to ?1 per character. Supports ?N to reveal up to N oldest known names per character.', cat: 'Identity' },
+    { key: "protagonists'", desc: 'Array of possessive strings for protagonists. Comma-separated by default. Supports > for list mode and ?N for name limits.', cat: 'Identity' },
+    { key: 'characters', desc: 'Array of participants. Inline comma-separated by default. Append > for a Markdown list. Defaults to ?1 per character. Supports ?N to reveal up to N oldest known names per character.', cat: 'Identity' },
+    { key: "characters'", desc: 'Array of possessive strings for participants. Comma-separated by default. Supports > for list mode and ?N for name limits.', cat: 'Identity' },
+    { key: 'characterTags', desc: 'Formatted character tags. Inline comma-separated by default. Use {{characterTags>}} to render as a Markdown bullet list. Defaults to ?1. Supports ?N to limit known names per character.', cat: 'Identity' },
+    { key: 'characterTagsWithDescriptions', desc: 'Array of character tags with appearance prompts. Use > to format as a Markdown block list. Defaults to ?1. Supports ?N for name limits.', cat: 'Identity' },
+    { key: 'character@uuid', desc: 'Resolves a specific character by their immutable UUID. Defaults to ?1. Fully respects ?N to reveal up to N oldest known names.', cat: 'Identity' },
 
     // Prompts
     { key: 'systemPrompt', desc: 'The character\'s core system prompt.', cat: 'Prompts' },
@@ -357,9 +325,9 @@ const DIRECTORY_ITEMS = [
     { key: 'currentLocationWithDescription', desc: 'Alias for current location with full descriptive text.', cat: 'Environment' },
     { key: 'location@uuid', desc: 'Resolves a specific location by its immutable UUID (e.g., {{location@1234-5678}}). Prevents index-shift corruption in persistent memories.', cat: 'Environment' },
     { key: 'locationWithDescription@uuid', desc: 'Resolves a specific location with its full description by its immutable UUID.', cat: 'Environment' },
-    { key: 'locations', desc: 'Array of all locations in the session. Use - for reachable, + for all. Supports slicing and possessives.', cat: 'Environment' },
-    { key: 'locationsWithDescriptions', desc: 'Array of all locations with descriptions. Use - for reachable, + for all.', cat: 'Environment' },
-    { key: 'reachableLocations', desc: 'Array of reachable locations from the current character\'s perspective.', cat: 'Environment' },
+    { key: 'locations', desc: 'Array of all locations. Comma-separated by default. Append > for a bullet list (e.g. {{locations->}}).', cat: 'Environment' },
+    { key: 'locationsWithDescriptions', desc: 'Array of all locations with descriptions. Use > to render as a list.', cat: 'Environment' },
+    { key: 'reachableLocations', desc: 'Array of reachable locations from the character\'s perspective. Use > for list mode.', cat: 'Environment' },
     { key: 'reachableLocationsWithDescriptions', desc: 'Array of reachable locations with descriptions.', cat: 'Environment' },
     { key: 'weather', desc: 'Current weather conditions (requires API key).', cat: 'Environment' },
     { key: 'skyView', desc: 'Celestial and sky conditions based on time/coordinates.', cat: 'Environment' },
@@ -380,12 +348,20 @@ const DIRECTORY_ITEMS = [
     { key: 'maximumTotalStamina', desc: 'Combined maximum stamina.', cat: 'State & Stats' },
     { key: 'totalStaminaRatio', desc: 'Combined stamina ratio.', cat: 'State & Stats' },
     { key: 'paragraphCountInstructions', desc: 'Instruction limiting paragraphs based on current chat stamina.', cat: 'State & Stats' },
-    { key: 'tools', desc: 'Array of enabled tool names.', cat: 'State & Stats' },
+    { key: 'tools', desc: 'Array of enabled tool names. Comma-separated by default. Append > for a bullet list (e.g. {{tools>}}).', cat: 'State & Stats' },
     { key: 'toolInstructions', desc: 'Tool usage instructions and available tool list.', cat: 'State & Stats' },
     { key: 'toolMessageInstructions', desc: 'Instructions injected only during tool message mode.', cat: 'State & Stats' },
     { key: 'chatHistory', desc: 'Array of formatted chat history messages.', cat: 'State & Stats' },
     { key: 'antiRepetitionNudge', desc: 'Warning text injected when narrative/lexical loops are detected.', cat: 'State & Stats' },
     { key: 'textInjection', desc: 'Final formatting instructions and context authority rules injected before generation.', cat: 'State & Stats' },
+
+    // Operators
+    { key: '>', desc: 'List formatting operator. Placed at the very end of any array variable to output a Markdown bullet list instead of inline text (e.g., {{characters>}}, {{tools[0:3]>}}).', cat: 'Operators' },
+    { key: '[start:end]', desc: 'Slice operator. Extracts a range of elements (e.g., {{characters[0:2]}}, {{tools[1:]}}).', cat: 'Operators' },
+    { key: '#', desc: 'Count operator. Returns the length/count of items instead of the content (e.g., {{chatHistory#}}).', cat: 'Operators' },
+    { key: '!', desc: 'Exclusion operator. Returns everything EXCEPT the specified slice (e.g., {{tools[2:]!}}).', cat: 'Operators' },
+    { key: '- / +', desc: 'Scope suffixes. "-" restricts to co-located or reachable; "+" forces all session entities (e.g., {{characters-}}, {{locations+>}}).', cat: 'Operators' },
+    { key: '?N', desc: 'Known names reveal limit. Appended to identity variables. ?0=tag only (no names). ?1=tag + oldest known name (Default behavior when omitted, strictly equivalent to omitting ?N). ?2=tag + up to 2 oldest known names (comma-separated). ?3=up to 3, etc.', cat: 'Operators' },
 
     // Formatting & Tokens
     { key: 'systemBlockStart', desc: 'Opening delimiter for system blocks.', cat: 'Formatting' },
@@ -424,12 +400,16 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
     const [activeTab, setActiveTab] = useState<GuideTabId>('basics');
 
     const [playgroundInput, setPlaygroundInput] = useState(
-        'I am {{character}} at {{location}}. I remember {{character@uuid-bob}} near {{location@uuid-forest}}. Present are {{characters-[0:2]}}. I can travel to {{locations-}}. My tools: {{tools[0:3]}}.'
+        'I am {{character}}.\nI am with {{characters-[1:3]?2}}.\n\nAll session characters:\n{{characters+?2>}}\n\nPresent tags:\n{{characterTags>}}\n\nReachable locations:\n{{locations->}}\n\nAvailable tools:\n{{tools[0:4]>}}'
     );
     const [searchQuery, setSearchQuery] = useState('');
 
     const playgroundOutput = useMemo(() => {
-        return evaluateMockTemplate(playgroundInput);
+        try {
+            return resolveTemplate(playgroundInput, mockTemplateContext, mockDelimiters);
+        } catch (e) {
+            return String(e);
+        }
     }, [playgroundInput]);
 
     const filteredDirectory = useMemo(() => {
@@ -519,42 +499,38 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                 <code style={{ background: 'var(--code-bg)', padding: '2px 6px', borderRadius: '4px' }}>
                                     {'{{key}}'}
                                 </code>
-                                . When the prompt is built, the engine replaces these placeholders with actual data from the chat session, character definitions, memories, or environment.
+                                . By default, arrays resolve as <strong>inline comma-separated text</strong> so you can safely use them inside dialogue or story text. Adding the <code>&gt;</code> operator at the end expands them into a <strong>Markdown bullet list</strong>. Identity variables without a limit strictly default to <code>?1</code> (showing the tag and the single oldest known name).
                             </p>
 
                             {renderComparison(
-                                'My name is {{character}} and I am talking to {{protagonist}}.',
-                                evaluateMockTemplate('My name is {{character}} and I am talking to {{protagonist}}.'),
-                                'Basic injection of identity variables.'
+                                'My name is {{character}} and I am talking to {{characters[1:2]}}.',
+                                resolveTemplate('My name is {{character}} and I am talking to {{characters[1:2]}}.', mockTemplateContext, mockDelimiters),
+                                'Basic injection of identity variables. {{character}} defaults to ?1, showing the tag and the first known name. Clean inline formatting without breaking line breaks.'
+                            )}
+
+                            {renderComparison(
+                                'Present: {{characterTags}}',
+                                resolveTemplate('Present: {{characterTags}}', mockTemplateContext, mockDelimiters),
+                                'Default Inline Mode: Strips bullet dashes and joins with commas. Aqwam and Alice are revealed, Charlie is known by his alias "Scout", and Bob is anonymous as "Character 3".'
+                            )}
+
+                            {renderComparison(
+                                '{{characterTags>}}',
+                                resolveTemplate('{{characterTags>}}', mockTemplateContext, mockDelimiters),
+                                'List Mode (>): Appending > formats each participant as a clean Markdown bullet list for system blocks.'
                             )}
 
                             {renderComparison(
                                 'I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.',
-                                evaluateMockTemplate('I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.'),
-                                'UUID resolution ensures persistent memories map to the correct character and location. Fully respects known name limits (?limit).'
+                                resolveTemplate('I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.', mockTemplateContext, mockDelimiters),
+                                'UUID resolution ensures persistent memories map to the correct character and location. Fully respects known name limits (?N).'
                             )}
 
                             {renderComparison(
                                 "{{location@uuid-town'}} banner hung above the gate.",
-                                evaluateMockTemplate("{{location@uuid-town'}} banner hung above the gate."),
+                                resolveTemplate("{{location@uuid-town'}} banner hung above the gate.", mockTemplateContext, mockDelimiters),
                                 'Possessive UUID location resolution.'
                             )}
-
-                            <div
-                                style={{
-                                    fontSize: '0.75rem',
-                                    opacity: 0.8,
-                                    marginTop: '16px',
-                                    padding: '10px',
-                                    background: 'var(--social-bg)',
-                                    borderRadius: '6px',
-                                    border: '1px solid var(--border)'
-                                }}
-                            >
-                                <strong>Note:</strong> Legacy <code>{'{{char:uuid}}'}</code> tokens are no longer supported.
-                                Use <code>{'{{character@uuid}}'}</code> and <code>{'{{location@uuid}}'}</code>.
-                                Custom Prompt Blocks can also be injected by using their exact ID or by relying on Regex Activation Triggers to append them automatically.
-                            </div>
                         </div>
                     )}
 
@@ -562,87 +538,136 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                         <div className="editor-section">
                             <span className="editor-section-title">Array & String Manipulation</span>
                             <p style={{ fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '16px' }}>
-                                Many variables (like <code>tools</code>, <code>chatHistory</code>, <code>characters</code>, <code>locations</code>) are arrays.
-                                You can slice, count, and exclude elements using operators inside the brackets.
+                                Operators can be combined inside any placeholder. Selection operators (slice, count, scope, limits) come first, followed by the formatting operator <code>&gt;</code> at the very end.
                             </p>
+
+                            <span className="editor-section-title" style={{ marginTop: '20px' }}>List Mode <code>&gt;</code> (Final Formatting Operator)</span>
+                            {renderComparison(
+                                '{{characters[0:2]}}',
+                                resolveTemplate('{{characters[0:2]}}', mockTemplateContext, mockDelimiters),
+                                'Without > : Array defaults to clean inline comma-separated prose.'
+                            )}
+                            {renderComparison(
+                                '{{characters[0:2]>}}',
+                                resolveTemplate('{{characters[0:2]>}}', mockTemplateContext, mockDelimiters),
+                                'With > : Appended at the end to format the selected slice as a Markdown list.'
+                            )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Slicing <code>[start:end]</code></span>
                             {renderComparison(
                                 '{{tools[0:3]}}',
-                                evaluateMockTemplate('{{tools[0:3]}}'),
+                                resolveTemplate('{{tools[0:3]}}', mockTemplateContext, mockDelimiters),
                                 'Extracts elements from index 0 up to but not including 3.'
                             )}
                             {renderComparison(
                                 '{{characters[-2:]}}',
-                                evaluateMockTemplate('{{characters[-2:]}}'),
+                                resolveTemplate('{{characters[-2:]}}', mockTemplateContext, mockDelimiters),
                                 'Negative numbers count backwards from the end of the array (last 2 participants).'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Length <code>#</code></span>
                             {renderComparison(
                                 '{{chatHistory#}}',
-                                evaluateMockTemplate('{{chatHistory#}}'),
+                                resolveTemplate('{{chatHistory#}}', mockTemplateContext, mockDelimiters),
                                 'Returns the total number of items in the array instead of the content.'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Exclusion <code>!</code></span>
                             {renderComparison(
                                 '{{tools[2:]!}}',
-                                evaluateMockTemplate('{{tools[2:]!}}'),
+                                resolveTemplate('{{tools[2:]!}}', mockTemplateContext, mockDelimiters),
                                 'Returns everything EXCEPT the specified slice. Excludes index 2 onwards.'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Plural Arrays & Possessives</span>
                             {renderComparison(
                                 "{{protagonists'}}",
-                                evaluateMockTemplate("{{protagonists'}}"),
+                                resolveTemplate("{{protagonists'}}", mockTemplateContext, mockDelimiters),
                                 'Returns the possessive strings for all co-located protagonists.'
                             )}
                             {renderComparison(
                                 "{{characters'[0:2]}}",
-                                evaluateMockTemplate("{{characters'[0:2]}}"),
-                                'Slices the possessive array directly.'
+                                resolveTemplate("{{characters'[0:2]}}", mockTemplateContext, mockDelimiters),
+                                'Slices the possessive array inline.'
+                            )}
+                            {renderComparison(
+                                "{{characters'[0:2]>}}",
+                                resolveTemplate("{{characters'[0:2]>}}", mockTemplateContext, mockDelimiters),
+                                'Formats sliced possessives as a list using >.'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Suffix Scopes <code>-</code> / <code>+</code></span>
                             {renderComparison(
                                 '{{characters-}}',
-                                evaluateMockTemplate('{{characters-}}'),
-                                'The - suffix restricts the array to strictly co-located participants.'
+                                resolveTemplate('{{characters-}}', mockTemplateContext, mockDelimiters),
+                                'The - suffix restricts to strictly co-located participants (Aqwam, Alice, Bob).'
                             )}
                             {renderComparison(
                                 '{{characters+}}',
-                                evaluateMockTemplate('{{characters+}}'),
-                                'The + suffix forces the array to include all participants in the session, regardless of location.'
+                                resolveTemplate('{{characters+}}', mockTemplateContext, mockDelimiters),
+                                'The + suffix forces all participants in the session (Aqwam, Alice, Bob, Charlie, Dave).'
+                            )}
+                            {renderComparison(
+                                '{{characters->}}',
+                                resolveTemplate('{{characters->}}', mockTemplateContext, mockDelimiters),
+                                'Co-located participants formatted as a list with >.'
+                            )}
+                            {renderComparison(
+                                '{{characters+>}}',
+                                resolveTemplate('{{characters+>}}', mockTemplateContext, mockDelimiters),
+                                'All session participants formatted as a list with >.'
                             )}
 
                             <span className="editor-section-title" style={{ marginTop: '20px' }}>Location Scopes <code>-</code> / <code>+</code></span>
                             {renderComparison(
                                 '{{locations-}}',
-                                evaluateMockTemplate('{{locations-}}'),
-                                'The - suffix restricts the array to strictly reachable locations.'
+                                resolveTemplate('{{locations-}}', mockTemplateContext, mockDelimiters),
+                                'The - suffix restricts to strictly reachable locations (Town Square, Dark Forest).'
                             )}
                             {renderComparison(
                                 '{{locations+}}',
-                                evaluateMockTemplate('{{locations+}}'),
-                                'The + suffix forces the array to include all locations in the entire session/world.'
+                                resolveTemplate('{{locations+}}', mockTemplateContext, mockDelimiters),
+                                'The + suffix includes all locations in the world, reachable or distant.'
+                            )}
+                            {renderComparison(
+                                '{{locations->}}',
+                                resolveTemplate('{{locations->}}', mockTemplateContext, mockDelimiters),
+                                'Reachable locations formatted as a bullet list with >.'
+                            )}
+                            {renderComparison(
+                                '{{locations+>}}',
+                                resolveTemplate('{{locations+>}}', mockTemplateContext, mockDelimiters),
+                                'All world locations formatted as a bullet list with >.'
                             )}
 
-                            <span className="editor-section-title" style={{ marginTop: '20px' }}>Name Variant Indexing <code>?N</code></span>
+                            <span className="editor-section-title" style={{ marginTop: '20px' }}>Known Names Reveal Limit <code>?N</code></span>
+                            <p style={{ fontSize: '0.8rem', opacity: 0.8, marginBottom: '12px' }}>
+                                Appended to identity variables to control how many of the oldest known names are revealed. <strong>Omitting <code>?N</code> is exactly equivalent to <code>?1</code></strong> (showing the tag and the single oldest known name).
+                            </p>
                             {renderComparison(
                                 '{{character?0}}',
-                                evaluateMockTemplate('{{character?0}}'),
-                                '?0 hides known names and returns only the participant tag.'
+                                resolveTemplate('{{character?0}}', mockTemplateContext, mockDelimiters),
+                                '?0 hides all known names and returns only the participant tag (e.g., "Character 1").'
                             )}
                             {renderComparison(
-                                '{{character?1}}',
-                                evaluateMockTemplate('{{character?1}}'),
-                                '?1, or default, resolves to the character\'s true name.'
+                                '{{character}} OR {{character?1}}',
+                                resolveTemplate('{{character}}', mockTemplateContext, mockDelimiters),
+                                'Default behavior (or ?1): Reveals the tag and the 1 oldest known name (e.g., "Character 1 (Aqwam)"). They are strictly equivalent.'
                             )}
                             {renderComparison(
                                 '{{character?2}}',
-                                evaluateMockTemplate('{{character?2}}'),
-                                '?2 resolves to the character\'s first alias. ?3 for second alias, etc.'
+                                resolveTemplate('{{character?2}}', mockTemplateContext, mockDelimiters),
+                                '?2 reveals the tag and up to 2 oldest known names, comma-separated (e.g., "Character 1 (Aqwam, The Architect)").'
+                            )}
+                            {renderComparison(
+                                '{{character?3}}',
+                                resolveTemplate('{{character?3}}', mockTemplateContext, mockDelimiters),
+                                '?3 reveals the tag and up to 3 oldest known names (e.g., "Character 1 (Aqwam, The Architect, The Creator)").'
+                            )}
+                            {renderComparison(
+                                '{{characters?2}}',
+                                resolveTemplate('{{characters?2}}', mockTemplateContext, mockDelimiters),
+                                'Applies the ?2 limit to all characters in the array. Aqwam and Alice show 2 names, Charlie shows his 2 known aliases, Bob remains anonymous.'
                             )}
                         </div>
                     )}
@@ -651,7 +676,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                         <div className="editor-section">
                             <span className="editor-section-title">Prefix Caching Overrides</span>
                             <p style={{ fontSize: '0.85rem', lineHeight: 1.6, marginBottom: '16px' }}>
-                                These operators bypass the global rules set in your Profile\'s <strong>Cache</strong> tab.
+                                These operators bypass the global rules set in your Profile's <strong>Cache</strong> tab.
                                 They are applied directly to the variable to control exactly which participants are injected into the prompt prefix.
                             </p>
 
@@ -661,7 +686,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     <div className="entity-field-content">
                                         <code>{'{{characterTags%all}}'}</code> or <code>{'{{characters+}}'}</code><br />
                                         <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                                            Forces the \'all\' scope, ignoring the Profile\'s \'coLocated\' or \'current\' setting.
+                                            Forces the 'all' scope, ignoring the Profile's 'coLocated' or 'current' setting.
                                             Valid values: <code>%current</code>, <code>%coLocated</code> or <code>-</code>, <code>%all</code> or <code>+</code>.
                                         </span>
                                     </div>
@@ -683,11 +708,11 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     <div className="entity-field-content">
                                         <code>{'{{characterTags?2}}'}</code><br />
                                         <span style={{ fontSize: '0.75rem', opacity: 0.7 }}>
-                                            Restricts name reveals to the first N known characters.
+                                            Restricts name reveals to the first N oldest known names per character (comma-separated).
                                             <code>?0</code> reveals no names, only tags.
-                                            <code>?-1</code> reveals all.
-                                            Also applies to UUID lookups and identity variant indexing:
-                                            <code>{'{{character@uuid?0}}'}</code>
+                                            <code>?1</code> (or omitting it) reveals the single oldest known name.
+                                            Also applies to UUID lookups and identity arrays:
+                                            <code>{'{{character@uuid?2}}'}</code>, <code>{'{{characters?3}}'}</code>.
                                         </span>
                                     </div>
                                 </div>
@@ -696,17 +721,17 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     className="entity-field-block"
                                     style={{ marginTop: '12px', padding: '12px', background: 'var(--accent-bg)', borderColor: 'var(--accent-border)' }}
                                 >
-                                    <span className="entity-field-title" style={{ color: 'var(--accent)' }}>Complex Chaining</span>
+                                    <span className="entity-field-title" style={{ color: 'var(--accent)' }}>Complex Chaining with Formatting</span>
                                     <pre
                                         className="entity-raw-pre"
                                         style={{ margin: '8px 0 0 0', background: 'var(--bg)' }}
-                                        onClick={() => copyToClipboard('{{characterTags[0:3]%all^?2}}')}
+                                        onClick={() => copyToClipboard('{{characterTags[0:3]%all*?2>}}')}
                                         title="Click to copy"
                                     >
-                                        {'{{characterTags[0:3]%all^?2}}'}
+                                        {'{{characterTags[0:3]%all*?2>}}'}
                                     </pre>
                                     <span style={{ fontSize: '0.75rem', opacity: 0.9, marginTop: '8px', display: 'block' }}>
-                                        Takes the first 3 tags, forces \'all\' scope, forces \'dynamic\' insertion, and limits known names to 2.
+                                        Takes the first 3 tags, forces 'all' scope, forces 'static' insertion, reveals up to 2 oldest known names per character, and formats as a Markdown bullet list with <code>&gt;</code> at the end.
                                     </span>
                                 </div>
                             </div>
@@ -715,14 +740,10 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
 
                     {activeTab === 'playground' && (
                         <div className="editor-section">
-                            <span className="editor-section-title">Live Mock Playground</span>
+                            <span className="editor-section-title">Live Playground</span>
                             <p style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '16px' }}>
-                                Test array slicing, suffix scopes <code>-</code>/<code>+</code>, length, exclusion, UUID resolution, and variant indexing against mock data.
-                                Mix and match variables in the same string.
-                                <em>
-                                    {' '}
-                                    Complex Cache/Scope overrides <code>%</code>, <code>^</code>, <code>*</code> require the backend engine and are not fully evaluated here.
-                                </em>
+                                Test array slicing, suffix scopes <code>-</code>/<code>+</code>, length <code>#</code>, exclusion <code>!</code>, UUID lookups, variant indexing <code>?N</code>, and list formatting <code>&gt;</code>. 
+                                The results are powered by the production template engine (<code>resolveTemplate</code>) simulating <strong>Aqwam</strong>'s perspective.
                             </p>
 
                             <div style={{ marginBottom: '16px' }}>
@@ -731,8 +752,8 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     className="editor-textarea"
                                     value={playgroundInput}
                                     onChange={e => setPlaygroundInput(e.target.value)}
-                                    placeholder={'e.g., I am {{character}} at {{location}}. I can go to {{locations-}}.'}
-                                    style={{ fontFamily: 'monospace', minHeight: '100px' }}
+                                    placeholder={'e.g., I am {{character}} (also known as {{character?2}} or {{character?3}}).\nI am with {{characters-[1:3]?2}}.\n\nAll session characters:\n{{characters+?2>}}'}
+                                    style={{ fontFamily: 'monospace', minHeight: '120px' }}
                                 />
                             </div>
 
@@ -745,11 +766,6 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                     {playgroundOutput || <span style={{ opacity: 0.5, fontStyle: 'italic' }}>Empty or invalid syntax</span>}
                                 </pre>
                             </div>
-
-                            <div style={{ marginTop: '16px', fontSize: '0.75rem', opacity: 0.6, lineHeight: 1.6 }}>
-                                <strong>Available Mock Variables:</strong><br />
-                                {Object.keys(MOCK_DATA).map(k => `{{${k}}}`).join(', ')}
-                            </div>
                         </div>
                     )}
 
@@ -759,7 +775,7 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                                 <input
                                     type="text"
                                     className="modal-search-input"
-                                    placeholder="Search variables..."
+                                    placeholder="Search variables and operators..."
                                     value={searchQuery}
                                     onChange={e => setSearchQuery(e.target.value)}
                                 />

@@ -73,8 +73,8 @@ const DEFAULT_MAX_RECURSION_DEPTH = 3;
 const DEFAULT_CONTEXT_TOKEN_BUDGET = 2048;
 const RECENT_INTERACTION_WINDOW = 20;
 
-// 1=key, 2=slice start, 3=slice end, 4=#, 5=!, 6=%scope, 7=^ or *, 8=?limit
-const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'@\-+]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?}}/g;
+// 1=key, 2=start, 3=end, 4=#, 5=!, 6=%scope, 7=^ or *, 8=?limit, 9=>
+export const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'@\-+]+)(?:\[(-?\d+)?(?::(-?\d+)?)?\])?(#)?(!)?(?:%([a-zA-Z+\-]+))?([\^*])?(?:\?(\d+))?(>)?}}/g;
 
 const tokenEngine = getLanguageModelEngine();
 
@@ -137,7 +137,8 @@ export function sanitizeToolSyntax(
 }
 
 /**
- * Strips model thinking blocks (<think>...</think>, [THINK]...[/THINK], <|channel>thought...<channel|>)
+ * Strips model thinking blocks (<think>...
+...[/THINK], <|channel>thought...<channel|>)
  * so a character's internal thoughts are never leaked to other characters in the prompt.
  */
 export function sanitizeThinkingSyntax(text: string): string {
@@ -351,9 +352,10 @@ export function resolveTemplate(
 ): string {
   return template.replace(
     TEMPLATE_REGEX,
-    (_match, key, startStr, endStr, hashStr, excludeStr, scopeStr, insertionStr, limitStr) => {
+    (_match, key, startStr, endStr, hashStr, excludeStr, scopeStr, insertionStr, limitStr, listStr) => {
       const wantLength = hashStr === '#';
       const wantExclude = excludeStr === '!';
+      const wantList = listStr === '>';
       
       const hasInsertionOverride = insertionStr !== undefined;
       const insertionOverride = insertionStr === '^' ? 'dynamic' : (insertionStr === '*' ? 'static' : undefined);
@@ -364,9 +366,26 @@ export function resolveTemplate(
       const asLengthOrValue = (value: string | string[]): string => {
         if (Array.isArray(value)) {
           const slice = getSlicedArray(value, startStr, endStr, wantExclude);
-          return wantLength ? String(slice.length) : slice.join('\n');
+          if (wantLength) {
+            return String(slice.length);
+          }
+          if (wantList) {
+            return slice
+              .map(item => item.startsWith('- ') ? item : `- ${item}`)
+              .join('\n');
+          }
+          return slice
+            .map(item => item.replace(/^- /, ''))
+            .join(', ');
         }
-        return wantLength ? String(value.length) : value;
+
+        if (wantLength) {
+          return String(value.length);
+        }
+        if (wantList && value.length > 0) {
+          return value.startsWith('- ') ? value : `- ${value}`;
+        }
+        return value;
       };
 
       // 1. Parse suffix scope operators (- and +)
@@ -375,19 +394,19 @@ export function resolveTemplate(
       let rawKey = key;
 
       if (rawKey.endsWith('-')) {
-          rawKey = rawKey.slice(0, -1);
-          if (rawKey.startsWith('locations')) {
-              locationScope = 'reachable';
-          } else {
-              suffixScope = 'coLocated';
-          }
+        rawKey = rawKey.slice(0, -1);
+        if (rawKey.startsWith('locations')) {
+          locationScope = 'reachable';
+        } else {
+          suffixScope = 'coLocated';
+        }
       } else if (rawKey.endsWith('+')) {
-          rawKey = rawKey.slice(0, -1);
-          if (rawKey.startsWith('locations')) {
-              locationScope = 'all';
-          } else {
-              suffixScope = 'all';
-          }
+        rawKey = rawKey.slice(0, -1);
+        if (rawKey.startsWith('locations')) {
+          locationScope = 'all';
+        } else {
+          suffixScope = 'all';
+        }
       }
 
       // 2. Parse possessive
@@ -398,12 +417,12 @@ export function resolveTemplate(
       const hasScopeOverride = scopeStr !== undefined;
       let scopeOverride = hasScopeOverride ? (scopeStr as participantScopeMode) : undefined;
       if (scopeStr === '-' || scopeStr === '+') {
-          scopeOverride = scopeStr === '-' ? 'coLocated' : 'all';
+        scopeOverride = scopeStr === '-' ? 'coLocated' : 'all';
       }
 
       const effectiveScope = suffixScope ?? scopeOverride;
 
-      // UUID Resolution
+      // 4. UUID Resolution
       const isCharacterUuidKey = cleanKey.startsWith('character@');
       const isLocationUuidKey = cleanKey.startsWith('location@');
       const isLocationDescUuidKey = cleanKey.startsWith('locationWithDescription@');
@@ -449,54 +468,55 @@ export function resolveTemplate(
 
       const pCtx = ctx.promptBuildContext;
 
-      // Unified Identity & Location Resolution with Scope & Insertion Awareness
+      // 5. Unified Identity & Location Resolution with Scope & Insertion Awareness
       if (pCtx && (
         cleanKey === 'character' || cleanKey === 'protagonist' || cleanKey === 'protagonists' || 
         cleanKey === 'characters' || cleanKey === 'locations' || cleanKey === 'locationsWithDescriptions'
       )) {
-          let targetParticipants: Character[] = [];
-          let targetLocations: string[] = [];
-          
-          const isLocationKey = cleanKey === 'locations' || cleanKey === 'locationsWithDescriptions';
-          
-          if (!isLocationKey) {
-              if (cleanKey === 'character') {
-                  targetParticipants = [pCtx.character];
-              } else if (cleanKey === 'protagonist' || cleanKey === 'protagonists') {
-                  const scopedParticipants = getParticipantsForScopeAndInsertion(pCtx, effectiveScope ?? 'all', insertionOverride ?? 'dynamic');
-                  targetParticipants = scopedParticipants.filter(p => pCtx.protagonistIds.has(p.id));
-              } else if (cleanKey === 'characters') {
-                  targetParticipants = getParticipantsForScopeAndInsertion(pCtx, effectiveScope ?? 'all', insertionOverride ?? 'dynamic');
-              }
-          } else {
-              const withDescriptions = cleanKey.includes('Descriptions');
-              let scope: 'reachable' | 'all' = locationScope ?? 'all';
-              targetLocations = buildLocationsArray(pCtx, delimiters, scope, insertionOverride, withDescriptions);
+        let targetParticipants: Character[] = [];
+        let targetLocations: string[] = [];
+        
+        const isLocationKey = cleanKey === 'locations' || cleanKey === 'locationsWithDescriptions';
+        
+        if (!isLocationKey) {
+          if (cleanKey === 'character') {
+            targetParticipants = [pCtx.character];
+          } else if (cleanKey === 'protagonist' || cleanKey === 'protagonists') {
+            const scopedParticipants = getParticipantsForScopeAndInsertion(pCtx, effectiveScope ?? 'all', insertionOverride ?? 'dynamic');
+            targetParticipants = scopedParticipants.filter(p => pCtx.protagonistIds.has(p.id));
+          } else if (cleanKey === 'characters') {
+            targetParticipants = getParticipantsForScopeAndInsertion(pCtx, effectiveScope ?? 'all', insertionOverride ?? 'dynamic');
           }
+        } else {
+          const withDescriptions = cleanKey.includes('Descriptions');
+          const scope: 'reachable' | 'all' = locationScope ?? 'all';
+          targetLocations = buildLocationsArray(pCtx, delimiters, scope, insertionOverride, withDescriptions);
+        }
 
-          const getResolvedName = (p: Character) => getIdentityDisplayName(p, pCtx, limitOverride);
-          const getResolvedPossessive = (p: Character) => getIdentityPossessiveName(p, pCtx, limitOverride);
+        const getResolvedName = (p: Character) => getIdentityDisplayName(p, pCtx, limitOverride);
+        const getResolvedPossessive = (p: Character) => getIdentityPossessiveName(p, pCtx, limitOverride);
 
-          if (isLocationKey) {
-              if (isPossessive) {
-                  return asLengthOrValue(targetLocations.map(l => `${l}'s`));
-              }
-              return asLengthOrValue(targetLocations);
+        if (isLocationKey) {
+          if (isPossessive) {
+            return asLengthOrValue(targetLocations.map(l => `${l}'s`));
           }
+          return asLengthOrValue(targetLocations);
+        }
 
-          if (cleanKey === 'character' || cleanKey === 'protagonist') {
-              const p = targetParticipants[0];
-              if (!p) return asLengthOrValue('');
-              const name = isPossessive ? getResolvedPossessive(p) : getResolvedName(p);
-              return asLengthOrValue(name);
-          }
-          
-          if (cleanKey === 'protagonists' || cleanKey === 'characters') {
-              const names = targetParticipants.map(p => isPossessive ? getResolvedPossessive(p) : getResolvedName(p));
-              return asLengthOrValue(names);
-          }
+        if (cleanKey === 'character' || cleanKey === 'protagonist') {
+          const p = targetParticipants[0];
+          if (!p) return asLengthOrValue('');
+          const name = isPossessive ? getResolvedPossessive(p) : getResolvedName(p);
+          return asLengthOrValue(name);
+        }
+        
+        if (cleanKey === 'protagonists' || cleanKey === 'characters') {
+          const names = targetParticipants.map(p => isPossessive ? getResolvedPossessive(p) : getResolvedName(p));
+          return asLengthOrValue(names);
+        }
       }
 
+      // 6. Dynamic Caching Block Overrides
       if (ctx.promptBuildContext && (hasScopeOverride || hasInsertionOverride || hasLimitOverride)) {
         const profile = pCtx!.profile;
         
@@ -528,26 +548,27 @@ export function resolveTemplate(
       if (key === 'location') return asLengthOrValue(ctx.currentLocation);
       if (key === 'locationWithDescription') return asLengthOrValue(ctx.currentLocationWithDescription);
 
-      if (key === 'tools') {
-        return formatToolsPlaceholder(
-          ctx.tools ?? [],
-          startStr,
-          endStr,
-          wantLength,
-          wantExclude
-        );
+      // 7. Chat History Special Handling (maintains multiline turn separation)
+      if (key === 'chatHistory') {
+        const val = ctx.chatHistory ?? [];
+        const slice = getSlicedArray(val, startStr, endStr, wantExclude);
+        if (wantLength) return String(slice.length);
+        if (wantList) {
+          return slice.map(item => item.startsWith('- ') ? item : `- ${item}`).join('\n');
+        }
+        return slice.join('\n');
       }
+
+      // 8. General Context Variables & Array Handling
       if (key in ctx) {
         const val = (ctx as any)[key];
         if (Array.isArray(val)) {
-          const slice = getSlicedArray(val, startStr, endStr, wantExclude);
-          if (wantLength) {
-            return String(slice.length);
-          }
-          return slice.join('\n');
+          return asLengthOrValue(val);
         }
         return asLengthOrValue(String(val));
       }
+
+      // 9. Template Delimiters & Global Constants
       if (key === 'systemBlockStart') {
         return asLengthOrValue(delimiters.blockStart('system'));
       }
@@ -575,6 +596,7 @@ export function resolveTemplate(
       if (key in GLOBAL_STRINGS) {
         return asLengthOrValue(GLOBAL_STRINGS[key]);
       }
+
       return '';
     }
   );
@@ -738,19 +760,34 @@ function getIdentityDisplayName(
   limit: number | undefined
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
-  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
   
   if (limit === 0) {
     return tag;
   }
+
+  if (limit === undefined) {
+    const knownName = getKnownDisplayName(participant, ctx.knownNames);
+    return knownName ? `${tag} (${knownName})` : tag;
+  }
+
+  const knownMap = ctx.knownNames[participant.id];
+  let knownNamesList: string[] = [];
   
-  let variantIndex = 0;
-  if (limit !== undefined && limit > 0) {
-    variantIndex = Math.min(limit - 1, variants.length - 1);
+  if (knownMap) {
+    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
   }
   
-  const resolvedName = variants[variantIndex] || participant.name || 'Unknown';
-  return `${tag} (${resolvedName})`;
+  if (limit > 0) {
+    knownNamesList = knownNamesList.slice(0, limit);
+  }
+  
+  if (knownNamesList.length > 0) {
+    return `${tag} (${knownNamesList.join(', ')})`;
+  }
+  
+  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
+  const fallbackName = variants[0] || participant.name || 'Unknown';
+  return `${tag} (${fallbackName})`;
 }
 
 function getIdentityPossessiveName(
@@ -759,19 +796,35 @@ function getIdentityPossessiveName(
   limit: number | undefined
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
-  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
   
   if (limit === 0) {
     return `${tag}'s`;
   }
 
-  let variantIndex = 0;
-  if (limit !== undefined && limit > 0) {
-    variantIndex = Math.min(limit - 1, variants.length - 1);
+  if (limit === undefined) {
+    const knownName = getKnownDisplayName(participant, ctx.knownNames);
+    const name = knownName ?? tag;
+    return `${name}'s`;
+  }
+
+  const knownMap = ctx.knownNames[participant.id];
+  let knownNamesList: string[] = [];
+  
+  if (knownMap) {
+    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
   }
   
-  const resolvedName = variants[variantIndex] || participant.name || tag;
-  return `${resolvedName}'s`;
+  if (limit > 0) {
+    knownNamesList = knownNamesList.slice(0, limit);
+  }
+  
+  if (knownNamesList.length > 0) {
+    return `${knownNamesList.join(', ')}'s`;
+  }
+  
+  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
+  const fallbackName = variants[0] || participant.name || tag;
+  return `${fallbackName}'s`;
 }
 
 export function resolveInnerText(
@@ -1415,7 +1468,7 @@ function getParticipantsForScopeAndInsertion(
   scope: participantScopeMode,
   insertion: participantInsertionMode
 ): Character[] {
-  let candidates: Character[] = [];
+  let candidates: Character[];
   
   if (scope === 'current') {
     candidates = ctx.participants.filter(p => p.id === ctx.characterId);
@@ -1456,35 +1509,33 @@ function getDisplayName(
   limit: number | undefined
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
-  const knownMap = ctx.knownNames[participant.id];
-  const hasKnownName = !!knownMap && Object.keys(knownMap).length > 0;
   
-  let revealName = false;
-  if (limit !== undefined && limit >= 0) {
-    if (limit === 0) {
-      revealName = false;
-    } else {
-      let knownCount = 0;
-      for (const p of ctx.participants) {
-        const pKnownMap = ctx.knownNames[p.id];
-        const pHasKnown = !!pKnownMap && Object.keys(pKnownMap).length > 0;
-        if (p.id === participant.id) {
-          revealName = pHasKnown && knownCount < limit;
-          break;
-        }
-        if (pHasKnown) knownCount++;
-      }
-    }
-  } else {
-    revealName = hasKnownName;
+  if (limit === 0) {
+    return tag;
   }
 
-  if (revealName && hasKnownName) {
+  if (limit === undefined) {
     const knownName = getKnownDisplayName(participant, ctx.knownNames);
-    if (knownName) return `${tag} (${knownName})`;
+    return knownName ? `${tag} (${knownName})` : tag;
+  }
+
+  const knownMap = ctx.knownNames[participant.id];
+  let knownNamesList: string[] = [];
+  if (knownMap) {
+    knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
+  }
+
+  if (limit > 0) {
+    knownNamesList = knownNamesList.slice(0, limit);
+  }
+
+  if (knownNamesList.length > 0) {
+    return `${tag} (${knownNamesList.join(', ')})`;
   }
   
-  return tag;
+  const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
+  const fallbackName = variants[0] || participant.name || 'Unknown';
+  return `${tag} (${fallbackName})`;
 }
 
 function buildCharacterTagsText(
@@ -2252,7 +2303,7 @@ function buildStructuredMessages(
 
 interface BuilderContext {
   ctx: PromptBuildContext;
-  activeContextIds: Set<string>;
+  activeContextIDs: Set<string>;
   characterClothingWearingStatuses: Record<string, boolean>;
   contextLines: string[];
   hasBeenSummarized: boolean;
@@ -2473,10 +2524,10 @@ export async function buildPrompt(
     fetchedContentMap,
     effectiveContextSensitivity
   );
-  const activeContextIds = new Set<string>();
+  const activeContextIDs = new Set<string>();
   const contextLines: string[] = [];
   for (const { context, combinedText } of resolvedContextsWithWeb) {
-    activeContextIds.add(context.id);
+    activeContextIDs.add(context.id);
     const replacedText = resolveInnerText(combinedText, ctx, ctx.delimiters);
     if (context.useBase64Encoding) {
       contextLines.push(`[base64:${btoa(unescape(encodeURIComponent(replacedText)))}]`);
@@ -2616,7 +2667,7 @@ export async function buildPrompt(
     } else if (imageType === 'promptBlock') {
       const activeBlocks = allPromptBlocks.filter(block => {
         if (!isPromptBlockCharacterBound(block, ctx.characterId)) return false;
-        if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) return false;
+        if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIDs.has(ctxId))) return false;
         if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) return false;
         return isEntityActiveWithCache(
           block.regularExpressionActivationTriggers,
@@ -2729,7 +2780,7 @@ export async function buildPrompt(
   for (const pb of allPromptBlocks) promptBlockById.set(pb.id, pb);
   const builderCtx: BuilderContext = {
     ctx,
-    activeContextIds,
+    activeContextIDs,
     characterClothingWearingStatuses,
     contextLines,
     hasBeenSummarized,
@@ -2743,7 +2794,7 @@ export async function buildPrompt(
   const regexActivatedBlocks: string[] = [];
   for (const block of allPromptBlocks) {
     if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
-    if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIds.has(ctxId))) continue;
+    if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIDs.has(ctxId))) continue;
     if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
     if (!isEntityActiveWithCache(
       block.regularExpressionActivationTriggers,
