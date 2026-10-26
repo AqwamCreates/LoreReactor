@@ -807,44 +807,10 @@ function App() {
     };
 
     const handleChangeViewMode = useCallback((newMode: viewMode) => {
-        setViewMode(newMode);
-
-        const container = chatHistoryRef.current;
-        let targetIdx = -1;
-        if (container && interactionData) {
-            const rect = container.getBoundingClientRect();
-            const ids = new Set(safeMessages.map(m => m.id));
-            let bestTop = Number.POSITIVE_INFINITY;
-            for (const el of container.querySelectorAll('[data-message-id]')) {
-                const mid = el.getAttribute('data-message-id');
-                if (!mid || !ids.has(mid)) continue;
-                const r = el.getBoundingClientRect();
-                if (r.top < rect.bottom && r.bottom > rect.top && r.top < bestTop) { 
-                    bestTop = r.top; 
-                    targetIdx = safeMessages.findIndex(m => m.id === mid); 
-                }
-            }
-        }
-        if (targetIdx === -1 && lastViewedMessageIdRef.current && interactionData) {
-            targetIdx = safeMessages.findIndex(m => m.id === lastViewedMessageIdRef.current);
-        }
-        if (targetIdx >= 0 && interactionData) {
-            lastViewedMessageIdRef.current = safeMessages[targetIdx].id;
-        }
         suppressAutoScrollRef.current = true;
-        setTimeout(() => {
-            if (targetIdx >= 0 && chatHistoryRef.current) {
-                const el = chatHistoryRef.current.querySelector(`[data-message-id="${safeMessages[targetIdx].id}"]`) as HTMLElement | null;
-                if (el) { 
-                    el.scrollIntoView({ block: 'start' }); 
-                    setTimeout(() => { suppressAutoScrollRef.current = false; }, 400); 
-                    return; 
-                }
-            }
-            messageEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-            setTimeout(() => { suppressAutoScrollRef.current = false; }, 400);
-        }, 50);
-    }, [chatHistoryRef, interactionData, messageEndRef, safeMessages]);
+        setViewMode(newMode);
+        suppressAutoScrollRef.current = false;
+    }, []);
 
     const handleImportComplete = useCallback(() => { getLanguageModelEngine().clearTokenCache(); interactionDatas.refresh(); }, [interactionDatas]);
 
