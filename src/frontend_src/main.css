@@ -1196,143 +1196,146 @@ left: -4px;
 right: auto;
 }
 @media (max-width: 768px) {
-.mode-ladder .message-row.message-left .message-toolbar {
-left: 0;
-right: auto;
+    .mode-ladder .message-row.message-left .message-toolbar {
+    left: 0;
+    right: auto;
+    }
+    .mode-ladder .message-row.message-left {
+    flex-direction: column;
+    align-items: flex-start;
+    max-width: 90%;
+    gap: 4px;
+    }
+    .mode-ladder .message-row.message-left .avatar-column {
+    flex-direction: row;
+    align-items: center;
+    gap: 8px;
+    min-width: unset;
+    margin-right: 0;
+    margin-left: 4px;
+    margin-top: 15px;
+    order: 2;
+    }
+    .mode-ladder .message-row.message-left .character-avatar,
+    .mode-ladder .message-row.message-left .character-avatar.placeholder {
+    width: 90px;
+    height: 120px;
+    min-width: 90px;
+    aspect-ratio: 9 / 16;
+    border-radius: 12px;
+    border-width: 3px;
+    object-position: top center;
+    }
+    .mode-ladder .message-row.message-left .avatar-name {
+    font-size: 0.8rem;
+    max-width: 200px;
+    text-align: left;
+    line-height: 1.2;
+    }
+    .mode-ladder .message-row.message-left .message-bubble {
+    max-width: 100%;
+    }
+    .mode-ladder .message-row.message-right {
+    max-width: 90%;
+    padding-left: 0;
+    }
+    .mode-ladder .message-row.message-left .message-toolbar {
+    bottom: -40px;
+    right: 0;
+    }
+    .mode-ladder .message-bubble.toolbar-active {
+    transform: scale(0.98);
+    border-color: var(--accent);
+    transition: transform 0.3s ease, border-color 0.3s ease;
+    }
+    .mode-ladder .toolbar-button {
+    width: 40px;
+    height: 40px;
+    min-width: 40px;
+    min-height: 40px;
+    font-size: 14px;
+    border-radius: 6px;
+    }
+    .mode-ladder .message-toolbar {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transition: opacity 0.15s ease;
+    }
+    .mode-ladder .message-bubble:hover .message-toolbar {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    }
+    .mode-ladder .message-bubble.toolbar-active .message-toolbar {
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    }
+    .mode-ladder .message-bubble.toolbar-longpress-hold {
+    transform: scale(0.98);
+    border-color: var(--accent);
+    transition: transform 0.3s ease, border-color 0.3s ease;
+    }
+    .mode-ladder .chat-input,
+    .mode-ladder .send-button,
+    .mode-ladder .attach-button {
+    min-height: 48px;
+    max-height: 30vh;
+    border-radius: 10px;
+    }
+    .mode-ladder .attach-button {
+    width: 48px !important;
+    }
+    /* ── Smooth Horizontal Swipe Tray for Both Rows ── */
+    .mode-ladder .context-bar-core-row,
+    .mode-ladder .context-bar-extended-row {
+    display: flex !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch !important;
+    scrollbar-width: none !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+    }
+    .mode-ladder .context-bar-core-row::-webkit-scrollbar,
+    .mode-ladder .context-bar-extended-row::-webkit-scrollbar {
+    display: none !important;
+    }
+    /* Padding perfectly balanced for an 8px vertical gap between rows */
+    .mode-ladder .context-bar-extended-row { padding: 10px 12px 2px 12px !important; }
+    .mode-ladder .context-bar-core-row { padding: 6px 12px 5px 12px !important; }
+    /* Fixed comfortable 44px touch targets */
+    .mode-ladder .context-bar-core-row .nav-button,
+    .mode-ladder .context-bar-extended-row .nav-button {
+        flex: 1 1 0 !important;
+        width: auto !important;
+        min-width: 0 !important;
+        max-width: none !important;
+        height: 36px !important;
+        padding: 0 4px !important;
+        font-size: 1.1rem !important;
+    }
+    /* Clean, non-glowing pinned toggle button */
+    .mode-ladder .context-bar-toggle {
+        flex: 0 0 40px !important;
+        width: 40px !important;
+        min-width: 40px !important;
+        max-width: 40px !important;
+        height: 36px !important;
+    }
 }
-.mode-ladder .message-row.message-left {
-flex-direction: column;
-align-items: flex-start;
-max-width: 90%;
-gap: 4px;
+
+@media (max-width: 480px) {
+    .mode-ladder .context-bar-core-row .nav-button,
+    .mode-ladder .context-bar-extended-row .nav-button {
+        flex: 0 0 44px !important;
+        width: 44px !important;
+        min-width: 44px !important;
+        max-width: 44px !important;
+    }
+    .mode-ladder .context-bar-core-row {
+        padding: 6px 12px 5px 12px !important;
+    }
 }
-.mode-ladder .message-row.message-left .avatar-column {
-flex-direction: row;
-align-items: center;
-gap: 8px;
-min-width: unset;
-margin-right: 0;
-margin-left: 4px;
-margin-top: 15px;
-order: 2;
-}
-.mode-ladder .message-row.message-left .character-avatar,
-.mode-ladder .message-row.message-left .character-avatar.placeholder {
-width: 90px;
-height: 120px;
-min-width: 90px;
-aspect-ratio: 9 / 16;
-border-radius: 12px;
-border-width: 3px;
-object-position: top center;
-}
-.mode-ladder .message-row.message-left .avatar-name {
-font-size: 0.8rem;
-max-width: 200px;
-text-align: left;
-line-height: 1.2;
-}
-.mode-ladder .message-row.message-left .message-bubble {
-max-width: 100%;
-}
-.mode-ladder .message-row.message-right {
-max-width: 90%;
-padding-left: 0;
-}
-.mode-ladder .message-row.message-left .message-toolbar {
-bottom: -40px;
-right: 0;
-}
-.mode-ladder .message-bubble.toolbar-active {
-transform: scale(0.98);
-border-color: var(--accent);
-transition: transform 0.3s ease, border-color 0.3s ease;
-}
-.mode-ladder .toolbar-button {
-width: 40px;
-height: 40px;
-min-width: 40px;
-min-height: 40px;
-font-size: 14px;
-border-radius: 6px;
-}
-.mode-ladder .message-toolbar {
-opacity: 0 !important;
-pointer-events: none !important;
-transition: opacity 0.15s ease;
-}
-.mode-ladder .message-bubble:hover .message-toolbar {
-opacity: 0 !important;
-pointer-events: none !important;
-}
-.mode-ladder .message-bubble.toolbar-active .message-toolbar {
-opacity: 1 !important;
-pointer-events: auto !important;
-}
-.mode-ladder .message-bubble.toolbar-longpress-hold {
-transform: scale(0.98);
-border-color: var(--accent);
-transition: transform 0.3s ease, border-color 0.3s ease;
-}
-.mode-ladder .chat-input,
-.mode-ladder .send-button,
-.mode-ladder .attach-button {
-min-height: 48px;
-max-height: 30vh;
-border-radius: 10px;
-}
-.mode-ladder .attach-button {
-width: 48px !important;
-}
-/* ── Smooth Horizontal Swipe Tray for Both Rows ── */
-.mode-ladder .context-bar-core-row,
-.mode-ladder .context-bar-extended-row {
-display: flex !important;
-overflow-x: auto !important;
-overflow-y: hidden !important;
--webkit-overflow-scrolling: touch !important;
-scrollbar-width: none !important;
-gap: 8px !important;
-box-sizing: border-box !important;
-}
-.mode-ladder .context-bar-core-row::-webkit-scrollbar,
-.mode-ladder .context-bar-extended-row::-webkit-scrollbar {
-display: none !important;
-}
-/* Padding perfectly balanced for an 8px vertical gap between rows */
-.mode-ladder .context-bar-extended-row { padding: 10px 12px 2px 12px !important; }
-.mode-ladder .context-bar-core-row { padding: 6px 12px 10px 12px !important; }
-/* Fixed comfortable 44px touch targets */
-.mode-ladder .context-bar-core-row .nav-button,
-.mode-ladder .context-bar-extended-row .nav-button {
-flex: 0 0 44px !important;
-width: 44px !important;
-min-width: 44px !important;
-max-width: 44px !important;
-height: 36px !important;
-padding: 0 !important;
-display: flex !important;
-align-items: center !important;
-justify-content: center !important;
-font-size: 1.1rem !important;
-}
-/* Clean, non-glowing pinned toggle button */
-.mode-ladder .context-bar-toggle {
-flex: 0 0 40px !important;
-width: 40px !important;
-min-width: 40px !important;
-max-width: 40px !important;
-height: 36px !important;
-font-size: 0.85rem !important;
-background: var(--social-bg) !important;
-border: 1px solid var(--border) !important;
-border-radius: clamp(6px, 1vw, 10px) !important;
-box-shadow: none !important;
-position: static !important;
-margin: 0 !important;
-color: var(--text-h) !important;
-}
-}
+
 /* =============================================================================
 MODE: CINEMATIC (Centered Avatar View)
 ============================================================================= */
@@ -1922,7 +1925,7 @@ box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     flex-shrink: 0;
     
     /* Dedicated footer spacing right below the scrolling text */
-    margin-top: 6px;
+    margin-top: 10px;
     padding-top: 4px;
     
     font-size: 0.65rem;
