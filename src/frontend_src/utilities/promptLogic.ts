@@ -359,7 +359,7 @@ export function resolveTemplate(
       const insertionOverride = insertionStr === '^' ? 'dynamic' : (insertionStr === '*' ? 'static' : undefined);
       
       const hasLimitOverride = limitStr !== undefined;
-      const limitOverride = hasLimitOverride ? parseInt(limitStr, 10) : undefined;
+      const limitOverride = hasLimitOverride ? Number.parseInt(limitStr, 10) : undefined;
 
       const asLengthOrValue = (value: string | string[]): string => {
         if (Array.isArray(value)) {
