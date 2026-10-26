@@ -2478,6 +2478,134 @@ border-radius: 6px;
 max-width: 120px;
 }
 }
+
+/* =============================================================================
+CARD VIEW REFORMATTER (Solid, High-Contrast, & Scrollable)
+============================================================================= */
+/* 1. Allow the card body to scroll when editing */
+.fate-card-body.is-editing {
+    overflow-y: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: 12px 10px !important;
+}
+
+/* 2. Solid, readable background for the raw textarea */
+.fate-card .vn-edit-textarea {
+    background: #0f0d18 !important;
+    border: 1px solid var(--accent-border) !important;
+    color: #f1f5f9 !important;
+    border-radius: 8px !important;
+    padding: 10px 12px !important;
+    font-size: 0.85rem !important;
+    line-height: 1.5 !important;
+    text-align: left !important;
+    min-height: 140px !important;
+    max-height: none !important; /* Remove restriction */
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5) !important;
+    flex: 1 !important; /* <-- Force it to expand and fill empty space */
+    resize: none !important;
+}
+
+.fate-card .vn-edit-textarea:focus {
+    border-color: var(--accent) !important;
+    background: #141120 !important;
+}
+
+/* 3. Solid background for the click-to-edit formatted preview */
+.fate-card .vn-edit-preview {
+    background: #141122 !important;
+    border: 1px solid var(--accent-border) !important;
+    color: #f1f5f9 !important;
+    border-radius: 8px !important;
+    padding: 12px 14px !important;
+    font-size: 0.85rem !important;
+    line-height: 1.55 !important;
+    text-align: left !important;
+    min-height: 140px !important;
+    cursor: text !important;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+    flex: 1 !important; /* <-- Force it to expand and fill empty space */
+    overflow-y: auto !important; /* Allow scrolling inside if text is extremely long */
+}
+
+.fate-card .vn-edit-preview:hover {
+    background: #1a162b !important;
+    border-color: var(--accent) !important;
+}
+
+/* 4. Solid container for the reformat panel */
+.fate-card .vn-reformat-panel {
+    background: #13101f !important;
+    border: 1px solid var(--accent-border) !important;
+    border-radius: 8px !important;
+    padding: 10px 12px !important;
+    margin-top: 4px !important;
+    text-align: left !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4) !important;
+    flex-shrink: 0;
+}
+
+.fate-card .vn-reformat-empty {
+    font-size: 0.75rem !important;
+    color: var(--text-h) !important;
+    opacity: 0.6 !important;
+    text-align: center !important;
+}
+
+/* 5. Auto-Reformat Button */
+.fate-card .vn-auto-reformat-button {
+    background: var(--accent-bg) !important;
+    border: 1px solid var(--accent-border) !important;
+    color: var(--accent) !important;
+    border-radius: 6px !important;
+    padding: 6px 12px !important;
+    font-size: 0.72rem !important;
+    font-weight: 700 !important;
+    letter-spacing: 0.5px !important;
+    cursor: pointer !important;
+    transition: all 0.15s ease !important;
+    margin-bottom: 8px !important;
+}
+
+.fate-card .vn-auto-reformat-button:hover:not(:disabled) {
+    background: var(--accent) !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(170, 59, 255, 0.4) !important;
+}
+
+/* 6. Solid dropdowns with explicit option background */
+.fate-card .vn-reformat-select {
+    background: #1c182c !important;
+    border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    color: #fff !important;
+    font-size: 0.75rem !important;
+    height: 28px !important;
+    border-radius: 6px !important;
+    padding: 0 6px !important;
+    outline: none !important;
+}
+
+.fate-card .vn-reformat-select:focus {
+    border-color: var(--accent) !important;
+}
+
+.fate-card .vn-reformat-select option {
+    background: #161324 !important;
+    color: #fff !important;
+}
+
+.fate-card .vn-reformat-label {
+    color: #e2e8f0 !important;
+    font-size: 0.75rem !important;
+}
+
+.fate-card .vn-reformat-arrow {
+    color: var(--accent) !important;
+    font-size: 0.8rem !important;
+}
+
 /* =============================================================================
 6. MODEL READINESS INDICATOR
 ============================================================================= */

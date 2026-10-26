@@ -1,13 +1,24 @@
 // src/frontend_src/components/views/CardView.tsx
 import React, { useMemo, useCallback, useRef, useEffect, useState } from 'react';
 import type { ViewModeProps } from './types';
-import type { Character, TextMessage } from '../../types';
+import type { Character, TextMessage, textType } from '../../types';
 import { MemoizedMessageText } from '../MemoizedMessageText';
 import { resolveDelayedDisplayNameFromCache } from '../../utilities/immersionLogic';
 import { useChatStore } from '../../hooks/useChatStore';
 import { useGenerationStore } from '../../hooks/useGenerationStore';
 import { useUIStore } from '../../hooks/useUIStore';
 import { useCompiledMessageText } from '../../hooks/useMessageDisplay';
+import {
+    detectFormatSegments,
+    applyConversions,
+    buildCategoryConversions,
+    buildCategoryConversionsWithLearning,
+    recordCategoryCorrection,
+    learnFromManualEdits,
+    DEFAULT_CONVERSIONS,
+    TARGET_OPTIONS,
+    type CategoryConversion,
+} from '../../utilities/textDisplayReformatter';
 
 export const CardView = React.memo(function CardView(props: ViewModeProps) {
     const {
@@ -328,6 +339,103 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
     const isMassDeleting = massDeleteId === card.id;
     const renderedText = compiledContent || card.textContent || '';
 
+    // ── Text Reformatter State ─────────────────────────────────────────────
+    const [rawDraft, setRawDraft] = useState('');
+    const [conversions, setConversions] = useState<CategoryConversion[]>([]);
+    const [isRawEditing, setIsRawEditing] = useState(false);
+    const prevIsEditingRef = useRef(false);
+
+    useEffect(() => {
+        const justStarted = isEditing && !prevIsEditingRef.current;
+        prevIsEditingRef.current = isEditing;
+
+        if (justStarted) {
+            setRawDraft(editDraft);
+            const segments = detectFormatSegments(editDraft);
+            setConversions(buildCategoryConversions(segments));
+            setIsRawEditing(false);
+        } else if (!isEditing) {
+            setRawDraft('');
+            setConversions([]);
+            setIsRawEditing(false);
+        }
+    }, [isEditing, editDraft]);
+
+    const conversionMap = useMemo(() => {
+        const map: Record<textType, textType> = { ...DEFAULT_CONVERSIONS };
+        for (const c of conversions) map[c.detected] = c.target;
+        return map;
+    }, [conversions]);
+
+    const displayEditText = useMemo(() => {
+        if (isRawEditing) return rawDraft;
+        return editDraft;
+    }, [isRawEditing, rawDraft, editDraft]);
+
+    useEffect(() => {
+        if (isEditing) {
+            const converted = applyConversions(rawDraft, conversionMap);
+            if (converted !== editDraft) {
+                setEditDraft(converted);
+            }
+        }
+    }, [rawDraft, conversionMap, isEditing, editDraft, setEditDraft]);
+
+    useEffect(() => {
+        if (isRawEditing && editTextAreaRef.current) {
+            editTextAreaRef.current.focus();
+            editTextAreaRef.current.style.height = 'auto';
+            editTextAreaRef.current.style.height = `${editTextAreaRef.current.scrollHeight}px`;
+        }
+    }, [isRawEditing, editTextAreaRef]);
+
+    const handleEnterRawEdit = useCallback(() => {
+        setIsRawEditing(true);
+    }, []);
+
+    const handleExitRawEdit = useCallback(() => {
+        setIsRawEditing(false);
+    }, []);
+
+    const handleRawChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        setRawDraft(e.target.value);
+    }, []);
+
+    const updateConversionTarget = useCallback((category: textType, target: textType) => {
+        setConversions(prev => prev.map(c => c.detected === category ? { ...c, target } : c));
+        recordCategoryCorrection(rawDraft, category, target);
+    }, [rawDraft]);
+
+    const handleAutoReformat = useCallback(() => {
+        const segments = detectFormatSegments(rawDraft);
+        setConversions(buildCategoryConversionsWithLearning(rawDraft, segments));
+    }, [rawDraft]);
+
+    const canAutoReformat = useMemo(() => {
+        if (conversions.length === 0 || !rawDraft) return false;
+        const segments = detectFormatSegments(rawDraft);
+        if (segments.length === 0) return false;
+
+        const learned = buildCategoryConversionsWithLearning(rawDraft, segments);
+        return learned.some(c => {
+            const current = conversions.find(curr => curr.detected === c.detected);
+            return c.target !== c.detected && (!current || current.target !== c.target);
+        });
+    }, [rawDraft, conversions]);
+
+    const handleCancelEditing = useCallback(() => {
+        setConversions([]);
+        setIsRawEditing(false);
+        onCancelEditing();
+    }, [onCancelEditing]);
+
+    const handleSaveEdit = useCallback(() => {
+        learnFromManualEdits(card.textContent, rawDraft);
+        setConversions([]);
+        setIsRawEditing(false);
+        onSaveEdit();
+    }, [card.textContent, rawDraft, onSaveEdit]);
+
     const cardClasses = [
         'fate-card',
         positionClass,
@@ -406,15 +514,68 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
             </div>
 
             {/* Card Body */}
-            <div className={`fate-card-body ${isEditing ? 'is-editing' : ''}`} ref={textBodyRef}>
+            <div 
+                className={`fate-card-body ${isEditing ? 'is-editing' : ''}`} 
+                ref={textBodyRef}
+                style={isEditing ? { overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '8px' } : undefined}
+            >
                 {isEditing ? (
-                    <textarea
-                        ref={editTextAreaRef}
-                        className="fate-card-edit-textarea"
-                        value={editDraft}
-                        onChange={(e) => setEditDraft(e.target.value)}
-                        placeholder="Inscribe edits..."
-                    />
+                    <>
+                        {isRawEditing ? (
+                            <textarea
+                                ref={editTextAreaRef}
+                                className="vn-edit-textarea"
+                                value={rawDraft}
+                                onChange={handleRawChange}
+                                onBlur={handleExitRawEdit}
+                                onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); handleExitRawEdit(); } }}
+                                placeholder="Inscribe edits..."
+                                style={{ minHeight: '140px', fontSize: '0.85rem' }}
+                            />
+                        ) : (
+                            <div className="vn-edit-preview" onClick={handleEnterRawEdit} title="Click to edit raw text" style={{ minHeight: '100px', fontSize: '0.85rem' }}>
+                                <MemoizedMessageText text={displayEditText} />
+                            </div>
+                        )}
+
+                        <div className="vn-reformat-panel" style={{ width: '100%', boxSizing: 'border-box' }}>
+                            {conversions.length === 0 ? (
+                                <div className="vn-reformat-empty">No formatting detected. Click the text above to edit.</div>
+                            ) : (
+                                <>
+                                    <button
+                                        type="button"
+                                        onClick={handleAutoReformat}
+                                        disabled={!canAutoReformat}
+                                        className="vn-auto-reformat-button"
+                                        title={canAutoReformat ? "Apply learned reformatting preferences to card text" : "No new learned reformatting changes available"}
+                                        style={!canAutoReformat ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
+                                    >
+                                        Auto-Reformat
+                                    </button>
+                                    <div className="vn-reformat-grid">
+                                        {conversions.map(conversion => (
+                                            <div key={conversion.detected} className="vn-reformat-row">
+                                                <span className="vn-reformat-label">
+                                                    {conversion.label}<span className="vn-reformat-count">×{conversion.count}</span>
+                                                </span>
+                                                <span className="vn-reformat-arrow">→</span>
+                                                <select 
+                                                    className="vn-reformat-select" 
+                                                    value={conversion.target}
+                                                    onChange={e => updateConversionTarget(conversion.detected, e.target.value as textType)}
+                                                >
+                                                    {TARGET_OPTIONS.map(option => (
+                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </>
+                            )}
+                        </div>
+                    </>
                 ) : (
                     <div className="fate-card-text">
                         {renderedText ? (
@@ -435,8 +596,8 @@ const SingleCard = React.memo(function SingleCard(props: SingleCardProps) {
                     <div className="fate-card-actions">
                         {isEditing ? (
                             <>
-                                <button type="button" className="fate-card-btn fate-card-btn-cancel" onClick={onCancelEditing} title="Cancel Edit">✕</button>
-                                <button type="button" className="fate-card-btn fate-card-btn-save" onClick={onSaveEdit} title="Save Edit">💾</button>
+                                <button type="button" className="fate-card-btn fate-card-btn-cancel" onClick={handleCancelEditing} title="Cancel Edit">✕</button>
+                                <button type="button" className="fate-card-btn fate-card-btn-save" onClick={handleSaveEdit} title="Save Edit">💾</button>
                             </>
                         ) : (
                             <>
