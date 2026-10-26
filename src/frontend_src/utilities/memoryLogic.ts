@@ -4,6 +4,7 @@ import type {
   RawInteractionData,
   Memory,
   memorySearchSpace,
+  Location,
 } from '../types';
 import { getCurrentLocationId } from './locationLogic';
 import { getLocalMessageHistory } from './timelineLogic';
@@ -47,25 +48,28 @@ function escapeRegExp(string: string): string {
 /**
  * TOKENIZATION PHASE
  * 
- * Replaces unique true names and aliases with immutable "{{char:uuid}}" tokens.
+ * Replaces unique true names, aliases, and location names with immutable UUID tokens.
+ * Strictly uses the `@` syntax (e.g., {{character@uuid}}, {{location@uuid}}).
  * 
  * CRITICAL DESIGN DECISION: We intentionally DO NOT tokenize "Character X" tags.
  * Index-based tags are volatile. If the participant array shifts between the time 
  * an event occurred and the time it is summarized, tokenizing "Character X" will 
  * permanently bind the action to the wrong UUID. We rely strictly on stable 
- * identifiers (Names/Aliases) for UUID mapping.
+ * identifiers (Names/Aliases/Locations) for UUID mapping.
  */
 export function tokenizeMemoryContent(
   text: string,
   participants: Character[],
+  locations: Location[] = [],
 ): string {
-  if (!text || participants.length === 0) return text;
+  if (!text || (participants.length === 0 && locations.length === 0)) return text;
 
   let tokenized = text;
   const replacements: { pattern: string; token: string }[] = [];
 
-  // 1. Map all names and aliases to their frequency to detect true collisions
+  // 1. Map all names, aliases, and locations to their frequency to detect true collisions
   const stringFrequency = new Map<string, number>();
+  
   for (const p of participants) {
     if (p.name) {
       const lowerName = p.name.toLowerCase();
@@ -81,9 +85,16 @@ export function tokenizeMemoryContent(
     }
   }
 
-  // 2. Build replacement rules for STRICTLY UNIQUE names/aliases
+  for (const loc of locations) {
+    if (loc.name) {
+      const lowerName = loc.name.toLowerCase();
+      stringFrequency.set(lowerName, (stringFrequency.get(lowerName) || 0) + 1);
+    }
+  }
+
+  // 2. Build replacement rules for STRICTLY UNIQUE names/aliases/locations
   for (const p of participants) {
-    const token = `{{char:${p.id}}}`;
+    const token = `{{character@${p.id}}}`;
 
     if (p.name && stringFrequency.get(p.name.toLowerCase()) === 1) {
       replacements.push({ pattern: escapeRegExp(p.name), token });
@@ -95,6 +106,13 @@ export function tokenizeMemoryContent(
           replacements.push({ pattern: escapeRegExp(alias), token });
         }
       }
+    }
+  }
+
+  for (const loc of locations) {
+    const token = `{{location@${loc.id}}}`;
+    if (loc.name && stringFrequency.get(loc.name.toLowerCase()) === 1) {
+      replacements.push({ pattern: escapeRegExp(loc.name), token });
     }
   }
 
@@ -113,19 +131,27 @@ export function tokenizeMemoryContent(
 /**
  * DETOKENIZATION PHASE
  * 
- * Resolves "{{char:uuid}}" tokens back into session-aware display strings.
+ * Resolves "{{character@uuid}}" and "{{location@uuid}}" tokens back into session-aware display strings.
  * Resolves surviving "Character X" tags directly to the current participant's knownName.
+ * BACKWARD COMPATIBILITY BROKEN: Old {{char:uuid}} syntax is no longer supported.
  */
 export function detokenizeMemoryContent(
   text: string,
   currentParticipants: Character[],
+  currentLocations: Location[] = [],
   knownNames?: Record<string, Record<string, boolean>>,
 ): string {
   if (!text) return text;
 
-  // 1. Resolve immutable UUID tokens
-  const TOKEN_REGEX = /\{\{char:([a-zA-Z0-9-]+)\}\}/g;
-  let resolvedText = text.replace(TOKEN_REGEX, (_match, uuid: string) => {
+  // 1. Resolve immutable UUID tokens (Strictly @ syntax)
+  const TOKEN_REGEX = /\{\{(character|location)@([a-zA-Z0-9-]+)\}\}/g;
+  let resolvedText = text.replace(TOKEN_REGEX, (_match, type: string, uuid: string) => {
+    if (type === 'location') {
+      const loc = currentLocations.find(l => l.id === uuid);
+      return loc ? loc.name : 'Unknown Location';
+    }
+
+    // type === 'character'
     const participant = currentParticipants.find(p => p.id === uuid);
 
     if (!participant) {
@@ -424,6 +450,8 @@ export async function retrieveEligibleMemories(
   const eligibleMemories = filterMemoriesBySearchSpace(character, interactionData, allRawInteractionDataShells);
   if (eligibleMemories.length === 0) return '';
 
+  const currentLocations = interactionData.locations || [];
+
   if (character.useEmbeddingModelForMemories && character.memoryRetrievalConfiguration && queryText) {
     const queryVector = await embeddingEngine.embed(queryText);
 
@@ -445,7 +473,7 @@ export async function retrieveEligibleMemories(
 
       if (results.length > 0) {
         return results
-          .map(r => detokenizeMemoryContent(r.textContent, interactionData.participants, knownNames))
+          .map(r => detokenizeMemoryContent(r.textContent, interactionData.participants, currentLocations, knownNames))
           .join('\n---\n');
       }
     }
@@ -453,6 +481,6 @@ export async function retrieveEligibleMemories(
 
   // Fallback when embeddings are disabled: return all eligible memories detokenized
   return eligibleMemories
-    .map(m => detokenizeMemoryContent(m.textContent, interactionData.participants, knownNames))
+    .map(m => detokenizeMemoryContent(m.textContent, interactionData.participants, currentLocations, knownNames))
     .join('\n---\n');
 }

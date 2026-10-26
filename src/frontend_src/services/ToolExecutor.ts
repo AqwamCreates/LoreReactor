@@ -1306,6 +1306,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
                     const detokenized = detokenizeMemoryContent(
                         found.textContent,
                         interactionData.participants,
+                        interactionData.locations,
                         knownNames,
                     );
                     return { toolType: 'memory', args, textContent: detokenized, displayReplacement: `[🧠 Recalled "${found.name}"]` };

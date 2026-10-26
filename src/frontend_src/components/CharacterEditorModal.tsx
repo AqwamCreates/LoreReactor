@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { 
-    Character, Sampler, LanguageModel, Memory, Clothing, 
+    Character, Location, Sampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
     tool, InteractionData, StopPattern, Voice, RetrievalConfiguration,
     RawInteractionData, memorySearchSpace
@@ -78,6 +78,7 @@ interface CharacterEditorModalProps {
     onVoiceTranscribeRequested?: (characterId: string, file: File, language?: string) => void;
     existingCharacter?: Character | null;
     allCharacters: Character[];
+    allLocations: Location[];
     allSamplers: Sampler[];
     allRetrievalConfigurations: RetrievalConfiguration[];
     isLoadingSamplers?: boolean;
@@ -90,7 +91,7 @@ interface CharacterEditorModalProps {
 
 export function CharacterEditorModal({
     onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
-    allCharacters, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
+    allCharacters, allLocations, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
     selectedModel, runningModels,
     interactionData, allRawInteractionDataShells, localProtagonistId,
     isReadOnly = false,
@@ -1817,6 +1818,7 @@ export function CharacterEditorModal({
                     character={existingCharacter || null}
                     onSaveMemories={setMemories}
                     allCharacters={allCharacters}
+                    allLocations={allLocations}
                     allRawInteractionDataShells={allRawInteractionDataShells}
                     localProtagonistId={localProtagonistId}
                 />

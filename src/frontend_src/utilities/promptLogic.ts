@@ -121,7 +121,7 @@ export function sanitizeToolSyntax(
     }
   }
 
-  const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const escapeRegex = (str: string) => str.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
   const obsStart = escapeRegex(toolResultStartString);
   const obsEnd = escapeRegex(toolResultEndString);
   const callStart = escapeRegex(toolCallStartString);
@@ -387,21 +387,48 @@ export function resolveTemplate(
 
       const effectiveScope = suffixScope ?? scopeOverride;
 
-      // UUID Resolution (e.g., {{character@uuid}})
-      const isUuidKey = cleanKey.startsWith('character@');
+      // UUID Resolution (e.g., {{character@uuid}}, {{location@uuid}}, {{locationWithDescription@uuid}})
+      const isCharacterUuidKey = cleanKey.startsWith('character@');
+      const isLocationUuidKey = cleanKey.startsWith('location@');
+      const isLocationDescUuidKey = cleanKey.startsWith('locationWithDescription@');
       
-      if (isUuidKey && ctx.promptBuildContext) {
+      if ((isCharacterUuidKey || isLocationUuidKey || isLocationDescUuidKey) && ctx.promptBuildContext) {
         const uuid = cleanKey.split('@')[1];
         const pCtx = ctx.promptBuildContext;
-        const participant = pCtx.participants.find(p => p.id === uuid);
         
-        if (participant) {
-          if (isPossessive) {
-            return asLengthOrValue(getIdentityPossessiveName(participant, pCtx, limitOverride));
+        if (isCharacterUuidKey) {
+          const participant = pCtx.participants.find(p => p.id === uuid);
+          if (participant) {
+            if (isPossessive) {
+              return asLengthOrValue(getIdentityPossessiveName(participant, pCtx, limitOverride));
+            }
+            return asLengthOrValue(getDisplayName(participant, pCtx, limitOverride));
           }
-          return asLengthOrValue(getDisplayName(participant, pCtx, limitOverride));
+          return asLengthOrValue(isPossessive ? "Unknown's" : "Unknown");
         }
-        return asLengthOrValue(isPossessive ? "Unknown's" : "Unknown");
+        
+        if (isLocationUuidKey || isLocationDescUuidKey) {
+          const allLocs = pCtx.interactionData.locations || [];
+          const loc = allLocs.find(l => l.id === uuid);
+          if (loc) {
+            const locName = resolveInnerText(loc.name || 'Unknown Location', pCtx, delimiters);
+            if (isLocationDescUuidKey) {
+              let desc = `- **${locName}**`;
+              if (loc.text) {
+                const replacedText = resolveInnerText(loc.text, pCtx, delimiters);
+                const indentedText = replacedText.split('\n').map(line => `${line}`).join('\n');
+                desc += `\n${indentedText}`;
+              }
+              if (isPossessive) return asLengthOrValue(`${desc}'s`);
+              return asLengthOrValue(desc);
+            }
+            if (isPossessive) {
+              return asLengthOrValue(`${locName}'s`);
+            }
+            return asLengthOrValue(locName);
+          }
+          return asLengthOrValue(isPossessive ? "Unknown Location's" : "Unknown Location");
+        }
       }
 
       const pCtx = ctx.promptBuildContext;

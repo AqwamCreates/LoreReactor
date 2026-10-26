@@ -1,6 +1,6 @@
 // src/frontend_src/components/CharacterMemoryEditorModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, Memory, RawInteractionData } from '../types';
+import type { Character, Location, Memory, RawInteractionData } from '../types';
 import { detokenizeMemoryContent } from '../utilities/memoryLogic';
 import '../main.css';
 
@@ -9,6 +9,7 @@ export function CharacterMemoryEditorModal({
     onClose,
     onSaveMemories,
     allCharacters,
+    allLocations,
     allRawInteractionDataShells,
     localProtagonistId,
 }: {
@@ -16,6 +17,7 @@ export function CharacterMemoryEditorModal({
     onClose: () => void;
     onSaveMemories: (memories: Record<string, Memory[]>) => void;
     allCharacters: Character[];
+    allLocations: Location[];
     allRawInteractionDataShells: RawInteractionData[];
     localProtagonistId?: string | null;
 }) {
@@ -82,7 +84,7 @@ export function CharacterMemoryEditorModal({
             }
         }
 
-        return detokenizeMemoryContent(mem.textContent || '', participants, knownNames);
+        return detokenizeMemoryContent(mem.textContent || '', participants, allLocations, knownNames);
     };
 
     const retokenizeText = (text: string, mem: Memory, fallbackChatId: string): string => {

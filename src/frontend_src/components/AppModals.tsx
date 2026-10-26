@@ -1158,6 +1158,7 @@ export function AppModals({
                     allSamplers={allSamplers} 
                     allRetrievalConfigurations={allRetrievalConfigurations}
                     allCharacters={allCharacters}
+                    allLocations={allLocations}
                     localProtagonistId={localProtagonistId}
                     interactionData={interactionData}
                     selectedModel={effectiveTokenizerModel} 

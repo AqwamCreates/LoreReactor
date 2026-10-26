@@ -32,14 +32,19 @@ const MOCK_DATA: Record<string, string[] | string> = {
     location: 'Town Square',
     locationWithDescription: '- **Town Square**: The bustling center of the city.\nYou are standing in the middle of the plaza.',
 
+    // UUID Resolution Mocks
+    'character@uuid-alice': 'Character 1 (Alice)',
+    'character@uuid-bob': 'Character 2 (Bob)',
+    'location@uuid-town': 'Town Square',
+    'location@uuid-forest': 'Dark Forest',
+    'locationWithDescription@uuid-town': '- **Town Square**: The bustling center of the city.\nYou are standing in the middle of the plaza.',
+
     character: 'Character 1 (Alice)',
     protagonist: 'User',
     protagonists: ['User', 'Player 2'],
     "protagonists'": ["User's", "Player 2's"],
     characters: ['Character 1 (Alice)', 'Character 2 (Bob)', 'Character 3 (Charlie)', 'Character 4 (Dave)'],
     "characters'": ["Character 1 (Alice)'s", "Character 2 (Bob)'s", "Character 3 (Charlie)'s", "Character 4 (Dave)'s"],
-    'character@uuid-alice': 'Character 1 (Alice)',
-    'character@uuid-bob': 'Character 2 (Bob)',
     weather: 'Raining heavily with thunderstorms.',
     date: "Today's date is October 26, 2026.",
     time: 'The current time is 14:35.',
@@ -80,7 +85,7 @@ const TEMPLATE_REGEX = /{{([a-zA-Z0-9_'\-@+]+)(?:\[(-?\d+)?(?::(-?\d+))?\])?(#)?
 
 function evaluateMockTemplate(raw: string): string {
     if (!raw) return '';
-    return raw.replace(TEMPLATE_REGEX, (_match, key, startStr, endStr, hashStr, excludeStr, scopeStr, insertionStr, limitStr) => {
+    return raw.replace(TEMPLATE_REGEX, (_match, key, startStr, endStr, hashStr, excludeStr, _scopeStr, _insertionStr, limitStr) => {
         let rawKey = key;
         let suffixNote = '';
         let locationScope: 'reachable' | 'all' | undefined = undefined;
@@ -111,8 +116,6 @@ function evaluateMockTemplate(raw: string): string {
         // Map location scopes to the correct MOCK_DATA keys
         let mockDataKey = cleanKey;
         if (locationScope === 'reachable' && cleanKey.startsWith('locations')) {
-            // In a real backend, this queries the reachable graph. 
-            // For the mock, we just slice the first 3 items to simulate "reachable" vs "all".
             mockDataKey = cleanKey; 
         }
         
@@ -210,6 +213,8 @@ const DIRECTORY_ITEMS = [
     // Environment
     { key: 'location', desc: 'Basic info and name of the current location.', cat: 'Environment' },
     { key: 'locationWithDescription', desc: 'Location name and full descriptive text.', cat: 'Environment' },
+    { key: 'location@uuid', desc: 'Resolves a specific location by its immutable UUID (e.g., {{location@1234-5678}}). Prevents index-shift corruption in persistent memories.', cat: 'Environment' },
+    { key: 'locationWithDescription@uuid', desc: 'Resolves a specific location with its full description by its immutable UUID.', cat: 'Environment' },
     { key: 'locations', desc: 'Array of all locations in the session. Use - for reachable, + for all. Supports slicing and possessives.', cat: 'Environment' },
     { key: 'locationsWithDescriptions', desc: 'Array of all locations with descriptions. Use - for reachable, + for all.', cat: 'Environment' },
     { key: 'weather', desc: 'Current weather conditions (requires API key).', cat: 'Environment' },
@@ -367,9 +372,9 @@ export function PromptGuideModal({ onClose }: PromptGuideModalProps) {
                             )}
 
                             {renderComparison(
-                                'I remember when {{character@uuid-alice}} gave me the sword.',
-                                'I remember when Character 1 (Alice) gave me the sword.',
-                                'UUID resolution ensures persistent memories map to the correct character. Fully respects known name limits (?limit).'
+                                'I remember when {{character@uuid-alice}} gave me the sword at {{location@uuid-town}}.',
+                                'I remember when Character 1 (Alice) gave me the sword at Town Square.',
+                                'UUID resolution ensures persistent memories map to the correct character and location. Fully respects known name limits (?limit).'
                             )}
 
                             <div style={{ fontSize: '0.75rem', opacity: 0.7, marginTop: '16px', padding: '10px', background: 'var(--social-bg)', borderRadius: '6px', border: '1px solid var(--border)' }}>
