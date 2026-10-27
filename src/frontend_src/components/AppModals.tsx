@@ -15,7 +15,8 @@ import { isChatSaveable } from '../utilities/chatSaveHelper';
 import { ManagerModal } from './ManagerModal';
 import {
     renderLanguageModelSubtext, renderBudgetStrategySubtext, renderProfileSubtext, 
-    renderInteractionDataSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext
+    renderInteractionDataSubtext, renderContextSubtext, renderLocationSubtext, renderExtensionSubtext,
+    renderSpatiotemporalModelSubtext
 } from './renderHelpers';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 
@@ -776,7 +777,7 @@ export function AppModals({
                     onSelect={(model: SpatiotemporalModel) => spatiotemporalModelModalProperties.open(model)} 
                     onDelete={onDeleteSpatiotemporalModel} 
                     onCreateNew={() => spatiotemporalModelModalProperties.open()}
-                    renderSubtext={(model: SpatiotemporalModel) => renderLanguageModelSubtext(model, runningSpatiotemporalModels, selectedSpatiotemporalModelId)}
+                    renderSubtext={(model: SpatiotemporalModel) => renderSpatiotemporalModelSubtext(model, runningSpatiotemporalModels, selectedSpatiotemporalModelId)}
                     emptyMessage="No models available." 
                     actionLabel="Delete" 
                     orderedListMode={false}

@@ -1,6 +1,6 @@
 // src/frontend_src/components/renderHelpers.tsx
 import type React from 'react';
-import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData, cloudBackend, promptBlockType } from '../types';
+import type { LanguageModel, BudgetStrategy, Profile, RawInteractionData, cloudBackend, promptBlockType, SpatiotemporalModel } from '../types';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 
 export function getRenderSubTextForTriStates(value: number, text: string): React.ReactNode {
@@ -25,6 +25,26 @@ export function renderLanguageModelSubtext(
             {ms?.isRunning && !ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading</span>}
             {selectedModelId === model.id && !ms?.isRunning && !isCloud && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
             <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Context: {(model.contextLength / 1024).toFixed(0)}k</span>
+            <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
+            <span>{model.description}</span>
+        </span>
+    );
+}
+
+export function renderSpatiotemporalModelSubtext(
+    model: SpatiotemporalModel,
+    runningLanguageModels: Record<string, { isRunning?: boolean; isIdle?: boolean }>,
+    selectedModelId: string | null,
+): React.ReactNode {
+    const ms = runningLanguageModels[model.id];
+    const isCloud = !!model.apiKey && model.backend && cloudBackends.includes(model.backend as cloudBackend);
+
+    return (
+        <span style={{ display: 'flex', alignItems: 'center', gap: '6px', opacity: 0.8, flexWrap: 'wrap' }}>
+            {isCloud && <span style={{ fontSize: '0.7rem', background: '#3b82f6', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Cloud</span>}
+            {ms?.isRunning && ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#10b981', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Idle</span>}
+            {ms?.isRunning && !ms?.isIdle && <span style={{ fontSize: '0.7rem', background: '#f59e0b', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Loading</span>}
+            {selectedModelId === model.id && !ms?.isRunning && !isCloud && <span style={{ fontSize: '0.7rem', background: '#6b7280', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase' }}>Selected (Not Loaded)</span>}
             <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>Backend: {model.backend || 'other'}</span>
             <span>{model.description}</span>
         </span>
