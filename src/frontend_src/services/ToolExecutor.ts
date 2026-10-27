@@ -1911,8 +1911,9 @@ function executeNarrate(args: string): ToolResult {
 }
 
 // ─── Substrate ────────────────────────────────────────────────────────
-function executeSubstrate(_args: string): ToolResult {
-
+function executeSubstrate(args: string): ToolResult {
+    const text = "To do."
+    return { toolType: 'narrate', args, textContent: text, displayReplacement: `[🎨 ${text}]` };
 }
 
 // ─── Inspect ────────────────────────────────────────────────────────
