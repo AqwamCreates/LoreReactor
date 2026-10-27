@@ -73,6 +73,13 @@ export function SpatiotemporalModelEditorModal({ onClose, onSave, existingModel 
                         <input type="text" value={name} onChange={e => setName(e.target.value)} className="editor-input" placeholder="e.g., FLUX.1 Dev" />
                     </div>
 
+                    <div style={{ marginBottom: '16px' }}>
+                        <label className="editor-label">Backend *</label>
+                        <select value={backendType} onChange={e => setBackendType(e.target.value as backend)} className="editor-select">
+                            {BACKENDS.map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                    </div>
+
                     <div className="editor-section">
                         <span className="editor-section-title">Core Model Files (Paths)</span>
                         <div style={{ display: 'grid', gap: '12px' }}>

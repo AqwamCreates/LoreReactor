@@ -73,6 +73,8 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
 
 export function buildSpatiotemporalModelLoadArguments(model: SpatiotemporalModel): string[] {
     const args: string[] = [];
+    
+    // Core Model Files
     if (model.model) args.push('-m', model.model);
     if (model.vae) args.push('--vae', model.vae);
     if (model.clipL) args.push('--clip_l', model.clipL);
@@ -82,6 +84,18 @@ export function buildSpatiotemporalModelLoadArguments(model: SpatiotemporalModel
     if (model.controlNet) args.push('--control-net', model.controlNet);
     if (model.loraDir) args.push('--lora-model-dir', model.loraDir);
     if (model.upscaleModel) args.push('--upscale-model', model.upscaleModel);
-    if (model.rng) args.push('--rng', model.rng);
+    
+    // Generation Defaults (mapped to sd-server CLI flags)
+    if (model.defaults) {
+        if (model.defaults.rng) args.push('--rng', model.defaults.rng);
+        if (model.defaults.samplingMethod) args.push('--sampling-method', model.defaults.samplingMethod);
+        if (model.defaults.noiseSchedule) args.push('--scheduler', model.defaults.noiseSchedule);
+        if (model.defaults.steps) args.push('--steps', String(model.defaults.steps));
+        if (model.defaults.cfgScale) args.push('--cfg-scale', String(model.defaults.cfgScale));
+        if (model.defaults.width) args.push('-W', String(model.defaults.width));
+        if (model.defaults.height) args.push('-H', String(model.defaults.height));
+        if (model.defaults.clipSkip) args.push('--clip-skip', String(model.defaults.clipSkip));
+    }
+    
     return args;
 }
