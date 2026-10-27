@@ -334,7 +334,7 @@ export const TOOL_EMOJI_MAP: Record<tool, string> = {
     lookup: '🔍', map: '🗺️', audio: '🔊', note: '📝',
     inventory: '📦', trade: '🤝', invite: '📨', kick: '👢', mind_reader: '🧠',
     oracle: '🔮', teleport: '⚡', key: '🔒', clothing: '👕',
-    summon: '✨', narrate: '🎙️', inspect: '🔍', administrator: '🔧',
+    summon: '✨', narrate: '🎙️', substrate: '🎨', inspect: '🔍', administrator: '🔧',
     creator: '🛠️', destroyer: '💀', schedule_response: '⏰',
     text_to_speech: '🔊', gpu: '📟', system_info: '🖥️', notify: '🔔', volume_control: '🔊',
     lock_screen: '🔒', sleep: '⚡', shutdown: '⚡', restart: '⚡',

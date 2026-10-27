@@ -40,6 +40,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     key: false,
     summon: false,
     narrate: false,
+    substrate: false,
     inspect: false,
     administrator: false,
     creator: false,
