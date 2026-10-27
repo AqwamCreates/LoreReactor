@@ -282,6 +282,13 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     { tool: 'narrate', label: 'Narrate Things', keywords: ['narrator', 'storyteller', 'dungeon master', 'author', 'chronicler'], tier: 'in_world_readonly' },
     { tool: 'inspect', label: 'Inspect Character State', keywords: ['detective', 'inspector', 'analyst', 'investigator', 'scrutinizing', 'examine'], tier: 'in_world_readonly' },
     { tool: 'mind_reader', label: 'Telepathic Mind Reader', keywords: ['telepathy', 'mind reader', 'read minds', 'psychoanalyze', 'mind read', 'telepath', 'mind reading'], tier: 'in_world_readonly'},
+    { 
+        tool: 'substrate', 
+        label: 'Image & Video Generation', 
+        keywords: ['artist', 'painter', 'photographer', 'filmmaker', 'director', 'illustrator', 'draw', 'paint', 'generate image', 'create image', 'make video', 'generate video', 'visualize', 'imagine', 'picture', 'portrait', 'canvas', 'studio', 'cinematographer', 'animator', 'render', 'sketch', 'depict', 'show me', 'draw me', 'paint me', 'create visual', 'generate visual', 'make art', 'create art'], 
+        tier: 'in_world_readonly',
+        riskDescription: 'Generates images or videos from text descriptions using AI diffusion models.' 
+    },
 ];
 
 export interface DetectedToolsResult {
