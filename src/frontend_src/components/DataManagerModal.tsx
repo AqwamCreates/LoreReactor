@@ -1341,7 +1341,7 @@ export function DataManagerModal({
                                         { key: 'spatiotemporalModels', label: 'All Spatiotemporal Models', count: allSpatiotemporalModels.length },
                                         { key: 'tokenSamplers', label: 'All Token Samplers', count: allTokenSamplers.length },
                                         { key: 'stopPatterns', label: 'All Stop Patterns', count: allStopPatterns.length },
-                                        { key: 'retrievalConfigurations', label: 'All Retrieval Configs', count: allRetrievalConfigurations.length },
+                                        { key: 'retrievalConfigurations', label: 'All Retrieval Configurations', count: allRetrievalConfigurations.length },
                                         { key: 'budgetStrategies', label: 'All Budget Strategies', count: allBudgetStrategies.length },
                                         { key: 'profiles', label: 'All Profiles', count: allProfiles.length },
                                         { key: 'memories', label: 'All Memories', count: allMemories.length },
