@@ -2,7 +2,7 @@
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { summarizeWebpageContent, mergeWebpageSummaries, type WebpageImageInfo } from '../services/WebSummarizationEngine';
 import { findWebpageByUrl, saveRawWebpage } from '../storages/serverStorage';
-import type { linkFetchMode, Sampler, searchEngine, StopPattern } from '../types';
+import type { linkFetchMode, TokenSampler, searchEngine, StopPattern } from '../types';
 import { v4 as uuidv4 } from 'uuid';
 import { buildSearchUrl } from './searchURLBuilder';
 import { localURL } from '../../configurations';
@@ -498,7 +498,7 @@ export async function fetchMultipleContextUrls(
         searchEngine?: searchEngine;
         includeImages?: boolean;
         limitLinksToSubdirectory?: boolean;
-        sampler?: Sampler;
+        tokenSampler?: TokenSampler;
         stopPattern?: StopPattern;
     } = {}
 ): Promise<{ results: FetchResult[]; errors: string[] }> {
@@ -551,7 +551,7 @@ export async function fetchMultipleContextUrls(
                     result.textContent,
                     result.url,
                     imagesForSummary,
-                    options.sampler,
+                    options.tokenSampler,
                     options.stopPattern,
                 );
                 if (summary) {
@@ -567,7 +567,7 @@ export async function fetchMultipleContextUrls(
                 } else {
                     const merged = await mergeWebpageSummaries(
                         summarizedEntries,
-                        options.sampler,
+                        options.tokenSampler,
                         options.stopPattern,
                     );
                     if (merged) {

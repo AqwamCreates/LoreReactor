@@ -4,7 +4,7 @@ import { textToSpeechEngine, fetchVoiceReference } from './TextToSpeechEngine';
 import { extractNarratableText, type NarratableSegment } from '../utilities/voiceTextExtractor';
 import { useChatStore } from '../hooks/useChatStore';
 import { useGenerationStore } from '../hooks/useGenerationStore';
-import type { Character, Sampler, deviceType, textType } from '../types';
+import type { Character, TokenSampler, deviceType, textType } from '../types';
 
 interface PendingJob {
     sequenceId: number;
@@ -234,10 +234,10 @@ export class StreamingVoiceTracker {
         const narrateTextCharacterIds = profile?.narrateTextCharacterIds;
         
         let targetChar = this.character;
-        if (narrateTextCharacterIds && narrateTextCharacterIds[textType]) {
+        if (narrateTextCharacterIds?.[textType]) {
             const overrideId = narrateTextCharacterIds[textType];
             const overrideChar = this.allCharacters.find(c => c.id === overrideId);
-            if (overrideChar && overrideChar.voice?.voiceFilename && overrideChar.voice?.textContent) {
+            if (overrideChar?.voice?.voiceFilename && overrideChar.voice?.textContent) {
                 targetChar = overrideChar;
             }
         }
@@ -252,13 +252,13 @@ export class StreamingVoiceTracker {
             return;
         }
 
-        const sampler: Sampler | undefined = profile?.characterTextToSpeechModelSampler ?? targetChar.textToSpeechModelSampler;
+        const tokenSampler: TokenSampler | undefined = profile?.characterTextToSpeechModelTokenSampler ?? targetChar.textToSpeechModelTokenSampler;
         const devicePreference: deviceType = profile?.textToSpeechDeviceType ?? 'auto';
 
         try {
             const blob = await textToSpeechEngine.synthesize(
                 sentence,
-                sampler,
+                tokenSampler,
                 base64,
                 transcript,
                 language,

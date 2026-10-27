@@ -11,7 +11,7 @@ import { CompanionOverlayProfileEditor } from './CompanionOverlayProfileEditor';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import type { 
     InteractionData, Character, Context, Location, AudioTrack, LanguageModel, SpatiotemporalModel,
-    BudgetStrategy, Profile, World, Sampler, StopPattern, PromptBlock, Memory, 
+    BudgetStrategy, Profile, World, TokenSampler, StopPattern, PromptBlock, Memory, 
     Account, MultiplayerData, ChatMessage, 
     TextMessage
 } from '../types';
@@ -34,7 +34,7 @@ interface CompanionState {
     allAudioTracks?: AudioTrack[]; allWorlds?: World[]; allProfiles?: Profile[];
     allPromptBlocks?: PromptBlock[]; allLanguageModels?: LanguageModel[];
     allSpatiotemporalModels?: SpatiotemporalModel[];
-    allSamplers?: Sampler[]; allStopPatterns?: StopPattern[]; allBudgetStrategies?: BudgetStrategy[];
+    allTokenSamplers?: TokenSampler[]; allStopPatterns?: StopPattern[]; allBudgetStrategies?: BudgetStrategy[];
     allMemories?: Memory[]; allAccounts?: Account[]; allMultiplayerData?: MultiplayerData[];
     streamingCharacter?: Character | null;
 }
@@ -257,10 +257,10 @@ export function CompanionOverlay() {
         return computeSlashAutocomplete(
             inputText, state.interactionData, state.allCharacters, state.allContexts, state.allLocations,
             state.allAudioTracks, state.allWorlds, state.allProfiles || [], state.allPromptBlocks,
-            state.allLanguageModels, state.allSpatiotemporalModels || [], state.allSamplers, state.allStopPatterns, state.allBudgetStrategies,
+            state.allLanguageModels, state.allSpatiotemporalModels || [], state.allTokenSamplers, state.allStopPatterns, state.allBudgetStrategies,
             state.allMemories, state.allAccounts, state.allMultiplayerData, state.localProtagonist,
         );
-    }, [inputText, state.interactionData, state.allCharacters, state.allLocations, state.allContexts, state.allAudioTracks, state.allWorlds, state.allProfiles, state.allPromptBlocks, state.allLanguageModels, state.allSpatiotemporalModels, state.allSamplers, state.allStopPatterns, state.allBudgetStrategies, state.allMemories, state.allAccounts, state.allMultiplayerData, state.localProtagonist]);
+    }, [inputText, state.interactionData, state.allCharacters, state.allLocations, state.allContexts, state.allAudioTracks, state.allWorlds, state.allProfiles, state.allPromptBlocks, state.allLanguageModels, state.allSpatiotemporalModels, state.allTokenSamplers, state.allStopPatterns, state.allBudgetStrategies, state.allMemories, state.allAccounts, state.allMultiplayerData, state.localProtagonist]);
 
     const showAutocomplete = isSlash && !isComplete;
     const autocompleteKey = useMemo(() => {

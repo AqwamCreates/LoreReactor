@@ -38,10 +38,10 @@ export async function buildRequestBody(
         fetchErrors 
     } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId, isToolMessage, allRawInteractionDataShells);
 
-    const languageModelSampler = character.languageModelSampler;
+    const languageModelTokenSampler = character.languageModelTokenSampler;
 
     const finalMessages: OpenAIMessage[] = messages;
-    const { stop: paramStops, ...otherParams } = languageModelSampler?.parameters || {};
+    const { stop: paramStops, ...otherParams } = languageModelTokenSampler?.parameters || {};
 
     const finalStops = [...(Array.isArray(paramStops) ? paramStops : []), ...stops];
     const uniqueStops = Array.from(new Set(finalStops)).filter(s => typeof s === 'string' && s.length > 0);
@@ -49,7 +49,7 @@ export async function buildRequestBody(
     const body: Record<string, unknown> = {
         ...otherParams,
         messages: finalMessages,
-        n_predict: languageModelSampler?.maximumNumberOfTokens ?? 512,
+        n_predict: languageModelTokenSampler?.maximumNumberOfTokens ?? 512,
         stream: true,
         stop: uniqueStops,
     };

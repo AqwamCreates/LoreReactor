@@ -71,6 +71,17 @@ export function buildModelLoadArguments(model: LanguageModel): string[] {
     return args;
 }
 
-export function buildSpatiotemporalModelLoadArguments(_model: SpatiotemporalModel): string[] {
-    return ['']
+export function buildSpatiotemporalModelLoadArguments(model: SpatiotemporalModel): string[] {
+    const args: string[] = [];
+    if (model.model) args.push('-m', model.model);
+    if (model.vae) args.push('--vae', model.vae);
+    if (model.clipL) args.push('--clip_l', model.clipL);
+    if (model.t5xxl) args.push('--t5xxl', model.t5xxl);
+    if (model.llm) args.push('--llm', model.llm);
+    if (model.taesd) args.push('--taesd', model.taesd);
+    if (model.controlNet) args.push('--control-net', model.controlNet);
+    if (model.loraDir) args.push('--lora-model-dir', model.loraDir);
+    if (model.upscaleModel) args.push('--upscale-model', model.upscaleModel);
+    if (model.rng) args.push('--rng', model.rng);
+    return args;
 }

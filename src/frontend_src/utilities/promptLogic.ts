@@ -2553,7 +2553,7 @@ export async function buildPrompt(
         fetchMode: context.linkFetchMode ?? 'full',
         searchTerms: context.searchTerms,
         searchEngine: context.searchEngine,
-        sampler: profile?.webSummarizationSampler,
+        tokenSampler: profile?.webSummarizationTokenSampler,
         stopPattern: profile?.webSummarizationStopPattern,
         includeImages: context.includeLinkImages ?? false,
         limitLinksToSubdirectory: context.limitLinksToSubdirectory ?? false,
@@ -2592,7 +2592,7 @@ export async function buildPrompt(
   }
   const allTextSearchSpace = ctx.textContentArray.join('\n');
   const allStopPatterns = [
-    ...(character.languageModelSampler?.stopPatterns || []),
+    ...(character.languageModelTokenSampler?.stopPatterns || []),
     ...(character.stopPatterns || [])
   ];
   const activeStopPatterns: StopPattern[] = [];

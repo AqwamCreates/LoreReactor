@@ -60,7 +60,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     const [worldSearch, setWorldSearch] = useState('');
     const [languageModelSearch, setLanguageModelSearch] = useState('');
     const [spatiotemporalModelSearch, setSpatiotemporalModelSearch] = useState('');
-    const [samplerSearch, setSamplerSearch] = useState('');
+    const [tokenSamplerSearch, setSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
     const [retrievalConfigurationSearch, setRetrievalConfigurationSearch] = useState('');
@@ -107,7 +107,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setSelectedWorldIds(json.worlds?.map(w => w.id) ?? []);
         setSelectedLanguageModelIds(json.languageModels.map((m: { id: string }) => m.id));
         setSelectedSpatiotemporalModelIds(json.spatiotemporalModels?.map((m: { id: string }) => m.id) ?? []);
-        setSelectedSamplerIds(json.samplers.map((s: { id: string }) => s.id));
+        setSelectedSamplerIds(json.tokenSamplers.map((s: { id: string }) => s.id));
         setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
         setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
         setSelectedRetrievalConfigurationIds(json.retrievalConfigurations?.map((rc: { id: string }) => rc.id) ?? []);
@@ -187,7 +187,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                 worlds: [],
                 languageModels: [],
                 spatiotemporalModels: schemaEntities.includes('SpatiotemporalModel') ? "/* see _entitySchema */" : [],
-                samplers: [],
+                tokenSamplers: [],
                 promptBlocks: schemaEntities.includes('PromptBlock') ? "/* see _entitySchema */" : [],
                 stopPatterns: [],
                 retrievalConfigurations: [],
@@ -237,7 +237,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
             worlds: parsedData.worlds?.filter(w => selectedWorldIds.includes(w.id)) ?? [],
             languageModels: parsedData.languageModels?.filter(m => selectedLanguageModelIds.includes(m.id)) ?? [],
             spatiotemporalModels: parsedData.spatiotemporalModels?.filter(m => selectedSpatiotemporalModelIds.includes(m.id)) ?? [],
-            samplers: parsedData.samplers.filter(s => selectedSamplerIds.includes(s.id)),
+            tokenSamplers: parsedData.tokenSamplers.filter(s => selectedSamplerIds.includes(s.id)),
             promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
             retrievalConfigurations: parsedData.retrievalConfigurations?.filter(rc => selectedRetrievalConfigurationIds.includes(rc.id)) ?? [],
@@ -463,9 +463,9 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                                         <EntitySelectList label="Spatiotemporal Models" items={parsedData.spatiotemporalModels || []} selectedIds={selectedSpatiotemporalModelIds}
                                             onToggle={(id) => toggle(selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds, id)} searchQuery={spatiotemporalModelSearch} onSearchChange={setSpatiotemporalModelSearch} />
                                     )}
-                                    {parsedData.samplers.length > 0 && (
-                                        <EntitySelectList label="Samplers" items={parsedData.samplers} selectedIds={selectedSamplerIds}
-                                            onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
+                                    {parsedData.tokenSamplers.length > 0 && (
+                                        <EntitySelectList label="Samplers" items={parsedData.tokenSamplers} selectedIds={selectedSamplerIds}
+                                            onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={tokenSamplerSearch} onSearchChange={setSamplerSearch} />
                                     )}
                                     {parsedData.promptBlocks.length > 0 && (
                                         <EntitySelectList label="Prompt Blocks" items={parsedData.promptBlocks} selectedIds={selectedPromptBlockIds}
@@ -570,7 +570,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                                         <div><strong>Worlds:</strong> {importResult.counts.worlds}</div>
                                         <div><strong>Language Models:</strong> {importResult.counts.languageModels}</div>
                                         <div><strong>Spatiotemporal Models:</strong> {importResult.counts.spatiotemporalModels ?? 0}</div>
-                                        <div><strong>Samplers:</strong> {importResult.counts.samplers}</div>
+                                        <div><strong>Samplers:</strong> {importResult.counts.tokenSamplers}</div>
                                         <div><strong>Prompt Blocks:</strong> {importResult.counts.promptBlocks}</div>
                                         <div><strong>Stop Patterns:</strong> {importResult.counts.stopPatterns}</div>
                                         <div><strong>Retrieval Configurations:</strong> {importResult.counts.retrievalConfigurations ?? 0}</div>

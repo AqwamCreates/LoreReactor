@@ -1,6 +1,6 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
 import { useState, useMemo, useCallback, type CSSProperties } from 'react';
-import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, Sampler, StopPattern, tristateInteger, cacheConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode, participantScopeMode, participantInsertionMode } from '../types';
+import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, TokenSampler, StopPattern, tristateInteger, cacheConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode, participantScopeMode, participantInsertionMode } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelect } from './EntitySelect';
 import '../main.css';
@@ -19,7 +19,7 @@ interface ProfileEditorModalProps {
     existingProfile: Profile | null;
     allCharacters: Character[];
     allPromptBlocks: PromptBlock[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
 }
@@ -239,7 +239,7 @@ function SummarizationStepExpanded({ step, index, updateStepField }: { step: Sum
 
 // ─── Main Component ─────────────────────────────────────────────────
 
-export function ProfileEditorModal({ existingProfile, onClose, onSave, allPromptBlocks = [], allSamplers = [], allStopPatterns = [], allRetrievalConfigurations = [], allCharacters = [] }: ProfileEditorModalProps) {
+export function ProfileEditorModal({ existingProfile, onClose, onSave, allPromptBlocks = [], allTokenSamplers = [], allStopPatterns = [], allRetrievalConfigurations = [], allCharacters = [] }: ProfileEditorModalProps) {
     const [activeTab, setActiveTab] = useState<ProfileTabId>('general');
     const ep = existingProfile ?? null;
 
@@ -298,10 +298,10 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [summarizationInstruction, setSummarizationInstruction] = useState<string>(ep?.summarizationInstruction || '');
     const [autoResumeSignals, setAutoResumeSignals] = useState<AutoResumeSignal[]>(ep?.autoResumeSignals ?? []);
     const [expandedSignalIndex, setExpandedSignalIndex] = useState<number | null>(null);
-    const [characterLanguageModelSamplerId, setCharacterLanguageModelSamplerId] = useState<string>(ep?.characterLanguageModelSampler?.id ?? '');
-    const [characterTextToSpeechModelSamplerId, setCharacterTextToSpeechModelSamplerId] = useState<string>(ep?.characterTextToSpeechModelSampler?.id ?? '');
-    const [webSummarizationSamplerId, setWebSummarizationSamplerId] = useState<string>(ep?.webSummarizationSampler?.id ?? '');
-    const [interactionDataSummarizationSamplerId, setInteractionDataSummarizationSamplerId] = useState<string>(ep?.interactionDataSummarizationSampler?.id ?? '');
+    const [characterLanguageModelTokenSamplerId, setCharacterLanguageModelTokenSamplerId] = useState<string>(ep?.characterLanguageModelTokenSampler?.id ?? '');
+    const [characterTextToSpeechModelTokenSamplerId, setCharacterTextToSpeechModelTokenSamplerId] = useState<string>(ep?.characterTextToSpeechModelTokenSampler?.id ?? '');
+    const [webSummarizationTokenSamplerId, setWebSummarizationTokenSamplerId] = useState<string>(ep?.webSummarizationTokenSampler?.id ?? '');
+    const [interactionDataSummarizationTokenSamplerId, setInteractionDataSummarizationTokenSamplerId] = useState<string>(ep?.interactionDataSummarizationTokenSampler?.id ?? '');
     const [characterStopPatternId, setCharacterStopPatternId] = useState<string>(ep?.characterStopPattern?.id ?? '');
     const [webSummarizationStopPatternId, setWebSummarizationStopPatternId] = useState<string>(ep?.webSummarizationStopPattern?.id ?? '');
     const [interactionDataSummarizationStopPatternId, setInteractionDataSummarizationStopPatternId] = useState<string>(ep?.interactionDataSummarizationStopPattern?.id ?? '');
@@ -363,11 +363,11 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     
     const buildProfile = (id: string, profileName: string): Profile => {
         const now = Date.now();
-        const getSampler = (sId: string) => allSamplers.find(s => s.id === sId);
+        const getTokenSampler = (sId: string) => allTokenSamplers.find(s => s.id === sId);
         const getStopPattern = (spId: string) => allStopPatterns.find(sp => sp.id === spId);
         const getRetrievalConfiguration = (rcId: string) => allRetrievalConfigurations.find(rc => rc.id === rcId);
         return {
-            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, textGenerationBehaviourOnNarration, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, entityImageTypes: [...entityImageTypes], numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, participantScopeModes: { ...participantScopeModes }, participantInsertionModes: { ...participantInsertionModes }, participantsKnownNamesLimits: { ...participantsKnownNamesLimits }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], promptFormatMode, summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelSampler: getSampler(characterLanguageModelSamplerId), characterTextToSpeechModelSampler: getSampler(characterTextToSpeechModelSamplerId), webSummarizationSampler: getSampler(webSummarizationSamplerId), interactionDataSummarizationSampler: getSampler(interactionDataSummarizationSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
+            id, name: profileName, description: description || undefined, autonomousMode, autonomousInteractionIntervalMs, enableAutoSpeechDetection, speechVolumeActivationThreshold, speechSilenceVolumeActivationThreshold, speechSilenceThresholdMs, voiceActivityProbabilityThreshold, forceNameReveal, enableAmbientNarration, toolUsageDisplayMode, toolUsageDisplayPlacementMode, enableCharacterExpression, textGenerationBehaviourOnNarration, randomizeTextCharacterInjection, randomizeTextCharacterInjectionOnRetry, maximumNumberOfTextCharacterRandomizationPerModel, entityImageTypes: [...entityImageTypes], numberOfMessagesToDisableThinkPrompt, numberOfMessagesToDisableMetaThinkInstructions, numberOfMessagesToDisableDialoguePrompt, numberOfMessagesToDisableStarterPrompt, weatherApiKey, useFrontCameraImage, forceEqualInitiative, chatProbability, maximumChatStamina, chatStaminaRegenerationRate, nameSensitivity, skipProbability, chatImpatienceSensitivity, memoryRetentionWeight, contextSensitivity, maximumActionStamina, actionStaminaRegenerationRate, participantScopeModes: { ...participantScopeModes }, participantInsertionModes: { ...participantInsertionModes }, participantsKnownNamesLimits: { ...participantsKnownNamesLimits }, minimalVolatileCacheMode, doNotInjectDefaultStopTokens, enableSpeculativeMarkov, sentimentalAnalysisDeviceType, textToSpeechDeviceType, speechToTextDeviceType, voiceActivityDetectionDeviceType, embeddingDeviceType, volume, tools: { ...tools }, narrateTexts: { ...narrateTexts }, narrateTextCharacterIds: { ...narrateTextCharacterIds }, inputStrategy: [...inputStrategy], promptFormatMode, summarizationSteps: summarizationSteps.map((s, i) => ({ ...s, id: s.id || `step-${uuidv4()}`, order: i, firstCreatedTimestamp: s.firstCreatedTimestamp || now, lastUpdatedTimestamp: now })), summarizationInstruction: summarizationInstruction || undefined, autoResumeSignals: [...autoResumeSignals], characterLanguageModelTokenSampler: getTokenSampler(characterLanguageModelTokenSamplerId), characterTextToSpeechModelTokenSampler: getTokenSampler(characterTextToSpeechModelTokenSamplerId), webSummarizationTokenSampler: getTokenSampler(webSummarizationTokenSamplerId), interactionDataSummarizationTokenSampler: getTokenSampler(interactionDataSummarizationTokenSamplerId), characterStopPattern: getStopPattern(characterStopPatternId), webSummarizationStopPattern: getStopPattern(webSummarizationStopPatternId), interactionDataSummarizationStopPattern: getStopPattern(interactionDataSummarizationStopPatternId), characterDialogueRetrievalConfiguration: getRetrievalConfiguration(dialogueRetrievalConfigurationId), characterStarterPromptRetrievalConfiguration: getRetrievalConfiguration(starterPromptRetrievalConfigurationId), characterKnowledgeRetrievalConfiguration: getRetrievalConfiguration(knowledgeRetrievalConfigurationId), characterMemoryRetrievalConfiguration: getRetrievalConfiguration(memoryRetrievalConfigurationId), firstCreatedTimestamp: ep?.firstCreatedTimestamp || now, lastUpdatedTimestamp: now,
         };
     };
 
@@ -446,11 +446,11 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         { id: 'embedding-device-type', label: 'Embedding (Gemma 300M)', value: embeddingDeviceType, onChange: setEmbeddingDeviceType },
     ];
 
-    const samplerConfigs = [
-        { label: "Character Language Model Sampler", value: characterLanguageModelSamplerId, onChange: setCharacterLanguageModelSamplerId, desc: "Used for main character text generation." },
-        { label: "Character Text-To-Speech Model Sampler", value: characterTextToSpeechModelSamplerId, onChange: setCharacterTextToSpeechModelSamplerId, desc: "Used for vocal expressiveness." },
-        { label: "Web Summarization Sampler", value: webSummarizationSamplerId, onChange: setWebSummarizationSamplerId, desc: "Used for summarizing web search results." },
-        { label: "Interaction Data Sampler", value: interactionDataSummarizationSamplerId, onChange: setInteractionDataSummarizationSamplerId, desc: "Used for summarizing chat history/context." },
+    const tokenSamplerConfigs = [
+        { label: "Character Language Model TokenSampler", value: characterLanguageModelTokenSamplerId, onChange: setCharacterLanguageModelTokenSamplerId, desc: "Used for main character text generation." },
+        { label: "Character Text-To-Speech Model TokenSampler", value: characterTextToSpeechModelTokenSamplerId, onChange: setCharacterTextToSpeechModelTokenSamplerId, desc: "Used for vocal expressiveness." },
+        { label: "Web Summarization TokenSampler", value: webSummarizationTokenSamplerId, onChange: setWebSummarizationTokenSamplerId, desc: "Used for summarizing web search results." },
+        { label: "Interaction Data TokenSampler", value: interactionDataSummarizationTokenSamplerId, onChange: setInteractionDataSummarizationTokenSamplerId, desc: "Used for summarizing chat history/context." },
     ];
 
     const stopPatternConfigs = [
@@ -890,9 +890,9 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                             </div>
 
                             <div className="editor-section">
-                                <span className="editor-section-title">Samplers</span>
+                                <span className="editor-section-title">TokenSamplers</span>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '12px', marginTop: '12px' }}>
-                                    {samplerConfigs.map((cfg, i) => <EntityDropdown key={i} label={cfg.label} value={cfg.value} onChange={cfg.onChange} items={allSamplers} noneLabel="(System Default)" noneDescription={cfg.desc} />)}
+                                    {tokenSamplerConfigs.map((cfg, i) => <EntityDropdown key={i} label={cfg.label} value={cfg.value} onChange={cfg.onChange} items={allTokenSamplers} noneLabel="(System Default)" noneDescription={cfg.desc} />)}
                                 </div>
                             </div>
 

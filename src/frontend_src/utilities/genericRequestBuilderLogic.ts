@@ -1,8 +1,8 @@
-import type { Sampler } from "../types";
+import type { TokenSampler } from "../types";
 
-export function extractSamplerParameters(sampler: Sampler | undefined): Record<string, unknown> {
-    if (!sampler?.parameters) return {};
-    const params = sampler.parameters;
+export function extractTokenSamplerParameters(tokenSampler: TokenSampler | undefined): Record<string, unknown> {
+    if (!tokenSampler?.parameters) return {};
+    const params = tokenSampler.parameters;
     const result: Record<string, unknown> = {};
 
     for (const [key, value] of Object.entries(params)) {
@@ -21,12 +21,12 @@ export function extractSamplerParameters(sampler: Sampler | undefined): Record<s
 export function buildGenericCompletionBody(
     prompt: string,
     maxTokens: number,
-    sampler: Sampler | undefined,
+    tokenSampler: TokenSampler | undefined,
     stopSequences: string[],
 ): Record<string, unknown> {
-    const samplerParams = extractSamplerParameters(sampler);
+    const tokenSamplerParams = extractTokenSamplerParameters(tokenSampler);
     return {
-        ...samplerParams,
+        ...tokenSamplerParams,
         prompt,
         n_predict: maxTokens,
         stop: stopSequences,

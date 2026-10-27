@@ -18,7 +18,7 @@ import { localURL } from '../../configurations';
 
 import type {
     Character, PromptBlock, Profile, InteractionData, Context, Location, AudioTrack,
-    Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, World, Memory, Account,
+    TokenSampler, StopPattern, RetrievalConfiguration, BudgetStrategy, World, Memory, Account,
     MultiplayerData, EntityFolder, RawInteractionData, HistoryMessage, LanguageModel, SpatiotemporalModel, InterjectableAction
 } from '../types';
 
@@ -34,7 +34,7 @@ interface UseChatSessionOptions {
     allPromptBlocks: PromptBlock[];
     allLanguageModels: LanguageModel[];
     allSpatiotemporalModels: SpatiotemporalModel[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
@@ -68,7 +68,7 @@ export function useChatSession(options: UseChatSessionOptions) {
             allWorlds: options.allWorlds,
             allLanguageModels: options.allLanguageModels,
             allSpatiotemporalModels: options.allSpatiotemporalModels,
-            allSamplers: options.allSamplers,
+            allTokenSamplers: options.allTokenSamplers,
             allPromptBlocks: options.allPromptBlocks,
             allStopPatterns: options.allStopPatterns,
             allRetrievalConfigurations: options.allRetrievalConfigurations,

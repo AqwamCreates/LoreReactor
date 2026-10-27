@@ -38,8 +38,8 @@ export function stripCharacterForSync(char: Character): Character {
         knowledgePrompts: [],
         starterPrompts: [],
         textCharacterInjections: [],
-        languageModelSampler: undefined,
-        textToSpeechModelSampler: undefined,
+        languageModelTokenSampler: undefined,
+        textToSpeechModelTokenSampler: undefined,
         stopPatterns: [],
     };
 }

@@ -37,7 +37,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ### Character-Related
 
-* Per-character sampler profiles override generation parameters independently.
+* Per-character tokenSampler profiles override generation parameters independently.
 
 * Each character has independent ```maximumChatStamina``` (determines the maximum number of paragraphs per message), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
 
@@ -47,7 +47,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ### Sampler-Related
 
-* Multiple samplers can use the same stop pattern configuration.
+* Multiple tokenSamplers can use the same stop pattern configuration.
 
 ### Immersion-Related
 

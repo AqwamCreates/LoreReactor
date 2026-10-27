@@ -121,7 +121,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
             let ch: Character | null = null;
             try {
-                ch = sh.languageModelSampler ? sh : await loadFullCharacter(charId);
+                ch = sh.languageModelTokenSampler ? sh : await loadFullCharacter(charId);
             } catch (e) {
                 console.error('[useEntityToggles] Failed to load character:', e);
             }
@@ -209,7 +209,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
 
         let ch: Character | null = null;
         try {
-            ch = sh.languageModelSampler ? sh : await loadFullCharacter(charId);
+            ch = sh.languageModelTokenSampler ? sh : await loadFullCharacter(charId);
         } catch (e) {
             console.error('[useEntityToggles] Failed to load character:', e);
         }

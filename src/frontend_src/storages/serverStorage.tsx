@@ -1,6 +1,6 @@
 // src/frontend_src/storages/serverStorage.tsx
 import type { 
-  StopPattern, RawStopPattern, Sampler, RawSampler, Context, RawContext, LanguageModel, RawLanguageModel,
+  StopPattern, RawStopPattern, TokenSampler, RawTokenSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   SpatiotemporalModel, RawSpatiotemporalModel,
   Character, RawCharacter, RawInteractionMessage, RawWhisperMessage, InteractionData, RawInteractionData, EntityFolder, RawEntityFolder,
   BudgetStrategy, RawBudgetStrategy, InterjectableAction, Profile, RawProfile,
@@ -49,7 +49,7 @@ const ENTITY_REGISTRY = {
   characters: { dir: 'character_data', hasManifest: true },
   characterImages: { dir: 'character_images', hasManifest: false },
   characterVoices: { dir: 'character_voices', hasManifest: false },
-  samplers: { dir: 'sampler_data', hasManifest: true },
+  tokenSamplers: { dir: 'token_sampler_data', hasManifest: true },
   contexts: { dir: 'context_data', hasManifest: true },
   contextImages: { dir: 'context_images', hasManifest: false },
   locations: { dir: 'location_data', hasManifest: true },
@@ -587,36 +587,36 @@ export const deleteRawRetrievalConfiguration = retrievalConfigurationRepo.remove
 // SAMPLER REPOSITORY
 // =============================================================================
 
-const samplerRepo = createRepository<Sampler, RawSampler>({
-  entityKey: 'samplers',
+const tokenSamplerRepo = createRepository<TokenSampler, RawTokenSampler>({
+  entityKey: 'tokenSamplers',
   hydrate: async (raw, id) => {
     const stopPatternIds = raw.stopPatternIds || [];
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
 
-    return hydrateEntity<Sampler, RawSampler>(raw, id, {
-        name: 'Unknown Sampler',
+    return hydrateEntity<TokenSampler, RawTokenSampler>(raw, id, {
+        name: 'Unknown Token Sampler',
         parameters: {},
         stopPatterns: [],
     }, {
         stopPatterns: () => stopPatterns
     });
   },
-  serialize: (sampler) => {
-    const { id, stopPatterns, ...rest } = sampler;
+  serialize: (tokenSampler) => {
+    const { id, stopPatterns, ...rest } = tokenSampler;
     return {
       ...rest,
       stopPatternIds: stopPatterns.map(sp => sp.id),
       lastUpdatedTimestamp: Date.now(),
-    } as RawSampler;
+    } as RawTokenSampler;
   },
 });
 
-export const loadRawSamplerManifest = samplerRepo.loadManifest;
-export const loadRawSampler = samplerRepo.loadRaw;
-export const loadAllRawSamplers = samplerRepo.loadAll;
-export const saveRawSampler = samplerRepo.save;
-export const deleteRawSampler = samplerRepo.remove;
+export const loadRawTokenSamplerManifest = tokenSamplerRepo.loadManifest;
+export const loadRawTokenSampler = tokenSamplerRepo.loadRaw;
+export const loadAllRawTokenSamplers = tokenSamplerRepo.loadAll;
+export const saveRawTokenSampler = tokenSamplerRepo.save;
+export const deleteRawTokenSampler = tokenSamplerRepo.remove;
 
 // =============================================================================
 // CHARACTER REPOSITORY
@@ -632,18 +632,18 @@ function createDeletedCharacterStub(id: string): Character {
 const characterRepo = createRepository<Character, RawCharacter>({
   entityKey: 'characters',
   hydrate: async (raw, id) => {
-    const lmSamplerId = raw.languageModelSamplerId;
-    let languageModelSampler: Sampler | undefined = undefined;
-    if (lmSamplerId) {
-      const loaded = await loadRawSampler(lmSamplerId);
-      if (loaded) languageModelSampler = loaded;
+    const lmTokenSamplerId = raw.languageModelTokenSamplerId;
+    let languageModelTokenSampler: TokenSampler | undefined = undefined;
+    if (lmTokenSamplerId) {
+      const loaded = await loadRawTokenSampler(lmTokenSamplerId);
+      if (loaded) languageModelTokenSampler = loaded;
     }
 
-    const ttsSamplerId = raw.textToSpeechModelSamplerId;
-    let textToSpeechModelSampler: Sampler | undefined = undefined;
-    if (ttsSamplerId) {
-      const loaded = await loadRawSampler(ttsSamplerId);
-      if (loaded) textToSpeechModelSampler = loaded;
+    const ttsTokenSamplerId = raw.textToSpeechModelTokenSamplerId;
+    let textToSpeechModelTokenSampler: TokenSampler | undefined = undefined;
+    if (ttsTokenSamplerId) {
+      const loaded = await loadRawTokenSampler(ttsTokenSamplerId);
+      if (loaded) textToSpeechModelTokenSampler = loaded;
     }
 
     const stopPatternIds = raw.stopPatternIds || [];
@@ -673,8 +673,8 @@ const characterRepo = createRepository<Character, RawCharacter>({
         tools: { ...defaultCharacterTools },
         memories: {},
     }, {
-        languageModelSampler: () => languageModelSampler,
-        textToSpeechModelSampler: () => textToSpeechModelSampler,
+        languageModelTokenSampler: () => languageModelTokenSampler,
+        textToSpeechModelTokenSampler: () => textToSpeechModelTokenSampler,
         stopPatterns: () => stopPatterns,
         dialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
         starterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
@@ -685,12 +685,12 @@ const characterRepo = createRepository<Character, RawCharacter>({
     });
   },
   serialize: async (character) => {
-    const { languageModelSampler, textToSpeechModelSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
+    const { languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
-      languageModelSamplerId: languageModelSampler?.id,
-      textToSpeechModelSamplerId: textToSpeechModelSampler?.id,
+      languageModelTokenSamplerId: languageModelTokenSampler?.id,
+      textToSpeechModelTokenSamplerId: textToSpeechModelTokenSampler?.id,
       stopPatternIds: stopPatterns?.map(sp => sp.id) || [],
       dialogueRetrievalConfigurationId: dialogueRetrievalConfiguration?.id,
       starterPromptRetrievalConfigurationId: starterPromptRetrievalConfiguration?.id,
@@ -724,8 +724,8 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
         images: {},
         tools: { ...defaultCharacterTools },
         memories: {},
-        languageModelSampler: undefined,
-        textToSpeechModelSampler: undefined,
+        languageModelTokenSampler: undefined,
+        textToSpeechModelTokenSampler: undefined,
         stopPatterns: [],
         dialogueRetrievalConfiguration: undefined,
         starterPromptRetrievalConfiguration: undefined,
@@ -750,18 +750,18 @@ export async function loadAllCharacterShells(): Promise<Character[]> {
 const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
   entityKey: 'multiplayerCharacters',
   hydrate: async (raw, id) => {
-    const lmSamplerId = raw.languageModelSamplerId;
-    let languageModelSampler: Sampler | undefined = undefined;
-    if (lmSamplerId) {
-      const loaded = await loadRawSampler(lmSamplerId);
-      if (loaded) languageModelSampler = loaded;
+    const lmTokenSamplerId = raw.languageModelTokenSamplerId;
+    let languageModelTokenSampler: TokenSampler | undefined = undefined;
+    if (lmTokenSamplerId) {
+      const loaded = await loadRawTokenSampler(lmTokenSamplerId);
+      if (loaded) languageModelTokenSampler = loaded;
     }
 
-    const ttsSamplerId = raw.textToSpeechModelSamplerId;
-    let textToSpeechModelSampler: Sampler | undefined = undefined;
-    if (ttsSamplerId) {
-      const loaded = await loadRawSampler(ttsSamplerId);
-      if (loaded) textToSpeechModelSampler = loaded;
+    const ttsTokenSamplerId = raw.textToSpeechModelTokenSamplerId;
+    let textToSpeechModelTokenSampler: TokenSampler | undefined = undefined;
+    if (ttsTokenSamplerId) {
+      const loaded = await loadRawTokenSampler(ttsTokenSamplerId);
+      if (loaded) textToSpeechModelTokenSampler = loaded;
     }
 
     const stopPatternIds = raw.stopPatternIds || [];
@@ -790,8 +790,8 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
         tools: { ...defaultCharacterTools },
         memories: {},
     }, {
-        languageModelSampler: () => languageModelSampler,
-        textToSpeechModelSampler: () => textToSpeechModelSampler,
+        languageModelTokenSampler: () => languageModelTokenSampler,
+        textToSpeechModelTokenSampler: () => textToSpeechModelTokenSampler,
         stopPatterns: () => stopPatterns,
         dialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
         starterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
@@ -802,12 +802,12 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
     });
   },
   serialize: async (character) => {
-    const { languageModelSampler, textToSpeechModelSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
+    const { languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
-      languageModelSamplerId: languageModelSampler?.id,
-      textToSpeechModelSamplerId: textToSpeechModelSampler?.id,
+      languageModelTokenSamplerId: languageModelTokenSampler?.id,
+      textToSpeechModelTokenSamplerId: textToSpeechModelTokenSampler?.id,
       stopPatternIds: stopPatterns?.map(sp => sp.id) || [],
       dialogueRetrievalConfigurationId: dialogueRetrievalConfiguration?.id,
       starterPromptRetrievalConfigurationId: starterPromptRetrievalConfiguration?.id,
@@ -1032,16 +1032,16 @@ const profileRepo = createRepository<Profile, RawProfile>({
       }))
       : getDefaultSummarizationSteps();
 
-    // Resolve Samplers
-    let characterLanguageModelSampler: Sampler | undefined = undefined;
-    let characterTextToSpeechModelSampler: Sampler | undefined = undefined;
-    let webSummarizationSampler: Sampler | undefined = undefined;
-    let interactionDataSummarizationSampler: Sampler | undefined = undefined;
+    // Resolve TokenSamplers
+    let characterLanguageModelTokenSampler: TokenSampler | undefined = undefined;
+    let characterTextToSpeechModelTokenSampler: TokenSampler | undefined = undefined;
+    let webSummarizationTokenSampler: TokenSampler | undefined = undefined;
+    let interactionDataSummarizationTokenSampler: TokenSampler | undefined = undefined;
 
-    if (raw.characterLanguageModelSamplerId) characterLanguageModelSampler = await loadRawSampler(raw.characterLanguageModelSamplerId) ?? undefined;
-    if (raw.characterTextToSpeechModelSamplerId) characterTextToSpeechModelSampler = await loadRawSampler(raw.characterTextToSpeechModelSamplerId) ?? undefined;
-    if (raw.webSummarizationSamplerId) webSummarizationSampler = await loadRawSampler(raw.webSummarizationSamplerId) ?? undefined;
-    if (raw.interactionDataSummarizationSamplerId) interactionDataSummarizationSampler = await loadRawSampler(raw.interactionDataSummarizationSamplerId) ?? undefined;
+    if (raw.characterLanguageModelTokenSamplerId) characterLanguageModelTokenSampler = await loadRawTokenSampler(raw.characterLanguageModelTokenSamplerId) ?? undefined;
+    if (raw.characterTextToSpeechModelTokenSamplerId) characterTextToSpeechModelTokenSampler = await loadRawTokenSampler(raw.characterTextToSpeechModelTokenSamplerId) ?? undefined;
+    if (raw.webSummarizationTokenSamplerId) webSummarizationTokenSampler = await loadRawTokenSampler(raw.webSummarizationTokenSamplerId) ?? undefined;
+    if (raw.interactionDataSummarizationTokenSamplerId) interactionDataSummarizationTokenSampler = await loadRawTokenSampler(raw.interactionDataSummarizationTokenSamplerId) ?? undefined;
 
     // Resolve Stop Patterns
     let characterStopPattern: StopPattern | undefined = undefined;
@@ -1115,10 +1115,10 @@ const profileRepo = createRepository<Profile, RawProfile>({
         autoResumeSignals: [],
     }, {
         summarizationSteps: () => summarizationSteps,
-        characterLanguageModelSampler: () => characterLanguageModelSampler,
-        characterTextToSpeechModelSampler: () => characterTextToSpeechModelSampler,
-        webSummarizationSampler: () => webSummarizationSampler,
-        interactionDataSummarizationSampler: () => interactionDataSummarizationSampler,
+        characterLanguageModelTokenSampler: () => characterLanguageModelTokenSampler,
+        characterTextToSpeechModelTokenSampler: () => characterTextToSpeechModelTokenSampler,
+        webSummarizationTokenSampler: () => webSummarizationTokenSampler,
+        interactionDataSummarizationTokenSampler: () => interactionDataSummarizationTokenSampler,
         characterStopPattern: () => characterStopPattern,
         webSummarizationStopPattern: () => webSummarizationStopPattern,
         interactionDataSummarizationStopPattern: () => interactionDataSummarizationStopPattern,
@@ -1131,10 +1131,10 @@ const profileRepo = createRepository<Profile, RawProfile>({
   serialize: (profile) => {
     const { 
       summarizationSteps, 
-      characterLanguageModelSampler, 
-      characterTextToSpeechModelSampler,
-      webSummarizationSampler,
-      interactionDataSummarizationSampler,
+      characterLanguageModelTokenSampler, 
+      characterTextToSpeechModelTokenSampler,
+      webSummarizationTokenSampler,
+      interactionDataSummarizationTokenSampler,
       characterStopPattern,
       webSummarizationStopPattern,
       interactionDataSummarizationStopPattern,
@@ -1150,10 +1150,10 @@ const profileRepo = createRepository<Profile, RawProfile>({
     return {
       ...rest,
       summarizationSteps: rawSteps,
-      characterLanguageModelSamplerId: characterLanguageModelSampler?.id,
-      characterTextToSpeechModelSamplerId: characterTextToSpeechModelSampler?.id,
-      webSummarizationSamplerId: webSummarizationSampler?.id,
-      interactionDataSummarizationSamplerId: interactionDataSummarizationSampler?.id,
+      characterLanguageModelTokenSamplerId: characterLanguageModelTokenSampler?.id,
+      characterTextToSpeechModelTokenSamplerId: characterTextToSpeechModelTokenSampler?.id,
+      webSummarizationTokenSamplerId: webSummarizationTokenSampler?.id,
+      interactionDataSummarizationTokenSamplerId: interactionDataSummarizationTokenSampler?.id,
       characterStopPatternId: characterStopPattern?.id,
       webSummarizationStopPatternId: webSummarizationStopPattern?.id,
       interactionDataSummarizationStopPatternId: interactionDataSummarizationStopPattern?.id,

@@ -1456,7 +1456,7 @@ function getMimeType(ext: string): string {
 // ─── Startup Data Sanitizer ──────────────────────────────────────────
 
 const MANIFEST_DIRS = [
-  'character_data', 'multiplayer_character_data', 'sampler_data', 'context_data',
+  'character_data', 'multiplayer_character_data', 'token_sampler_data', 'context_data',
   'location_data', 'model_data', 'stop_pattern_data', 'knowledge_configuration_data', 'interaction_messages',
   'interaction_data', 'entity_folders', 'budget_strategies', 'profile_data', 'world_data',
   'webpage_data', 'memory_data', 'audio_track_data', 'prompt_block_data',
@@ -1906,6 +1906,7 @@ app.get(SPATIOTEMPORAL_MODEL_STATUS_ROUTE, (_req, response) => {
   response.json({ activeModels: status, count: status.length });
 });
 
+// ─── Local Backends Management Endpoints for LanguageModelInferenceManager ───
 app.get(LANGUAGE_MODEL_ROUTE, (_req, res) => {
   const result = Object.entries(BACKEND_CONFIGS)
     .filter(([_, cfg]) => cfg.category !== 'spatiotemporal')
@@ -1947,6 +1948,7 @@ const handleInstall = async (req: express.Request, res: express.Response) => {
   }
 };
 
+// ─── Cancel Installation ─────────────────────────────────────────────
 const handleCancel = (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
   if (!backend) return res.status(400).json({ error: 'Missing backend' });
@@ -1959,6 +1961,7 @@ const handleCancel = (req: express.Request, res: express.Response) => {
   res.json({ success: true, message: `Cancellation requested for ${backend}.` });
 };
 
+// ─── Delete / Uninstall Backend ──────────────────────────────────────
 const handleDelete = async (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
   if (!backend || !BACKEND_CONFIGS[backend as LocalBackend]) {
@@ -3137,7 +3140,7 @@ app.post('/api/text-to-speech/unload', (_req, res) => {
 });
 
 app.post('/api/text-to-speech/synthesize', async (request, response) => {
-  const { text, audioBase64, transcript, language, sampler } = request.body;
+  const { text, audioBase64, transcript, language, tokenSampler } = request.body;
 
   if (!text || !audioBase64 || !transcript) {
     return response.status(400).json({ error: 'Missing text, audioBase64, or transcript' });
@@ -3207,9 +3210,9 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
           '--video-ffmpeg-dir', FFMPEG_DIR,
         ];
 
-        // ✅ INJECT SAMPLER PARAMETERS INTO LLAMA-TTS (Respects UI Order & Enabled Toggles)
-        if (sampler && typeof sampler === 'object' && sampler.parameters) {
-            const params = sampler.parameters;
+        // ✅ INJECT TOKEN SAMPLER PARAMETERS INTO LLAMA-TTS (Respects UI Order & Enabled Toggles)
+        if (tokenSampler && typeof tokenSampler === 'object' && tokenSampler.parameters) {
+            const params = tokenSampler.parameters;
             
             // 1. Get the exact order defined by the UI drag-and-drop
             const order = Array.isArray(params._parameterOrder) 
@@ -3270,9 +3273,9 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
                 }
             }
             
-            // 4. Inject Max Tokens from the Sampler configuration
-            if (sampler.maximumNumberOfTokens && sampler.maximumNumberOfTokens > 0) {
-                llamaTtsArgs.push('-n', String(sampler.maximumNumberOfTokens));
+            // 4. Inject Max Tokens from the TokenSampler configuration
+            if (tokenSampler.maximumNumberOfTokens && tokenSampler.maximumNumberOfTokens > 0) {
+                llamaTtsArgs.push('-n', String(tokenSampler.maximumNumberOfTokens));
             }
         }
 

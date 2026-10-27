@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataManagerModal.tsx
 import { useState, useCallback, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, SpatiotemporalModel, Sampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, EntityFolder } from '../types';
+import type { Character, Context, Location, AudioTrack, World, PromptBlock, LanguageModel, SpatiotemporalModel, TokenSampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, RawInteractionData, Account, MultiplayerData, EntityFolder } from '../types';
 import { useToast } from '../context/ToastContext';
 import { saveRawSessionData, deleteSessionData, deleteMultiplayerJoinData, deleteActionFormatData, clearPreferencesCache, clearSaveQueue, deleteFormatPreferences } from '../storages/serverStorage';
 import '../main.css';
@@ -15,7 +15,7 @@ interface DataManagerModalProps {
     allPromptBlocks: PromptBlock[];
     allLanguageModels: LanguageModel[];
     allSpatiotemporalModels: SpatiotemporalModel[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
@@ -33,7 +33,7 @@ interface DataManagerModalProps {
     onDeletePromptBlock: (id: string) => void;
     onDeleteModel: (id: string) => void;
     onDeleteSpatiotemporalModel: (id: string) => void;
-    onDeleteSampler: (id: string) => void;
+    onDeleteTokenSampler: (id: string) => void;
     onDeleteStopPattern: (id: string) => void;
     onDeleteRetrievalConfiguration: (id: string) => void;
     onDeleteBudgetStrategy: (id: string) => void;
@@ -47,7 +47,7 @@ interface DataManagerModalProps {
 
 type TabId = 'storage' | 'cleanup' | 'integrity' | 'cache' | 'bulk' | 'danger';
 
-type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'languageModel' | 'spatiotemporalModel' | 'sampler' | 'stopPattern' | 'retrievalConfiguration' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
+type EntityType = 'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'promptBlock' | 'languageModel' | 'spatiotemporalModel' | 'tokenSampler' | 'stopPattern' | 'retrievalConfiguration' | 'budgetStrategy' | 'profile' | 'memory' | 'account' | 'multiplayerData' | 'entityFolder';
 
 type SortField = 'name' | 'type' | 'lastUpdated' | 'flags';
 type SortDirection = 'asc' | 'desc';
@@ -94,7 +94,7 @@ const ENTITY_TYPE_META: Record<EntityType, { icon: string; label: string }> = {
     promptBlock: { icon: '🧱', label: 'Prompt Blocks' },
     languageModel: { icon: '🤖', label: 'Language Models' },
     spatiotemporalModel: { icon: '🎨', label: 'Spatiotemporal Models' },
-    sampler: { icon: '🎚️', label: 'Samplers' },
+    tokenSampler: { icon: '🎚️', label: 'Token Samplers' },
     stopPattern: { icon: '🛑', label: 'Stop Patterns' },
     retrievalConfiguration: { icon: '🧭', label: 'Retrieval Configurations' },
     budgetStrategy: { icon: '💰', label: 'Budget Strategies' },
@@ -172,8 +172,8 @@ function isEntityHollow(
             const m = entity as SpatiotemporalModel;
             return !m.model && !m.apiKey;
         }
-        case 'sampler': {
-            const s = entity as Sampler;
+        case 'tokenSampler': {
+            const s = entity as TokenSampler;
             const hasParams = s.parameters && Object.keys(s.parameters).length > 0;
             return !hasParams && !(s.stopPatterns?.length);
         }
@@ -230,7 +230,7 @@ export function DataManagerModal({
     allPromptBlocks,
     allLanguageModels,
     allSpatiotemporalModels,
-    allSamplers,
+    allTokenSamplers,
     allStopPatterns,
     allRetrievalConfigurations,
     allBudgetStrategies,
@@ -248,7 +248,7 @@ export function DataManagerModal({
     onDeletePromptBlock,
     onDeleteModel,
     onDeleteSpatiotemporalModel,
-    onDeleteSampler,
+    onDeleteTokenSampler,
     onDeleteStopPattern,
     onDeleteRetrievalConfiguration,
     onDeleteBudgetStrategy,
@@ -304,7 +304,7 @@ export function DataManagerModal({
             { label: 'Prompt Blocks', icon: '🧱', count: allPromptBlocks.length, estimatedSizeKb: estimateKb(allPromptBlocks, 1536) },
             { label: 'Language Models', icon: '🤖', count: allLanguageModels.length, estimatedSizeKb: estimateKb(allLanguageModels, 1024) },
             { label: 'Spatiotemporal Models', icon: '🎨', count: allSpatiotemporalModels.length, estimatedSizeKb: estimateKb(allSpatiotemporalModels, 1024) },
-            { label: 'Samplers', icon: '🎚️', count: allSamplers.length, estimatedSizeKb: estimateKb(allSamplers, 512) },
+            { label: 'Token Samplers', icon: '🎚️', count: allTokenSamplers.length, estimatedSizeKb: estimateKb(allTokenSamplers, 512) },
             { label: 'Stop Patterns', icon: '🛑', count: allStopPatterns.length, estimatedSizeKb: estimateKb(allStopPatterns, 256) },
             { label: 'Retrieval Configurations', icon: '🧭', count: allRetrievalConfigurations.length, estimatedSizeKb: estimateKb(allRetrievalConfigurations, 256) },
             { label: 'Budget Strategies', icon: '💰', count: allBudgetStrategies.length, estimatedSizeKb: estimateKb(allBudgetStrategies, 1024) },
@@ -315,7 +315,7 @@ export function DataManagerModal({
             { label: 'Folders', icon: '📁', count: allEntityFolders.length, estimatedSizeKb: estimateKb(allEntityFolders, 1024) },
             { label: 'Sessions', icon: '💬', count: allRawInteractionDataShells.length, estimatedSizeKb: estimateKb(allRawInteractionDataShells, 8192) },
         ];
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const scanCleanup = useCallback(() => {
         setIsScanning(true);
@@ -325,8 +325,7 @@ export function DataManagerModal({
         const locIdSet = new Set(allLocations.map(l => l.id));
         const audioIdSet = new Set(allAudioTracks.map(a => a.id));
         const modelIdSet = new Set(allLanguageModels.map(m => m.id));
-        const spatiotemporalModelIdSet = new Set(allSpatiotemporalModels.map(m => m.id));
-        const samplerIdSet = new Set(allSamplers.map(s => s.id));
+        const tokenSamplerIdSet = new Set(allTokenSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const retrievalConfigIdSet = new Set(allRetrievalConfigurations.map(rc => rc.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
@@ -340,8 +339,7 @@ export function DataManagerModal({
         const referencedAudioIds = new Set<string>();
         const referencedPbIds = new Set<string>();
         const referencedModelIds = new Set<string>();
-        const referencedSpatiotemporalModelIds = new Set<string>();
-        const referencedSamplerIds = new Set<string>();
+        const referencedTokenSamplerIds = new Set<string>();
         const referencedStopPatternIds = new Set<string>();
         const referencedRetrievalConfigIds = new Set<string>();
         const referencedProfileIds = new Set<string>();
@@ -366,8 +364,8 @@ export function DataManagerModal({
         }
 
         for (const c of allCharacters) {
-            if (c.languageModelSampler?.id && samplerIdSet.has(c.languageModelSampler.id)) referencedSamplerIds.add(c.languageModelSampler.id);
-            if (c.textToSpeechModelSampler?.id && samplerIdSet.has(c.textToSpeechModelSampler.id)) referencedSamplerIds.add(c.textToSpeechModelSampler.id);
+            if (c.languageModelTokenSampler?.id && tokenSamplerIdSet.has(c.languageModelTokenSampler.id)) referencedTokenSamplerIds.add(c.languageModelTokenSampler.id);
+            if (c.textToSpeechModelTokenSampler?.id && tokenSamplerIdSet.has(c.textToSpeechModelTokenSampler.id)) referencedTokenSamplerIds.add(c.textToSpeechModelTokenSampler.id);
             
             if (c.stopPatterns) {
                 for (const sp of c.stopPatterns) {
@@ -390,14 +388,14 @@ export function DataManagerModal({
         }
 
         for (const p of allProfiles) {
-            const samplerRefs = [
-                p.characterLanguageModelSampler?.id,
-                p.characterTextToSpeechModelSampler?.id,
-                p.webSummarizationSampler?.id,
-                p.interactionDataSummarizationSampler?.id,
+            const tokenSamplerRefs = [
+                p.characterLanguageModelTokenSampler?.id,
+                p.characterTextToSpeechModelTokenSampler?.id,
+                p.webSummarizationTokenSampler?.id,
+                p.interactionDataSummarizationTokenSampler?.id,
             ];
-            for (const sId of samplerRefs) {
-                if (sId && samplerIdSet.has(sId)) referencedSamplerIds.add(sId);
+            for (const sId of tokenSamplerRefs) {
+                if (sId && tokenSamplerIdSet.has(sId)) referencedTokenSamplerIds.add(sId);
             }
 
             const stopPatternRefs = [
@@ -420,8 +418,8 @@ export function DataManagerModal({
             }
         }
 
-        for (const s of allSamplers) {
-            if (referencedSamplerIds.has(s.id)) {
+        for (const s of allTokenSamplers) {
+            if (referencedTokenSamplerIds.has(s.id)) {
                 for (const sp of (s.stopPatterns || [])) {
                     if (stopPatternIdSet.has(sp.id)) referencedStopPatternIds.add(sp.id);
                 }
@@ -492,8 +490,9 @@ export function DataManagerModal({
         for (const w of allWorlds) check('world', w.id, w.name, w.lastUpdatedTimestamp, true, w);
         for (const b of allPromptBlocks) check('promptBlock', b.id, b.name, b.lastUpdatedTimestamp, referencedPbIds.has(b.id), b);
         for (const m of allLanguageModels) check('languageModel', m.id, m.name, m.lastUpdatedTimestamp, referencedModelIds.has(m.id), m);
-        for (const m of allSpatiotemporalModels) check('spatiotemporalModel', m.id, m.name, m.lastUpdatedTimestamp, referencedSpatiotemporalModelIds.has(m.id), m);
-        for (const s of allSamplers) check('sampler', s.id, s.name, s.lastUpdatedTimestamp, referencedSamplerIds.has(s.id), s);
+        // Spatiotemporal models aren't referenced by other entities yet, so we pass `true` to prevent false orphan flags
+        for (const m of allSpatiotemporalModels) check('spatiotemporalModel', m.id, m.name, m.lastUpdatedTimestamp, true, m);
+        for (const s of allTokenSamplers) check('tokenSampler', s.id, s.name, s.lastUpdatedTimestamp, referencedTokenSamplerIds.has(s.id), s);
         for (const sp of allStopPatterns) check('stopPattern', sp.id, sp.name, sp.lastUpdatedTimestamp, referencedStopPatternIds.has(sp.id), sp);
         for (const rc of allRetrievalConfigurations) check('retrievalConfiguration', rc.id, rc.name, rc.lastUpdatedTimestamp, referencedRetrievalConfigIds.has(rc.id), rc);
         for (const bs of allBudgetStrategies) check('budgetStrategy', bs.id, bs.name, bs.lastUpdatedTimestamp, true, bs);
@@ -507,7 +506,7 @@ export function DataManagerModal({
         setSelectedIds(new Set());
         setSearchQuery('');
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells, nameIsMeaningful, descriptionIsMeaningful, staleDaysCleanup]);
 
     const scanIntegrity = useCallback(() => {
         setIsScanning(true);
@@ -517,8 +516,7 @@ export function DataManagerModal({
         const locIdSet = new Set(allLocations.map(l => l.id));
         const audioIdSet = new Set(allAudioTracks.map(a => a.id));
         const modelIdSet = new Set(allLanguageModels.map(m => m.id));
-        const spatiotemporalModelIdSet = new Set(allSpatiotemporalModels.map(m => m.id));
-        const samplerIdSet = new Set(allSamplers.map(s => s.id));
+        const tokenSamplerIdSet = new Set(allTokenSamplers.map(s => s.id));
         const stopPatternIdSet = new Set(allStopPatterns.map(sp => sp.id));
         const retrievalConfigIdSet = new Set(allRetrievalConfigurations.map(rc => rc.id));
         const profileIdSet = new Set(allProfiles.map(p => p.id));
@@ -536,7 +534,7 @@ export function DataManagerModal({
         allPromptBlocks.forEach(p => globalEntityIds.add(p.id));
         allLanguageModels.forEach(m => globalEntityIds.add(m.id));
         allSpatiotemporalModels.forEach(m => globalEntityIds.add(m.id));
-        allSamplers.forEach(s => globalEntityIds.add(s.id));
+        allTokenSamplers.forEach(s => globalEntityIds.add(s.id));
         allStopPatterns.forEach(sp => globalEntityIds.add(sp.id));
         allRetrievalConfigurations.forEach(rc => globalEntityIds.add(rc.id));
         allBudgetStrategies.forEach(bs => globalEntityIds.add(bs.id));
@@ -606,8 +604,8 @@ export function DataManagerModal({
             if (world.profileId && !profileIdSet.has(world.profileId)) issues.push({ entityType: 'World', entityName: world.name, issue: 'References missing profile', refType: 'profile', refId: world.profileId });
         }
         for (const c of allCharacters) {
-            if (c.languageModelSampler?.id && !samplerIdSet.has(c.languageModelSampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing language model sampler', refType: 'Sampler', refId: c.languageModelSampler.id });
-            if (c.textToSpeechModelSampler?.id && !samplerIdSet.has(c.textToSpeechModelSampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing TTS sampler', refType: 'Sampler', refId: c.textToSpeechModelSampler.id });
+            if (c.languageModelTokenSampler?.id && !tokenSamplerIdSet.has(c.languageModelTokenSampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing language model tokenSampler', refType: 'Token Sampler', refId: c.languageModelTokenSampler.id });
+            if (c.textToSpeechModelTokenSampler?.id && !tokenSamplerIdSet.has(c.textToSpeechModelTokenSampler.id)) issues.push({ entityType: 'Character', entityName: c.name, issue: 'References missing TTS tokenSampler', refType: 'Token Sampler', refId: c.textToSpeechModelTokenSampler.id });
             
             if (c.stopPatterns) {
                 for (const sp of c.stopPatterns) {
@@ -665,9 +663,9 @@ export function DataManagerModal({
                 }
             }
         }
-        for (const s of allSamplers) {
+        for (const s of allTokenSamplers) {
             for (const sp of (s.stopPatterns || [])) {
-                if (!stopPatternIdSet.has(sp.id)) issues.push({ entityType: 'Sampler', entityName: s.name, issue: 'References missing stop pattern', refType: 'Stop Pattern', refId: sp.id });
+                if (!stopPatternIdSet.has(sp.id)) issues.push({ entityType: 'Token Sampler', entityName: s.name, issue: 'References missing stop pattern', refType: 'Stop Pattern', refId: sp.id });
             }
         }
         for (const bs of allBudgetStrategies) {
@@ -703,15 +701,15 @@ export function DataManagerModal({
         }
 
         for (const p of allProfiles) {
-            const samplerChecks = [
-                { sampler: p.characterLanguageModelSampler, label: 'language model sampler' },
-                { sampler: p.characterTextToSpeechModelSampler, label: 'TTS sampler' },
-                { sampler: p.webSummarizationSampler, label: 'web summarization sampler' },
-                { sampler: p.interactionDataSummarizationSampler, label: 'interaction data sampler' },
+            const tokenSamplerChecks = [
+                { tokenSampler: p.characterLanguageModelTokenSampler, label: 'language model tokenSampler' },
+                { tokenSampler: p.characterTextToSpeechModelTokenSampler, label: 'TTS tokenSampler' },
+                { tokenSampler: p.webSummarizationTokenSampler, label: 'web summarization tokenSampler' },
+                { tokenSampler: p.interactionDataSummarizationTokenSampler, label: 'interaction data tokenSampler' },
             ];
-            for (const check of samplerChecks) {
-                if (check.sampler?.id && !samplerIdSet.has(check.sampler.id)) {
-                    issues.push({ entityType: 'Profile', entityName: p.name, issue: `References missing ${check.label}`, refType: 'Sampler', refId: check.sampler.id });
+            for (const check of tokenSamplerChecks) {
+                if (check.tokenSampler?.id && !tokenSamplerIdSet.has(check.tokenSampler.id)) {
+                    issues.push({ entityType: 'Profile', entityName: p.name, issue: `References missing ${check.label}`, refType: 'TokenSampler', refId: check.tokenSampler.id });
                 }
             }
 
@@ -741,7 +739,7 @@ export function DataManagerModal({
 
         setIntegrityIssues(issues);
         setIsScanning(false);
-    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
+    }, [allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns, allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData, allEntityFolders, allRawInteractionDataShells]);
 
     const filteredAndSorted = useMemo(() => {
         const query = searchQuery.toLowerCase();
@@ -812,7 +810,7 @@ export function DataManagerModal({
                 case 'promptBlock': onDeletePromptBlock(item.id); break;
                 case 'languageModel': onDeleteModel(item.id); break;
                 case 'spatiotemporalModel': onDeleteSpatiotemporalModel(item.id); break;
-                case 'sampler': onDeleteSampler(item.id); break;
+                case 'tokenSampler': onDeleteTokenSampler(item.id); break;
                 case 'stopPattern': onDeleteStopPattern(item.id); break;
                 case 'retrievalConfiguration': onDeleteRetrievalConfiguration(item.id); break;
                 case 'budgetStrategy': onDeleteBudgetStrategy(item.id); break;
@@ -984,7 +982,7 @@ export function DataManagerModal({
             case 'promptBlocks': for (const b of allPromptBlocks) { onDeletePromptBlock(b.id); count++; } break;
             case 'models': for (const m of allLanguageModels) { onDeleteModel(m.id); count++; } break;
             case 'spatiotemporalModels': for (const m of allSpatiotemporalModels) { onDeleteSpatiotemporalModel(m.id); count++; } break;
-            case 'samplers': for (const s of allSamplers) { onDeleteSampler(s.id); count++; } break;
+            case 'tokenSamplers': for (const s of allTokenSamplers) { onDeleteTokenSampler(s.id); count++; } break;
             case 'stopPatterns': for (const sp of allStopPatterns) { onDeleteStopPattern(sp.id); count++; } break;
             case 'retrievalConfigurations': for (const rc of allRetrievalConfigurations) { onDeleteRetrievalConfiguration(rc.id); count++; } break;
             case 'budgetStrategies': for (const bs of allBudgetStrategies) { onDeleteBudgetStrategy(bs.id); count++; } break;
@@ -1180,7 +1178,7 @@ export function DataManagerModal({
 
                     {activeTab === 'integrity' && (
                         <div>
-                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, samplers, stop patterns, retrieval configurations, memories, sessions, accounts, folders, or profiles.</div>
+                            <div style={{ fontSize: '0.75rem', opacity: 0.6, marginBottom: '12px', lineHeight: 1.5 }}>Cross-reference integrity check. Finds broken bindings where entities reference deleted characters, contexts, locations, audio tracks, worlds, prompt blocks, models, tokenSamplers, stop patterns, retrieval configurations, memories, sessions, accounts, folders, or profiles.</div>
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
                                 <button type="button" className="editor-button editor-button-save" onClick={scanIntegrity} disabled={isScanning} style={{ fontSize: '0.75rem', padding: '8px 16px' }}>{isScanning ? 'Checking...' : 'Run Integrity Check'}</button>
                             </div>
@@ -1341,7 +1339,7 @@ export function DataManagerModal({
                                         { key: 'promptBlocks', label: 'All Prompt Blocks', count: allPromptBlocks.length },
                                         { key: 'models', label: 'All Language Models', count: allLanguageModels.length },
                                         { key: 'spatiotemporalModels', label: 'All Spatiotemporal Models', count: allSpatiotemporalModels.length },
-                                        { key: 'samplers', label: 'All Samplers', count: allSamplers.length },
+                                        { key: 'tokenSamplers', label: 'All Token Samplers', count: allTokenSamplers.length },
                                         { key: 'stopPatterns', label: 'All Stop Patterns', count: allStopPatterns.length },
                                         { key: 'retrievalConfigurations', label: 'All Retrieval Configs', count: allRetrievalConfigurations.length },
                                         { key: 'budgetStrategies', label: 'All Budget Strategies', count: allBudgetStrategies.length },

@@ -62,13 +62,13 @@ export interface RawRetrievalConfiguration extends RawData {
   sortOrderFromTop: retrievalSortOrder
 }
 
-export interface Sampler extends ObjectData {
+export interface TokenSampler extends ObjectData {
   parameters?: Record<string, unknown>;
   stopPatterns: StopPattern[];
   maximumNumberOfTokens?: number;
 }
 
-export interface RawSampler extends RawData {
+export interface RawTokenSampler extends RawData {
   parameters?: Record<string, unknown>;
   stopPatternIds: string[];
   maximumNumberOfTokens?: number;
@@ -232,16 +232,53 @@ export interface RawLanguageModel extends RawData {
   outputGenerationCostPerOneMillionOfTokens?: number;
 }
 
+export type DiffusionSampler = 
+  | 'euler' | 'euler_a' | 'heun' | 'dpm2' 
+  | 'dpm++_2m' | 'dpm++_2m_v2' | 'dpm++_2s_a' 
+  | 'lcm' | 'flow_match';
+
+export type DiffusionScheduler = 
+  | 'normal' | 'karras' | 'exponential' | 'sgm_uniform' | 'ays';
+
+export interface SpatiotemporalGenerationDefaults {
+  samplingMethod?: DiffusionSampler;
+  noiseSchedule?: DiffusionScheduler;
+  steps?: number;
+  cfgScale?: number;
+  width?: number;
+  height?: number;
+  clipSkip?: number;
+  rng?: 'cuda' | 'cpu';
+}
+
 export interface SpatiotemporalModel extends ObjectData {
-  backend: backend;
+  backend: backend; 
   model?: string;
+  vae?: string;
+  clipL?: string;
+  t5xxl?: string;
+  llm?: string;
+  taesd?: string;
+  controlNet?: string;
+  loraDir?: string;
+  upscaleModel?: string;
+  defaults?: SpatiotemporalGenerationDefaults;
   apiKey?: string;
   parameters?: Record<string, unknown>;
 }
 
 export interface RawSpatiotemporalModel extends RawData {
-  backend: backend;
+  backend: backend; 
   model?: string;
+  vae?: string;
+  clipL?: string;
+  t5xxl?: string;
+  llm?: string;
+  taesd?: string;
+  controlNet?: string;
+  loraDir?: string;
+  upscaleModel?: string;
+  defaults?: SpatiotemporalGenerationDefaults;
   apiKey?: string;
   parameters?: Record<string, unknown>;
 }
@@ -343,8 +380,8 @@ export interface Character extends ObjectData {
   contextSensitivity: number;
   maximumActionStamina: number;
   actionStaminaRegenerationRate: number // Stamina per second. Default is 0.03 stamina per second.
-  languageModelSampler?: Sampler | undefined;
-  textToSpeechModelSampler?: Sampler | undefined;
+  languageModelTokenSampler?: TokenSampler | undefined;
+  textToSpeechModelTokenSampler?: TokenSampler | undefined;
   stopPatterns?: StopPattern[];
   dialogueRetrievalConfiguration?: RetrievalConfiguration
   starterPromptRetrievalConfiguration?: RetrievalConfiguration
@@ -390,8 +427,8 @@ export interface RawCharacter extends RawData {
   contextSensitivity: number;
   maximumActionStamina: number;
   actionStaminaRegenerationRate: number // Stamina per second. Default is 0.03 stamina per second.
-  languageModelSamplerId?: string | undefined;
-  textToSpeechModelSamplerId?: string | undefined;
+  languageModelTokenSamplerId?: string | undefined;
+  textToSpeechModelTokenSamplerId?: string | undefined;
   stopPatternIds?: string[];
   dialogueRetrievalConfigurationId?: string
   starterPromptRetrievalConfigurationId?: string
@@ -924,7 +961,7 @@ export interface AutoResumeSignal {
 
   regularExpressionActivationTrigger?: string; // If not empty, this activates the auto-resume.
   regularExpressionDeactivationTrigger?: string; // If not empty, this deactivates the auto-resume.
-  stopPattern: string; // This will append this to the existing stop patterns in the sampler if the activation signal is met. If the activation signal is empty, then a partial text would activate the actions instead.
+  stopPattern: string; // This will append this to the existing stop patterns in the tokenSampler if the activation signal is met. If the activation signal is empty, then a partial text would activate the actions instead.
   minimumLength: string; // Default is 0. Measured based on individual text characters after the activation trigger. If empty, check the overall message length instead. Once the generated partial text exceeds this length, it would allow deactivationTrigger to take place.
   maximumNumberOfAutoResumes: number // At 0, no auto-resume. Default is 10.
 
@@ -990,10 +1027,10 @@ export interface Profile extends ObjectData {
   voiceActivityDetectionDeviceType: deviceType; // Default is auto.
   embeddingDeviceType: deviceType ; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals, it will auto-resume until this signal is hit.
-  characterLanguageModelSampler?: Sampler;
-  characterTextToSpeechModelSampler?: Sampler;
-  webSummarizationSampler?: Sampler;
-  interactionDataSummarizationSampler?: Sampler;
+  characterLanguageModelTokenSampler?: TokenSampler;
+  characterTextToSpeechModelTokenSampler?: TokenSampler;
+  webSummarizationTokenSampler?: TokenSampler;
+  interactionDataSummarizationTokenSampler?: TokenSampler;
   characterStopPattern?: StopPattern;
   webSummarizationStopPattern?: StopPattern;
   interactionDataSummarizationStopPattern?: StopPattern;
@@ -1058,10 +1095,10 @@ export interface RawProfile extends RawData {
   voiceActivityDetectionDeviceType: deviceType; // Default is auto.
   embeddingDeviceType: deviceType ; // Default is auto.
   autoResumeSignals: AutoResumeSignal[]; // When empty, the models will determine the natural stop. Otherwise, if the partially-generated text does not end with these signals and has visited the activating, it will auto-resume until this signal is hit.
-  characterLanguageModelSamplerId?: string;
-  characterTextToSpeechModelSamplerId?: string;
-  webSummarizationSamplerId?: string;
-  interactionDataSummarizationSamplerId?: string;
+  characterLanguageModelTokenSamplerId?: string;
+  characterTextToSpeechModelTokenSamplerId?: string;
+  webSummarizationTokenSamplerId?: string;
+  interactionDataSummarizationTokenSamplerId?: string;
   characterStopPatternId?: string;
   webSummarizationStopPatternId?: string;
   interactionDataSummarizationStopPatternId?: string;
@@ -1184,7 +1221,7 @@ export type Entity =
   | PromptBlock 
   | LanguageModel 
   | SpatiotemporalModel
-  | Sampler 
+  | TokenSampler 
   | StopPattern 
   | Profile 
   | BudgetStrategy 
@@ -1197,11 +1234,11 @@ export type entityType =
   | 'location' 
   | 'audioTrack' 
   | 'world' 
+  | 'promptBlock' 
   | 'interactionData' 
   | 'languageModel' 
   | 'spatiotemporalModel'
-  | 'sampler' 
-  | 'promptBlock' 
+  | 'tokenSampler' 
   | 'stopPattern'
   | 'retrievalConfiguration'
   | 'budgetStrategy' 

@@ -1306,7 +1306,7 @@ function queryAppleGpu(): GpuStatus | null {
     let utilization = 0;
     let power: number | null = null;
     try {
-      const pmRaw = execSync('powermetrics --samplers gpu_power -n 1 -i 500 --format json', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' });
+      const pmRaw = execSync('powermetrics --tokenSamplers gpu_power -n 1 -i 500 --format json', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' });
       const pmData = JSON.parse(pmRaw);
       const gpu = pmData.gpu_power?.[0] || pmData.gpu;
       if (gpu) {
@@ -1381,7 +1381,7 @@ function getMimeType(ext: string): string {
 // ─── Startup Data Sanitizer ──────────────────────────────────────────
 
 const MANIFEST_DIRS = [
-  'character_data', 'multiplayer_character_data', 'sampler_data', 'context_data',
+  'character_data', 'multiplayer_character_data', 'token_sampler_data', 'context_data',
   'location_data', 'model_data', 'stop_pattern_data', 'interaction_messages',
   'interaction_data', 'budget_strategies', 'profile_data', 'world_data',
   'webpage_data', 'memory_data', 'audio_track_data', 'prompt_block_data',

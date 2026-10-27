@@ -7,7 +7,7 @@ import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import type {
     BaseMessage, Character, Context, Location, AudioTrack, Profile,
     InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage,
-    PromptBlock, StopPattern, Sampler, BudgetStrategy, World, Memory,
+    PromptBlock, StopPattern, TokenSampler, BudgetStrategy, World, Memory,
     Extension, Account, MultiplayerData, toolUsageDisplayMode, ToolMessage,
     tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel, SpatiotemporalModel,
     entityType, ActiveToolActions, PendingToolAction, PendingToolActionType,
@@ -52,7 +52,7 @@ export interface ToolExecutionContext {
     allWorlds: World[];
     allLanguageModels: LanguageModel[];
     allSpatiotemporalModels: SpatiotemporalModel[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
@@ -71,7 +71,7 @@ export interface ToolExecutionContext {
 // ─── Canonical entityType Mapping ───────────────────────────────────
 export const VALID_ENTITY_TYPES: entityType[] = [
     'character', 'context', 'location', 'audioTrack', 'world',
-    'interactionData', 'languageModel', 'spatiotemporalModel', 'sampler', 'promptBlock', 'stopPattern',
+    'interactionData', 'languageModel', 'spatiotemporalModel', 'tokenSampler', 'promptBlock', 'stopPattern',
     'retrievalConfiguration', 'budgetStrategy', 'profile', 'account',
     'multiplayerData', 'entityFolder'
 ];
@@ -93,7 +93,7 @@ export function normalizeEntityType(raw: string): entityType | null {
         spatiotemporalmodel: 'spatiotemporalModel', spatiotemporalmodels: 'spatiotemporalModel',
         imagemodel: 'spatiotemporalModel', imagemodels: 'spatiotemporalModel',
         videomodel: 'spatiotemporalModel', videomodels: 'spatiotemporalModel',
-        sampler: 'sampler', samplers: 'sampler',
+        tokenSampler: 'tokenSampler', tokenSamplers: 'tokenSampler',
         promptblock: 'promptBlock', promptblocks: 'promptBlock',
         stoppattern: 'stopPattern', stoppatterns: 'stopPattern',
         retrievalconfiguration: 'retrievalConfiguration', retrievalconfigurations: 'retrievalConfiguration',
@@ -118,7 +118,7 @@ function getEntitiesByType(context: ToolExecutionContext | undefined, type: enti
         case 'interactionData': return context.allRawInteractionDataShells || [];
         case 'languageModel': return context.allLanguageModels || [];
         case 'spatiotemporalModel': return context.allSpatiotemporalModels || [];
-        case 'sampler': return context.allSamplers || [];
+        case 'tokenSampler': return context.allTokenSamplers || [];
         case 'promptBlock': return context.allPromptBlocks || [];
         case 'stopPattern': return context.allStopPatterns || [];
         case 'retrievalConfiguration': return context.allRetrievalConfigurations || [];

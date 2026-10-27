@@ -1,5 +1,5 @@
 // src/frontend_src/utilities/slashCommandLogic.ts
-import type { Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel, SpatiotemporalModel } from '../types';
+import type { Character, Location, Context, AudioTrack, World, PromptBlock, TokenSampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel, SpatiotemporalModel } from '../types';
 import { getLocalMessageHistory } from './timelineLogic';
 import { getReachableLocationsByCharacter, getCoLocatedParticipants } from './locationLogic';
 
@@ -9,7 +9,7 @@ export type ArgType =
     | 'session_character' | 'global_character' | 'colocated_character'
     | 'clothing' | 'audio' | 'item' | 'context' | 'rng_table' 
     | 'dialogue' | 'knowledge' | 'memory' | 'entity_type' 
-    | 'prompt_block' | 'sampler' | 'stop_pattern' | 'profile' 
+    | 'prompt_block' | 'tokenSampler' | 'stop_pattern' | 'profile' 
     | 'world' | 'account' | 'multiplayer_session' 
     | 'language_model' | 'spatiotemporal_model' | 'budget_strategy';
 
@@ -28,7 +28,7 @@ export interface AutocompleteOption {
 
 export const VALID_ENTITY_TYPES = [
     'character', 'context', 'location', 'audio_track', 'prompt_block', 
-    'stop_pattern', 'sampler', 'budget_strategy', 'profile', 'world', 
+    'stop_pattern', 'tokenSampler', 'budget_strategy', 'profile', 'world', 
     'memory', 'account', 'multiplayer_data', 'language_model', 'spatiotemporal_model'
 ];
 
@@ -304,7 +304,7 @@ export function getEntityOptions(
     allPromptBlocks: PromptBlock[] = [],
     allLanguageModels: LanguageModel[] = [],
     allSpatiotemporalModels: SpatiotemporalModel[] = [],
-    allSamplers: Sampler[] = [],
+    allTokenSamplers: TokenSampler[] = [],
     allStopPatterns: StopPattern[] = [],
     allProfiles: Profile[] = [],
     allWorlds: World[] = [],
@@ -492,8 +492,8 @@ export function getEntityOptions(
         }));
     }
 
-    if (type === 'sampler') {
-        return allSamplers.map(s => ({
+    if (type === 'tokenSampler') {
+        return allTokenSamplers.map(s => ({
             value: s.id,
             label: s.name,
             id: s.id.substring(0, 8),
@@ -592,7 +592,7 @@ export function computeSlashAutocomplete(
     allPromptBlocks: PromptBlock[] = [], 
     allLanguageModels: LanguageModel[] = [], 
     allSpatiotemporalModels: SpatiotemporalModel[] = [],
-    allSamplers: Sampler[] = [], 
+    allTokenSamplers: TokenSampler[] = [], 
     allStopPatterns: StopPattern[] = [], 
     allBudgetStrategies: BudgetStrategy[] = [], 
     allMemories: Memory[] = [], 
@@ -674,7 +674,7 @@ export function computeSlashAutocomplete(
             const entities = getEntityOptions(
                 arg.type, interactionData, allCharacters, allLocations, allContexts,
                 allAudioTracks, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, 
-                allSamplers, allStopPatterns, allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
+                allTokenSamplers, allStopPatterns, allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
                 allBudgetStrategies, localProtagonist
             );
 
@@ -739,7 +739,7 @@ export function computeSlashAutocomplete(
 
         const entities = getEntityOptions(
             arg.type, interactionData, allCharacters, allLocations, allContexts,
-            allAudioTracks, allPromptBlocks, allLanguageModels, allSpatiotemporalModels,allSamplers, allStopPatterns,
+            allAudioTracks, allPromptBlocks, allLanguageModels, allSpatiotemporalModels,allTokenSamplers, allStopPatterns,
             allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
             allBudgetStrategies, localProtagonist
         );

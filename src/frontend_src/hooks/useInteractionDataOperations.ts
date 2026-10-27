@@ -70,7 +70,7 @@ export function useInteractionDataOperations(options: UseChatOperationsOptions) 
         if (chat) {
             let fullChat = chat;
 
-            // Hydrate protagonists with full data (system prompts, samplers) if available.
+            // Hydrate protagonists with full data (system prompts, tokenSamplers) if available.
             // Since protagonists are now just IDs, we hydrate the matching participants.
             if (loadFullCharacter && fullChat.protagonistIds?.length) {
                 const protagIdSet = new Set(fullChat.protagonistIds);

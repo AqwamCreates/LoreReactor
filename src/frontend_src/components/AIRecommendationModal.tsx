@@ -1,7 +1,7 @@
 // src/frontend_src/components/AIRecommendationModal.tsx
 import type React from 'react';
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
-import type { Character, Context, Location, AudioTrack, Sampler, LanguageModel, Profile, World, PromptBlock, EntityFolder, entityImageType } from '../types';
+import type { Character, Context, Location, AudioTrack, TokenSampler, LanguageModel, Profile, World, PromptBlock, EntityFolder, entityImageType } from '../types';
 import { buildGenericCompletionBody } from '../utilities/genericRequestBuilderLogic';
 import { EntitySelectList } from './EntitySelectList';
 import { EntitySelect } from './EntitySelect';
@@ -31,7 +31,7 @@ interface AIRecommendationModalProps {
     onOpenAudioTrackEditor?: (track: AudioTrack | null, onApplyToRecommendation: (t: AudioTrack) => void) => void;
     onOpenProfileEditor?: (profile: Profile | null, onApplyToRecommendation: (p: Profile) => void) => void;
     onOpenPromptBlockEditor?: (block: PromptBlock | null, onApplyToRecommendation: (b: PromptBlock) => void) => void;
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allCharacters: Character[];
     allContexts: Context[];
     allLocations: Location[];
@@ -45,7 +45,7 @@ interface AIRecommendationModalProps {
 export function AIRecommendationModal({
     onClose, onSaveCharacter, onSaveContext, onSaveLocation, onSaveAudioTrack, onSaveProfile, onSaveWorld, onSavePromptBlock, onSaveEntityFolder,
     onOpenCharacterEditor, onOpenContextEditor, onOpenLocationEditor, onOpenAudioTrackEditor, onOpenProfileEditor, onOpenPromptBlockEditor,
-    allSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], 
+    allTokenSamplers, allCharacters, allContexts, allLocations, allAudioTracks, allPromptBlocks, allEntityFolders = [], 
     allLanguageModels,
     runningLanguageModels
 }: AIRecommendationModalProps) {
@@ -64,18 +64,18 @@ export function AIRecommendationModal({
     const [localModelId, setLocalModelId] = useState<string>('');
     const [modelSearchQuery, setModelSearchQuery] = useState('');
     
-    const [localSamplerId, setLocalSamplerId] = useState<string>('');
-    const [samplerSearchQuery, setSamplerSearchQuery] = useState('');
+    const [localTokenSamplerId, setLocalTokenSamplerId] = useState<string>('');
+    const [tokenSamplerSearchQuery, setTokenSamplerSearchQuery] = useState('');
 
     const activeModel = useMemo(() => {
         if (!localModelId) return null;
         return allLanguageModels.find(m => m.id === localModelId) || null;
     }, [localModelId, allLanguageModels]);
 
-    const activeSampler = useMemo(() => {
-        if (!localSamplerId) return null;
-        return allSamplers.find(s => s.id === localSamplerId) || null;
-    }, [localSamplerId, allSamplers]);
+    const activeTokenSampler = useMemo(() => {
+        if (!localTokenSamplerId) return null;
+        return allTokenSamplers.find(s => s.id === localTokenSamplerId) || null;
+    }, [localTokenSamplerId, allTokenSamplers]);
 
     const [selectedCharacterIds, setSelectedCharacterIds] = useState<string[]>([]);
     const [selectedContextIds, setSelectedContextIds] = useState<string[]>([]);
@@ -147,7 +147,7 @@ export function AIRecommendationModal({
     const resetForm = useCallback(() => {
         setError(null); setUserPrompt(''); setMaxTokens(2048);
         setLocalModelId(''); setModelSearchQuery('');
-        setLocalSamplerId(''); setSamplerSearchQuery('');
+        setLocalTokenSamplerId(''); setTokenSamplerSearchQuery('');
         setImageInjectionPriority(['reference', 'character', 'context', 'location', 'promptBlock']);
         setDragIndex(null); setDragOverIndex(null);
         setJsonHistory([]); setEditingHistoryId(null); setEditingJsonText(''); setExpandedHistoryId(null);
@@ -182,11 +182,11 @@ export function AIRecommendationModal({
         abortControllerRef.current?.abort(); abortControllerRef.current = null;
         setIsGenerating(false);
         if (streamingText) {
-            const p = tryParseGeneratedOutput(streamingText, allSamplers);
+            const p = tryParseGeneratedOutput(streamingText, allTokenSamplers);
             setParsedOutput(p);
             if (!p) setResultError('Stopped. Output was not valid JSON.');
         }
-    }, [streamingText, allSamplers]);
+    }, [streamingText, allTokenSamplers]);
 
     const toggleEntity = (type: EntityType) => setSelectedEntities(prev => prev.includes(type) ? prev.filter(e => e !== type) : [...prev, type]);
     const toggleInOrderedList = (_ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
@@ -207,11 +207,11 @@ export function AIRecommendationModal({
     const startEditingHistory = useCallback((entry: JsonHistoryEntry) => { setEditingHistoryId(entry.id); setEditingJsonText(entry.jsonText); setExpandedHistoryId(entry.id); }, []);
     const saveHistoryEdit = useCallback(() => {
         if (!editingHistoryId) return;
-        const p = tryParseGeneratedOutput(editingJsonText, allSamplers);
+        const p = tryParseGeneratedOutput(editingJsonText, allTokenSamplers);
         if (!p) { setError('Edited JSON is not valid.'); return; }
         setJsonHistory(prev => prev.map(e => e.id === editingHistoryId ? { ...e, jsonText: editingJsonText, parsedOutput: p, label: deriveHistoryLabel(p), isEdited: true } : e));
         setEditingHistoryId(null); setEditingJsonText(''); setError(null);
-    }, [editingHistoryId, editingJsonText, allSamplers]);
+    }, [editingHistoryId, editingJsonText, allTokenSamplers]);
     const cancelHistoryEdit = useCallback(() => { setEditingHistoryId(null); setEditingJsonText(''); }, []);
     const loadHistoryToResult = useCallback((entry: JsonHistoryEntry) => { setStreamingText(entry.jsonText); setParsedOutput(entry.parsedOutput); setResultError(null); setIsResultOpen(true); setActiveTab('raw'); }, []);
     const refineFromHistory = useCallback((entry: JsonHistoryEntry) => { setUserPrompt(prev => { const b = prev; const r = `\n\nREFINE THIS EXISTING OUTPUT:\n${entry.jsonText}`; return b ? `${b}${r}` : `Refine and improve this JSON output.${r}`; }); setError(null); }, []);
@@ -323,14 +323,14 @@ export function AIRecommendationModal({
             const urp = userPrompt ? `\n\nUser Request: ${userPrompt}` : '\n\nUser Request: Generate freely.';
             const fp = `${sp}${urp}${imgDesc}${injBlock}`;
             let acc = '';
-            const requestBody = buildGenericCompletionBody(fp, maxTokens, activeSampler ?? undefined, []);
+            const requestBody = buildGenericCompletionBody(fp, maxTokens, activeTokenSampler ?? undefined, []);
             const res = await recommendationEngine.generateStream(
                 { ...requestBody, stream: true },
                 ctrl,
-                { onToken: (s) => { acc = s.fullText; setStreamingText(s.fullText); const p = tryParseGeneratedOutput(s.fullText, allSamplers); if (p) setParsedOutput(p); } },
+                { onToken: (s) => { acc = s.fullText; setStreamingText(s.fullText); const p = tryParseGeneratedOutput(s.fullText, allTokenSamplers); if (p) setParsedOutput(p); } },
             );
             const ft = res.text || acc; setStreamingText(ft);
-            const parsed = tryParseGeneratedOutput(ft, allSamplers); setParsedOutput(parsed);
+            const parsed = tryParseGeneratedOutput(ft, allTokenSamplers); setParsedOutput(parsed);
             if (!parsed) setResultError('AI response was not valid JSON.');
             else if (!ft) setResultError('AI returned empty response.');
             else addToHistory(ft, parsed, false);
@@ -526,19 +526,19 @@ export function AIRecommendationModal({
                         </div>
 
                         <div className="editor-section">
-                            <span className="editor-section-title">Generation Sampler</span>
+                            <span className="editor-section-title">Generation TokenSampler</span>
                             <EntitySelect 
-                                label="Sampler" 
+                                label="TokenSampler" 
                                 description="Generation parameters used for the AI recommendation."
-                                items={allSamplers} 
-                                selectedId={localSamplerId} 
-                                onSelect={setLocalSamplerId} 
-                                searchQuery={samplerSearchQuery} 
-                                onSearchChange={setSamplerSearchQuery} 
+                                items={allTokenSamplers} 
+                                selectedId={localTokenSamplerId} 
+                                onSelect={setLocalTokenSamplerId} 
+                                searchQuery={tokenSamplerSearchQuery} 
+                                onSearchChange={setTokenSamplerSearchQuery} 
                                 allowNone={true}
-                                noneLabel="No Sampler (Use Model Defaults)"
+                                noneLabel="No TokenSampler (Use Model Defaults)"
                                 noneDescription="Falls back to the language model's native generation settings."
-                                renderDescription={sampler => `Temp: ${sampler.parameters?.temperature ?? '?'}, TopP: ${sampler.parameters?.top_p ?? '?'}, Tokens: ${sampler.maximumNumberOfTokens ?? '?'}`}
+                                renderDescription={tokenSampler => `Temp: ${tokenSampler.parameters?.temperature ?? '?'}, TopP: ${tokenSampler.parameters?.top_p ?? '?'}, Tokens: ${tokenSampler.maximumNumberOfTokens ?? '?'}`}
                             />
                         </div>
 
@@ -582,7 +582,7 @@ export function AIRecommendationModal({
                                 {characters.map((char, i) => (
                                     <div key={char.id || i} style={{ marginBottom: '16px', padding: '8px', border: '1px solid var(--border)', borderRadius: '6px' }}>
                                         {renderSummary(char.description)}
-                                        {renderFieldList(Object.entries(char).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'memories' && k !== 'sampler' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp' && k !== 'images'))}
+                                        {renderFieldList(Object.entries(char).filter(([k]) => k !== 'description' && k !== 'id' && k !== 'memories' && k !== 'tokenSampler' && k !== 'firstCreatedTimestamp' && k !== 'lastUpdatedTimestamp' && k !== 'images'))}
                                         {onOpenCharacterEditor && <div style={{ marginTop: '8px', textAlign: 'center' }}><button type="button" className="editor-button editor-button-save" onClick={() => onOpenCharacterEditor(char, () => {})} style={editBtnStyle}>✏️ Open in Editor</button></div>}
                                     </div>
                                 ))}

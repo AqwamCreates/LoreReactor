@@ -1,5 +1,5 @@
 // src/frontend_src/dictionaries/defaults.ts
-import type { BudgetData, BudgetStrategy, Character, entityImageType, InterjectableAction, LanguageModel, memorySearchSpace, MultiplayerData, promptBlockType, Sampler, textType, tool, tristateInteger } from '../types';
+import type { BudgetData, BudgetStrategy, Character, entityImageType, InterjectableAction, LanguageModel, memorySearchSpace, MultiplayerData, promptBlockType, TokenSampler, textType, tool, tristateInteger } from '../types';
 
 export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 
@@ -104,10 +104,10 @@ export const defaultCharacter: Character = {
 
 }
 
-export const defaultLanguageModelSampler: Sampler = {
-    id: "default-sampler",
+export const defaultLanguageModelTokenSampler: TokenSampler = {
+    id: "default-tokenSampler",
     name: "Default",
-    description: "Fallback sampler",
+    description: "Fallback tokenSampler",
     parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
     stopPatterns: [],
     maximumNumberOfTokens: 512,

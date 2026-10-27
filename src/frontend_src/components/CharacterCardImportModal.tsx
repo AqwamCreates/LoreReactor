@@ -1,7 +1,7 @@
 // src/frontend_src/components/CharacterCardImportModal.tsx
 import type React from 'react';
 import { useState, useRef } from 'react';
-import type { Character, Context, Sampler, tool, StarterPrompt } from '../types';
+import type { Character, Context, TokenSampler, tool, StarterPrompt } from '../types';
 import { parseCharacterCard, mapCardToEditorFields, type ParsedCharacterCardExtended } from '../utilities/characterCardParser';
 import { 
     getInitiativeWeightValueFromText, 
@@ -28,7 +28,7 @@ interface CharacterCardImportModalProps {
     onClose: () => void;
     onSaveCharacter: (char: Character) => Promise<boolean>;
     onSaveContext: (context: Context) => Promise<boolean>;
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
 }
 
 interface ImportPreview {
@@ -45,7 +45,7 @@ export function CharacterCardImportModal({
     onClose,
     onSaveCharacter,
     onSaveContext,
-    allSamplers,
+    allTokenSamplers,
 }: CharacterCardImportModalProps) {
     const [preview, setPreview] = useState<ImportPreview | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
@@ -137,8 +137,8 @@ export function CharacterCardImportModal({
                 initialTools[rule.tool] = true;
             }
 
-            // Assign default sampler if available
-            const defaultLanguageModelSampler = allSamplers.length > 0 ? allSamplers[0] : undefined;
+            // Assign default tokenSampler if available
+            const defaultLanguageModelTokenSampler = allTokenSamplers.length > 0 ? allTokenSamplers[0] : undefined;
 
             // Build starterPrompts from firstMes / alternateGreetings
             const starterPromptsArray: StarterPrompt[] = [];
@@ -185,7 +185,7 @@ export function CharacterCardImportModal({
                 dialoguePrompts: undefined,
                 starterPrompts: starterPromptsArray.length > 0 ? starterPromptsArray : undefined,
                 images: Object.keys(images).length > 0 ? images : undefined,
-                languageModelSampler: defaultLanguageModelSampler,
+                languageModelTokenSampler: defaultLanguageModelTokenSampler,
                 stopPatterns: undefined,
                 initiativeWeight,
                 chatProbability,

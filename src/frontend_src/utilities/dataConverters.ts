@@ -1,6 +1,6 @@
 // src/frontend_src/utilities/dataConverters.ts
 import type { 
-    Character, Context, Location, AudioTrack, Sampler, Profile, PromptBlock, 
+    Character, Context, Location, AudioTrack, TokenSampler, Profile, PromptBlock, 
     Clothing, TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StopPattern, 
     EntityFolder, entityType,
     tool, toolUsageDisplayMode, RegularExpressionTrigger, regularExpressionContext, 
@@ -196,7 +196,7 @@ function parsePromptFormatMode(raw: unknown): promptFormatMode {
 
 const VALID_ENTITY_TYPES: entityType[] = [
     'character', 'context', 'location', 'audioTrack', 
-    'world', 'interactionData', 'languageModel', 'sampler', 'promptBlock', 
+    'world', 'interactionData', 'languageModel', 'tokenSampler', 'promptBlock', 
     'stopPattern', 'budgetStrategy', 'profile', 
     'account', 'multiplayerData'
 ];
@@ -315,12 +315,12 @@ function fillStopPatternDefaults(sp: Record<string, unknown>): StopPattern {
     };
 }
 
-function fillSamplerDefaults(s: Record<string, unknown>): Sampler {
+function fillTokenSamplerDefaults(s: Record<string, unknown>): TokenSampler {
     const now = Date.now();
     const rawStopPatterns = Array.isArray(s.stopPatterns) ? s.stopPatterns as Record<string, unknown>[] : [];
     return {
         id: ensureId(s),
-        name: (s.name as string) || 'Unnamed Sampler',
+        name: (s.name as string) || 'Unnamed TokenSampler',
         description: (s.description as string) || undefined,
         parameters: (s.parameters && typeof s.parameters === 'object' && !Array.isArray(s.parameters)) ? s.parameters as Record<string, unknown> : undefined,
         stopPatterns: rawStopPatterns.map(item => fillStopPatternDefaults(item)),
@@ -359,7 +359,7 @@ function fillRetrievalConfigurationDefaults(raw: unknown): RetrievalConfiguratio
     };
 }
 
-function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]): Character {
+function fillCharacterDefaults(c: Record<string, unknown>, tokenSamplers: TokenSampler[]): Character {
     const now = Date.now();
     const rawClothings = Array.isArray(c.clothings) ? c.clothings as Record<string, unknown>[] : [];
     const rawTextInjections = Array.isArray(c.textCharacterInjections) ? c.textCharacterInjections as Record<string, unknown>[] : [];
@@ -367,13 +367,13 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
     const rawKnowledgePrompts = Array.isArray(c.knowledgePrompts) ? c.knowledgePrompts as Record<string, unknown>[] : [];
     const rawStopPatterns = Array.isArray(c.stopPatterns) ? c.stopPatterns as Record<string, unknown>[] : [];
 
-    const parsedLanguageModelSampler = (c.languageModelSampler && typeof c.languageModelSampler === 'object') 
-        ? fillSamplerDefaults(c.languageModelSampler as Record<string, unknown>) 
-        : (samplers.length > 0 ? samplers[0] : undefined);
+    const parsedLanguageModelTokenSampler = (c.languageModelTokenSampler && typeof c.languageModelTokenSampler === 'object') 
+        ? fillTokenSamplerDefaults(c.languageModelTokenSampler as Record<string, unknown>) 
+        : (tokenSamplers.length > 0 ? tokenSamplers[0] : undefined);
         
-    const parsedTextToSpeechModelSampler = (c.textToSpeechModelSampler && typeof c.textToSpeechModelSampler === 'object') 
-        ? fillSamplerDefaults(c.textToSpeechModelSampler as Record<string, unknown>) 
-        : (samplers.length > 0 ? samplers[0] : undefined);
+    const parsedTextToSpeechModelTokenSampler = (c.textToSpeechModelTokenSampler && typeof c.textToSpeechModelTokenSampler === 'object') 
+        ? fillTokenSamplerDefaults(c.textToSpeechModelTokenSampler as Record<string, unknown>) 
+        : (tokenSamplers.length > 0 ? tokenSamplers[0] : undefined);
 
     return {
         id: ensureId(c),
@@ -390,8 +390,8 @@ function fillCharacterDefaults(c: Record<string, unknown>, samplers: Sampler[]):
         knowledgePrompts: rawKnowledgePrompts.map(item => fillKnowledgePromptDefaults(item)),
         starterPrompts: parseStarterPrompts(c.starterPrompts),
         memoryPrompts: parseMemoryPrompts(c.memoryPrompts),
-        languageModelSampler: parsedLanguageModelSampler,
-        textToSpeechModelSampler: parsedTextToSpeechModelSampler,
+        languageModelTokenSampler: parsedLanguageModelTokenSampler,
+        textToSpeechModelTokenSampler: parsedTextToSpeechModelTokenSampler,
         stopPatterns: rawStopPatterns.length > 0 ? rawStopPatterns.map(item => fillStopPatternDefaults(item)) : undefined,
         useEmbeddingModelForDialoguePrompts: (c.useEmbeddingModelForDialoguePrompts as boolean) ?? false,
         useEmbeddingModelForStarterPrompts: (c.useEmbeddingModelForStarterPrompts as boolean) ?? false,
@@ -716,10 +716,10 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             lastUpdatedTimestamp: now,
         })),
         summarizationInstruction: (p.summarizationInstruction as string) || undefined,
-        characterLanguageModelSampler: (p.characterLanguageModelSampler && typeof p.characterLanguageModelSampler === 'object') ? fillSamplerDefaults(p.characterLanguageModelSampler as Record<string, unknown>) : undefined,
-        characterTextToSpeechModelSampler: (p.characterTextToSpeechModelSampler && typeof p.characterTextToSpeechModelSampler === 'object') ? fillSamplerDefaults(p.characterTextToSpeechModelSampler as Record<string, unknown>) : undefined,
-        webSummarizationSampler: (p.webSummarizationSampler && typeof p.webSummarizationSampler === 'object') ? fillSamplerDefaults(p.webSummarizationSampler as Record<string, unknown>) : undefined,
-        interactionDataSummarizationSampler: (p.interactionDataSummarizationSampler && typeof p.interactionDataSummarizationSampler === 'object') ? fillSamplerDefaults(p.interactionDataSummarizationSampler as Record<string, unknown>) : undefined,
+        characterLanguageModelTokenSampler: (p.characterLanguageModelTokenSampler && typeof p.characterLanguageModelTokenSampler === 'object') ? fillTokenSamplerDefaults(p.characterLanguageModelTokenSampler as Record<string, unknown>) : undefined,
+        characterTextToSpeechModelTokenSampler: (p.characterTextToSpeechModelTokenSampler && typeof p.characterTextToSpeechModelTokenSampler === 'object') ? fillTokenSamplerDefaults(p.characterTextToSpeechModelTokenSampler as Record<string, unknown>) : undefined,
+        webSummarizationTokenSampler: (p.webSummarizationTokenSampler && typeof p.webSummarizationTokenSampler === 'object') ? fillTokenSamplerDefaults(p.webSummarizationTokenSampler as Record<string, unknown>) : undefined,
+        interactionDataSummarizationTokenSampler: (p.interactionDataSummarizationTokenSampler && typeof p.interactionDataSummarizationTokenSampler === 'object') ? fillTokenSamplerDefaults(p.interactionDataSummarizationTokenSampler as Record<string, unknown>) : undefined,
         characterStopPattern: (p.characterStopPattern && typeof p.characterStopPattern === 'object') ? fillStopPatternDefaults(p.characterStopPattern as Record<string, unknown>) : undefined,
         webSummarizationStopPattern: (p.webSummarizationStopPattern && typeof p.webSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.webSummarizationStopPattern as Record<string, unknown>) : undefined,
         interactionDataSummarizationStopPattern: (p.interactionDataSummarizationStopPattern && typeof p.interactionDataSummarizationStopPattern === 'object') ? fillStopPatternDefaults(p.interactionDataSummarizationStopPattern as Record<string, unknown>) : undefined,
@@ -732,7 +732,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
     };
 }
 
-export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): GeneratedOutput | null {
+export function tryParseGeneratedOutput(text: string, tokenSamplers: TokenSampler[]): GeneratedOutput | null {
     let jsonStr = text;
     const codeBlockMatch = jsonStr.match(/```(?:json)?\s*([\s\S]*)```/);
     if (codeBlockMatch) jsonStr = codeBlockMatch[1];
@@ -743,7 +743,7 @@ export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): Gene
         const result: GeneratedOutput = {};
 
         if (Array.isArray(parsed.characters)) {
-            result.characters = parsed.characters.map((c: Record<string, unknown>) => fillCharacterDefaults(c, samplers));
+            result.characters = parsed.characters.map((c: Record<string, unknown>) => fillCharacterDefaults(c, tokenSamplers));
         }
         if (Array.isArray(parsed.contexts)) {
             result.contexts = parsed.contexts.map((c: Record<string, unknown>) => fillContextDefaults(c));
@@ -768,7 +768,7 @@ export function tryParseGeneratedOutput(text: string, samplers: Sampler[]): Gene
             result.world = {
                 name: (w.name as string) || 'Unnamed World',
                 description: (w.description as string) || undefined,
-                characters: Array.isArray(w.characters) ? w.characters.map((c: Record<string, unknown>) => fillCharacterDefaults(c, samplers)) : [],
+                characters: Array.isArray(w.characters) ? w.characters.map((c: Record<string, unknown>) => fillCharacterDefaults(c, tokenSamplers)) : [],
                 contexts: Array.isArray(w.contexts) ? w.contexts.map((c: Record<string, unknown>) => fillContextDefaults(c)) : [],
                 locations: Array.isArray(w.locations) ? w.locations.map((l: Record<string, unknown>) => fillLocationDefaults(l)) : [],
                 audioTracks: Array.isArray(w.audioTracks) ? w.audioTracks.map((t: Record<string, unknown>) => fillAudioTrackDefaults(t)) : [],

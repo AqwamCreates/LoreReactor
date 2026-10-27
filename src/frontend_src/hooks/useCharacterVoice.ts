@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useCharacterVoice.ts
 import { useCallback } from 'react';
-import type { Character, Sampler, deviceType } from '../types';
+import type { Character, TokenSampler, deviceType } from '../types';
 import { textToSpeechEngine, fetchVoiceReference } from '../services/TextToSpeechEngine';
 import { useChatStore } from './useChatStore';
 import { extractNarratableText } from '../utilities/voiceTextExtractor';
@@ -40,12 +40,12 @@ export function useCharacterVoice(allCharacters: Character[] = []) {
                         return;
                     }
 
-                    const sampler: Sampler | undefined = profile?.characterTextToSpeechModelSampler ?? targetChar.textToSpeechModelSampler;
+                    const tokenSampler: TokenSampler | undefined = profile?.characterTextToSpeechModelTokenSampler ?? targetChar.textToSpeechModelTokenSampler;
                     const devicePreference: deviceType = profile?.textToSpeechDeviceType ?? 'auto';
 
                     const blob = await textToSpeechEngine.synthesize(
                         segment.text,
-                        sampler,
+                        tokenSampler,
                         base64,
                         targetChar.voice.textContent,
                         targetChar.voice.language,

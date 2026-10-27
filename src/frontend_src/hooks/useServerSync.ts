@@ -67,7 +67,7 @@ export function useServerSync({ refreshers }: SyncProps) {
         else if (path.startsWith('profile_data/')) refreshers.profiles?.();
         else if (path.startsWith('prompt_block_data/')) refreshers.promptBlocks?.();
         else if (path.startsWith('language_model_data/')) refreshers.models?.();
-        else if (path.startsWith('sampler_data/')) refreshers.samplers?.();
+        else if (path.startsWith('token_sampler_data/')) refreshers.tokenSamplers?.();
         else if (path.startsWith('stop_pattern_data/')) refreshers.stopPatterns?.();
         else if (path.startsWith('budget_strategies/')) refreshers.budgetStrategies?.();
         else if (path.startsWith('multiplayer_data/')) refreshers.multiplayerData?.();

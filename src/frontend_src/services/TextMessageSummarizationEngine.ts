@@ -1,5 +1,5 @@
 // src/frontend_src/services/TextMessageSummarizationEngine.ts
-import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, Sampler, PromptBlock, Profile, TextMessage } from '../types';
+import type { InteractionData, HistoryMessage, Context, Character, ChatMessage, TokenSampler, PromptBlock, Profile, TextMessage } from '../types';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -58,7 +58,7 @@ function createAutoSummaryContext(name: string, description: string, text: strin
 export async function generateMessageSummary(
     message: HistoryMessage,
     maxTokens = 256,
-    sampler?: Sampler,
+    tokenSampler?: TokenSampler,
     profile?: Profile,
 ): Promise<string | null> {
     if (message.messageType !== 'chat') return null;
@@ -74,7 +74,7 @@ export async function generateMessageSummary(
     const stops = resolveEffectiveStopTokens(profile?.interactionDataSummarizationStopPattern, ['\n\n', '\nMessage from']);
     const prompt = `${SUMMARIZE_SYSTEM_PROMPT}\n\nMessage from ${message.character.name}:\n${text}\n\nSummary:`;
 
-    const requestBody = buildGenericCompletionBody(prompt, maxTokens, sampler, stops);
+    const requestBody = buildGenericCompletionBody(prompt, maxTokens, tokenSampler, stops);
     const bse = getBudgetStrategyEngine();
     const { text: result } = await bse.generateCompletion(requestBody);
     return result || null;
@@ -91,7 +91,7 @@ export async function generateCharacterMemory(
     if (localHistory.length === 0) return null;
 
     const participants = interactionData.participants;
-    const languageModelSampler = interactionData.profile?.characterLanguageModelSampler || character.languageModelSampler;
+    const languageModelTokenSampler = interactionData.profile?.characterLanguageModelTokenSampler || character.languageModelTokenSampler;
     const stopPattern = interactionData.profile?.characterStopPattern;
 
     const filteredMessages = getFilteredTextMessages(interactionData, character.id, promptBlocks);
@@ -162,7 +162,7 @@ export async function generateCharacterMemory(
     const prompt = [systemPrompt, thinkPrompt, `${delimiters.blockStart('system')}The Start Of My Memory${delimiters.blockEnd}`, chatHistoryArray.join('\n'), `${delimiters.blockStart('system')}The End Of My Memory${delimiters.blockEnd}`, perspectiveInstruction, delimiters.turnStart(participantTag)].filter(Boolean).join('\n\n');
     const stops = resolveEffectiveStopTokens(stopPattern);
 
-    const requestBody = buildGenericCompletionBody(prompt, maxTokens, languageModelSampler, stops);
+    const requestBody = buildGenericCompletionBody(prompt, maxTokens, languageModelTokenSampler, stops);
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
     if (!text) return null;
@@ -200,13 +200,13 @@ export async function generateMissingSummaries(
 
     const profile = interactionData.profile;
     for (const msg of toSummarize) {
-        const summary = await generateMessageSummary(msg, maxTokens, profile?.interactionDataSummarizationSampler, profile);
+        const summary = await generateMessageSummary(msg, maxTokens, profile?.interactionDataSummarizationTokenSampler, profile);
         if (summary) results.set(msg.id, summary);
     }
     return results;
 }
 
-async function compressChunk(messages: HistoryMessage[], maxTokens = 512, sampler?: Sampler, profile?: Profile): Promise<string | null> {
+async function compressChunk(messages: HistoryMessage[], maxTokens = 512, tokenSampler?: TokenSampler, profile?: Profile): Promise<string | null> {
     const chatMessages = messages.filter((m): m is ChatMessage => m.messageType === 'chat' && !!(m as ChatMessage).textContent);
     if (chatMessages.length === 0) return null;
 
@@ -223,7 +223,7 @@ async function compressChunk(messages: HistoryMessage[], maxTokens = 512, sample
     const stops = resolveEffectiveStopTokens(profile?.interactionDataSummarizationStopPattern);
     const prompt = `${COMPRESS_CHUNK_PROMPT}\n\nConversation chunk:\n${formatted}\n\nCompressed paragraph:`;
 
-    const requestBody = buildGenericCompletionBody(prompt, maxTokens, sampler, stops);
+    const requestBody = buildGenericCompletionBody(prompt, maxTokens, tokenSampler, stops);
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
     return text || null;
@@ -306,7 +306,7 @@ export async function generateLocationVisitSummary(
     const prompt = [systemPrompt, thinkPrompt, scopedHistoryBlock, perspectiveInstruction].filter(Boolean).join('\n\n');
     const stops = resolveEffectiveStopTokens(interactionData.profile?.characterStopPattern);
 
-    const requestBody = buildGenericCompletionBody(prompt, maxTokens, interactionData.profile?.characterLanguageModelSampler || character.languageModelSampler, stops);
+    const requestBody = buildGenericCompletionBody(prompt, maxTokens, interactionData.profile?.characterLanguageModelTokenSampler || character.languageModelTokenSampler, stops);
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);
     return text || null;
@@ -346,7 +346,7 @@ export async function generatePeriodicCompression(
 
         const chunk = visibleChatMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens, profile?.interactionDataSummarizationSampler, profile);
+        const compressed = await compressChunk(chunk, maxTokens, profile?.interactionDataSummarizationTokenSampler, profile);
         if (!compressed) continue;
 
         newContexts.push(createAutoSummaryContext(`[Auto-Summary] Messages ${startIdx + 1}–${endIdx + 1}`, `msgs:${rangeKey}`, compressed, 0, maxTokens));
@@ -378,7 +378,7 @@ export async function generateRecursiveSummary(
         const endIdx = Math.min(startIdx + chunkSize, visibleMessages.length);
         const chunk = visibleMessages.slice(startIdx, endIdx);
         if (chunk.length === 0) continue;
-        const compressed = await compressChunk(chunk, maxTokens, profile?.interactionDataSummarizationSampler, profile);
+        const compressed = await compressChunk(chunk, maxTokens, profile?.interactionDataSummarizationTokenSampler, profile);
         if (!compressed) continue;
         layer0Summaries.push(compressed);
         newContexts.push(createAutoSummaryContext(`[Recursive L0] Messages ${startIdx + 1}–${endIdx}`, `recursive-l0:${startIdx}-${endIdx}`, compressed, 2, maxTokens));
@@ -396,7 +396,7 @@ export async function generateRecursiveSummary(
             const batch = currentLayer.slice(i, Math.min(i + 2, currentLayer.length));
             const stops = resolveEffectiveStopTokens(profile?.interactionDataSummarizationStopPattern);
             const prompt = `${RECURSIVE_MERGE_PROMPT}\n\nSegments to merge:\n${batch.map((s, idx) => `Segment ${idx + 1}: ${s}`).join('\n\n')}\n\nMerged paragraph:`;
-            const req = buildGenericCompletionBody(prompt, maxTokens, profile?.interactionDataSummarizationSampler, stops);
+            const req = buildGenericCompletionBody(prompt, maxTokens, profile?.interactionDataSummarizationTokenSampler, stops);
             const bse = getBudgetStrategyEngine();
             const { text: merged } = await bse.generateCompletion(req);
             if (merged) {
@@ -445,7 +445,7 @@ export async function generateEntropyPruningSummaries(
     for (let i = 0; i < cutoffIndex; i++) {
         const msg = visibleMessages[i];
         if ((msg as ChatMessage).modelTextContentSummaries?.[modelId] || !msg.textContent) continue;
-        const summary = await generateMessageSummary(msg, maxTokens, profile?.interactionDataSummarizationSampler, profile);
+        const summary = await generateMessageSummary(msg, maxTokens, profile?.interactionDataSummarizationTokenSampler, profile);
         if (summary) results.set(msg.id, summary);
     }
 

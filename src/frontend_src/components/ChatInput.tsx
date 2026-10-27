@@ -1,7 +1,7 @@
 // src/frontend_src/components/ChatInput.tsx
 import type React from 'react';
 import { useState, useEffect, useRef, useMemo } from 'react';
-import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, Sampler, StopPattern, Profile, Memory, Account, MultiplayerData, LanguageModel, SpatiotemporalModel } from '../types';
+import type { BudgetStrategy, InteractionData, Character, Location, Context, AudioTrack, World, PromptBlock, TokenSampler, StopPattern, Profile, Memory, Account, MultiplayerData, LanguageModel, SpatiotemporalModel } from '../types';
 import { computeSlashAutocomplete, applySlashSelection } from '../utilities/slashCommandLogic';
 import { useGenerationStore } from '../hooks/useGenerationStore';
 import { FileDropArea } from './FileDropArea';
@@ -29,7 +29,7 @@ interface ChatInputProps {
     allPromptBlocks: PromptBlock[];
     allLanguageModels: LanguageModel[];
     allSpatiotemporalModels: SpatiotemporalModel[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allStopPatterns: StopPattern[];
     allBudgetStrategies: BudgetStrategy[];
     allMemories: Memory[];
@@ -49,7 +49,7 @@ export function ChatInput({
     isRecording, isLoading, isModelReady, isModelLoading, modelStatusMessage,
     localProtagonist, activeStrategy, selectedModelId,
     interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allProfiles,
-    allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData,
+    allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData,
     fileInputRef, textareaRef,
     onFileSelected, onToggleMicrophone, onSend, onStopGeneration, onOpenModels,
 }: ChatInputProps) {
@@ -63,10 +63,10 @@ export function ChatInput({
     const { breadcrumbs, options, isComplete, isSlash, activeIndex, currentQuery } = useMemo(() => {
         return computeSlashAutocomplete(
             inputText, interactionData, allCharacters, allContexts, allLocations, allAudioTracks, allWorlds, 
-            allProfiles, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allBudgetStrategies,
+            allProfiles, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns, allBudgetStrategies,
             allMemories, allAccounts, allMultiplayerData, localProtagonist
         );
-    }, [inputText, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allProfiles, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allSamplers, allStopPatterns, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData, localProtagonist]);
+    }, [inputText, interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allProfiles, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData, localProtagonist]);
 
     const showAutocomplete = isSlash && !isComplete;
 

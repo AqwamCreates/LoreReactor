@@ -1,6 +1,6 @@
 // src/frontend_src/components/RestrictionReductionModal.tsx
 import { useState, useRef, useEffect, useMemo } from 'react';
-import type { Character, Profile, Sampler, LanguageModel } from '../types';
+import type { Character, Profile, TokenSampler, LanguageModel } from '../types';
 import { EntitySelect } from './EntitySelect';
 import { EntitySelectList } from './EntitySelectList';
 import { buildGenericCompletionBody } from '../utilities/genericRequestBuilderLogic';
@@ -48,9 +48,9 @@ interface RestrictionReductionModalProps {
     allCharacters: Character[];
     allProfiles: Profile[];
     allLanguageModels: LanguageModel[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     runningLanguageModels: Record<string, { isRunning: boolean; port?: number }>;
-    restrictionSampler?: Sampler;
+    restrictionTokenSampler?: TokenSampler;
 }
 
 const SECTION_LABELS: Record<PromptSection, string> = {
@@ -286,7 +286,7 @@ function isBasicKeywordRefusal(text: string): boolean {
 
 export function RestrictionReductionModal({
      onClose, onSaveCharacter, allCharacters, allProfiles, allLanguageModels,
-    allSamplers, runningLanguageModels, restrictionSampler
+    allTokenSamplers, runningLanguageModels, restrictionTokenSampler
 }: RestrictionReductionModalProps) {
     const [step, setStep] = useState<RestrictionStep>('config');
     const [activeConfigurationTab, setActiveConfigurationTab] = useState<ConfigurationTabIdentifier>('characters');
@@ -299,7 +299,7 @@ export function RestrictionReductionModal({
     const [selectedAnalysisModelId, setSelectedAnalysisModelId] = useState<string>('');
     const [selectedGeneratingModelIds, setSelectedGeneratingModelIds] = useState<string[]>([]);
     const [selectedProfileId, setSelectedProfileId] = useState<string>('');
-    const [selectedSamplerId, setSelectedSamplerId] = useState<string>('');
+    const [selectedTokenSamplerId, setSelectedTokenSamplerId] = useState<string>('');
     const [selectedSections, setSelectedSections] = useState<PromptSection[]>(['systemPrompt', 'thinkPrompt', 'appearancePrompt']);
     const [testPairsCount, setTestPairsCount] = useState(3);
     const [useAdversarialPromptGeneration, setUseAdversarialPromptGeneration] = useState<boolean>(true);
@@ -309,7 +309,7 @@ export function RestrictionReductionModal({
     const [characterSearchQuery, setCharacterSearchQuery] = useState('');
     const [unrestrictedCharacterSearchQuery, setUnrestrictedCharacterSearchQuery] = useState('');
     const [restrictedCharacterSearchQuery, setRestrictedCharacterSearchQuery] = useState('');
-    const [samplerSearchQuery, setSamplerSearchQuery] = useState('');
+    const [tokenSamplerSearchQuery, setTokenSamplerSearchQuery] = useState('');
     const [analysisLanguageModelSearchQuery, setAnalysisLanguageModelSearchQuery] = useState('');
     const [generatingLanguageModelSearchQuery, setGeneratingLanguageModelSearchQuery] = useState('');
     const [profileSearchQuery, setProfileSearchQuery] = useState('');
@@ -339,13 +339,13 @@ export function RestrictionReductionModal({
         return allCharacters.filter(character => character.id !== selectedCharacterId);
     }, [allCharacters, selectedCharacterId]);
 
-    // ✅ UPDATED: Use languageModelSampler instead of legacy sampler property
-    const resolvedSampler = useMemo(() => {
-        if (selectedSamplerId) {
-            return allSamplers.find(sampler => sampler.id === selectedSamplerId) || null;
+    // ✅ UPDATED: Use languageModelTokenSampler instead of legacy tokenSampler property
+    const resolvedTokenSampler = useMemo(() => {
+        if (selectedTokenSamplerId) {
+            return allTokenSamplers.find(tokenSampler => tokenSampler.id === selectedTokenSamplerId) || null;
         }
-        return selectedCharacter?.languageModelSampler || restrictionSampler || allSamplers[0] || null;
-    }, [selectedSamplerId, allSamplers, selectedCharacter, restrictionSampler]);
+        return selectedCharacter?.languageModelTokenSampler || restrictionTokenSampler || allTokenSamplers[0] || null;
+    }, [selectedTokenSamplerId, allTokenSamplers, selectedCharacter, restrictionTokenSampler]);
 
     // Active flagged trigger in Review step
     const activeFlag = useMemo(() => {
@@ -397,11 +397,11 @@ export function RestrictionReductionModal({
             setSelectedAnalysisModelId('');
             setSelectedGeneratingModelIds([]);
             setSelectedProfileId('');
-            setSelectedSamplerId('');
+            setSelectedTokenSamplerId('');
             setCharacterSearchQuery('');
             setUnrestrictedCharacterSearchQuery('');
             setRestrictedCharacterSearchQuery('');
-            setSamplerSearchQuery('');
+            setTokenSamplerSearchQuery('');
             setAnalysisLanguageModelSearchQuery('');
             setGeneratingLanguageModelSearchQuery('');
             setProfileSearchQuery('');
@@ -465,7 +465,7 @@ export function RestrictionReductionModal({
         languageModelEngine.setContext(targetModel);
         languageModelEngine.setRunningModels(runningLanguageModels);
         
-        const requestBody = buildGenericCompletionBody(prompt, maxTokens, resolvedSampler || undefined, []);
+        const requestBody = buildGenericCompletionBody(prompt, maxTokens, resolvedTokenSampler || undefined, []);
         const controller = new AbortController();
         abortControllerReference.current = controller;
         
@@ -875,9 +875,9 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
         try {
             const finalCharacter = applyModifications(selectedCharacter, flags);
             
-            // ✅ UPDATED: Assign to languageModelSampler
-            if (resolvedSampler) {
-                finalCharacter.languageModelSampler = resolvedSampler;
+            // ✅ UPDATED: Assign to languageModelTokenSampler
+            if (resolvedTokenSampler) {
+                finalCharacter.languageModelTokenSampler = resolvedTokenSampler;
             }
             
             const currentTimestamp = Date.now();
@@ -1007,16 +1007,16 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <div className="editor-section" style={{ margin: 0 }}>
                         <EntitySelect 
-                            label="Sampler" 
+                            label="TokenSampler" 
                             description="Generation parameters used during test completions."
-                            items={allSamplers} 
-                            selectedId={selectedSamplerId} 
-                            onSelect={identifier => setSelectedSamplerId(identifier)} 
-                            searchQuery={samplerSearchQuery} 
-                            onSearchChange={setSamplerSearchQuery} 
+                            items={allTokenSamplers} 
+                            selectedId={selectedTokenSamplerId} 
+                            onSelect={identifier => setSelectedTokenSamplerId(identifier)} 
+                            searchQuery={tokenSamplerSearchQuery} 
+                            onSearchChange={setTokenSamplerSearchQuery} 
                             allowNone={true}
-                            noneLabel="None (Use character's language model sampler)"
-                            noneDescription={selectedCharacter?.languageModelSampler? `Default: ${selectedCharacter.languageModelSampler.name}` : 'Character has no default language model sampler'}
+                            noneLabel="None (Use character's language model tokenSampler)"
+                            noneDescription={selectedCharacter?.languageModelTokenSampler? `Default: ${selectedCharacter.languageModelTokenSampler.name}` : 'Character has no default language model tokenSampler'}
                         />
                     </div>
 
@@ -1102,7 +1102,7 @@ Adapted text (provide ONLY the adapted replacement text, without quotation marks
                 className="editor-button editor-button-save entity-generate-button" 
                 style={{ marginTop: '12px' }}
                 onClick={handleAnalyze}
-                disabled={!selectedCharacterId || !selectedAnalysisModelId || selectedGeneratingModelIds.length === 0 || !selectedProfileId || !resolvedSampler || selectedSections.length === 0 || isProcessing}
+                disabled={!selectedCharacterId || !selectedAnalysisModelId || selectedGeneratingModelIds.length === 0 || !selectedProfileId || !resolvedTokenSampler || selectedSections.length === 0 || isProcessing}
             >
                 🔍 Begin Analysis
             </button>

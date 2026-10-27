@@ -1,6 +1,6 @@
 // src/frontend_src/components/DataExportModal.tsx
 import { useState } from 'react';
-import type { Character, Context, Location, AudioTrack, World, LanguageModel, SpatiotemporalModel, Sampler, PromptBlock, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder } from '../types';
+import type { Character, Context, Location, AudioTrack, World, LanguageModel, SpatiotemporalModel, TokenSampler, PromptBlock, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder } from '../types';
 import { exportSelectedData, type LoreReactorExport } from '../services/DataPortabilityEngine';
 import { EntitySelectList } from './EntitySelectList';
 import '../main.css';
@@ -14,7 +14,7 @@ interface DataExportModalProps {
     allWorlds: World[];
     allLanguageModels: LanguageModel[];
     allSpatiotemporalModels: SpatiotemporalModel[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allPromptBlocks: PromptBlock[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
@@ -30,7 +30,7 @@ interface DataExportModalProps {
 export function DataExportModal({
     onClose,
     allCharacters, allContexts, allLocations, allAudioTracks,
-    allWorlds, allLanguageModels, allSpatiotemporalModels, allSamplers, allPromptBlocks, allStopPatterns,
+    allWorlds, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allPromptBlocks, allStopPatterns,
     allRetrievalConfigurations, allBudgetStrategies, allProfiles, allMemories, allAccounts, allMultiplayerData,
     allEntityFolders, allRawInteractionDataShells,
 }: DataExportModalProps) {
@@ -46,7 +46,7 @@ export function DataExportModal({
     const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
     const [selectedLanguageModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
     const [selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds] = useState<string[]>([]);
-    const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
+    const [selectedTokenSamplerIds, setSelectedTokenSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
     const [selectedRetrievalConfigurationIds, setSelectedRetrievalConfigurationIds] = useState<string[]>([]);
@@ -72,7 +72,7 @@ export function DataExportModal({
     const [worldSearch, setWorldSearch] = useState('');
     const [languageModelSearch, setLanguageModelSearch] = useState('');
     const [spatiotemporalModelSearch, setSpatiotemporalModelSearch] = useState('');
-    const [samplerSearch, setSamplerSearch] = useState('');
+    const [tokenSamplerSearch, setTokenSamplerSearch] = useState('');
     const [promptBlockSearch, setPromptBlockSearch] = useState('');
     const [stopPatternSearch, setStopPatternSearch] = useState('');
     const [retrievalConfigurationSearch, setRetrievalConfigurationSearch] = useState('');
@@ -87,7 +87,7 @@ export function DataExportModal({
         setSummary(null); setError(null); setIsExporting(false);
         setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
-        setSelectedLanguageModelIds([]); setSelectedSpatiotemporalModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
+        setSelectedLanguageModelIds([]); setSelectedSpatiotemporalModelIds([]); setSelectedTokenSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedRetrievalConfigurationIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setSelectedEntityFolderIds([]);
@@ -97,7 +97,7 @@ export function DataExportModal({
         setIncludeSessionData(true);
         setIncludeBudgetData(true);
         setChatSearch(''); setCharacterSearch(''); setContextSearch(''); setLocationSearch('');
-        setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSpatiotemporalModelSearch(''); setSamplerSearch('');
+        setAudioTrackSearch(''); setWorldSearch(''); setLanguageModelSearch(''); setSpatiotemporalModelSearch(''); setTokenSamplerSearch('');
         setPromptBlockSearch(''); setStopPatternSearch(''); setRetrievalConfigurationSearch(''); setBudgetStrategySearch(''); setProfileSearch('');
         setMemorySearch(''); setAccountSearch(''); setMultiplayerDataSearch(''); setEntityFolderSearch('');
     };
@@ -110,7 +110,7 @@ export function DataExportModal({
 
     const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
-        selectedLanguageModelIds.length + selectedSpatiotemporalModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
+        selectedLanguageModelIds.length + selectedSpatiotemporalModelIds.length + selectedTokenSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedRetrievalConfigurationIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         selectedEntityFolderIds.length +
@@ -127,7 +127,7 @@ export function DataExportModal({
                 characterIds: selectedCharacterIds, contextIds: selectedContextIds, locationIds: selectedLocationIds,
                 audioTrackIds: selectedAudioTrackIds, worldIds: selectedWorldIds, languageModelIds: selectedLanguageModelIds,
                 spatiotemporalModelIds: selectedSpatiotemporalModelIds,
-                samplerIds: selectedSamplerIds, promptBlockIds: selectedPromptBlockIds,
+                tokenSamplerIds: selectedTokenSamplerIds, promptBlockIds: selectedPromptBlockIds,
                 stopPatternIds: selectedStopPatternIds, retrievalConfigurationIds: selectedRetrievalConfigurationIds, budgetStrategyIds: selectedBudgetStrategyIds,
                 profileIds: selectedProfileIds, memoryIds: selectedMemoryIds,
                 accountIds: selectedAccountIds, multiplayerDataIds: selectedMultiplayerDataIds,
@@ -192,8 +192,8 @@ export function DataExportModal({
                                     onToggle={(id) => toggle(selectedLanguageModelIds, setSelectedLanguageModelIds, id)} searchQuery={languageModelSearch} onSearchChange={setLanguageModelSearch} />
                                 <EntitySelectList label="Spatiotemporal Models" items={allSpatiotemporalModels} selectedIds={selectedSpatiotemporalModelIds}
                                     onToggle={(id) => toggle(selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds, id)} searchQuery={spatiotemporalModelSearch} onSearchChange={setSpatiotemporalModelSearch} />
-                                <EntitySelectList label="Samplers" items={allSamplers} selectedIds={selectedSamplerIds}
-                                    onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={samplerSearch} onSearchChange={setSamplerSearch} />
+                                <EntitySelectList label="TokenSamplers" items={allTokenSamplers} selectedIds={selectedTokenSamplerIds}
+                                    onToggle={(id) => toggle(selectedTokenSamplerIds, setSelectedTokenSamplerIds, id)} searchQuery={tokenSamplerSearch} onSearchChange={setTokenSamplerSearch} />
                                 <EntitySelectList label="Prompt Blocks" items={allPromptBlocks} selectedIds={selectedPromptBlockIds}
                                     onToggle={(id) => toggle(selectedPromptBlockIds, setSelectedPromptBlockIds, id)} searchQuery={promptBlockSearch} onSearchChange={setPromptBlockSearch} />
                                 <EntitySelectList label="Stop Patterns" items={allStopPatterns} selectedIds={selectedStopPatternIds}
@@ -266,7 +266,7 @@ export function DataExportModal({
                                     <div><strong>Worlds:</strong> {summary.worlds.length}</div>
                                     <div><strong>Language Models:</strong> {summary.languageModels.length}</div>
                                     <div><strong>Spatiotemporal Models:</strong> {summary.spatiotemporalModels?.length ?? 0}</div>
-                                    <div><strong>Samplers:</strong> {summary.samplers.length}</div>
+                                    <div><strong>TokenSamplers:</strong> {summary.tokenSamplers.length}</div>
                                     <div><strong>Prompt Blocks:</strong> {summary.promptBlocks.length}</div>
                                     <div><strong>Stop Patterns:</strong> {summary.stopPatterns.length}</div>
                                     <div><strong>Retrieval Configurations:</strong> {summary.retrievalConfigurations?.length ?? 0}</div>

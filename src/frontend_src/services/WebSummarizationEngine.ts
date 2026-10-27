@@ -4,7 +4,7 @@ import { getLanguageModelEngine } from './LanguageModelEngine';
 import { getModelTemplate } from '../dictionaries/modelTemplates';
 import { deriveDelimiters } from '../utilities/promptLogic';
 import { buildGenericCompletionBody } from '../utilities/genericRequestBuilderLogic';
-import type { Sampler, StopPattern } from '../types';
+import type { TokenSampler, StopPattern } from '../types';
 
 const WEBPAGE_SUMMARIZE_PROMPT = "You are a concise summarizer for web content used as roleplay context. Given raw webpage text and associated images, produce a dense summary that preserves: key facts, names, dates, locations, relationships, definitions, visual details from images, and any lore-relevant details. Eliminate navigation text, ads, boilerplate, and redundancy. Write in third person, present tense. Output ONLY the summary with no preamble, no markdown, no quotes.";
 
@@ -44,13 +44,13 @@ function getWebpageStopTokens(stopPattern?: StopPattern): string[] {
 
 /**
  * Summarizes a single webpage's extracted text content using the budget-aware engine.
- * Respects the active model's chat template stop tokens, the profile's stop pattern, and the provided sampler.
+ * Respects the active model's chat template stop tokens, the profile's stop pattern, and the provided tokenSampler.
  */
 export async function summarizeWebpageContent(
     content: string,
     sourceUrl: string,
     images?: WebpageImageInfo[],
-    sampler?: Sampler,
+    tokenSampler?: TokenSampler,
     stopPattern?: StopPattern,
 ): Promise<string | null> {
     if (!content || !content) return null;
@@ -61,7 +61,7 @@ export async function summarizeWebpageContent(
     const stops = getWebpageStopTokens(stopPattern);
     const prompt = `${basePrompt}\n\nSource: ${sourceUrl}\n\nWebpage content:\n${content}\n\nSummary:`;
 
-    const requestBody = buildGenericCompletionBody(prompt, 1024, sampler, stops);
+    const requestBody = buildGenericCompletionBody(prompt, 1024, tokenSampler, stops);
 
     // Inject image data into the request body if images are present
     if (hasImages) {
@@ -84,11 +84,11 @@ export async function summarizeWebpageContent(
 
 /**
  * Merges multiple webpage summaries into a single coherent reference.
- * Respects the active model's chat template stop tokens, the profile's stop pattern, and the provided sampler.
+ * Respects the active model's chat template stop tokens, the profile's stop pattern, and the provided tokenSampler.
  */
 export async function mergeWebpageSummaries(
     summaries: { url: string; summary: string }[],
-    sampler?: Sampler,
+    tokenSampler?: TokenSampler,
     stopPattern?: StopPattern,
 ): Promise<string | null> {
     if (summaries.length === 0) return null;
@@ -101,7 +101,7 @@ export async function mergeWebpageSummaries(
     const stops = getWebpageStopTokens(stopPattern);
     const prompt = `${MULTI_PAGE_MERGE_PROMPT}\n\nSources to merge:\n${formatted}\n\nMerged document:`;
 
-    const requestBody = buildGenericCompletionBody(prompt, 2048, sampler, stops);
+    const requestBody = buildGenericCompletionBody(prompt, 2048, tokenSampler, stops);
 
     const bse = getBudgetStrategyEngine();
     const { text } = await bse.generateCompletion(requestBody);

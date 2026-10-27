@@ -346,7 +346,7 @@ ${profileToolsSchema}
     "autoResumeSignals": [{
       "regularExpressionActivationTrigger": "string (optional regex, activates auto-resume if matched)",
       "regularExpressionDeactivationTrigger": "string (optional regex, deactivates auto-resume if matched)",
-      "stopPattern": "string (appended to sampler stop patterns when activated)",
+      "stopPattern": "string (appended to tokenSampler stop patterns when activated)",
       "minimumLength": "string (default '0', min characters after activation before deactivation can trigger)",
       "maximumNumberOfAutoResumes": "number (default 10, max times to auto-resume, 0 = disabled)"
     }],
@@ -369,7 +369,7 @@ ${profileToolsSchema}
     "id": "string (UUID)",
     "name": "string (required, entity folder name)",
     "description": "string (display only, optional)",
-    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'languageModel' | 'sampler' | 'promptBlock' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' (required, entity category for this entity folder)",
+    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'languageModel' | 'tokenSampler' | 'promptBlock' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' (required, entity category for this entity folder)",
     "itemIds": ["string array of entity UUIDs belonging to this entity folder"]
   }]`);
     }

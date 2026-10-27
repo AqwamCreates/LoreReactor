@@ -6,7 +6,7 @@ export function useCharacterManager() {
     const [characters, setCharacters] = useState<Character[]>([]);
     const [isLoading, setIsLoading] = useState(false);
 
-    // ✅ Load lightweight shells for list display — no sampler hydration
+    // ✅ Load lightweight shells for list display — no tokenSampler hydration
     const loadCharacters = async () => {
         setIsLoading(true);
         try {

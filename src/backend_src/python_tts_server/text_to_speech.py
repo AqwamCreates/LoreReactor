@@ -116,8 +116,8 @@ async def generate(request: SynthesizeRequest):
         waveform, sample_rate = torchaudio.load(io.BytesIO(audio_bytes))
         
         if sample_rate != 24000:
-            resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=24000)
-            waveform = resampler(waveform)
+            retokenSampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=24000)
+            waveform = retokenSampler(waveform)
             
         if waveform.shape[0] > 1:
             waveform = torch.mean(waveform, dim=0, keepdim=True)

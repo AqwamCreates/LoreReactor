@@ -3765,20 +3765,20 @@ appearance: textfield;
 /* =============================================================================
 11. SAMPLER EDITOR
 ============================================================================= */
-.sampler-section-header {
+.tokenSampler-section-header {
 display: flex;
 justify-content: space-between;
 align-items: center;
 }
-.sampler-drag-hint {
+.tokenSampler-drag-hint {
 font-size: 0.6rem;
 opacity: 0.5;
 font-weight: normal;
 text-transform: none;
 letter-spacing: 0;
 }
-.sampler-param-list { display: flex; flex-direction: column; gap: 6px; }
-.sampler-param-row {
+.tokenSampler-param-list { display: flex; flex-direction: column; gap: 6px; }
+.tokenSampler-param-row {
 display: flex;
 align-items: stretch;
 gap: 0;
@@ -3788,10 +3788,10 @@ border: 1px solid var(--border);
 background: var(--social-bg);
 transition: opacity 0.15s, background 0.15s, border-color 0.15s;
 }
-.sampler-param-row:hover { border-color: var(--accent-border); }
-.sampler-param-dragging { opacity: 0.5; }
-.sampler-param-disabled { opacity: 0.5; }
-.sampler-drag-handle {
+.tokenSampler-param-row:hover { border-color: var(--accent-border); }
+.tokenSampler-param-dragging { opacity: 0.5; }
+.tokenSampler-param-disabled { opacity: 0.5; }
+.tokenSampler-drag-handle {
 flex-shrink: 0;
 width: 28px;
 display: flex;
@@ -3806,16 +3806,16 @@ line-height: 1;
 letter-spacing: -2px;
 transition: opacity 0.15s;
 }
-.sampler-drag-handle:hover { opacity: 0.8; }
-.sampler-drag-handle:active { cursor: grabbing; }
-.sampler-param-content {
+.tokenSampler-drag-handle:hover { opacity: 0.8; }
+.tokenSampler-drag-handle:active { cursor: grabbing; }
+.tokenSampler-param-content {
 flex: 1;
 min-width: 0;
 display: flex;
 flex-direction: column;
 gap: 4px;
 }
-.sampler-param-label-row {
+.tokenSampler-param-label-row {
 display: flex;
 align-items: center;
 gap: 8px;
@@ -3823,7 +3823,7 @@ cursor: pointer;
 user-select: none;
 min-height: 32px;
 }
-.sampler-checkbox {
+.tokenSampler-checkbox {
 flex-shrink: 0;
 width: 18px;
 height: 18px;
@@ -3835,9 +3835,9 @@ align-items: center;
 justify-content: center;
 transition: all 0.15s;
 }
-.sampler-checkbox.checked { background: var(--accent); border-color: var(--accent); }
-.sampler-checkbox-tick { color: #fff; font-size: 10px; line-height: 1; }
-.sampler-param-name {
+.tokenSampler-checkbox.checked { background: var(--accent); border-color: var(--accent); }
+.tokenSampler-checkbox-tick { color: #fff; font-size: 10px; line-height: 1; }
+.tokenSampler-param-name {
 font-size: 0.75rem;
 font-weight: bold;
 color: var(--text-h);
@@ -3847,17 +3847,17 @@ overflow: hidden;
 text-overflow: ellipsis;
 transition: opacity 0.15s;
 }
-.sampler-param-name-enabled { opacity: 1; }
-.sampler-param-input-row { width: 100%; }
-.sampler-param-input-row .slider-input-container { width: 100% !important; }
-.sampler-string-input {
+.tokenSampler-param-name-enabled { opacity: 1; }
+.tokenSampler-param-input-row { width: 100%; }
+.tokenSampler-param-input-row .slider-input-container { width: 100% !important; }
+.tokenSampler-string-input {
 font-family: monospace !important;
 font-size: 0.8rem !important;
 padding: 6px 10px !important;
 width: 100% !important;
 min-height: 36px !important;
 }
-.sampler-param-description {
+.tokenSampler-param-description {
 font-size: 0.6rem;
 color: var(--text-h);
 opacity: 0.5;
@@ -3866,9 +3866,9 @@ line-height: 1.3;
 padding-top: 6px;
 padding-bottom: 2px;
 }
-.sampler-stop-patterns-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
-.sampler-stop-empty { font-size: 0.75rem; opacity: 0.5; font-style: italic; padding: 4px 0; }
-.sampler-stop-item {
+.tokenSampler-stop-patterns-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.tokenSampler-stop-empty { font-size: 0.75rem; opacity: 0.5; font-style: italic; padding: 4px 0; }
+.tokenSampler-stop-item {
 display: flex;
 align-items: center;
 justify-content: space-between;
@@ -3879,8 +3879,8 @@ border: 1px solid var(--border);
 border-radius: 6px;
 min-height: 44px;
 }
-.sampler-stop-info { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.sampler-stop-name {
+.tokenSampler-stop-info { display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+.tokenSampler-stop-name {
 font-size: 0.8rem;
 font-weight: bold;
 color: var(--text-h);
@@ -3888,7 +3888,7 @@ white-space: nowrap;
 overflow: hidden;
 text-overflow: ellipsis;
 }
-.sampler-stop-pattern {
+.tokenSampler-stop-pattern {
 font-size: 0.65rem;
 font-family: monospace;
 opacity: 0.6;
@@ -3897,7 +3897,7 @@ white-space: nowrap;
 overflow: hidden;
 text-overflow: ellipsis;
 }
-.sampler-stop-remove-button {
+.tokenSampler-stop-remove-button {
 flex-shrink: 0;
 background: transparent;
 border: none;
@@ -3914,7 +3914,7 @@ justify-content: center;
 opacity: 0.6;
 transition: opacity 0.15s;
 }
-.sampler-stop-remove-button:hover { opacity: 1; }
+.tokenSampler-stop-remove-button:hover { opacity: 1; }
 /* =============================================================================
 12. TOAST NOTIFICATIONS
 ============================================================================= */

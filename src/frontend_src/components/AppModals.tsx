@@ -1,7 +1,7 @@
 // src/frontend_src/components/AppModals.tsx
 import { useMemo, useState, useEffect, useCallback } from 'react';
 import type {
-    Character, Context, Location, Sampler, StopPattern, RetrievalConfiguration,
+    Character, Context, Location, TokenSampler, StopPattern, RetrievalConfiguration,
     LanguageModel, SpatiotemporalModel, BudgetStrategy, Profile, Extension,
     InteractionData, World, AudioTrack, PromptBlock,
     RawInteractionData, Memory, MultiplayerData, Account,
@@ -23,8 +23,8 @@ import { useChatStore } from '../hooks/useChatStore';
 
 import { CharacterEditorModal } from './CharacterEditorModal';
 import { LanguageModelEditorModal } from './LanguageModelEditorModal';
-import { SpatiotemporalLanguageModelEditorModal } from './SpatiotemporalLanguageModelEditorModal';
-import { SamplerEditorModal } from './SamplerEditorModal';
+import { SpatiotemporalModelEditorModal } from './SpatiotemporalModelEditorModal';
+import { TokenSamplerEditorModal } from './TokenSamplerEditorModal';
 import { PromptBlockEditorModal } from './PromptBlockEditorModal';
 import { ContextEditorModal } from './ContextEditorModal';
 import { LocationEditorModal } from './LocationEditorModal';
@@ -82,7 +82,7 @@ interface ApplicationModalsProperties {
     allPromptBlocks: PromptBlock[];
     allLanguageModels: LanguageModel[];
     allSpatiotemporalModels: SpatiotemporalModel[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allStopPatterns: StopPattern[];
     allRetrievalConfigurations: RetrievalConfiguration[];
     allBudgetStrategies: BudgetStrategy[];
@@ -121,7 +121,7 @@ interface ApplicationModalsProperties {
     onToggleModelLoad: (identifier: string) => void;
     onDeleteSpatiotemporalModel: (identifier: string) => void;
     onToggleSpatiotemporalModelLoad: (identifier: string) => void;
-    onDeleteSampler: (identifier: string) => void;
+    onDeleteTokenSampler: (identifier: string) => void;
     onDeleteStopPattern: (identifier: string) => void;
     onDeleteRetrievalConfiguration: (identifier: string) => void;
     onDeleteBudgetStrategy: (identifier: string) => void;
@@ -188,7 +188,7 @@ export function AppModals({
     allContexts,
     allLocations,
     allAudioTracks,
-    allSamplers,
+    allTokenSamplers,
     allStopPatterns,
     allRetrievalConfigurations,
     allLanguageModels,
@@ -228,7 +228,7 @@ export function AppModals({
     onToggleModelLoad,
     onDeleteSpatiotemporalModel,
     onToggleSpatiotemporalModelLoad,
-    onDeleteSampler,
+    onDeleteTokenSampler,
     onDeleteStopPattern,
     onDeleteRetrievalConfiguration,
     onDeleteBudgetStrategy,
@@ -273,7 +273,7 @@ export function AppModals({
     const worldModalProperties = entityModals.getModalProperties('world');
     const languageModelModalProperties = entityModals.getModalProperties('languageModel');
     const spatiotemporalModelModalProperties = entityModals.getModalProperties('spatiotemporalModel');
-    const samplerModalProperties = entityModals.getModalProperties('sampler');
+    const tokenSamplerModalProperties = entityModals.getModalProperties('tokenSampler');
     const promptBlockModalProperties = entityModals.getModalProperties('promptBlock');
     const stopPatternModalProperties = entityModals.getModalProperties('stopPattern');
     const retrievalConfigurationModalProperties = entityModals.getModalProperties('retrievalConfiguration');
@@ -584,7 +584,7 @@ export function AppModals({
                     onClose={modals.characterList.close}
                     onSelect={async (character: Character, isHosterItem: boolean) => { 
                         const isLocal = allCharacters.some(c => c.id === character.id);
-                        const fullCharacter = (isLocal && character.languageModelSampler) ? character : (isLocal ? await onLoadFullCharacter(character.id) : character);
+                        const fullCharacter = (isLocal && character.languageModelTokenSampler) ? character : (isLocal ? await onLoadFullCharacter(character.id) : character);
                         characterModalProperties.open(fullCharacter || character, isHosterItem); 
                     }}
                     onDelete={onDeleteCharacter}
@@ -731,12 +731,12 @@ export function AppModals({
                 />
             )}
 
-            {modals.modelList.isOpen && (
+            {modals.languageModelList.isOpen && (
                 <ManagerModal 
                     title="Language Models" 
                     entityType={'languageModel' as entityType}
                     localLibraryItems={allLanguageModels} 
-                    onClose={modals.modelList.close}
+                    onClose={modals.languageModelList.close}
                     onSelect={(model: LanguageModel) => languageModelModalProperties.open(model)} 
                     onDelete={onDeleteModel} 
                     onCreateNew={() => languageModelModalProperties.open()}
@@ -800,17 +800,17 @@ export function AppModals({
                 />
             )}
 
-            {modals.samplerList.isOpen && (
+            {modals.tokenSamplerList.isOpen && (
                 <ManagerModal 
-                    title="Samplers" 
-                    entityType={'sampler' as entityType}
-                    localLibraryItems={allSamplers} 
-                    onClose={modals.samplerList.close}
-                    onSelect={(sampler: Sampler) => samplerModalProperties.open(sampler)} 
-                    onDelete={onDeleteSampler} 
-                    onCreateNew={() => samplerModalProperties.open()}
-                    renderSubtext={(sampler: Sampler) => `Temp: ${sampler?.parameters?.temperature}, TopP: ${sampler?.parameters?.top_p}, Tokens: ${sampler?.maximumNumberOfTokens}`}
-                    emptyMessage="No samplers found." 
+                    title="TokenSamplers" 
+                    entityType={'tokenSampler' as entityType}
+                    localLibraryItems={allTokenSamplers} 
+                    onClose={modals.tokenSamplerList.close}
+                    onSelect={(tokenSampler: TokenSampler) => tokenSamplerModalProperties.open(tokenSampler)} 
+                    onDelete={onDeleteTokenSampler} 
+                    onCreateNew={() => tokenSamplerModalProperties.open()}
+                    renderSubtext={(tokenSampler: TokenSampler) => `Temp: ${tokenSampler?.parameters?.temperature}, TopP: ${tokenSampler?.parameters?.top_p}, Tokens: ${tokenSampler?.maximumNumberOfTokens}`}
+                    emptyMessage="No tokenSamplers found." 
                     actionLabel="Delete" 
                     allEntityFolders={allEntityFolders}
                     onSaveEntityFolder={onSaveEntityFolder}
@@ -1004,7 +1004,7 @@ export function AppModals({
                     onOpenAudioTrackEditor={(audioTrack, onApplyToRecommendation) => { setAiAudioTrackSaveRedirect(() => onApplyToRecommendation); audioTrackModalProperties.open(audioTrack ?? undefined); }}
                     onOpenPromptBlockEditor={(promptBlock, onApplyToRecommendation) => { setAiPromptBlockSaveRedirect(() => onApplyToRecommendation); promptBlockModalProperties.open(promptBlock ?? undefined); }}
                     onOpenProfileEditor={(profile, onApplyToRecommendation) => { setAiProfileSaveRedirect(() => onApplyToRecommendation); profileModalProperties.open(profile ?? undefined); }}
-                    allSamplers={allSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
+                    allTokenSamplers={allTokenSamplers} allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations}
                     allAudioTracks={allAudioTracks} allPromptBlocks={allPromptBlocks} allEntityFolders={allEntityFolders}
                     allLanguageModels={allLanguageModels}
                     runningLanguageModels={runningLanguageModels}
@@ -1017,7 +1017,7 @@ export function AppModals({
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     allCharacters={allCharacters} allProfiles={allProfiles} 
                     allLanguageModels={allLanguageModels}
-                    allSamplers={allSamplers}
+                    allTokenSamplers={allTokenSamplers}
                     runningLanguageModels={runningLanguageModels} 
                 />
             )}
@@ -1043,7 +1043,7 @@ export function AppModals({
                     onClose={modals.cardImport.close}
                     onSaveCharacter={async (character: Character) => { onSaveCharacter(character); return true; }}
                     onSaveContext={async (context: Context) => { onSaveContext(context); return true; }} 
-                    allSamplers={allSamplers} 
+                    allTokenSamplers={allTokenSamplers} 
                 />
             )}
 
@@ -1055,7 +1055,7 @@ export function AppModals({
                 <DataExportModal
                     onClose={modals.exportData.close}
                     allCharacters={allCharacters} allContexts={allContexts} allLocations={allLocations} allAudioTracks={allAudioTracks}
-                    allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSpatiotemporalModels={allSpatiotemporalModels} allSamplers={allSamplers} allPromptBlocks={allPromptBlocks}
+                    allWorlds={allWorlds} allLanguageModels={allLanguageModels} allSpatiotemporalModels={allSpatiotemporalModels} allTokenSamplers={allTokenSamplers} allPromptBlocks={allPromptBlocks}
                     allStopPatterns={allStopPatterns} allRetrievalConfigurations={allRetrievalConfigurations} allBudgetStrategies={allBudgetStrategies} allProfiles={allProfiles}
                     allMemories={allMemories} allAccounts={allAccounts} allMultiplayerData={allMultiplayerData}
                     allRawInteractionDataShells={chatShellsWithIdentifiers}
@@ -1074,7 +1074,7 @@ export function AppModals({
                     allPromptBlocks={allPromptBlocks}
                     allLanguageModels={allLanguageModels} 
                     allSpatiotemporalModels={allSpatiotemporalModels}
-                    allSamplers={allSamplers} 
+                    allTokenSamplers={allTokenSamplers} 
                     allStopPatterns={allStopPatterns} 
                     allRetrievalConfigurations={allRetrievalConfigurations}
                     allBudgetStrategies={allBudgetStrategies} 
@@ -1091,7 +1091,7 @@ export function AppModals({
                     onDeleteWorld={onDeleteWorld} 
                     onDeleteModel={onDeleteModel}
                     onDeleteSpatiotemporalModel={onDeleteSpatiotemporalModel}
-                    onDeleteSampler={onDeleteSampler} 
+                    onDeleteTokenSampler={onDeleteTokenSampler} 
                     onDeletePromptBlock={onDeletePromptBlock} 
                     onDeleteStopPattern={onDeleteStopPattern}
                     onDeleteRetrievalConfiguration={onDeleteRetrievalConfiguration}
@@ -1117,7 +1117,7 @@ export function AppModals({
                     allPromptBlocks={allPromptBlocks}
                     allLanguageModels={allLanguageModels}
                     allSpatiotemporalModels={allSpatiotemporalModels}
-                    allSamplers={allSamplers}
+                    allTokenSamplers={allTokenSamplers}
                     allStopPatterns={allStopPatterns}
                     allRetrievalConfigurations={allRetrievalConfigurations}
                     allBudgetStrategies={allBudgetStrategies}
@@ -1138,7 +1138,7 @@ export function AppModals({
                             case 'promptBlock': promptBlockModalProperties.open(entity, isReadOnly); break;
                             case 'languageModel': languageModelModalProperties.open(entity, isReadOnly); break;
                             case 'spatiotemporalModel': spatiotemporalModelModalProperties.open(entity, isReadOnly); break;
-                            case 'sampler': samplerModalProperties.open(entity, isReadOnly); break;
+                            case 'tokenSampler': tokenSamplerModalProperties.open(entity, isReadOnly); break;
                             case 'stopPattern': stopPatternModalProperties.open(entity, isReadOnly); break;
                             case 'retrievalConfiguration': retrievalConfigurationModalProperties.open(entity, isReadOnly); break;
                             case 'budgetStrategy': budgetStrategyModalProperties.open(entity, isReadOnly); break;
@@ -1205,7 +1205,7 @@ export function AppModals({
                     }}
                     onVoiceTranscribeRequested={handleBackgroundVoiceTranscribe}
                     existingCharacter={characterModalProperties.item} 
-                    allSamplers={allSamplers} 
+                    allTokenSamplers={allTokenSamplers} 
                     allRetrievalConfigurations={allRetrievalConfigurations}
                     allCharacters={allCharacters}
                     allLocations={allLocations}
@@ -1300,7 +1300,7 @@ export function AppModals({
             )}
 
             {spatiotemporalModelModalProperties.isOpen && (
-                <SpatiotemporalLanguageModelEditorModal 
+                <SpatiotemporalModelEditorModal 
                     onClose={spatiotemporalModelModalProperties.close} 
                     onSave={spatiotemporalModelModalProperties.save}
                     existingModel={spatiotemporalModelModalProperties.item} 
@@ -1308,11 +1308,11 @@ export function AppModals({
                 />
             )}
 
-            {samplerModalProperties.isOpen && (
-                <SamplerEditorModal 
-                    onClose={samplerModalProperties.close} 
-                    onSave={samplerModalProperties.save}
-                    existingSampler={samplerModalProperties.item} 
+            {tokenSamplerModalProperties.isOpen && (
+                <TokenSamplerEditorModal 
+                    onClose={tokenSamplerModalProperties.close} 
+                    onSave={tokenSamplerModalProperties.save}
+                    existingTokenSampler={tokenSamplerModalProperties.item} 
                     allStopPatterns={allStopPatterns} 
                 />
             )}
@@ -1374,7 +1374,7 @@ export function AppModals({
                     existingProfile={profileModalProperties.item}
                     allCharacters={allCharacters}
                     allPromptBlocks={allPromptBlocks}
-                    allSamplers={allSamplers} 
+                    allTokenSamplers={allTokenSamplers} 
                     allStopPatterns={allStopPatterns}
                     allRetrievalConfigurations={allRetrievalConfigurations}
                 />

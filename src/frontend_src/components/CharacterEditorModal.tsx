@@ -2,7 +2,7 @@
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
 import type { 
-    Character, Location, Sampler, LanguageModel, Memory, Clothing, 
+    Character, Location, TokenSampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
     tool, InteractionData, StopPattern, Voice, RetrievalConfiguration,
     RawInteractionData, memorySearchSpace
@@ -79,9 +79,9 @@ interface CharacterEditorModalProps {
     existingCharacter?: Character | null;
     allCharacters: Character[];
     allLocations: Location[];
-    allSamplers: Sampler[];
+    allTokenSamplers: TokenSampler[];
     allRetrievalConfigurations: RetrievalConfiguration[];
-    isLoadingSamplers?: boolean;
+    isLoadingTokenSamplers?: boolean;
     selectedLanguageModel?: LanguageModel | null;
     runningLanguageModels?: Record<string, any>;
     interactionData?: InteractionData | null;
@@ -91,7 +91,7 @@ interface CharacterEditorModalProps {
 
 export function CharacterEditorModal({
     onClose, onSave, onVoiceTranscribeRequested, existingCharacter,
-    allCharacters, allLocations, allSamplers, allRetrievalConfigurations, isLoadingSamplers = false,
+    allCharacters, allLocations, allTokenSamplers, allRetrievalConfigurations, isLoadingTokenSamplers = false,
     selectedLanguageModel, runningLanguageModels,
     interactionData, allRawInteractionDataShells, localProtagonistId,
     isReadOnly = false,
@@ -114,9 +114,9 @@ export function CharacterEditorModal({
         return null;
     });
     
-    // Dual Sampler States
-    const [selectedLanguageModelSamplerId, setSelectedLanguageModelSamplerId] = useState<string>(existingCharacter?.languageModelSampler?.id || (allSamplers[0]?.id || ''));
-    const [selectedTextToSpeechModelSamplerId, setSelectedTextToSpeechModelSamplerId] = useState<string>(existingCharacter?.textToSpeechModelSampler?.id || (allSamplers[0]?.id || ''));
+    // Dual TokenSampler States
+    const [selectedLanguageModelTokenSamplerId, setSelectedLanguageModelTokenSamplerId] = useState<string>(existingCharacter?.languageModelTokenSampler?.id || (allTokenSamplers[0]?.id || ''));
+    const [selectedTextToSpeechModelTokenSamplerId, setSelectedTextToSpeechModelTokenSamplerId] = useState<string>(existingCharacter?.textToSpeechModelTokenSampler?.id || (allTokenSamplers[0]?.id || ''));
     
     // Retrieval Configuration States
     const [selectedDialogueRetrievalConfigurationId, setSelectedDialogueRetrievalConfigurationId] = useState<string>(existingCharacter?.dialogueRetrievalConfiguration?.id || '');
@@ -914,11 +914,11 @@ export function CharacterEditorModal({
             }
         }
 
-        const baseLanguageModelSampler = allSamplers.find(s => s.id === selectedLanguageModelSamplerId);
-        const finalLanguageModelSampler = baseLanguageModelSampler ? { ...baseLanguageModelSampler } : undefined;
+        const baseLanguageModelTokenSampler = allTokenSamplers.find(s => s.id === selectedLanguageModelTokenSamplerId);
+        const finalLanguageModelTokenSampler = baseLanguageModelTokenSampler ? { ...baseLanguageModelTokenSampler } : undefined;
 
-        const baseTextToSpeechModelSampler = allSamplers.find(s => s.id === selectedTextToSpeechModelSamplerId);
-        const finalTextToSpeechModelSampler = baseTextToSpeechModelSampler ? { ...baseTextToSpeechModelSampler } : undefined;
+        const baseTextToSpeechModelTokenSampler = allTokenSamplers.find(s => s.id === selectedTextToSpeechModelTokenSamplerId);
+        const finalTextToSpeechModelTokenSampler = baseTextToSpeechModelTokenSampler ? { ...baseTextToSpeechModelTokenSampler } : undefined;
 
         const finalDialogueRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedDialogueRetrievalConfigurationId);
         const finalStarterPromptRetrievalConfiguration = allRetrievalConfigurations.find(c => c.id === selectedStarterPromptRetrievalConfigurationId);
@@ -944,8 +944,8 @@ export function CharacterEditorModal({
             images: Object.keys(finalImages).length > 0 ? finalImages : undefined,
             voice: finalVoice,
             useFrontCameraImage: useFrontCameraImage || undefined,
-            languageModelSampler: finalLanguageModelSampler,
-            textToSpeechModelSampler: finalTextToSpeechModelSampler,
+            languageModelTokenSampler: finalLanguageModelTokenSampler,
+            textToSpeechModelTokenSampler: finalTextToSpeechModelTokenSampler,
             stopPatterns: finalStopPatterns.length > 0 ? finalStopPatterns : undefined,
             
             dialogueRetrievalConfiguration: finalDialogueRetrievalConfiguration,
@@ -1034,7 +1034,7 @@ export function CharacterEditorModal({
     };
 
     const getStopPatternById = (id: string) => {
-        for (const s of allSamplers) {
+        for (const s of allTokenSamplers) {
             const found = s.stopPatterns.find(sp => sp.id === id);
             if (found) return found;
         }
@@ -1074,7 +1074,7 @@ export function CharacterEditorModal({
         { id: 'behaviour', label: 'Behaviour', icon: '🧠' },
         { id: 'stats', label: 'Stats', icon: '📊' },
         { id: 'tools', label: 'Tools', icon: '🔧' },
-        { id: 'languageModel', label: 'languageModel', icon: '🤖' },
+        { id: 'languageModel', label: 'Models & Samplers', icon: '🤖' },
         { id: 'quick-config', label: 'Quick Config', icon: '⚡' },
     ];
 
@@ -1581,22 +1581,22 @@ export function CharacterEditorModal({
                             {activeTab === 'languageModel' && (
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                                     <div className="editor-section">
-                                        <span className="editor-section-title">Language Model Sampler (Text Generation)</span>
+                                        <span className="editor-section-title">Text Generation Token Sampler</span>
                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls the psychological profile, vocabulary choice, and text generation logic.</div>
-                                        <select value={selectedLanguageModelSamplerId} onChange={(e) => setSelectedLanguageModelSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
-                                            {isLoadingSamplers && <option>Loading samplers...</option>}
-                                            {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
-                                            {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                                        <select value={selectedLanguageModelTokenSamplerId} onChange={(e) => setSelectedLanguageModelTokenSamplerId(e.target.value)} className={`editor-select ${isLoadingTokenSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingTokenSamplers || isUploading || isReadOnly}>
+                                            {isLoadingTokenSamplers && <option>Loading token samplers...</option>}
+                                            {!isLoadingTokenSamplers && allTokenSamplers.length === 0 && <option>No token samplers available</option>}
+                                            {!isLoadingTokenSamplers && allTokenSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
                                         </select>
                                     </div>
 
                                     <div className="editor-section">
-                                        <span className="editor-section-title">Text-to-Speech Model Sampler (Voice Generation)</span>
+                                        <span className="editor-section-title">Voice Generation Token Sampler</span>
                                         <div style={{ fontSize: '0.55rem', opacity: 0.5, marginBottom: '6px' }}>Controls the vocal cords, prosody, pitch, and acoustic expressiveness of the character's voice.</div>
-                                        <select value={selectedTextToSpeechModelSamplerId} onChange={(e) => setSelectedTextToSpeechModelSamplerId(e.target.value)} className={`editor-select ${isLoadingSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingSamplers || isUploading || isReadOnly}>
-                                            {isLoadingSamplers && <option>Loading samplers...</option>}
-                                            {!isLoadingSamplers && allSamplers.length === 0 && <option>No samplers available</option>}
-                                            {!isLoadingSamplers && allSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
+                                        <select value={selectedTextToSpeechModelTokenSamplerId} onChange={(e) => setSelectedTextToSpeechModelTokenSamplerId(e.target.value)} className={`editor-select ${isLoadingTokenSamplers || isUploading ? 'editor-select-loading' : ''}`} disabled={isLoadingTokenSamplers || isUploading || isReadOnly}>
+                                            {isLoadingTokenSamplers && <option>Loading token samplers...</option>}
+                                            {!isLoadingTokenSamplers && allTokenSamplers.length === 0 && <option>No token samplers available</option>}
+                                            {!isLoadingTokenSamplers && allTokenSamplers.map(s => (<option key={s.id} value={s.id}>{s.name}</option>))}
                                         </select>
                                     </div>
 
@@ -1638,23 +1638,23 @@ export function CharacterEditorModal({
 
                                     <div className="editor-section">
                                         <span className="editor-section-title">Character Stop Patterns</span>
-                                        <div className="editor-stop-patterns-hint">Specific stop sequences for this character, overrides or augments sampler defaults.</div>
+                                        <div className="tokenSampler-stop-patterns-hint">Specific stop sequences for this character, overrides or augments token sampler defaults.</div>
 
-                                        <div className="sampler-stop-patterns-list">
+                                        <div className="tokenSampler-stop-patterns-list">
                                             {selectedStopPatternIds.length === 0 && (
-                                                <div className="sampler-stop-empty">No character-specific stop patterns assigned.</div>
+                                                <div className="tokenSampler-stop-empty">No character-specific stop patterns assigned.</div>
                                             )}
 
                                             {selectedStopPatternIds.map(id => {
                                                 const sp = getStopPatternById(id);
                                                 if (!sp) return null;
                                                 return (
-                                                    <div key={id} className="sampler-stop-item">
-                                                        <div className="sampler-stop-info">
-                                                            <span className="sampler-stop-name">{sp.name}</span>
-                                                            <span className="sampler-stop-pattern">{sp.pattern}</span>
+                                                    <div key={id} className="tokenSampler-stop-item">
+                                                        <div className="tokenSampler-stop-info">
+                                                            <span className="tokenSampler-stop-name">{sp.name}</span>
+                                                            <span className="tokenSampler-stop-pattern">{sp.pattern}</span>
                                                         </div>
-                                                        {!isReadOnly && <button type="button" onClick={() => handleStopPatternToggle(id)} className="sampler-stop-remove-button" title="Remove stop pattern">×</button>}
+                                                        {!isReadOnly && <button type="button" onClick={() => handleStopPatternToggle(id)} className="tokenSampler-stop-remove-button" title="Remove stop pattern">×</button>}
                                                     </div>
                                                 );
                                             })}
@@ -1663,7 +1663,7 @@ export function CharacterEditorModal({
                                         {!isReadOnly && (
                                             <select onChange={(e) => { const val = e.target.value; if (val) handleStopPatternToggle(val); e.target.value = ''; }} className="editor-select" defaultValue="" disabled={isUploading}>
                                                 <option value="" disabled>+ Add a stop pattern</option>
-                                                {allSamplers
+                                                {allTokenSamplers
                                                     .flatMap(s => s.stopPatterns)
                                                     .filter((sp, index, self) => index === self.findIndex(t => t.id === sp.id))
                                                     .filter(sp => !selectedStopPatternIds.includes(sp.id))

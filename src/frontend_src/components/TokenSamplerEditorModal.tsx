@@ -1,19 +1,19 @@
-// src/frontend_src/components/SamplerEditorModal.tsx
+// src/frontend_src/components/TokenSamplerEditorModal.tsx
 import type React from 'react';
 import { useState } from 'react';
-import type { Sampler, StopPattern } from '../types';
+import type { TokenSampler, StopPattern } from '../types';
 import { SliderInput } from './SliderInput';
 import { v4 as uuidv4 } from 'uuid';
 import '../main.css';
 
-interface SamplerEditorModalProps {
+interface TokenSamplerEditorModalProps {
     onClose: () => void;
-    onSave: (sampler: Sampler) => void;
-    existingSampler?: Sampler | null;
+    onSave: (tokenSampler: TokenSampler) => void;
+    existingTokenSampler?: TokenSampler | null;
     allStopPatterns: StopPattern[];
 }
 
-interface SamplerParameters {
+interface TokenSamplerParameters {
     temperature: number;
     top_k: number;
     top_p: number;
@@ -47,7 +47,7 @@ interface SamplerParameters {
     [key: string]: number | string | boolean | unknown;
 }
 
-const DEFAULT_PARAMETERS: SamplerParameters = {
+const DEFAULT_PARAMETERS: TokenSamplerParameters = {
     temperature: 0.8,
     top_k: 40,
     top_p: 0.9,
@@ -130,17 +130,17 @@ const getParamValue = (params: Record<string, unknown> | undefined, key: string,
     return defaultValue;
 };
 
-function computeInitialActiveParamKeys(existingSampler: Sampler | null | undefined): string[] {
-    if (!existingSampler) {
+function computeInitialActiveParamKeys(existingTokenSampler: TokenSampler | null | undefined): string[] {
+    if (!existingTokenSampler) {
         return Object.keys(PARAMETER_CONFIGS).filter(k => PARAMETER_CONFIGS[k].defaultEnabled);
     }
 
-    const storedOrder = existingSampler.parameters?._parameterOrder as string[] | undefined;
+    const storedOrder = existingTokenSampler.parameters?._parameterOrder as string[] | undefined;
     if (Array.isArray(storedOrder) && storedOrder.length > 0) {
         const validKeys = Object.keys(PARAMETER_CONFIGS);
         const safeOrder = storedOrder.filter((k): k is string => typeof k === 'string' && validKeys.includes(k));
         const missingEnabled = validKeys.filter(k => {
-            const wasEnabled = existingSampler.parameters?.[`_enabled_${k}`];
+            const wasEnabled = existingTokenSampler.parameters?.[`_enabled_${k}`];
             return wasEnabled && !safeOrder.includes(k);
         });
         return [...safeOrder, ...missingEnabled];
@@ -148,7 +148,7 @@ function computeInitialActiveParamKeys(existingSampler: Sampler | null | undefin
 
     const enabledKeys: string[] = [];
     for (const key of Object.keys(PARAMETER_CONFIGS)) {
-        const wasEnabled = existingSampler.parameters?.[`_enabled_${key}`];
+        const wasEnabled = existingTokenSampler.parameters?.[`_enabled_${key}`];
         if (wasEnabled) enabledKeys.push(key);
     }
     if (enabledKeys.length === 0) {
@@ -157,8 +157,8 @@ function computeInitialActiveParamKeys(existingSampler: Sampler | null | undefin
     return enabledKeys;
 }
 
-function computeInitialParameters(existingSampler: Sampler | null | undefined): SamplerParameters {
-    const loadedParams = {} as SamplerParameters;
+function computeInitialParameters(existingTokenSampler: TokenSampler | null | undefined): TokenSamplerParameters {
+    const loadedParams = {} as TokenSamplerParameters;
     for (const key of Object.keys(DEFAULT_PARAMETERS)) {
         const defaultValue = DEFAULT_PARAMETERS[key];
         if (
@@ -166,41 +166,41 @@ function computeInitialParameters(existingSampler: Sampler | null | undefined): 
             typeof defaultValue === 'string' ||
             typeof defaultValue === 'boolean'
         ) {
-            loadedParams[key] = getParamValue(existingSampler?.parameters, key, defaultValue);
+            loadedParams[key] = getParamValue(existingTokenSampler?.parameters, key, defaultValue);
         }
     }
     return loadedParams;
 }
 
-export function SamplerEditorModal({
+export function TokenSamplerEditorModal({
     onClose,
     onSave,
-    existingSampler,
+    existingTokenSampler,
     allStopPatterns,
-}: SamplerEditorModalProps) {
+}: TokenSamplerEditorModalProps) {
 
     return (
-        <SamplerEditorModalInner
+        <TokenSamplerEditorModalInner
             onClose={onClose}
             onSave={onSave}
-            existingSampler={existingSampler}
+            existingTokenSampler={existingTokenSampler}
             allStopPatterns={allStopPatterns}
         />
     );
 }
 
-function SamplerEditorModalInner({
+function TokenSamplerEditorModalInner({
     onClose,
     onSave,
-    existingSampler,
+    existingTokenSampler,
     allStopPatterns,
-}: Omit<SamplerEditorModalProps, 'isOpen'>) {
-    const [name, setName] = useState(existingSampler?.name || '');
-    const [description, setDescription] = useState(existingSampler?.description || '');
-    const [parameters, setParameters] = useState<SamplerParameters>(() => computeInitialParameters(existingSampler));
-    const [activeParamKeys, setActiveParamKeys] = useState<string[]>(() => computeInitialActiveParamKeys(existingSampler));
-    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingSampler?.stopPatterns.map(sp => sp.id) ?? []);
-    const [maxTokens, setMaxTokens] = useState<number>(existingSampler?.maximumNumberOfTokens || 512);
+}: Omit<TokenSamplerEditorModalProps, 'isOpen'>) {
+    const [name, setName] = useState(existingTokenSampler?.name || '');
+    const [description, setDescription] = useState(existingTokenSampler?.description || '');
+    const [parameters, setParameters] = useState<TokenSamplerParameters>(() => computeInitialParameters(existingTokenSampler));
+    const [activeParamKeys, setActiveParamKeys] = useState<string[]>(() => computeInitialActiveParamKeys(existingTokenSampler));
+    const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingTokenSampler?.stopPatterns.map(sp => sp.id) ?? []);
+    const [maxTokens, setMaxTokens] = useState<number>(existingTokenSampler?.maximumNumberOfTokens || 512);
     const [errors, setErrors] = useState<{ name?: string }>({});
 
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -228,7 +228,7 @@ function SamplerEditorModalInner({
         return Object.keys(newErrors).length === 0;
     };
 
-    const buildSamplerFromForm = (isNewClone: boolean): Sampler | null => {
+    const buildTokenSamplerFromForm = (isNewClone: boolean): TokenSampler | null => {
         if (!validate()) return null;
 
         const stopPatterns = allStopPatterns.filter(sp => selectedStopPatternIds.includes(sp.id));
@@ -242,28 +242,28 @@ function SamplerEditorModalInner({
 
         const now = Date.now();
         return {
-            id: isNewClone ? uuidv4() : (existingSampler?.id || uuidv4()),
+            id: isNewClone ? uuidv4() : (existingTokenSampler?.id || uuidv4()),
             name: isNewClone ? `${name} (Clone)` : name,
             description: description || undefined,
             parameters: paramsWithEnabled,
             stopPatterns,
             maximumNumberOfTokens: maxTokens,
-            firstCreatedTimestamp: isNewClone ? now : (existingSampler?.firstCreatedTimestamp || now),
+            firstCreatedTimestamp: isNewClone ? now : (existingTokenSampler?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
     };
 
     const handleSubmit = () => {
-        const sampler = buildSamplerFromForm(false);
-        if (!sampler) return;
-        onSave(sampler);
+        const tokenSampler = buildTokenSamplerFromForm(false);
+        if (!tokenSampler) return;
+        onSave(tokenSampler);
         onClose();
     };
 
     const handleClone = () => {
-        const clonedSampler = buildSamplerFromForm(true);
-        if (!clonedSampler) return;
-        onSave(clonedSampler);
+        const clonedTokenSampler = buildTokenSamplerFromForm(true);
+        if (!clonedTokenSampler) return;
+        onSave(clonedTokenSampler);
         onClose();
     };
 
@@ -301,10 +301,10 @@ function SamplerEditorModalInner({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>{existingSampler ? 'Edit Sampler' : 'Create New Sampler'}</h2>
+                    <h2>{existingTokenSampler ? 'Edit TokenSampler' : 'Create New TokenSampler'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
-                        {existingSampler && (
+                        {existingTokenSampler && (
                             <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>
                                 Clone
                             </button>
@@ -331,7 +331,7 @@ function SamplerEditorModalInner({
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                             className="editor-textarea"
-                            placeholder="Describe how this sampler works"
+                            placeholder="Describe how this tokenSampler works"
                             rows={2}
                         />
                     </div>
@@ -350,14 +350,14 @@ function SamplerEditorModalInner({
                     </div>
 
                     <div className="editor-section">
-                        <div className="sampler-section-header editor-section-title">
+                        <div className="tokenSampler-section-header editor-section-title">
                             <span>Active Parameters ({activeParamKeys.length})</span>
-                            <span className="sampler-drag-hint">↕ Drag To Reorder</span>
+                            <span className="tokenSampler-drag-hint">↕ Drag To Reorder</span>
                         </div>
 
-                        <div className="sampler-param-list">
+                        <div className="tokenSampler-param-list">
                             {activeParamKeys.length === 0 && (
-                                <div className="sampler-stop-empty">No active parameters. Add some below.</div>
+                                <div className="tokenSampler-stop-empty">No active parameters. Add some below.</div>
                             )}
 
                             {activeParamKeys.map((key, index) => {
@@ -373,10 +373,10 @@ function SamplerEditorModalInner({
                                         onDragEnd={handleDragEnd}
                                         onDragOver={handleDragOver}
                                         onDrop={(e) => handleDrop(e, index)}
-                                        className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`}
+                                        className={`tokenSampler-param-row ${isDragging ? 'tokenSampler-param-dragging' : ''}`}
                                     >
-                                        <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
-                                        <div className="sampler-param-content">
+                                        <div className="tokenSampler-drag-handle" title="Drag to reorder">⋮⋮</div>
+                                        <div className="tokenSampler-param-content">
                                             {!config.isBoolean && !config.isString ? (
                                                 <>
                                                     <div className="slider-slider-header-with-remove">
@@ -392,32 +392,32 @@ function SamplerEditorModalInner({
                                                         <button
                                                             type="button"
                                                             onClick={() => handleRemoveParam(key)}
-                                                            className="sampler-stop-remove-button slider-remove-inline"
+                                                            className="tokenSampler-stop-remove-button slider-remove-inline"
                                                             title={`Remove ${config.label}`}
                                                         >
                                                             ×
                                                         </button>
                                                     </div>
                                                     {config.description && (
-                                                        <div className="sampler-param-description">{config.description}</div>
+                                                        <div className="tokenSampler-param-description">{config.description}</div>
                                                     )}
                                                 </>
                                             ) : (
                                                 <>
-                                                    <div className="sampler-param-label-row" style={{ justifyContent: 'space-between' }}>
-                                                        <span className="sampler-param-name sampler-param-name-enabled">
+                                                    <div className="tokenSampler-param-label-row" style={{ justifyContent: 'space-between' }}>
+                                                        <span className="tokenSampler-param-name tokenSampler-param-name-enabled">
                                                             {config.label}
                                                         </span>
                                                         <button
                                                             type="button"
                                                             onClick={() => handleRemoveParam(key)}
-                                                            className="sampler-stop-remove-button"
+                                                            className="tokenSampler-stop-remove-button"
                                                             title={`Remove ${config.label}`}
                                                         >
                                                             ×
                                                         </button>
                                                     </div>
-                                                    <div className="sampler-param-input-row">
+                                                    <div className="tokenSampler-param-input-row">
                                                         {config.isBoolean ? (
                                                             <button
                                                                 type="button"
@@ -432,12 +432,12 @@ function SamplerEditorModalInner({
                                                                 type="text"
                                                                 value={parameters[key] as string}
                                                                 onChange={(e) => handleParameterChange(key, e.target.value)}
-                                                                className="editor-input sampler-string-input"
+                                                                className="editor-input tokenSampler-string-input"
                                                             />
                                                         )}
                                                     </div>
                                                     {config.description && (
-                                                        <div className="sampler-param-description">{config.description}</div>
+                                                        <div className="tokenSampler-param-description">{config.description}</div>
                                                     )}
                                                 </>
                                             )}
@@ -469,23 +469,23 @@ function SamplerEditorModalInner({
 
                     <div className="editor-section">
                         <div className="editor-section-title">Stop Patterns</div>
-                        <div className="sampler-stop-patterns-list">
+                        <div className="tokenSampler-stop-patterns-list">
                             {selectedStopPatternIds.length === 0 && (
-                                <div className="sampler-stop-empty">No stop patterns assigned.</div>
+                                <div className="tokenSampler-stop-empty">No stop patterns assigned.</div>
                             )}
                             {selectedStopPatternIds.map(id => {
                                 const sp = allStopPatterns.find(p => p.id === id);
                                 if (!sp) return null;
                                 return (
-                                    <div key={id} className="sampler-stop-item">
-                                        <div className="sampler-stop-info">
-                                            <span className="sampler-stop-name">{sp.name}</span>
-                                            <span className="sampler-stop-pattern">{sp.pattern}</span>
+                                    <div key={id} className="tokenSampler-stop-item">
+                                        <div className="tokenSampler-stop-info">
+                                            <span className="tokenSampler-stop-name">{sp.name}</span>
+                                            <span className="tokenSampler-stop-pattern">{sp.pattern}</span>
                                         </div>
                                         <button
                                             type="button"
                                             onClick={() => setSelectedStopPatternIds(prev => prev.filter(sid => sid !== id))}
-                                            className="sampler-stop-remove-button"
+                                            className="tokenSampler-stop-remove-button"
                                             title="Remove stop pattern"
                                         >
                                             ×

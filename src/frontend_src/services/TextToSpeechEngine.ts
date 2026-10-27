@@ -1,7 +1,7 @@
 // src/frontend_src/services/TextToSpeechEngine.ts
 import { localURL } from '../../configurations';
 import { getCharacterVoiceURL } from '../storages/serverStorage';
-import type { Character, deviceType, Sampler } from '../types';
+import type { Character, deviceType, TokenSampler } from '../types';
 
 /**
  * Fetches a character's voice reference sample from storage and converts it to Base64.
@@ -75,7 +75,7 @@ class TextToSpeechEngine {
 
     async synthesize(
         text: string,
-        sampler: Sampler | undefined,
+        tokenSampler: TokenSampler | undefined,
         audioBase64: string,
         transcript: string,
         language?: string,
@@ -87,7 +87,7 @@ class TextToSpeechEngine {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     text,
-                    sampler,
+                    tokenSampler,
                     audioBase64,
                     transcript,
                     language,
