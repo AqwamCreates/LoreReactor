@@ -1,12 +1,12 @@
 // src/frontend_src/services/SpatiotemporalModelEngine.ts
 import { localAddress } from "../../configurations";
 import {
-    spatiotemporalCloudBackends,
-    spatiotemporalCloudImageEndpoints,
-    spatiotemporalCloudVideoEndpoints,
-    spatiotemporalCloudVideoPollEndpoints,
-    openAiCompatibleSpatiotemporalLocalBackends,
-    sdapiCompatibleSpatiotemporalLocalBackends,
+    cloudBackends,
+    cloudEndpoints,
+    cloudVideoEndpoints,
+    cloudVideoPollEndpoints,
+    openAiCompatibleLocalBackends,
+    sdapiCompatibleLocalBackends,
 } from "../dictionaries/spatiotemporalModelInformation";
 import type { backend, cloudBackend, SpatiotemporalModel } from "../types";
 
@@ -29,7 +29,7 @@ export interface SpatiotemporalRequest {
     scheduler?: string;
     clipSkip?: number;
     n?: number;
-    outputFormat?: 'png' | 'jpeg' | 'webp';
+    outputFormat?: 'png' | 'jpeg' | 'webp' | 'mp4' | 'webm' | 'mov';
     duration?: number;
     aspectRatio?: string;
     resolution?: string;
@@ -143,7 +143,7 @@ export class SpatiotemporalModelEngine {
         modelPath: string | undefined,
         request: SpatiotemporalRequest,
     ): { url: string; headers: HeadersInit; body: string } {
-        const templateUrl = spatiotemporalCloudImageEndpoints[backendName];
+        const templateUrl = cloudEndpoints[backendName];
         if (!templateUrl) throw new Error(`Unsupported spatiotemporal cloud backend: ${backendName}`);
 
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -163,7 +163,12 @@ export class SpatiotemporalModelEngine {
             bodyObj.resolution = request.resolution;
         }
         if (request.aspectRatio) bodyObj.aspect_ratio = request.aspectRatio;
-        if (request.outputFormat) bodyObj.output_format = request.outputFormat;
+        
+        // Only pass output_format for image-compatible formats
+        if (request.outputFormat && ['png', 'jpeg', 'webp'].includes(request.outputFormat)) {
+            bodyObj.output_format = request.outputFormat;
+        }
+        
         if (request.seed !== undefined) bodyObj.seed = request.seed;
         if (request.inputReferences && request.inputReferences.length > 0) {
             bodyObj.input_references = request.inputReferences.map(url => ({
@@ -181,7 +186,7 @@ export class SpatiotemporalModelEngine {
         modelPath: string | undefined,
         request: SpatiotemporalRequest,
     ): { url: string; headers: HeadersInit; body: string } {
-        const templateUrl = spatiotemporalCloudVideoEndpoints[backendName];
+        const templateUrl = cloudVideoEndpoints[backendName];
         if (!templateUrl) throw new Error(`Unsupported spatiotemporal video backend: ${backendName}`);
 
         const headers: Record<string, string> = { 'Content-Type': 'application/json' };
@@ -241,7 +246,9 @@ export class SpatiotemporalModelEngine {
             size: `${width}x${height}`,
         };
 
-        if (request.outputFormat) bodyObj.output_format = request.outputFormat;
+        if (request.outputFormat && ['png', 'jpeg', 'webp'].includes(request.outputFormat)) {
+            bodyObj.output_format = request.outputFormat;
+        }
 
         return { url, headers, body: JSON.stringify(bodyObj) };
     }
@@ -286,7 +293,7 @@ export class SpatiotemporalModelEngine {
         const apiKey = this.model?.apiKey;
         const backendName = this.model?.backend;
 
-        if (apiKey && backendName && spatiotemporalCloudBackends.includes(backendName as cloudBackend)) {
+        if (apiKey && backendName && cloudBackends.includes(backendName as cloudBackend)) {
             const isVideoRequest = this.isVideoModel() || request.duration !== undefined;
             if (isVideoRequest) {
                 return this.buildCloudVideoRequest(apiKey, backendName, this.model?.model, request);
@@ -295,11 +302,11 @@ export class SpatiotemporalModelEngine {
         }
 
         // Local: prefer sdapi if negative prompt is provided, otherwise OpenAI-compatible
-        if (backendName && sdapiCompatibleSpatiotemporalLocalBackends.has(backendName) && request.negativePrompt) {
+        if (backendName && sdapiCompatibleLocalBackends.has(backendName) && request.negativePrompt) {
             return this.buildLocalSdapiRequest(this.runtimePort, request);
         }
 
-        if (backendName && openAiCompatibleSpatiotemporalLocalBackends.has(backendName)) {
+        if (backendName && openAiCompatibleLocalBackends.has(backendName)) {
             return this.buildLocalOpenAIRequest(this.runtimePort, request);
         }
 
@@ -322,7 +329,7 @@ export class SpatiotemporalModelEngine {
         const isVideoRequest = this.isVideoModel() || request.duration !== undefined;
 
         // Cloud video requires async polling — handle separately
-        if (apiKey && spatiotemporalCloudBackends.includes(backendName as cloudBackend) && isVideoRequest) {
+        if (apiKey && cloudBackends.includes(backendName as cloudBackend) && isVideoRequest) {
             return this.generateCloudVideo(request, signal, callbacks);
         }
 
@@ -427,7 +434,7 @@ export class SpatiotemporalModelEngine {
             // Construct polling URL: prefer the one returned by the API, fallback to dictionary template
             let pollingUrl = submitData.polling_url;
             if (!pollingUrl) {
-                const templateUrl = spatiotemporalCloudVideoPollEndpoints[this.model.backend];
+                const templateUrl = cloudVideoPollEndpoints[this.model.backend];
                 if (templateUrl) {
                     pollingUrl = templateUrl.replace('{jobId}', submitData.id);
                 } else {
