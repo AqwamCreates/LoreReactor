@@ -803,7 +803,7 @@ export function AppModals({
 
             {modals.tokenSamplerList.isOpen && (
                 <ManagerModal 
-                    title="TokenSamplers" 
+                    title="Token Samplers" 
                     entityType={'tokenSampler' as entityType}
                     localLibraryItems={allTokenSamplers} 
                     onClose={modals.tokenSamplerList.close}
