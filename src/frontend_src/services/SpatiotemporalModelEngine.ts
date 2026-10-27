@@ -1,3 +1,4 @@
+// src/frontend_src/services/SpatiotemporalModelEngine.ts
 import { localAddress } from "../../configurations";
 import {
     spatiotemporalCloudBackends,
@@ -72,7 +73,7 @@ interface OpenRouterImageResponse {
 
 interface OpenRouterVideoSubmitResponse {
     id: string;
-    polling_url: string;
+    polling_url?: string;
     status: 'pending' | 'in_progress' | 'completed' | 'failed';
     error?: string;
 }
@@ -80,7 +81,7 @@ interface OpenRouterVideoSubmitResponse {
 interface OpenRouterVideoPollResponse {
     id: string;
     generation_id?: string;
-    polling_url: string;
+    polling_url?: string;
     status: 'pending' | 'in_progress' | 'completed' | 'failed' | 'cancelled' | 'expired';
     unsigned_urls?: string[];
     urls?: string[];
@@ -423,7 +424,18 @@ export class SpatiotemporalModelEngine {
             const submitData = await submitResponse.json() as OpenRouterVideoSubmitResponse;
             callbacks?.onProgress?.(`Job submitted: ${submitData.id}`, 10);
 
-            return await this.pollVideoJob(submitData.polling_url, signal, callbacks);
+            // Construct polling URL: prefer the one returned by the API, fallback to dictionary template
+            let pollingUrl = submitData.polling_url;
+            if (!pollingUrl) {
+                const templateUrl = spatiotemporalCloudVideoPollEndpoints[this.model.backend];
+                if (templateUrl) {
+                    pollingUrl = templateUrl.replace('{jobId}', submitData.id);
+                } else {
+                    return { success: false, error: 'No polling URL provided by backend and no template found.' };
+                }
+            }
+
+            return await this.pollVideoJob(pollingUrl, signal, callbacks);
         } catch (error) {
             if ((error as Error).name === 'AbortError') {
                 return { success: false, error: 'Video generation cancelled' };
