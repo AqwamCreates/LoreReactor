@@ -41,7 +41,7 @@ interface ChatInputProps {
     onToggleMicrophone: () => void;
     onSend: () => void;
     onStopGeneration: () => void;
-    onOpenModels: () => void;
+    onOpenLanguageModels: () => void;
 }
 
 export function ChatInput({
@@ -51,7 +51,7 @@ export function ChatInput({
     interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allProfiles,
     allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData,
     fileInputRef, textareaRef,
-    onFileSelected, onToggleMicrophone, onSend, onStopGeneration, onOpenModels,
+    onFileSelected, onToggleMicrophone, onSend, onStopGeneration, onOpenLanguageModels,
 }: ChatInputProps) {
     const [selectedIndex, setSelectedIndex] = useState(0);
     const [lastResetKey, setLastResetKey] = useState('');
@@ -166,7 +166,7 @@ export function ChatInput({
                     {isModelLoading && <span className="model-status-spinner" />}
                     <span className="model-status-text">{modelStatusMessage}</span>
                     {!selectedModelId && (
-                        <button type="button" className="model-status-action-button" onClick={onOpenModels}>Open Language Models</button>
+                        <button type="button" className="model-status-action-button" onClick={onOpenLanguageModels}>Open Language Models</button>
                     )}
                 </div>
             )}

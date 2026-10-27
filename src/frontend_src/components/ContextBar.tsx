@@ -10,8 +10,9 @@ interface ContextBarProps {
     onOpenLocations: () => void;
     onOpenAudioTracks: () => void;
     onOpenWorlds: () => void;
-    onOpenModels: () => void;
-    onOpenSamplers: () => void;
+    onOpenLanguageModels: () => void;
+    onOpenSpatiotemporalModels: () => void;
+    onOpenTokenSamplers: () => void;
     onOpenPromptBlocks: () => void;
     onOpenStopPatterns: () => void;
     onOpenRetrievalConfigurations: () => void;
@@ -30,7 +31,7 @@ function NavButton({ icon, label, onClick }: { icon: string; label: string; onCl
 export function ContextBar({
     viewMode,
     onOpenInteractionDataList, onOpenCharacters, onOpenContexts, onOpenLocations, onOpenAudioTracks, onOpenWorlds,
-    onOpenPromptBlocks, onOpenModels, onOpenSamplers, onOpenStopPatterns, onOpenRetrievalConfigurations, onOpenBudgets, onOpenProfiles,
+    onOpenPromptBlocks, onOpenLanguageModels, onOpenSpatiotemporalModels, onOpenTokenSamplers, onOpenStopPatterns, onOpenRetrievalConfigurations, onOpenBudgets, onOpenProfiles,
 }: ContextBarProps) {
     const [expanded, setExpanded] = useState(false);
 
@@ -42,8 +43,9 @@ export function ContextBar({
             <div className="context-bar-extended-wrapper">
                 <div className="context-bar-extended-row">
                     <NavButton icon="🧱" label="Prompt Blocks" onClick={onOpenPromptBlocks} />
-                    <NavButton icon="🤖" label="Language Models" onClick={onOpenModels} />
-                    <NavButton icon="🎚️" label="Samplers" onClick={onOpenSamplers} />
+                    <NavButton icon="🤖" label="Language Models" onClick={onOpenLanguageModels} />
+                    <NavButton icon="🎨" label="Spatiotemporal Models" onClick={onOpenSpatiotemporalModels} />
+                    <NavButton icon="🎚️" label="Token Samplers" onClick={onOpenTokenSamplers} />
                     <NavButton icon="🛑" label="Stop Patterns" onClick={onOpenStopPatterns} />
                     <NavButton icon="🧭" label="Retrieval Configurations" onClick={onOpenRetrievalConfigurations} />
                     <NavButton icon="💰" label="Budgets" onClick={onOpenBudgets} />

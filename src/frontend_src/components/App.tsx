@@ -1433,8 +1433,8 @@ function App() {
                             onOpenInteractionDataList={modals.interactionDataList.open} onOpenCharacters={modals.characterList.open}
                             onOpenContexts={modals.contextList.open} onOpenLocations={modals.locationList.open}
                             onOpenAudioTracks={modals.audioTrackList.open} onOpenWorlds={modals.worldList.open}
-                            onOpenPromptBlocks={modals.promptBlockList.open} onOpenModels={modals.languageModelList.open}
-                            onOpenSamplers={modals.tokenSamplerList.open} onOpenStopPatterns={modals.stopPatternList.open}
+                            onOpenPromptBlocks={modals.promptBlockList.open} onOpenLanguageModels={modals.languageModelList.open} onOpenSpatiotemporalModels={modals.spatiotemporalModelList.open}
+                            onOpenTokenSamplers={modals.tokenSamplerList.open} onOpenStopPatterns={modals.stopPatternList.open}
                             onOpenRetrievalConfigurations={modals.retrievalConfigurationList.open}
                             onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open}
                         />
@@ -1453,7 +1453,7 @@ function App() {
                             allSpatiotemporalModels={spatiotemporalModels.spatiotemporalModels}
                             fileInputRef={fileInputRef} textareaRef={textareaRef} onFileSelected={handleFileSelected}
                             onToggleMicrophone={handleToggleMic} onSend={() => handleSend()}
-                            onStopGeneration={stopGeneration} onOpenModels={modals.languageModelList.open} allLanguageModels={languageModels.languageModels} allBudgetStrategies={budgetStrategies.strategies}
+                            onStopGeneration={stopGeneration} onOpenLanguageModels={modals.languageModelList.open} allLanguageModels={languageModels.languageModels} allBudgetStrategies={budgetStrategies.strategies}
                         />
                     </>
                 )}
