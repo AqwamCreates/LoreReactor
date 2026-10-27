@@ -285,7 +285,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     { 
         tool: 'substrate', 
         label: 'Image & Video Generation', 
-        keywords: ['artist', 'painter', 'photographer', 'filmmaker', 'director', 'illustrator', 'draw', 'paint', 'generate image', 'create image', 'make video', 'generate video', 'visualize', 'imagine', 'picture', 'portrait', 'canvas', 'studio', 'cinematographer', 'animator', 'render', 'sketch', 'depict', 'show me', 'draw me', 'paint me', 'create visual', 'generate visual', 'make art', 'create art'], 
+        keywords: ['artist', 'drawer', 'painter', 'photographer', 'filmmaker', 'director', 'illustrator', 'draw', 'paint', 'generate image', 'create image', 'make video', 'generate video', 'visualize', 'imagine', 'picture', 'portrait', 'canvas', 'studio', 'cinematographer', 'animator', 'render', 'sketch', 'depict', 'show me', 'draw me', 'paint me', 'create visual', 'generate visual', 'make art', 'create art'], 
         tier: 'in_world_readonly',
         riskDescription: 'Generates images or videos from text descriptions using AI diffusion models.' 
     },
