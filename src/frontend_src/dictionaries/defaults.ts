@@ -215,6 +215,7 @@ export const defaultInputStrategy: promptBlockType[] = [
     'Appearance Prompt',
     'Context',
     'Current Location With Description',
+    'Reachable Locations',
     'Sky View',
     'Weather',
     'Inventory',
