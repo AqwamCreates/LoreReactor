@@ -1,5 +1,5 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
-import { useState, useMemo, useCallback, type CSSProperties } from 'react';
+import { useState, useMemo, useCallback, useRef, type CSSProperties } from 'react';
 import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, TokenSampler, StopPattern, tristateInteger, cacheConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode, participantScopeMode, participantInsertionMode } from '../types';
 import { SliderInput } from './SliderInput';
 import { EntitySelect } from './EntitySelect';
@@ -98,7 +98,7 @@ const CHECKBOX_HINT_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, 
 const SLIDER_HEADER_STYLE: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' };
 const SLIDER_LABEL_STYLE: CSSProperties = { margin: 0 };
 const SLIDER_VALUE_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6 };
-const TOOLBAR_BTN_SMALL_STYLE: CSSProperties = { width: '24px', height: '24px', fontSize: '0.7rem' };
+const TOOLBAR_BTN_SMALL_STYLE: CSSProperties = { width: '24px', height: '24px', minWidth: '24px', minHeight: '24px', fontSize: '0.7rem', padding: 0 };
 const TOOLBAR_BTN_DELETE_STYLE: CSSProperties = { ...TOOLBAR_BTN_SMALL_STYLE, fontSize: '0.8rem', color: '#ff4444' };
 const STEP_EXPANDED_STYLE: CSSProperties = { padding: '10px 12px', margin: '0 0 4px 0', background: 'var(--social-bg)', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 6px 6px', display: 'flex', flexDirection: 'column', gap: '8px' };
 const STEP_NAME_STYLE: CSSProperties = { fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
@@ -106,7 +106,7 @@ const STEP_DESC_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, font
 const INPUT_RIGHT_STYLE: CSSProperties = { textAlign: 'right' as const };
 const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
 
-// ─── Sub-Components ────────────────────────────────_________________
+// ─── Sub-Components ─────────────────────────────────────────────────
 
 type ProfileTabId = 'general' | 'injection' | 'behaviour' | 'tools' | 'pipeline' | 'cache' | 'models';
 
@@ -310,8 +310,12 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [knowledgeRetrievalConfigurationId, setKnowledgeRetrievalConfigurationId] = useState<string>(ep?.characterKnowledgeRetrievalConfiguration?.id ?? '');
     const [memoryRetrievalConfigurationId, setMemoryRetrievalConfigurationId] = useState<string>(ep?.characterMemoryRetrievalConfiguration?.id ?? '');
     const [errors, setErrors] = useState<{ name?: string }>({});
+    
+    // Drag & Drop State
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
     const [draggedStepIndex, setDraggedStepIndex] = useState<number | null>(null);
+    const [draggedImageIndex, setDraggedImageIndex] = useState<number | null>(null);
+    const isStepDraggingRef = useRef(false);
     const [expandedStepId, setExpandedStepId] = useState<string | null>(null);
     
     const [participantScopeModes, setParticipantScopeModes] = useState<Record<cacheConfigurationType, participantScopeMode>>(
@@ -345,6 +349,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     }, []);
     const handleRemoveAutoResumeSignal = useCallback((index: number) => { setAutoResumeSignals(prev => prev.filter((_, i) => i !== index)); if (expandedSignalIndex === index) setExpandedSignalIndex(null); }, [expandedSignalIndex]);
     
+    // Entity Image Reordering
     const addImageType = useCallback((type: entityImageType) => {
         if (!entityImageTypes.includes(type)) setEntityImageTypes(prev => [...prev, type]);
     }, [entityImageTypes]);
@@ -358,6 +363,25 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
         setEntityImageTypes(newOrder);
     }, [entityImageTypes]);
+
+    const handleImageDragStart = (e: React.DragEvent, index: number) => {
+        setDraggedImageIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(index));
+    };
+    const handleImageDragEnd = () => {
+        setDraggedImageIndex(null);
+    };
+    const handleImageDrop = (e: React.DragEvent, dropIndex: number) => {
+        e.preventDefault();
+        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
+        if (isNaN(dragIndex) || dragIndex === dropIndex) return;
+        const newOrder = [...entityImageTypes];
+        const [removed] = newOrder.splice(dragIndex, 1);
+        newOrder.splice(dropIndex, 0, removed);
+        setEntityImageTypes(newOrder);
+        setDraggedImageIndex(null);
+    };
 
     const validate = (): boolean => { const newErrors: { name?: string } = {}; if (!name) newErrors.name = 'Name is required.'; setErrors(newErrors); return Object.keys(newErrors).length === 0; };
     
@@ -374,18 +398,67 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const handleSubmit = () => { if (!validate()) return; onSave(buildProfile(ep?.id || uuidv4(), name)); onClose(); };
     const handleClone = () => { if (!validate()) return; onSave(buildProfile(uuidv4(), `${name} (Clone)`)); onClose(); };
 
-    // Drag and Drop Logic
-    const handleDragStart = (e: React.DragEvent, index: number) => { setDraggedIndex(index); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0); };
-    const handleDragEnd = (e: React.DragEvent) => { (e.target as HTMLElement).style.opacity = '1'; setDraggedIndex(null); };
-    const handleDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
-    const handleDrop = (e: React.DragEvent, dropIndex: number) => { e.preventDefault(); const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain')); if (dragIndex === dropIndex) return; const newOrder = [...inputStrategy]; const [removed] = newOrder.splice(dragIndex, 1); newOrder.splice(dropIndex, 0, removed); setInputStrategy(newOrder); setDraggedIndex(null); };
-    const moveBlock = (index: number, direction: -1 | 1) => { const newIndex = index + direction; if (newIndex < 0 || newIndex >= inputStrategy.length) return; const newOrder = [...inputStrategy]; [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]]; setInputStrategy(newOrder); };
+    // Payload Reordering
+    const handleDragStart = (e: React.DragEvent, index: number) => {
+        setDraggedIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(index));
+    };
+    const handleDragEnd = () => {
+        setDraggedIndex(null);
+    };
+    const handleDragOver = (e: React.DragEvent) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+    };
+    const handleDrop = (e: React.DragEvent, dropIndex: number) => {
+        e.preventDefault();
+        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
+        if (isNaN(dragIndex) || dragIndex === dropIndex) return;
+        const newOrder = [...inputStrategy];
+        const [removed] = newOrder.splice(dragIndex, 1);
+        newOrder.splice(dropIndex, 0, removed);
+        setInputStrategy(newOrder);
+        setDraggedIndex(null);
+    };
+    const moveBlock = (index: number, direction: -1 | 1) => {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= inputStrategy.length) return;
+        const newOrder = [...inputStrategy];
+        [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
+        setInputStrategy(newOrder);
+    };
     const addBlock = (blockEntry: promptBlockType | string) => { if (!inputStrategy.includes(blockEntry)) setInputStrategy(prev => [...prev, blockEntry]); };
     const removeBlock = (index: number) => setInputStrategy(prev => prev.filter((_, i) => i !== index));
-    const handleStepDragStart = (e: React.DragEvent, index: number) => { setDraggedStepIndex(index); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(index)); setTimeout(() => { (e.target as HTMLElement).style.opacity = '0.5'; }, 0); };
-    const handleStepDragEnd = (e: React.DragEvent) => { (e.target as HTMLElement).style.opacity = '1'; setDraggedStepIndex(null); };
-    const handleStepDrop = (e: React.DragEvent, dropIndex: number) => { e.preventDefault(); const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain')); if (dragIndex === dropIndex) return; const newSteps = [...summarizationSteps]; const [removed] = newSteps.splice(dragIndex, 1); newSteps.splice(dropIndex, 0, removed); setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i }))); setDraggedStepIndex(null); };
-    const moveStep = (index: number, direction: -1 | 1) => { const newIndex = index + direction; if (newIndex < 0 || newIndex >= summarizationSteps.length) return; const newSteps = [...summarizationSteps]; [newSteps[index], newSteps[newIndex]] = [newSteps[newIndex], newSteps[index]]; setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i }))); };
+
+    // Summarization Pipeline Reordering
+    const handleStepDragStart = (e: React.DragEvent, index: number) => {
+        isStepDraggingRef.current = true;
+        setDraggedStepIndex(index);
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(index));
+    };
+    const handleStepDragEnd = () => {
+        setTimeout(() => { isStepDraggingRef.current = false; }, 50);
+        setDraggedStepIndex(null);
+    };
+    const handleStepDrop = (e: React.DragEvent, dropIndex: number) => {
+        e.preventDefault();
+        const dragIndex = Number.parseInt(e.dataTransfer.getData('text/plain'));
+        if (isNaN(dragIndex) || dragIndex === dropIndex) return;
+        const newSteps = [...summarizationSteps];
+        const [removed] = newSteps.splice(dragIndex, 1);
+        newSteps.splice(dropIndex, 0, removed);
+        setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i })));
+        setDraggedStepIndex(null);
+    };
+    const moveStep = (index: number, direction: -1 | 1) => {
+        const newIndex = index + direction;
+        if (newIndex < 0 || newIndex >= summarizationSteps.length) return;
+        const newSteps = [...summarizationSteps];
+        [newSteps[index], newSteps[newIndex]] = [newSteps[newIndex], newSteps[index]];
+        setSummarizationSteps(newSteps.map((s, i) => ({ ...s, order: i })));
+    };
     const updateStepField = <K extends keyof SummarizationStep>(index: number, field: K, value: SummarizationStep[K]) => setSummarizationSteps(prev => prev.map((s, i) => i === index ? { ...s, [field]: value, lastUpdatedTimestamp: Date.now() } : s));
     const addSummarizationStep = (strategyType: SummarizationStrategyType) => {
         const now = Date.now();
@@ -606,14 +679,27 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                             </div>
 
                             <div className="editor-section">
-                                <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Image Injection Order</span></div>
+                                <div className="tokenSampler-section-header editor-section-title">
+                                    <span>Image Injection Order</span>
+                                    <span className="tokenSampler-drag-hint">↕ Drag To Reorder</span>
+                                </div>
                                 <div style={CHECKBOX_HINT_STYLE}>Controls which entity images are sent to the model and their injection priority order. The top-to-bottom order determines the visual primacy and ID assignment.</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                     {entityImageTypes.map((type, index) => {
                                         const config = ALL_ENTITY_IMAGE_TYPES.find(c => c.value === type);
+                                        const isDragging = draggedImageIndex === index;
                                         return (
-                                            <div key={type} className="sampler-param-row" style={{ padding: '6px 8px' }}>
-                                                <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
+                                            <div 
+                                                key={type} 
+                                                draggable
+                                                onDragStart={(e) => handleImageDragStart(e, index)}
+                                                onDragEnd={handleImageDragEnd}
+                                                onDragOver={handleDragOver}
+                                                onDrop={(e) => handleImageDrop(e, index)}
+                                                className={`tokenSampler-param-row ${isDragging ? 'tokenSampler-param-dragging' : ''}`} 
+                                                style={{ padding: '6px 8px' }}
+                                            >
+                                                <div className="tokenSampler-drag-handle" title="Drag to reorder">⋮⋮</div>
                                                 <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
                                                     <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {config?.label || type}</span>
                                                     <span style={{ fontSize: '0.6rem', opacity: 0.6 }}>{config?.hint}</span>
@@ -699,20 +785,37 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                     {activeTab === 'pipeline' && (
                         <>
                             <div className="editor-section">
-                                <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Prompt Block Order (Payload)</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div>
+                                <div className="tokenSampler-section-header editor-section-title">
+                                    <span>Prompt Block Order (Payload)</span>
+                                    <span className="tokenSampler-drag-hint">↕ Drag To Reorder</span>
+                                </div>
                                 <div style={CHECKBOX_HINT_STYLE}>Controls the order in which prompt sections are assembled. Includes built-in blocks and custom prompt blocks.</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                                    {inputStrategy.map((blockEntry, index) => (
-                                        <div key={`${blockEntry}-${index}`} draggable onDragStart={(e) => handleDragStart(e, index)} onDragEnd={handleDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleDrop(e, index)} className={`sampler-param-row ${draggedIndex === index ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px' }}>
-                                            <div className="sampler-drag-handle" title="Drag to reorder">⋮⋮</div>
-                                            <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {getBlockLabel(blockEntry)}</span></div>
-                                            <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
-                                                <button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
-                                                <button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button>
-                                                <button type="button" onClick={() => removeBlock(index)} className="toolbar-button" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
+                                    {inputStrategy.map((blockEntry, index) => {
+                                        const isDragging = draggedIndex === index;
+                                        return (
+                                            <div 
+                                                key={`${blockEntry}-${index}`} 
+                                                draggable 
+                                                onDragStart={(e) => handleDragStart(e, index)} 
+                                                onDragEnd={handleDragEnd} 
+                                                onDragOver={handleDragOver} 
+                                                onDrop={(e) => handleDrop(e, index)} 
+                                                className={`tokenSampler-param-row ${isDragging ? 'tokenSampler-param-dragging' : ''}`} 
+                                                style={{ padding: '6px 8px' }}
+                                            >
+                                                <div className="tokenSampler-drag-handle" title="Drag to reorder">⋮⋮</div>
+                                                <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)' }}>{index + 1}. {getBlockLabel(blockEntry)}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }}>
+                                                    <button type="button" onClick={() => moveBlock(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
+                                                    <button type="button" onClick={() => moveBlock(index, 1)} disabled={index === inputStrategy.length - 1} className="toolbar-button" title="Move down" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === inputStrategy.length - 1 ? 0.3 : 1 }}>▼</button>
+                                                    <button type="button" onClick={() => removeBlock(index)} className="toolbar-button" title="Remove from order" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                                 {(missingBuiltInBlocks.length > 0 || availablePromptBlocks.length > 0) && (
                                     <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
@@ -737,7 +840,10 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                             </div>
 
                             <div className="editor-section">
-                                <div className="editor-section-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}><span>Summarization Pipeline</span><span style={{ fontSize: '0.6rem', opacity: 0.5, fontWeight: 'normal', textTransform: 'none', letterSpacing: 0 }}>↕ Drag To Reorder</span></div>
+                                <div className="tokenSampler-section-header editor-section-title">
+                                    <span>Summarization Pipeline</span>
+                                    <span className="tokenSampler-drag-hint">↕ Drag To Reorder</span>
+                                </div>
                                 <div style={CHECKBOX_HINT_STYLE}>Controls how messages are summarized based on the order of the individual text summarizers.</div>
                                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                                     {summarizationSteps.map((step, index) => {
@@ -745,8 +851,20 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                         const isExpanded = expandedStepId === step.id;
                                         return (
                                             <div key={step.id}>
-                                                <div draggable onDragStart={(e) => handleStepDragStart(e, index)} onDragEnd={handleStepDragEnd} onDragOver={handleDragOver} onDrop={(e) => handleStepDrop(e, index)} className={`sampler-param-row ${isDragging ? 'sampler-param-dragging' : ''}`} style={{ padding: '6px 8px', cursor: 'pointer' }} onClick={() => setExpandedStepId(isExpanded ? null : step.id)}>
-                                                    <div className="sampler-drag-handle" title="Drag to reorder" onClick={(e) => e.stopPropagation()}>⋮⋮</div>
+                                                <div 
+                                                    draggable 
+                                                    onDragStart={(e) => handleStepDragStart(e, index)} 
+                                                    onDragEnd={handleStepDragEnd} 
+                                                    onDragOver={handleDragOver} 
+                                                    onDrop={(e) => handleStepDrop(e, index)} 
+                                                    className={`tokenSampler-param-row ${isDragging ? 'tokenSampler-param-dragging' : ''}`} 
+                                                    style={{ padding: '6px 8px', cursor: 'pointer' }} 
+                                                    onClick={() => {
+                                                        if (isStepDraggingRef.current) return;
+                                                        setExpandedStepId(isExpanded ? null : step.id);
+                                                    }}
+                                                >
+                                                    <div className="tokenSampler-drag-handle" title="Drag to reorder" onClick={(e) => e.stopPropagation()}>⋮⋮</div>
                                                     <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={STEP_NAME_STYLE}>{index + 1}. {step.name}</span></div>
                                                     <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                                                         <button type="button" onClick={() => moveStep(index, -1)} disabled={index === 0} className="toolbar-button" title="Move up" style={{ ...TOOLBAR_BTN_SMALL_STYLE, opacity: index === 0 ? 0.3 : 1 }}>▲</button>
@@ -853,7 +971,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                             </div>
 
                             <div className="editor-section">
-                                <div className="sampler-section-header">
+                                <div className="tokenSampler-section-header">
                                     <span className="editor-section-title" style={{ marginBottom: 0 }}>Auto-Resume Signals</span>
                                     <button type="button" className="editor-button editor-button-save" onClick={handleAddAutoResumeSignal} style={{ fontSize: '0.65rem', padding: '4px 12px', minHeight: '28px', height: '28px' }}>+ Add Signal</button>
                                 </div>
@@ -863,7 +981,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                         const signalName = signal.stopPattern || '(No Stop Pattern Set)';
                                         return (
                                             <div key={index}>
-                                                <div className="sampler-param-row" style={{ padding: '6px 8px', cursor: 'pointer' }} onClick={() => setExpandedSignalIndex(isExpanded ? null : index)}>
+                                                <div className="tokenSampler-param-row" style={{ padding: '6px 8px', cursor: 'pointer' }} onClick={() => setExpandedSignalIndex(isExpanded ? null : index)}>
                                                     <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: '8px' }}><span style={STEP_NAME_STYLE}>{index + 1}. {signalName}</span></div>
                                                     <div style={{ display: 'flex', gap: '2px', alignItems: 'center', flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
                                                         <button type="button" onClick={() => handleRemoveAutoResumeSignal(index)} className="toolbar-button" title="Remove signal" style={TOOLBAR_BTN_DELETE_STYLE}>×</button>

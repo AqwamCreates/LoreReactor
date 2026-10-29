@@ -34,7 +34,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
     const [selectedWorldIds, setSelectedWorldIds] = useState<string[]>([]);
     const [selectedLanguageModelIds, setSelectedLanguageModelIds] = useState<string[]>([]);
     const [selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds] = useState<string[]>([]);
-    const [selectedSamplerIds, setSelectedSamplerIds] = useState<string[]>([]);
+    const [selectedTokenSamplerIds, setSelectedTokenSamplerIds] = useState<string[]>([]);
     const [selectedPromptBlockIds, setSelectedPromptBlockIds] = useState<string[]>([]);
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>([]);
     const [selectedRetrievalConfigurationIds, setSelectedRetrievalConfigurationIds] = useState<string[]>([]);
@@ -75,7 +75,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setParsedData(null); setImportResult(null); setError(null); setIsImporting(false);
         setSelectedChatIds([]); setSelectedCharacterIds([]); setSelectedContextIds([]);
         setSelectedLocationIds([]); setSelectedAudioTrackIds([]); setSelectedWorldIds([]);
-        setSelectedLanguageModelIds([]); setSelectedSpatiotemporalModelIds([]); setSelectedSamplerIds([]); setSelectedPromptBlockIds([]);
+        setSelectedLanguageModelIds([]); setSelectedSpatiotemporalModelIds([]); setSelectedTokenSamplerIds([]); setSelectedPromptBlockIds([]);
         setSelectedStopPatternIds([]); setSelectedRetrievalConfigurationIds([]); setSelectedBudgetStrategyIds([]); setSelectedProfileIds([]);
         setSelectedMemoryIds([]); setSelectedAccountIds([]); setSelectedMultiplayerDataIds([]);
         setSelectedEntityFolderIds([]);
@@ -107,7 +107,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
         setSelectedWorldIds(json.worlds?.map(w => w.id) ?? []);
         setSelectedLanguageModelIds(json.languageModels.map((m: { id: string }) => m.id));
         setSelectedSpatiotemporalModelIds(json.spatiotemporalModels?.map((m: { id: string }) => m.id) ?? []);
-        setSelectedSamplerIds(json.tokenSamplers.map((s: { id: string }) => s.id));
+        setSelectedTokenSamplerIds(json.tokenSamplers.map((s: { id: string }) => s.id));
         setSelectedPromptBlockIds(json.promptBlocks.map((b: { id: string }) => b.id));
         setSelectedStopPatternIds(json.stopPatterns.map((s: { id: string }) => s.id));
         setSelectedRetrievalConfigurationIds(json.retrievalConfigurations?.map((rc: { id: string }) => rc.id) ?? []);
@@ -237,7 +237,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
             worlds: parsedData.worlds?.filter(w => selectedWorldIds.includes(w.id)) ?? [],
             languageModels: parsedData.languageModels?.filter(m => selectedLanguageModelIds.includes(m.id)) ?? [],
             spatiotemporalModels: parsedData.spatiotemporalModels?.filter(m => selectedSpatiotemporalModelIds.includes(m.id)) ?? [],
-            tokenSamplers: parsedData.tokenSamplers.filter(s => selectedSamplerIds.includes(s.id)),
+            tokenSamplers: parsedData.tokenSamplers.filter(s => selectedTokenSamplerIds.includes(s.id)),
             promptBlocks: parsedData.promptBlocks.filter(b => selectedPromptBlockIds.includes(b.id)),
             stopPatterns: parsedData.stopPatterns.filter(s => selectedStopPatternIds.includes(s.id)),
             retrievalConfigurations: parsedData.retrievalConfigurations?.filter(rc => selectedRetrievalConfigurationIds.includes(rc.id)) ?? [],
@@ -267,7 +267,7 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
 
     const totalSelected = selectedChatIds.length + selectedCharacterIds.length + selectedContextIds.length +
         selectedLocationIds.length + selectedAudioTrackIds.length + selectedWorldIds.length +
-        selectedLanguageModelIds.length + selectedSpatiotemporalModelIds.length + selectedSamplerIds.length + selectedPromptBlockIds.length +
+        selectedLanguageModelIds.length + selectedSpatiotemporalModelIds.length + selectedTokenSamplerIds.length + selectedPromptBlockIds.length +
         selectedStopPatternIds.length + selectedRetrievalConfigurationIds.length + selectedBudgetStrategyIds.length + selectedProfileIds.length +
         selectedMemoryIds.length + selectedAccountIds.length + selectedMultiplayerDataIds.length +
         selectedEntityFolderIds.length +
@@ -464,8 +464,8 @@ export function DataImportModal({ onClose, onImportComplete }: DataImportModalPr
                                             onToggle={(id) => toggle(selectedSpatiotemporalModelIds, setSelectedSpatiotemporalModelIds, id)} searchQuery={spatiotemporalModelSearch} onSearchChange={setSpatiotemporalModelSearch} />
                                     )}
                                     {parsedData.tokenSamplers.length > 0 && (
-                                        <EntitySelectList label="Samplers" items={parsedData.tokenSamplers} selectedIds={selectedSamplerIds}
-                                            onToggle={(id) => toggle(selectedSamplerIds, setSelectedSamplerIds, id)} searchQuery={tokenSamplerSearch} onSearchChange={setSamplerSearch} />
+                                        <EntitySelectList label="Token Samplers" items={parsedData.tokenSamplers} selectedIds={selectedTokenSamplerIds}
+                                            onToggle={(id) => toggle(selectedTokenSamplerIds, setSelectedTokenSamplerIds, id)} searchQuery={tokenSamplerSearch} onSearchChange={setSamplerSearch} />
                                     )}
                                     {parsedData.promptBlocks.length > 0 && (
                                         <EntitySelectList label="Prompt Blocks" items={parsedData.promptBlocks} selectedIds={selectedPromptBlockIds}
