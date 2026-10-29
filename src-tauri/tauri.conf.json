@@ -4,8 +4,8 @@
   "version": "1.0.0",
   "identifier": "com.lorereactor.app",
   "build": {
-    "beforeDevCommand": "npm run development",
-    "beforeBuildCommand": "npm run build",
+    "beforeDevCommand": "npm run sidecars && npm run development",
+    "beforeBuildCommand": "npm run sidecars && npm run build",
     "devUrl": "http://localhost:4444",
     "frontendDist": "../dist"
   },

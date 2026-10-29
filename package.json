@@ -9,7 +9,7 @@
     "start": "npm run build && vite preview --host 0.0.0.0 --port 4444",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "development": "concurrently --kill-others \"npm run server\" \"npm run preview\"",
+    "development": "npm run sidecars && concurrently --kill-others \"npm run server\" \"npm run preview\"",
     "website": "concurrently --kill-others \"npm run server\" \"npm run start\"",
     "sidecars": "powershell -ExecutionPolicy Bypass -File build-all-sidecars.ps1",
     "tauri": "tauri",
