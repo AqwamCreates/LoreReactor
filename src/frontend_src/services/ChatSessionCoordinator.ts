@@ -748,7 +748,7 @@ class ChatSessionCoordinator {
         if (!matchingEndToken) return;
 
         this.isSkippingThinking = true;
-        this.pendingSkipText = text.trimEnd() + `\n${matchingEndToken}\n\n`;
+        this.pendingSkipText = `${text}\n${matchingEndToken}\n\n`;
 
         this.abortController.abort();
     }
