@@ -49,7 +49,7 @@ export async function buildRequestBody(
     const body: Record<string, unknown> = {
         ...otherParams,
         messages: finalMessages,
-        n_predict: languageModelTokenSampler?.maximumNumberOfTokens ?? 512,
+        n_predict: languageModelTokenSampler?.maximumNumberOfTokens ?? 2048,
         stream: true,
         stop: uniqueStops,
     };
