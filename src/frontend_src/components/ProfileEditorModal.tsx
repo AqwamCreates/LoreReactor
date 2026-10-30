@@ -256,7 +256,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [forceNameReveal, setForceNameReveal] = useState(ep?.forceNameReveal ?? false);
     const [enableAmbientNarration, setEnableAmbientNarration] = useState(ep?.enableAmbientNarration ?? false);
     const [toolUsageDisplayMode, setToolUsageDisplayMode] = useState<toolUsageDisplayMode>(ep?.toolUsageDisplayMode ?? 'none');
-    const [toolUsageDisplayPlacementMode, setToolUsageDisplayPlacementMode] = useState<toolUsageDisplayPlacementMode>(ep?.toolUsageDisplayPlacementMode ?? 'before paragraph');
+    const [toolUsageDisplayPlacementMode, setToolUsageDisplayPlacementMode] = useState<toolUsageDisplayPlacementMode>(ep?.toolUsageDisplayPlacementMode ?? 'inline');
     const [enableCharacterExpression, setEnableCharacterExpression] = useState(ep?.enableCharacterExpression ?? false);
     const [textGenerationBehaviourOnNarration, setTextGenerationBehaviourOnNarration] = useState<textGenerationBehaviourOnNarration>(ep?.textGenerationBehaviourOnNarration ?? 'wait');
     const [randomizeTextCharacterInjection, setRandomizeTextCharacterInjection] = useState<boolean>(ep?.randomizeTextCharacterInjection ?? false);
