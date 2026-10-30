@@ -10,7 +10,7 @@ import {
 } from '../utilities/characterLogic';
 import {
     getCurrentLocationId, findReachableLocationByRegularExpression,
-    getReachableLocationsByCharacter, sampleReachableLocationByWeight,
+    getReachableLocationsByCharacter, sampleLocationForCharacter,
     assignInitialLocationsIfNeeded
 } from '../utilities/locationLogic';
 import { v4 as uuidv4 } from 'uuid';
@@ -347,7 +347,7 @@ export async function runTurnSequence(
             const prevActiveToolActions = previousMessage?.activeToolActions;
 
             const reachable = getReachableLocationsByCharacter(workingData, mover, triggeringMessageText);
-            const newLoc: Location | undefined = sampleReachableLocationByWeight(reachable, mover);
+            const newLoc: Location | undefined = sampleLocationForCharacter(reachable, mover);
 
             if (newLoc !== undefined && moverLocId && newLoc.id !== moverLocId) {
                 const currentLocExists = workingData.locations.some(l => l.id === moverLocId);

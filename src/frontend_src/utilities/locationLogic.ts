@@ -124,10 +124,6 @@ export function sampleLocationForCharacter(
     return weightedSample(pool) ?? undefined;
 }
 
-export const sampleLocationByWeight = (locs: Location[], c: Character) => sampleLocationForCharacter(locs, c);
-export const sampleReachableLocationByWeight = (locs: Location[], c: Character) => sampleLocationForCharacter(locs, c);
-export const sampleInitialLocationForCharacter = (locs: Location[], c: Character) => sampleLocationForCharacter(locs, c, { enforceBindings: true });
-
 export function assignInitialLocationsIfNeeded(interactionData: InteractionData): InteractionData {
     const locations = interactionData.locations;
     if (!locations || locations.length === 0) return interactionData;
