@@ -170,8 +170,8 @@ const GLOBAL_STRINGS: Record<string, string> = {
 function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string, exclude = false): T[] {
   const safeArr = arr ?? [];
   if (safeArr.length === 0) return [];
-  let start = startStr !== undefined ? parseInt(startStr, 10) : 0;
-  let end = endStr !== undefined ? parseInt(endStr, 10) : safeArr.length;
+  let start = startStr !== undefined ? Number.parseInt(startStr, 10) : 0;
+  let end = endStr !== undefined ? Number.parseInt(endStr, 10) : safeArr.length;
   
   if (start < 0) start = safeArr.length + start;
   if (end < 0) end = safeArr.length + end;
@@ -2346,12 +2346,12 @@ function buildStructuredMessages(
   if (historyLines.length > 0) messages.push({ role: 'system', content: historyLines.join('\n') });
   if (volatileLines.length > 0) messages.push({ role: 'user', content: volatileLines.join('\n') });
   const ragLines: string[] = [];
-  if (blockMap['Knowledge Prompt']?.length) ragLines.push(...blockMap['Knowledge Prompt']!);
-  if (blockMap['Dialogue Prompt']?.length) ragLines.push(...blockMap['Dialogue Prompt']!);
-  if (blockMap['Memory Prompt']?.length) ragLines.push(...blockMap['Memory Prompt']!);
+  if (blockMap['Knowledge Prompt']?.length) ragLines.push(...blockMap['Knowledge Prompt']);
+  if (blockMap['Dialogue Prompt']?.length) ragLines.push(...blockMap['Dialogue Prompt']);
+  if (blockMap['Memory Prompt']?.length) ragLines.push(...blockMap['Memory Prompt']);
   if (ragLines.length > 0) messages.push({ role: 'user', content: ragLines.join('\n') });
   if (blockMap['Text Injection']?.length) {
-    messages.push({ role: 'assistant', content: blockMap['Text Injection']!.join('\n') });
+    messages.push({ role: 'assistant', content: blockMap['Text Injection'].join('\n') });
   }
   return messages;
 }
