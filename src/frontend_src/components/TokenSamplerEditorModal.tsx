@@ -200,7 +200,7 @@ function TokenSamplerEditorModalInner({
     const [parameters, setParameters] = useState<TokenSamplerParameters>(() => computeInitialParameters(existingTokenSampler));
     const [activeParamKeys, setActiveParamKeys] = useState<string[]>(() => computeInitialActiveParamKeys(existingTokenSampler));
     const [selectedStopPatternIds, setSelectedStopPatternIds] = useState<string[]>(existingTokenSampler?.stopPatterns.map(sp => sp.id) ?? []);
-    const [maxTokens, setMaxTokens] = useState<number>(existingTokenSampler?.maximumNumberOfTokens || 512);
+    const [maxTokens, setMaxTokens] = useState<number>(existingTokenSampler?.maximumNumberOfTokens || 2048);
     const [errors, setErrors] = useState<{ name?: string }>({});
 
     const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
@@ -343,7 +343,7 @@ function TokenSamplerEditorModalInner({
                             value={maxTokens}
                             onChange={(e) => setMaxTokens(Number(e.target.value) || 0)}
                             className="editor-input"
-                            placeholder="512"
+                            placeholder="2048"
                             min="1"
                             step="1"
                         />

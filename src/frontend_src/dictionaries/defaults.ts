@@ -109,7 +109,7 @@ export const defaultLanguageModelTokenSampler: TokenSampler = {
     id: "default-tokenSampler",
     name: "Default",
     description: "Fallback tokenSampler",
-    parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 512, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
+    parameters: { temperature: 0.8, top_k: 40, repeat_penalty: 1.15, n_predict: 2048, stop: [], frequency_penalty: 0.0, presence_penalty: 0.0 },
     stopPatterns: [],
     maximumNumberOfTokens: 512,
     firstCreatedTimestamp: now,
