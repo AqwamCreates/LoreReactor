@@ -231,11 +231,14 @@ export async function branchMessage(interactionData: InteractionData, messageId:
         }
     }
 
+    const totalMessages = Object.values(branchedHistories).reduce((acc, curr) => acc + curr.length, 0);
+
     const branchedChat: InteractionData = {
         ...interactionData,
         id: uuidv4(),
         name: `${interactionData.name} (Branch)`,
         interactionHistories: branchedHistories,
+        numberOfMessages: totalMessages,
         parentInteractionDataId: interactionData.id,
         parentMessageId: messageId,
         firstCreatedTimestamp: Date.now(),
@@ -276,7 +279,10 @@ export async function cloneChatUpToMessage(interactionData: InteractionData, mes
         }));
     }
 
+    const totalMessages = Object.values(clonedHistories).reduce((acc, curr) => acc + curr.length, 0);
+
     const clonedChat: InteractionData = {
+        ...interactionData, // 👈 Captures worldIds and future properties
         id: uuidv4(),
         name: `${interactionData.name} (Clone)`,
         protagonistIds: [...(interactionData.protagonistIds || [])],
@@ -284,8 +290,9 @@ export async function cloneChatUpToMessage(interactionData: InteractionData, mes
         contexts: (interactionData.contexts || []).map(c => ({ ...c })),
         locations: (interactionData.locations || []).map(l => ({ ...l })),
         audioTracks: (interactionData.audioTracks || []).map(a => ({ ...a })),
+        worldIds: [...(interactionData.worldIds || [])], // 👈 Fresh array reference
         interactionHistories: clonedHistories,
-        profile: interactionData.profile,
+        numberOfMessages: totalMessages, // 👈 Truncated accurate count
         firstCreatedTimestamp: now,
         lastUpdatedTimestamp: now,
         parentInteractionDataId: null,

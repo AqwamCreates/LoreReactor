@@ -457,6 +457,7 @@ export function AppModals({
                 contextIds: interactionData.contexts?.map(c => c.id) ?? [],
                 locationIds: interactionData.locations?.map(l => l.id) ?? [],
                 audioTrackIds: interactionData.audioTracks?.map(a => a.id) ?? [],
+                currentWorldIds: interactionData.worldIds ?? [],
                 profileId: interactionData.profile?.id,
             } as unknown as ChatShellWithIdentifier);
         }
