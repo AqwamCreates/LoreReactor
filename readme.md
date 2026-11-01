@@ -26,7 +26,7 @@ First, you need to run ```git clone AqwamCreates/LoreReactor```.
 
 Then, you need to run ```cd LoreReactor```.
 
-Then, you need to run ```npm install```.
+Then, you need to run ```npm run install``` or ```npm install```.
 
 Finally, you need to run this code depending on your operating system.
 
