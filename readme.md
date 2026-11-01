@@ -8,7 +8,7 @@ LinkedIn: https://www.linkedin.com/in/aqwam-harish-aiman/
 	
 YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
 
-## If You Wonder Why This Has Been Discontinued, Have A Look Here:
+## If You Wonder Why This Has Been Discontinued, Have A Look Here
 
 https://github.com/AqwamCreates/DataPredict/blob/main/docs/WhyDidThisLibraryWasCreatedInTheFirstPlace.md
 
