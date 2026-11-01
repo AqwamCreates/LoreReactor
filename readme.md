@@ -8,6 +8,10 @@ LinkedIn: https://www.linkedin.com/in/aqwam-harish-aiman/
 	
 YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
 
+## If You Wonder Why This Has Been Discontinued, Have A Look Here:
+
+https://github.com/AqwamCreates/DataPredict/blob/main/docs/WhyDidThisLibraryWasCreatedInTheFirstPlace.md
+
 ## Warning
 
 LoreReactor grants AI characters unprecedented access to your host OS, hardware, and physical environment. Use the Tool Permission section wisely. We are not responsible if your AI waifu / husbando locks you out of your PC.
