@@ -812,7 +812,7 @@ export function AppModals({
                     onDelete={onDeleteTokenSampler} 
                     onCreateNew={() => tokenSamplerModalProperties.open()}
                     renderSubtext={(tokenSampler: TokenSampler) => `Temp: ${tokenSampler?.parameters?.temperature}, TopP: ${tokenSampler?.parameters?.top_p}, Tokens: ${tokenSampler?.maximumNumberOfTokens}`}
-                    emptyMessage="No tokenSamplers found." 
+                    emptyMessage="No Token Samplers found." 
                     actionLabel="Delete" 
                     allEntityFolders={allEntityFolders}
                     onSaveEntityFolder={onSaveEntityFolder}
