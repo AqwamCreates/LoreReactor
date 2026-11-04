@@ -1,4 +1,5 @@
 // src/backend_src/server.ts
+
 import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -26,14 +27,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { GITHUB_REPOSITORIES, DOCKER_IMAGES, DIRECT_DOWNLOADS, TEXT_TO_SPEECH_MODELS } from './externalUrls';
 
 // --- Configuration ---
+
 const app = express();
 const PORT = 8448;
 const ROOT_DIR = process.cwd();
 const APP_NAME = "LoreReactor";
-
 const LOCAL_MODEL_BACKENDS_PATH = 'local_model_backends';
 
 // ── Platform helpers ────────────────────────────────────────────────
+
 const IS_WINDOWS = process.platform === 'win32';
 const IS_MACOS   = process.platform === 'darwin';
 
@@ -86,7 +88,6 @@ interface BackendConfig {
 }
 
 const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
-
   'Llama.cpp': {
     binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-server')),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -98,7 +99,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /HTTP server listening/i,
     category: 'llm',
   },
-
   'Transformers': {
     binaryPath: path.join(
       ROOT_DIR,
@@ -115,7 +115,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Connected/i,
     category: 'llm',
   },
-
   'ExLlamaV3': {
     binaryPath: pythonBin('exllamav3'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -127,7 +126,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Uvicorn running/i,
     category: 'llm',
   },
-
   'ExLlamaV3 HF': {
     binaryPath: pythonBin('exllamav3_hf'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -139,7 +137,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Uvicorn running/i,
     category: 'llm',
   },
-
   'ExLlamaV2': {
     binaryPath: pythonBin('exllamav2'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -151,7 +148,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Uvicorn running/i,
     category: 'llm',
   },
-
   'TensorRT-LLM': {
     binaryPath: path.join(
       ROOT_DIR,
@@ -168,7 +164,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Started HTTPService/i,
     category: 'llm',
   },
-
   'Ollama': {
     binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'ollama', 'bin', bin('ollama')),
     buildArgs: (_modelPath, _port, _extraArgs) => ['serve'],
@@ -180,7 +175,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     modelNameNotPath: true,
     category: 'llm',
   },
-
   'vLLM': {
     binaryPath: pythonBin('vllm'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -193,7 +187,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Application startup complete/i,
     category: 'llm',
   },
-
   'SGLang': {
     binaryPath: pythonBin('sglang'),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -206,7 +199,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /The server is fired up and ready/i,
     category: 'llm',
   },
-
   'LM Studio': {
     binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'lmstudio', bin('lms')),
     buildArgs: (_modelPath, port, extraArgs) => [
@@ -219,7 +211,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     modelNameNotPath: true,
     category: 'llm',
   },
-
   'LocalAI': {
     binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'localai', bin('local-ai')),
     buildArgs: (_modelPath, port, extraArgs) => [
@@ -232,7 +223,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     modelNameNotPath: true,
     category: 'llm',
   },
-
   'mistral.rs': {
     binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'mistral-rs', bin('mistralrs-server')),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -244,7 +234,6 @@ const BACKEND_CONFIGS: Record<LocalBackend, BackendConfig> = {
     readyPattern: /Started HTTP server/i,
     category: 'llm',
   },
-
   'stable-diffusion.cpp': {
     binaryPath: path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'stable-diffusion.cpp', bin('sd-server')),
     buildArgs: (modelPath, port, extraArgs) => [
@@ -342,13 +331,10 @@ app.get('/language_models/notify', (req, res) => {
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders?.();
-
     notifySseClients.add(res);
-
     for (const notif of activeNotifications.values()) {
       res.write(`data: ${JSON.stringify(notif)}\n\n`);
     }
-
     req.on('close', () => notifySseClients.delete(res));
   } else {
     res.json({
@@ -365,6 +351,7 @@ app.post('/language_models/notify', (req, res) => {
 });
 
 // ─── Real-Time File Sync SSE Dispatcher (/sync) ─────────────
+
 const syncSseClients: Set<express.Response> = new Set();
 
 function broadcastSyncChange(method: string, path: string, clientId?: string) {
@@ -383,11 +370,9 @@ app.get('/sync', (req, res) => {
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders?.();
-
   syncSseClients.add(res);
   
   const ping = setInterval(() => res.write(':ping\n\n'), 15000);
-
   req.on('close', () => {
     clearInterval(ping);
     syncSseClients.delete(res);
@@ -413,6 +398,16 @@ function getDetectedCudaVersion(): { major: number; minor: number } | null {
       };
     }
   } catch {}
+  try {
+    const raw = execSync('nvcc --version', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' });
+    const match = raw.match(/release\s+(\d+)\.(\d+)/i);
+    if (match) {
+      return {
+        major: Number.parseInt(match[1], 10),
+        minor: Number.parseInt(match[2], 10),
+      };
+    }
+  } catch {}
   return null;
 }
 
@@ -423,24 +418,161 @@ function getCudaExtra(): string {
 }
 
 async function fetchGithubRelease(repo: string, tag?: string): Promise<any> {
-  const url = tag
-    ? `https://api.github.com/repos/${repo}/releases/tags/${tag}`
-    : `https://api.github.com/repos/${repo}/releases/latest`;
-
-  const res = await fetch(url, {
-    headers: { 'User-Agent': 'LoreReactor/1.0' },
-  });
-
-  if (!res.ok) {
-    throw new Error(`GitHub release request failed for ${repo}: HTTP ${res.status}`);
+  const headers: Record<string, string> = {
+    'User-Agent': 'LoreReactor/1.0',
+    'Accept': 'application/vnd.github+json',
+  };
+  if (process.env.GITHUB_TOKEN) {
+    headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
 
-  return res.json();
+  const urls = tag
+    ? [
+        `https://api.github.com/repos/${repo}/releases/tags/${tag}`,
+        `https://api.github.com/repos/${repo}/releases/latest`,
+      ]
+    : [
+        `https://api.github.com/repos/${repo}/releases/latest`,
+        `https://api.github.com/repos/${repo}/releases?per_page=5`,
+      ];
+
+  for (const url of urls) {
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) continue;
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        const validRelease = data.find((r: any) => Array.isArray(r.assets) && r.assets.length > 0);
+        if (validRelease) return validRelease;
+      } else if (data && Array.isArray(data.assets) && data.assets.length > 0) {
+        return data;
+      }
+    } catch {}
+  }
+
+  throw new Error(`Could not fetch valid GitHub release with assets for ${repo}`);
+}
+
+/**
+ * Hardware-aware GitHub Release Asset Scorer.
+ * Filters out incompatible OS/Arch builds and scores remaining assets by GPU backend & CPU SIMD support.
+ */
+function selectBestReleaseAsset(
+  assets: any[],
+  hw: HardwareProfile,
+  options: {
+    excludePatterns?: RegExp[];
+    requirePrefix?: RegExp;
+    allowRawBinary?: boolean;
+  } = {}
+): any | null {
+  if (!Array.isArray(assets) || assets.length === 0) return null;
+
+  const candidates: { asset: any; score: number }[] = [];
+
+  for (const asset of assets) {
+    const name = String(asset.name || '').toLowerCase();
+    if (!name || !asset.browser_download_url) continue;
+
+    // Skip checksums, signatures, debug symbols, source code
+    if (/\.(sha256|sha512|md5|sig|asc|txt|deb|rpm|apk|msi|pkg|dmg)$/i.test(name)) continue;
+    if (options.excludePatterns?.some((rx) => rx.test(name))) continue;
+    if (options.requirePrefix && !options.requirePrefix.test(name)) continue;
+
+    const isArchive = /\.(zip|tar\.gz|tgz|tar\.xz|tar\.bz2)$/i.test(name);
+    const isExe = /\.exe$/i.test(name);
+    if (!isArchive && !isExe && !options.allowRawBinary) continue;
+
+    // 1. Strict OS Filtering
+    const mentionsWin = /(win|windows|msvc)/i.test(name);
+    const mentionsMac = /(mac|macos|darwin|apple|osx)/i.test(name);
+    const mentionsLinux = /(linux|ubuntu|debian|centos|glibc|musl)/i.test(name);
+
+    if (hw.os === 'windows' && (!mentionsWin || mentionsMac || mentionsLinux)) continue;
+    if (hw.os === 'macos' && (!mentionsMac || mentionsWin || mentionsLinux)) continue;
+    if (hw.os === 'linux' && (!mentionsLinux || mentionsWin || mentionsMac)) continue;
+
+    // 2. Strict Architecture Filtering
+    const mentionsArm = /(arm64|aarch64)/i.test(name);
+    const mentionsX64 = /(x64|x86_64|amd64|win64)/i.test(name);
+    const mentionsX86 = /(win32|i386|i686|x86(?!_64))/i.test(name);
+    const mentionsUniversal = /universal/i.test(name);
+
+    if (mentionsX86 && !mentionsX64) continue;
+    if (hw.arch === 'arm64' && mentionsX64 && !mentionsArm && !mentionsUniversal) continue;
+    if (hw.arch === 'x64' && mentionsArm && !mentionsX64 && !mentionsUniversal) continue;
+
+    let score = 100;
+
+    // Architecture preference
+    if (hw.arch === 'arm64' && mentionsArm) score += 30;
+    else if (hw.arch === 'x64' && mentionsX64) score += 30;
+    else if (mentionsUniversal) score += 20;
+
+    // 3. Hardware Acceleration / Backend Scoring
+    const isCuda = /(cuda|cublas|cu1[123])/i.test(name);
+    const isVulkan = /vulkan/i.test(name);
+    const isRocm = /(rocm|hip|hipblas)/i.test(name);
+    const isSycl = /(sycl|oneapi|opencl)/i.test(name);
+    const isMetal = /metal/i.test(name);
+
+    if (hw.os === 'macos') {
+      if (isMetal) score += 60;
+      if (isCuda || isRocm || isSycl) continue;
+    } else if (hw.gpuVendor === 'nvidia') {
+      if (isCuda) {
+        score += 100;
+        if (hw.cudaMajor) {
+          if (hw.cudaMajor >= 12 && /cu12|cuda-12|12\./i.test(name)) score += 35;
+          else if (hw.cudaMajor === 11 && /cu11|cuda-11|11\./i.test(name)) score += 35;
+          else if (hw.cudaMajor < 12 && /cu12|cuda-12|12\./i.test(name)) score -= 40;
+        } else {
+          if (/cu12|cuda-12|12\./i.test(name)) score += 20;
+        }
+      } else if (isVulkan) {
+        score += 50;
+      } else if (isRocm || isSycl) {
+        continue;
+      }
+    } else if (hw.gpuVendor === 'amd') {
+      if (isCuda || isSycl) continue;
+      if (hw.os === 'linux' && isRocm) score += 90;
+      else if (isVulkan) score += 85;
+      else if (isRocm) score += 60;
+    } else if (hw.gpuVendor === 'intel') {
+      if (isCuda || isRocm) continue;
+      if (isVulkan) score += 85;
+      else if (isSycl) score += 80;
+    } else {
+      // Unknown / CPU-only fallback
+      if (isCuda || isRocm || isSycl) continue;
+      if (isVulkan) score += 20;
+    }
+
+    // 4. CPU SIMD Scoring (when no GPU backend is in asset name, or as tie-breaker)
+    if (/avx512/i.test(name)) {
+      if (!hw.cpuFlags.avx512) continue;
+      score += 25;
+    } else if (/avx2/i.test(name)) {
+      if (!hw.cpuFlags.avx2) continue;
+      score += 20;
+    } else if (/avx(?!2|512)/i.test(name)) {
+      if (!hw.cpuFlags.avx) continue;
+      score += 15;
+    } else if (/noavx|basic|sse/i.test(name)) {
+      score += 5;
+    }
+
+    candidates.push({ asset, score });
+  }
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  return candidates[0].asset;
 }
 
 function findLmsBinary(): string | null {
   const home = os.homedir();
-
   const candidates = IS_WINDOWS
     ? [
         path.join(home, '.lmstudio', 'bin', 'lms.exe'),
@@ -453,30 +585,24 @@ function findLmsBinary(): string | null {
         '/usr/local/bin/lms',
         '/opt/LM Studio/bin/lms',
       ];
-
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;
   }
-
   return null;
 }
 
 function writeDockerWrapper(binaryPath: string, image: string): void {
   ensureDirectory(path.dirname(binaryPath));
-
   if (IS_WINDOWS) {
     const ps1Path = binaryPath.replace(/\.cmd$/i, '.ps1');
-
     const ps1 = `param([Parameter(ValueFromRemainingArguments=$true)]$Rest)
 $volumes = @()
 $newArgs = @()
-
 foreach ($arg in $Rest) {
-  if ($arg -match '^[A-Za-z]:\\\\' -and (Test-Path -LiteralPath $arg)) {
+  if ($arg -match '^[A-Za-z]:\\\\\\\\' -and (Test-Path -LiteralPath $arg)) {
     $drive = $arg.Substring(0,1).ToLower()
-    $restPath = $arg.Substring(3) -replace '\\\\','/'
+    $restPath = $arg.Substring(3) -replace '\\\\\\\\','/'
     $containerPath = "/host/$drive/$restPath"
-
     $volumes += '-v'
     $volumes += "\${arg}:\${containerPath}"
     $newArgs += $containerPath
@@ -484,35 +610,28 @@ foreach ($arg in $Rest) {
     $newArgs += $arg
   }
 }
-
 $dockerArgs = @('run','--gpus','all','--rm','--shm-size','1g') + $volumes + @('${image}') + $newArgs
 & docker @dockerArgs
 exit $LASTEXITCODE
 `;
-
     const cmd = `@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0${path.basename(ps1Path)}" %*\r\n`;
-
     fs.writeFileSync(ps1Path, ps1, 'utf-8');
     fs.writeFileSync(binaryPath, cmd, 'utf-8');
     return;
   }
-
   const script = `#!/usr/bin/env bash
 volumes=()
-
 for arg in "$@"; do
   if [[ "$arg" == /* && -e "$arg" ]]; then
     volumes+=("-v" "$arg:$arg")
   fi
 done
-
 if [ \${#volumes[@]} -eq 0 ]; then
   exec docker run --gpus all --rm --shm-size 1g "${image}" "$@"
 else
   exec docker run --gpus all --rm --shm-size 1g "\${volumes[@]}" "${image}" "$@"
 fi
 `;
-
   fs.writeFileSync(binaryPath, script, 'utf-8');
   fs.chmodSync(binaryPath, 0o755);
 }
@@ -523,17 +642,14 @@ async function downloadFileWithProgress(
   onProgress?: (loaded: number, total: number) => void,
   backendName?: string
 ): Promise<void> {
-  const res = await fetch(url, { headers: { 'User-Agent': 'LoreReactor/1.0' } });
+  const res = await fetch(url, { headers: { 'User-Agent': 'LoreReactor/1.0' }, redirect: 'follow' });
   if (!res.ok || !res.body) {
     throw new Error(`Failed to download from ${url}: HTTP ${res.status}`);
   }
-
   const total = Number(res.headers.get('content-length')) || 0;
   let loaded = 0;
-
   const fileStream = fs.createWriteStream(destPath);
   const reader = res.body.getReader();
-
   while (true) {
     if (backendName && cancelledInstalls.has(backendName)) {
       reader.cancel();
@@ -541,7 +657,6 @@ async function downloadFileWithProgress(
       try { fs.unlinkSync(destPath); } catch {}
       throw new Error(`Download cancelled for ${backendName}`);
     }
-
     const { done, value } = await reader.read();
     if (done) break;
     if (value) {
@@ -552,7 +667,6 @@ async function downloadFileWithProgress(
       }
     }
   }
-
   await new Promise<void>((resolve, reject) => {
     fileStream.end((err?: Error | null) => (err ? reject(err) : resolve()));
   });
@@ -560,16 +674,17 @@ async function downloadFileWithProgress(
 
 function extractArchive(archivePath: string, destDir: string): void {
   ensureDirectory(destDir);
-  const ext = path.extname(archivePath).toLowerCase();
-
-  if (archivePath.endsWith('.tar.gz') || archivePath.endsWith('.tgz')) {
+  const lower = archivePath.toLowerCase();
+  if (lower.endsWith('.tar.gz') || lower.endsWith('.tgz')) {
     execSync(`tar -xzf "${archivePath}" -C "${destDir}"`, { stdio: 'pipe' });
-  } else if (ext === '.zip') {
+  } else if (lower.endsWith('.tar.xz') || lower.endsWith('.tar.bz2')) {
+    execSync(`tar -xf "${archivePath}" -C "${destDir}"`, { stdio: 'pipe' });
+  } else if (lower.endsWith('.zip')) {
     if (IS_WINDOWS) {
       try {
         execSync(`tar -xf "${archivePath}" -C "${destDir}"`, { stdio: 'pipe' });
       } catch {
-        execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: 'pipe' });
+        execSync(`powershell -NoProfile -Command "Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${destDir}' -Force"`, { stdio: 'pipe' });
       }
     } else {
       try {
@@ -581,26 +696,81 @@ function extractArchive(archivePath: string, destDir: string): void {
   }
 }
 
-/** Recursively find and hoist a named binary up to target destination */
-function hoistBinaryIfExists(searchDir: string, binaryName: string, targetDest: string): boolean {
-  if (fs.existsSync(targetDest)) return true;
-  ensureDirectory(path.dirname(targetDest));
+/**
+ * Recursively find a named binary (or fallback prefix) inside `searchDir`,
+ * hoist it to `targetDest`, and copy all companion shared libraries (.dll/.so/.dylib)
+ * from the binary's extracted directory into `path.dirname(targetDest)`.
+ */
+function hoistBinaryIfExists(
+  searchDir: string,
+  binaryName: string,
+  targetDest: string,
+  fallbackNames: string[] = []
+): boolean {
+  const targetDir = path.dirname(targetDest);
+  ensureDirectory(targetDir);
 
-  function walk(currentDir: string): boolean {
+  const candidatesToMatch = [binaryName, ...fallbackNames].map((n) => n.toLowerCase());
+  let matchedFilePath: string | null = null;
+
+  function walk(currentDir: string): void {
+    if (matchedFilePath) return;
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
     for (const entry of entries) {
       const fullPath = path.join(currentDir, entry.name);
       if (entry.isDirectory()) {
-        if (walk(fullPath)) return true;
-      } else if (entry.name.toLowerCase() === binaryName.toLowerCase()) {
-        fs.copyFileSync(fullPath, targetDest);
-        return true;
+        walk(fullPath);
+        if (matchedFilePath) return;
+      } else {
+        const lowerName = entry.name.toLowerCase();
+        if (candidatesToMatch.includes(lowerName)) {
+          matchedFilePath = fullPath;
+          return;
+        }
       }
     }
-    return false;
   }
 
-  return walk(searchDir);
+  walk(searchDir);
+  if (!matchedFilePath) return fs.existsSync(targetDest);
+
+  const sourceDir = path.dirname(matchedFilePath);
+
+  // Copy companion shared libraries & executables from the nested folder so DLLs/dylibs/so aren't orphaned
+  if (path.resolve(sourceDir) !== path.resolve(targetDir)) {
+    const siblingEntries = fs.readdirSync(sourceDir, { withFileTypes: true });
+    for (const sibling of siblingEntries) {
+      if (!sibling.isFile()) continue;
+      const ext = path.extname(sibling.name).toLowerCase();
+      const isSharedLibOrBin =
+        ext === '.dll' ||
+        ext === '.so' ||
+        ext === '.dylib' ||
+        ext === '.metal' ||
+        ext === '.exe' ||
+        sibling.name.includes('.so.') ||
+        sibling.name.startsWith('llama-') ||
+        sibling.name.startsWith('sd');
+      if (isSharedLibOrBin) {
+        const srcSibling = path.join(sourceDir, sibling.name);
+        const dstSibling = path.join(targetDir, sibling.name);
+        if (path.resolve(srcSibling) !== path.resolve(dstSibling) && !fs.existsSync(dstSibling)) {
+          try {
+            fs.copyFileSync(srcSibling, dstSibling);
+            if (!IS_WINDOWS) fs.chmodSync(dstSibling, 0o755);
+          } catch {}
+        }
+      }
+    }
+  }
+
+  if (path.resolve(matchedFilePath) !== path.resolve(targetDest)) {
+    fs.copyFileSync(matchedFilePath, targetDest);
+  }
+  if (!IS_WINDOWS && fs.existsSync(targetDest)) {
+    fs.chmodSync(targetDest, 0o755);
+  }
+  return true;
 }
 
 /**
@@ -609,7 +779,6 @@ function hoistBinaryIfExists(searchDir: string, binaryName: string, targetDest: 
 async function ensureUv(): Promise<string> {
   const uvDir = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'tools', 'uv');
   const uvBinary = path.join(uvDir, bin('uv'));
-
   if (fs.existsSync(uvBinary)) return uvBinary;
 
   broadcastNotify('uv', 'downloading', 10, 'Bootstrapping standalone Python manager (uv)...');
@@ -617,7 +786,6 @@ async function ensureUv(): Promise<string> {
 
   const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
   let asset = '';
-
   if (IS_WINDOWS) {
     asset = DIRECT_DOWNLOADS.UV.WINDOWS;
   } else if (IS_MACOS) {
@@ -627,8 +795,7 @@ async function ensureUv(): Promise<string> {
   }
 
   const uvUrl = `${DIRECT_DOWNLOADS.UV.BASE_URL}/${asset}`;
-  const tempArchive = path.join(uvDir, `uv_archive${path.extname(asset)}`);
-
+  const tempArchive = path.join(uvDir, `uv_archive${asset.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset)}`);
   await downloadFileWithProgress(uvUrl, tempArchive, (loaded, total) => {
     const pct = Math.round((loaded / total) * 100);
     broadcastNotify('uv', 'downloading', pct, `Downloading uv installer: ${pct}%`);
@@ -637,15 +804,20 @@ async function ensureUv(): Promise<string> {
   broadcastNotify('uv', 'extracting', 90, 'Extracting uv standalone binary...');
   extractArchive(tempArchive, uvDir);
   try { fs.unlinkSync(tempArchive); } catch {}
-
   hoistBinaryIfExists(uvDir, bin('uv'), uvBinary);
-
-  if (!IS_WINDOWS && fs.existsSync(uvBinary)) {
-    fs.chmodSync(uvBinary, 0o755);
-  }
 
   broadcastNotify('uv', 'ready', 100, 'Standalone Python manager initialized.');
   return uvBinary;
+}
+
+function syncVenvPythonConfig(backend: LocalBackend, destDir: string): string {
+  const venvPy = IS_WINDOWS
+    ? path.join(destDir, 'venv', 'Scripts', 'python.exe')
+    : path.join(destDir, 'venv', 'bin', 'python');
+  if (fs.existsSync(venvPy)) {
+    BACKEND_CONFIGS[backend].binaryPath = venvPy;
+  }
+  return venvPy;
 }
 
 /**
@@ -657,73 +829,53 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   const destDir = config.cwd
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
     : path.dirname(config.binaryPath);
-
   ensureDirectory(destDir);
 
-  log.info(`[AutoInstaller] Initiating on-demand setup for "${backend}" at ${destDir}...`);
-  broadcastNotify(backend, 'downloading', 0, `Initializing setup for ${backend}...`);
+  const hw = await getHardwareProfile();
+  log.info(`[AutoInstaller] Initiating on-demand setup for "${backend}" (OS: ${hw.os}, Arch: ${hw.arch}, GPU: ${hw.gpuVendor}${hw.cudaMajor ? ` CUDA ${hw.cudaMajor}` : ''})...`);
+  broadcastNotify(backend, 'downloading', 0, `Initializing setup for ${backend} (${hw.gpuVendor.toUpperCase()})...`);
 
   // 1. LLAMA.CPP
   if (backend === 'Llama.cpp') {
-    broadcastNotify(backend, 'downloading', 5, 'Resolving Llama.cpp release assets...');
-
+    broadcastNotify(backend, 'downloading', 5, 'Resolving Llama.cpp release assets for hardware...');
     let release: any = null;
-
     try {
       release = await fetchGithubRelease(GITHUB_REPOSITORIES.LLAMA_CPP);
     } catch (err: any) {
       log.warn(`[AutoInstaller] Latest Llama.cpp release lookup failed: ${err.message}`);
+      release = await fetchGithubRelease(GITHUB_REPOSITORIES.LLAMA_CPP, GITHUB_REPOSITORIES.LLAMA_CPP_FALLBACK_TAG);
     }
 
-    if (!release?.assets?.length) {
-      try {
-        release = await fetchGithubRelease(GITHUB_REPOSITORIES.LLAMA_CPP, GITHUB_REPOSITORIES.LLAMA_CPP_FALLBACK_TAG);
-      } catch (err: any) {
-        log.warn(`[AutoInstaller] Fallback Llama.cpp release lookup failed: ${err.message}`);
-      }
+    const asset = selectBestReleaseAsset(release.assets, hw, {
+      excludePatterns: [/cudart/i, /kompute/i],
+    });
+    if (!asset?.browser_download_url) {
+      throw new Error(`Could not locate a compatible Llama.cpp binary for ${hw.os}-${hw.arch} (${hw.gpuVendor}).`);
     }
 
-    if (!release?.assets?.length) {
-      throw new Error('Could not locate suitable Llama.cpp release assets.');
-    }
+    log.info(`[AutoInstaller] Selected Llama.cpp asset: ${asset.name}`);
+    const ext = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
+    const tempPath = path.join(destDir, `llama_pkg_${Date.now()}${ext}`);
 
-    let assetPattern = /bin-win-avx2-x64\.zip$/i;
-    let isCudaWindows = false;
-
-    if (IS_WINDOWS) {
-      if (detectedGpuVendor === 'nvidia') {
-        assetPattern = /bin-win-cuda-.*-x64\.zip$/i;
-        isCudaWindows = true;
-      } else if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') {
-        assetPattern = /bin-win-vulkan-x64\.zip$/i;
-      }
-    } else if (IS_MACOS) {
-      assetPattern = /bin-macos-universal\.tar\.gz$/i;
-    } else {
-      if (detectedGpuVendor === 'nvidia') assetPattern = /bin-ubuntu-cuda-.*-x64\.tar\.gz$/i;
-      else if (detectedGpuVendor === 'amd' || detectedGpuVendor === 'intel') assetPattern = /bin-ubuntu-vulkan-x64\.tar\.gz$/i;
-      else assetPattern = /bin-ubuntu-avx2-x64\.tar\.gz$/i;
-    }
-
-    const asset = release.assets.find((a: any) => assetPattern.test(a.name))
-      || release.assets.find((a: any) => /avx2|universal/i.test(a.name));
-
-    if (!asset?.browser_download_url) throw new Error(`Could not locate suitable Llama.cpp binary release asset.`);
-
-    const tempPath = path.join(destDir, `llama_pkg_${Date.now()}${path.extname(asset.name)}`);
     await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
-      broadcastNotify(backend, 'downloading', pct, `Downloading Llama.cpp (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
+      broadcastNotify(backend, 'downloading', pct, `Downloading ${asset.name} (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
     }, backend);
 
     broadcastNotify(backend, 'extracting', 85, 'Extracting Llama.cpp binaries...');
     extractArchive(tempPath, destDir);
     try { fs.unlinkSync(tempPath); } catch {}
 
-    if (isCudaWindows) {
-      const cudartAsset = release.assets.find((a: any) => /cudart-llama-bin-win-cuda-.*-x64\.zip$/i.test(a.name));
+    // If a CUDA build was selected on Windows, also fetch the matching cudart DLL bundle
+    if (hw.os === 'windows' && /cuda|cu1[123]/i.test(asset.name)) {
+      const cudaTagMatch = asset.name.match(/cu1[123](?:\.\d+)?/i);
+      const cudartAsset = release.assets.find((a: any) =>
+        /cudart-llama-bin-win/i.test(a.name) &&
+        (!cudaTagMatch || a.name.toLowerCase().includes(cudaTagMatch[0].toLowerCase()))
+      ) || release.assets.find((a: any) => /cudart-llama-bin-win/i.test(a.name));
+
       if (cudartAsset?.browser_download_url) {
-        broadcastNotify(backend, 'downloading', 90, 'Downloading NVIDIA CUDA runtime DLLs...');
+        broadcastNotify(backend, 'downloading', 90, `Downloading CUDA runtime (${cudartAsset.name})...`);
         const tempCudaZip = path.join(destDir, `cudart_${Date.now()}.zip`);
         await downloadFileWithProgress(cudartAsset.browser_download_url, tempCudaZip, undefined, backend);
         extractArchive(tempCudaZip, destDir);
@@ -731,71 +883,69 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       }
     }
 
-    hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath);
-    
+    hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath, [bin('server')]);
     const llamaTtsPath = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-tts'));
-    hoistBinaryIfExists(destDir, bin('llama-tts'), llamaTtsPath);
-
-    if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
-      fs.chmodSync(config.binaryPath, 0o755);
-    }
+    hoistBinaryIfExists(destDir, bin('llama-tts'), llamaTtsPath, [bin('tts')]);
   }
 
   // 2. MISTRAL.RS
   else if (backend === 'mistral.rs') {
-    if (!IS_WINDOWS) {
-      broadcastNotify(backend, 'installing', 10, 'Running official mistral.rs installer...');
+    broadcastNotify(backend, 'downloading', 5, 'Resolving mistral.rs release assets...');
+    let installedFromRelease = false;
+    try {
+      const release = await fetchGithubRelease(GITHUB_REPOSITORIES.MISTRAL_RS);
+      const asset = selectBestReleaseAsset(release.assets, hw, { allowRawBinary: true });
+      if (asset?.browser_download_url) {
+        log.info(`[AutoInstaller] Selected mistral.rs asset: ${asset.name}`);
+        const isArchive = /\.(zip|tar\.gz|tgz|tar\.xz)$/i.test(asset.name);
+        if (isArchive) {
+          const ext = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
+          const tempArchive = path.join(destDir, `mistralrs_${Date.now()}${ext}`);
+          await downloadFileWithProgress(asset.browser_download_url, tempArchive, (loaded, total) => {
+            const pct = Math.round((loaded / total) * 100);
+            broadcastNotify(backend, 'downloading', pct, `Downloading ${asset.name}: ${pct}%`);
+          }, backend);
+          broadcastNotify(backend, 'extracting', 85, 'Extracting mistral.rs binary...');
+          extractArchive(tempArchive, destDir);
+          try { fs.unlinkSync(tempArchive); } catch {}
+          installedFromRelease = hoistBinaryIfExists(destDir, bin('mistralrs-server'), config.binaryPath);
+        } else {
+          ensureDirectory(path.dirname(config.binaryPath));
+          await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
+            const pct = Math.round((loaded / total) * 100);
+            broadcastNotify(backend, 'downloading', pct, `Downloading ${asset.name}: ${pct}%`);
+          }, backend);
+          if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
+          installedFromRelease = fs.existsSync(config.binaryPath);
+        }
+      }
+    } catch (err: any) {
+      log.warn(`[AutoInstaller] mistral.rs release lookup warning: ${err.message}`);
+    }
+
+    if (!installedFromRelease && !IS_WINDOWS) {
+      broadcastNotify(backend, 'installing', 20, 'Running official mistral.rs installer script...');
       execSync(`curl -fsSL ${DIRECT_DOWNLOADS.MISTRAL_RS_INSTALLER} | sh`, {
         cwd: destDir,
         stdio: 'inherit',
         timeout: 1800000,
       });
-
-      let foundBinary: string | null = null;
-
-      try {
-        foundBinary = execSync('command -v mistralrs-server', {
-          stdio: 'pipe',
-          encoding: 'utf-8',
-          shell: '/bin/bash',
-        }).toString() || null;
-      } catch {}
-
-      if (!foundBinary) {
-        const candidates = [
-          path.join(os.homedir(), '.cargo', 'bin', 'mistralrs-server'),
-          '/usr/local/bin/mistralrs-server',
-          '/usr/bin/mistralrs-server',
-          path.join(destDir, 'mistralrs-server'),
-        ];
-        foundBinary = candidates.find(candidate => fs.existsSync(candidate)) || null;
-      }
-
-      if (!foundBinary) {
-        throw new Error('mistral.rs installation completed but the binary could not be located.');
-      }
-
+      const candidates = [
+        path.join(os.homedir(), '.cargo', 'bin', 'mistralrs-server'),
+        path.join(os.homedir(), '.local', 'bin', 'mistralrs-server'),
+        '/usr/local/bin/mistralrs-server',
+        '/usr/bin/mistralrs-server',
+        path.join(destDir, 'mistralrs-server'),
+      ];
+      const foundBinary = candidates.find((c) => fs.existsSync(c));
+      if (!foundBinary) throw new Error('mistral.rs installation completed but binary could not be located.');
       ensureDirectory(path.dirname(config.binaryPath));
       fs.copyFileSync(foundBinary, config.binaryPath);
       fs.chmodSync(config.binaryPath, 0o755);
-    } else {
-      broadcastNotify(backend, 'downloading', 5, 'Resolving mistral.rs release assets...');
-      const release = await fetchGithubRelease(GITHUB_REPOSITORIES.MISTRAL_RS);
+    }
 
-      const assetPattern = detectedGpuVendor === 'nvidia'
-        ? /windows.*cuda.*\.exe$|cuda.*windows.*\.exe$/i
-        : /windows.*\.exe$/i;
-
-      const asset = release.assets.find((a: any) => assetPattern.test(a.name))
-        || release.assets.find((a: any) => /windows/i.test(a.name));
-
-      if (!asset?.browser_download_url) throw new Error('Could not find mistral.rs Windows asset.');
-
-      ensureDirectory(path.dirname(config.binaryPath));
-      await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
-        const pct = Math.round((loaded / total) * 100);
-        broadcastNotify(backend, 'downloading', pct, `Downloading mistral.rs binary: ${pct}%`);
-      }, backend);
+    if (!fs.existsSync(config.binaryPath)) {
+      throw new Error(`Could not locate or install mistral.rs binary for ${hw.os}-${hw.arch}.`);
     }
   }
 
@@ -803,73 +953,44 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   else if (backend === 'Ollama') {
     broadcastNotify(backend, 'downloading', 10, 'Fetching portable Ollama runtime...');
     ensureDirectory(path.dirname(config.binaryPath));
+    const release = await fetchGithubRelease(GITHUB_REPOSITORIES.OLLAMA);
 
+    let asset: any = null;
     if (IS_WINDOWS) {
-      const zipUrl = DIRECT_DOWNLOADS.OLLAMA_WINDOWS;
-      const tempZip = path.join(destDir, 'ollama.zip');
-      await downloadFileWithProgress(zipUrl, tempZip, (loaded, total) => {
-        const pct = Math.round((loaded / total) * 100);
-        broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
-      }, backend);
-      extractArchive(tempZip, destDir);
-      try { fs.unlinkSync(tempZip); } catch {}
+      const archTag = hw.arch === 'arm64' ? 'arm64' : 'amd64';
+      asset = release.assets.find((a: any) => a.name.toLowerCase() === `ollama-windows-${archTag}.zip`)
+        || selectBestReleaseAsset(release.assets, hw, { excludePatterns: [/rocm/i] });
+    } else if (IS_MACOS) {
+      asset = release.assets.find((a: any) => /ollama-darwin\.(zip|tgz|tar\.gz)$/i.test(a.name))
+        || release.assets.find((a: any) => /ollama-darwin$/i.test(a.name))
+        || selectBestReleaseAsset(release.assets, hw, { allowRawBinary: true });
+    } else {
+      const archTag = hw.arch === 'arm64' ? 'arm64' : 'amd64';
+      asset = release.assets.find((a: any) => new RegExp(`^ollama-linux-${archTag}\\.(tgz|tar\\.gz|tar\\.xz)$`, 'i').test(a.name))
+        || selectBestReleaseAsset(release.assets, hw, { excludePatterns: [/rocm/i] });
+    }
+
+    const downloadUrl = asset?.browser_download_url || (IS_WINDOWS ? DIRECT_DOWNLOADS.OLLAMA_WINDOWS : null);
+    if (!downloadUrl) throw new Error(`Could not locate portable Ollama asset for ${hw.os}-${hw.arch}.`);
+
+    const assetName = asset?.name || 'ollama.zip';
+    const ext = assetName.endsWith('.tar.gz') ? '.tar.gz' : (path.extname(assetName) || '.zip');
+    const tempPath = path.join(destDir, `ollama_${Date.now()}${ext}`);
+
+    await downloadFileWithProgress(downloadUrl, tempPath, (loaded, total) => {
+      const pct = Math.round((loaded / total) * 100);
+      broadcastNotify(backend, 'downloading', pct, `Downloading Ollama (${assetName}): ${pct}%`);
+    }, backend);
+
+    if (/\.(zip|tgz|tar\.gz|tar\.xz)$/i.test(assetName)) {
+      broadcastNotify(backend, 'extracting', 85, 'Extracting portable Ollama runtime...');
+      extractArchive(tempPath, destDir);
+      try { fs.unlinkSync(tempPath); } catch {}
       hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
     } else {
-      const release = await fetchGithubRelease(GITHUB_REPOSITORIES.OLLAMA);
-
-      if (IS_MACOS) {
-        const archPattern = process.arch === 'arm64'
-          ? /arm64|apple|universal/i
-          : /x86_64|amd64|universal/i;
-
-        const asset = release.assets.find((a: any) => /darwin|macos/i.test(a.name) && archPattern.test(a.name))
-          || release.assets.find((a: any) => /darwin|macos/i.test(a.name));
-
-        if (!asset?.browser_download_url) throw new Error('Could not locate portable Ollama macOS asset.');
-
-        const tempPath = path.join(destDir, `ollama_${Date.now()}${path.extname(asset.name)}`);
-        await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
-          const pct = Math.round((loaded / total) * 100);
-          broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
-        }, backend);
-
-        const lowerName = asset.name.toLowerCase();
-        if (lowerName.endsWith('.zip') || lowerName.endsWith('.tgz') || lowerName.endsWith('.tar.gz')) {
-          extractArchive(tempPath, destDir);
-          hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
-        } else {
-          fs.copyFileSync(tempPath, config.binaryPath);
-        }
-
-        try { fs.unlinkSync(tempPath); } catch {}
-        if (fs.existsSync(config.binaryPath)) fs.chmodSync(config.binaryPath, 0o755);
-      } else {
-        const arch = process.arch === 'arm64' ? 'arm64' : 'amd64';
-        const asset = release.assets.find((a: any) => a.name === `ollama-linux-${arch}.tgz`)
-          || release.assets.find((a: any) => new RegExp(`linux.*${arch}.*\\.(tgz|tar\\.gz)$`, 'i').test(a.name));
-
-        if (!asset?.browser_download_url) throw new Error('Could not locate portable Ollama Linux asset.');
-
-        const tempPath = path.join(destDir, `ollama_${Date.now()}.tgz`);
-        await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
-          const pct = Math.round((loaded / total) * 100);
-          broadcastNotify(backend, 'downloading', pct, `Downloading Ollama runtime: ${pct}%`);
-        }, backend);
-
-        broadcastNotify(backend, 'extracting', 85, 'Extracting portable Ollama runtime...');
-        extractArchive(tempPath, destDir);
-        try { fs.unlinkSync(tempPath); } catch {}
-
-        const extractedBinary = path.join(destDir, 'bin', 'ollama');
-        if (fs.existsSync(extractedBinary) && path.resolve(extractedBinary) !== path.resolve(config.binaryPath)) {
-          ensureDirectory(path.dirname(config.binaryPath));
-          fs.copyFileSync(extractedBinary, config.binaryPath);
-        } else if (!fs.existsSync(config.binaryPath)) {
-          hoistBinaryIfExists(destDir, bin('ollama'), config.binaryPath);
-        }
-
-        if (fs.existsSync(config.binaryPath)) fs.chmodSync(config.binaryPath, 0o755);
-      }
+      fs.copyFileSync(tempPath, config.binaryPath);
+      try { fs.unlinkSync(tempPath); } catch {}
+      if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
     }
   }
 
@@ -877,23 +998,19 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   else if (backend === 'LM Studio') {
     broadcastNotify(backend, 'installing', 30, 'Locating or installing LM Studio CLI (lms)...');
     ensureDirectory(path.dirname(config.binaryPath));
-
     const existingLms = findLmsBinary();
     if (existingLms) {
       fs.copyFileSync(existingLms, config.binaryPath);
       if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
     } else {
       execSync('npx --yes lmstudio install-cli', { stdio: 'pipe', timeout: 600000 });
-
-      const whichLms = IS_WINDOWS
-        ? execSync('where lms').toString().split(/\r?\n/)[0]
-        : execSync('which lms').toString();
-
-      if (!whichLms || !fs.existsSync(whichLms)) {
+      const postInstallLms = findLmsBinary() || (IS_WINDOWS
+        ? execSync('where lms').toString().trim().split(/\r?\n/)[0]
+        : execSync('which lms').toString().trim());
+      if (!postInstallLms || !fs.existsSync(postInstallLms)) {
         throw new Error('lms CLI could not be located after installation.');
       }
-
-      fs.copyFileSync(whichLms, config.binaryPath);
+      fs.copyFileSync(postInstallLms, config.binaryPath);
       if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
     }
   }
@@ -902,49 +1019,41 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   else if (backend === 'LocalAI') {
     broadcastNotify(backend, 'downloading', 10, 'Locating prebuilt LocalAI distribution...');
     const release = await fetchGithubRelease(GITHUB_REPOSITORIES.LOCAL_AI);
+    const asset = selectBestReleaseAsset(release.assets, hw, { allowRawBinary: true });
+    if (!asset?.browser_download_url) throw new Error(`LocalAI prebuilt asset not found for ${hw.os}-${hw.arch}.`);
 
-    let assetPattern: RegExp;
-    if (IS_WINDOWS) {
-      assetPattern = process.arch === 'arm64'
-        ? /windows.*arm64/i
-        : /windows.*(x86_64|amd64)/i;
-    } else if (IS_MACOS) {
-      assetPattern = process.arch === 'arm64'
-        ? /(darwin|macos).*arm64/i
-        : /(darwin|macos).*(x86_64|amd64)/i;
+    log.info(`[AutoInstaller] Selected LocalAI asset: ${asset.name}`);
+    const isArchive = /\.(zip|tar\.gz|tgz|tar\.xz)$/i.test(asset.name);
+    if (isArchive) {
+      const ext = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
+      const tempPath = path.join(destDir, `localai_${Date.now()}${ext}`);
+      await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
+        const pct = Math.round((loaded / total) * 100);
+        broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
+      }, backend);
+      broadcastNotify(backend, 'extracting', 85, 'Extracting LocalAI binary...');
+      extractArchive(tempPath, destDir);
+      try { fs.unlinkSync(tempPath); } catch {}
+      hoistBinaryIfExists(destDir, bin('local-ai'), config.binaryPath);
     } else {
-      assetPattern = process.arch === 'arm64'
-        ? /linux.*arm64/i
-        : /linux.*(x86_64|amd64)/i;
+      ensureDirectory(path.dirname(config.binaryPath));
+      await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
+        const pct = Math.round((loaded / total) * 100);
+        broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
+      }, backend);
+      if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
     }
-
-    const platformFallback = IS_WINDOWS ? /windows/i : IS_MACOS ? /(darwin|macos)/i : /linux/i;
-
-    const asset = release.assets.find((a: any) => assetPattern.test(a.name))
-      || release.assets.find((a: any) => platformFallback.test(a.name));
-
-    if (!asset?.browser_download_url) throw new Error('LocalAI prebuilt asset not found.');
-
-    ensureDirectory(path.dirname(config.binaryPath));
-    await downloadFileWithProgress(asset.browser_download_url, config.binaryPath, (loaded, total) => {
-      const pct = Math.round((loaded / total) * 100);
-      broadcastNotify(backend, 'downloading', pct, `Downloading LocalAI: ${pct}%`);
-    }, backend);
-
-    if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
   }
 
   // 6. EXLLAMAV2 / EXLLAMAV3 / EXLLAMAV3 HF (Headless via TabbyAPI + uv)
   else if (backend === 'ExLlamaV2' || backend === 'ExLlamaV3' || backend === 'ExLlamaV3 HF') {
     const uvBin = await ensureUv();
     broadcastNotify(backend, 'downloading', 20, 'Downloading TabbyAPI engine code...');
-
     const zipUrl = DIRECT_DOWNLOADS.EXLLAMA_TABBY_API;
     const tempZip = path.join(destDir, 'tabby.zip');
     await downloadFileWithProgress(zipUrl, tempZip, undefined, backend);
     extractArchive(tempZip, destDir);
     try { fs.unlinkSync(tempZip); } catch {}
-
     const extractedFolder = path.join(destDir, 'tabbyAPI-main');
     if (fs.existsSync(extractedFolder)) {
       for (const item of fs.readdirSync(extractedFolder)) {
@@ -958,13 +1067,9 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     broadcastNotify(backend, 'installing', 40, 'Installing isolated Python 3.11 environment via uv...');
     execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
     execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
+    const venvPy = syncVenvPythonConfig(backend, destDir);
 
-    const venvPy = IS_WINDOWS
-      ? path.join(destDir, 'venv', 'Scripts', 'python.exe')
-      : path.join(destDir, 'venv', 'bin', 'python');
-
-    broadcastNotify(backend, 'installing', 60, 'Installing ExLlama runtime dependencies with GPU extras...');
-
+    broadcastNotify(backend, 'installing', 60, `Installing ExLlama runtime dependencies for ${hw.gpuVendor.toUpperCase()}...`);
     try {
       execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
         stdio: 'pipe',
@@ -975,13 +1080,21 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       log.warn(`[AutoInstaller] torch auto backend preinstall failed: ${err.message}`);
     }
 
-    if (detectedGpuVendor === 'nvidia') {
-      const cudaExtra = getCudaExtra();
-      execSync(`"${uvBin}" pip --python "${venvPy}" install -U ".[${cudaExtra}]"`, {
-        stdio: 'pipe',
-        cwd: destDir,
-        timeout: 1800000,
-      });
+    const extraTag = hw.gpuVendor === 'nvidia' ? getCudaExtra() : hw.gpuVendor === 'amd' ? 'rocm' : null;
+    if (extraTag) {
+      try {
+        execSync(`"${uvBin}" pip --python "${venvPy}" install -U ".[${extraTag}]"`, {
+          stdio: 'pipe',
+          cwd: destDir,
+          timeout: 1800000,
+        });
+      } catch {
+        execSync(`"${uvBin}" pip --python "${venvPy}" install -U .`, {
+          stdio: 'pipe',
+          cwd: destDir,
+          timeout: 1800000,
+        });
+      }
     } else {
       execSync(`"${uvBin}" pip --python "${venvPy}" install -U .`, {
         stdio: 'pipe',
@@ -1002,13 +1115,9 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     broadcastNotify(backend, 'installing', 25, 'Provisioning portable Python 3.11 for vLLM...');
     execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
     execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
-
-    const venvPy = IS_WINDOWS
-      ? path.join(destDir, 'venv', 'Scripts', 'python.exe')
-      : path.join(destDir, 'venv', 'bin', 'python');
+    const venvPy = syncVenvPythonConfig(backend, destDir);
 
     broadcastNotify(backend, 'installing', 50, 'Fetching vLLM high-throughput engine wheels...');
-
     try {
       execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
         stdio: 'pipe',
@@ -1018,7 +1127,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     } catch (err: any) {
       log.warn(`[AutoInstaller] torch auto backend preinstall failed: ${err.message}`);
     }
-
     execSync(`"${uvBin}" pip --python "${venvPy}" install -U vllm`, {
       stdio: 'pipe',
       cwd: destDir,
@@ -1035,13 +1143,9 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     broadcastNotify(backend, 'installing', 25, 'Provisioning isolated Python environment for SGLang...');
     execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
     execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
-
-    const venvPy = IS_WINDOWS
-      ? path.join(destDir, 'venv', 'Scripts', 'python.exe')
-      : path.join(destDir, 'venv', 'bin', 'python');
+    const venvPy = syncVenvPythonConfig(backend, destDir);
 
     broadcastNotify(backend, 'installing', 50, 'Installing sglang[srt] optimized runtime...');
-
     try {
       execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
         stdio: 'pipe',
@@ -1051,7 +1155,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     } catch (err: any) {
       log.warn(`[AutoInstaller] torch auto backend preinstall failed: ${err.message}`);
     }
-
     execSync(`"${uvBin}" pip --python "${venvPy}" install -U "sglang[srt]"`, {
       stdio: 'pipe',
       cwd: destDir,
@@ -1070,14 +1173,11 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     } catch {
       throw new Error(`Docker is required for ${backend}. Please install Docker Desktop and configure NVIDIA Container Toolkit.`);
     }
-
     const image = backend === 'TensorRT-LLM'
       ? DOCKER_IMAGES.TENSOR_RT_LLM
       : DOCKER_IMAGES.TRANSFORMERS_TGI;
-
     broadcastNotify(backend, 'downloading', 40, `Pulling container image: ${image}...`);
     execSync(`docker pull ${image}`, { stdio: 'inherit', timeout: 3600000 });
-
     writeDockerWrapper(config.binaryPath, image);
   }
 
@@ -1085,46 +1185,38 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   else if (backend === 'stable-diffusion.cpp') {
     broadcastNotify(backend, 'downloading', 5, 'Resolving stable-diffusion.cpp release assets...');
     const release = await fetchGithubRelease(GITHUB_REPOSITORIES.STABLE_DIFFUSION_CPP || 'leejet/stable-diffusion.cpp');
-
-    let assetPattern: RegExp;
-    if (IS_WINDOWS) {
-      if (detectedGpuVendor === 'nvidia') {
-        assetPattern = /sd-.*(?:cublas|cuda).*win.*x64\.zip$/i;
-      } else {
-        assetPattern = /sd-.*vulkan.*win.*x64\.zip$/i;
-      }
-    } else if (IS_MACOS) {
-      assetPattern = /sd-.*(?:metal|macos|darwin).*\.tar\.gz$/i;
-    } else {
-      if (detectedGpuVendor === 'nvidia') {
-        assetPattern = /sd-.*(?:cublas|cuda).*ubuntu.*x64\.tar\.gz$/i;
-      } else {
-        assetPattern = /sd-.*vulkan.*ubuntu.*x64\.tar\.gz$/i;
-      }
+    const asset = selectBestReleaseAsset(release.assets, hw, {
+      excludePatterns: [/cudart/i],
+    });
+    if (!asset?.browser_download_url) {
+      throw new Error(`Could not locate a compatible stable-diffusion.cpp binary for ${hw.os}-${hw.arch} (${hw.gpuVendor}).`);
     }
 
-    const platformFallback = IS_WINDOWS ? /win/i : IS_MACOS ? /macos|darwin/i : /ubuntu|linux/i;
+    log.info(`[AutoInstaller] Selected stable-diffusion.cpp asset: ${asset.name}`);
+    const ext = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
+    const tempPath = path.join(destDir, `sdcpp_pkg_${Date.now()}${ext}`);
 
-    const asset = release.assets.find((a: any) => assetPattern.test(a.name))
-      || release.assets.find((a: any) => platformFallback.test(a.name) && /x64|amd64/i.test(a.name));
-
-    if (!asset?.browser_download_url) throw new Error('Could not locate suitable stable-diffusion.cpp release asset.');
-
-    const tempPath = path.join(destDir, `sdcpp_pkg_${Date.now()}${path.extname(asset.name)}`);
     await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
-      broadcastNotify(backend, 'downloading', pct, `Downloading stable-diffusion.cpp (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
+      broadcastNotify(backend, 'downloading', pct, `Downloading ${asset.name} (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
     }, backend);
 
     broadcastNotify(backend, 'extracting', 85, 'Extracting stable-diffusion.cpp binaries...');
     extractArchive(tempPath, destDir);
     try { fs.unlinkSync(tempPath); } catch {}
 
-    hoistBinaryIfExists(destDir, bin('sd-server'), config.binaryPath);
-
-    if (!IS_WINDOWS && fs.existsSync(config.binaryPath)) {
-      fs.chmodSync(config.binaryPath, 0o755);
+    // If a CUDA build was selected on Windows, also extract its companion cudart zip if present in the release
+    if (hw.os === 'windows' && /cuda|cublas|cu1[123]/i.test(asset.name)) {
+      const cudartAsset = release.assets.find((a: any) => /cudart.*win/i.test(a.name));
+      if (cudartAsset?.browser_download_url) {
+        const tempCudaZip = path.join(destDir, `sd_cudart_${Date.now()}.zip`);
+        await downloadFileWithProgress(cudartAsset.browser_download_url, tempCudaZip, undefined, backend);
+        extractArchive(tempCudaZip, destDir);
+        try { fs.unlinkSync(tempCudaZip); } catch {}
+      }
     }
+
+    hoistBinaryIfExists(destDir, bin('sd-server'), config.binaryPath, [bin('sd')]);
   }
 
   broadcastNotify(backend, 'ready', 100, `${backend} is installed and ready.`);
@@ -1179,6 +1271,7 @@ function validateAuxPaths(args: string[]): void {
 }
 
 // ─── Virtual Controller State (ViGEmBus / XInput) ────────────────────
+
 let ViGEmClient: any = null;
 let vigemBus: any = null;
 let x360Controller: any = null;
@@ -1206,7 +1299,6 @@ function getOrInitVirtualController(): { controller: any; error: string | null }
   if (x360Controller) {
     return { controller: x360Controller, error: null };
   }
-
   try {
     if (!ViGEmClient) ViGEmClient = require('vigemclient');
     if (!vigemBus) {
@@ -1219,7 +1311,6 @@ function getOrInitVirtualController(): { controller: any; error: string | null }
         return { controller: null, error: vigemInitError };
       }
     }
-
     const ctrl = vigemBus.createX360Controller();
     const targetErr = ctrl.connect();
     if (targetErr) {
@@ -1227,7 +1318,6 @@ function getOrInitVirtualController(): { controller: any; error: string | null }
       log.warn(`[ViGEm] ${vigemInitError}`);
       return { controller: null, error: vigemInitError };
     }
-
     x360Controller = ctrl;
     vigemInitError = null;
     log.success('🎮 Virtual Xbox 360 Controller connected to ViGEmBus');
@@ -1264,13 +1354,20 @@ interface GpuStatus {
   timestamp: number;
 }
 
+interface HardwareProfile {
+  os: 'windows' | 'macos' | 'linux';
+  arch: 'x64' | 'arm64';
+  gpuVendor: GpuVendor;
+  cudaMajor: number | null;
+  cpuFlags: { avx512: boolean; avx2: boolean; avx: boolean };
+}
+
 function detectGpuVendor(): GpuVendor {
   const checks: { vendor: GpuVendor; cmd: string }[] = [
     { vendor: 'nvidia', cmd: 'nvidia-smi --query-gpu=name --format=csv,noheader,nounits' },
     { vendor: 'amd',    cmd: 'rocm-smi --showproductname --json' },
     { vendor: 'intel',  cmd: 'xpu-smi discovery' },
   ];
-
   for (const { vendor, cmd } of checks) {
     try {
       execSync(cmd, { stdio: 'pipe', timeout: 3000 });
@@ -1278,10 +1375,27 @@ function detectGpuVendor(): GpuVendor {
     } catch {}
   }
 
-  if (IS_MACOS) {
+  if (IS_WINDOWS) {
+    try {
+      const out = execSync(
+        'powershell -NoProfile -Command "Get-CimInstance Win32_VideoController | Select-Object -ExpandProperty Name"',
+        { stdio: 'pipe', timeout: 4000, encoding: 'utf-8' }
+      ).toLowerCase();
+      if (out.includes('nvidia') || out.includes('geforce') || out.includes('quadro') || out.includes('rtx') || out.includes('gtx')) return 'nvidia';
+      if (out.includes('amd') || out.includes('radeon') || out.includes('rx ')) return 'amd';
+      if (out.includes('intel') || out.includes('arc ') || out.includes('iris') || out.includes('uhd')) return 'intel';
+    } catch {}
+  } else if (IS_MACOS) {
     try {
       execSync('system_profiler SPDisplaysDataType', { stdio: 'pipe', timeout: 3000 });
       return 'apple';
+    } catch {}
+  } else {
+    try {
+      const out = execSync('lspci | grep -iE "vga|3d|display"', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' }).toLowerCase();
+      if (out.includes('nvidia')) return 'nvidia';
+      if (out.includes('amd') || out.includes('ati') || out.includes('radeon')) return 'amd';
+      if (out.includes('intel')) return 'intel';
     } catch {}
   }
 
@@ -1290,17 +1404,56 @@ function detectGpuVendor(): GpuVendor {
 
 let detectedGpuVendor: GpuVendor = 'unknown';
 
+async function getHardwareProfile(): Promise<HardwareProfile> {
+  if (detectedGpuVendor === 'unknown') {
+    detectedGpuVendor = detectGpuVendor();
+  }
+
+  let gpuVendor = detectedGpuVendor;
+  if (gpuVendor === 'unknown') {
+    try {
+      const gfx = await si.graphics();
+      for (const ctrl of gfx.controllers) {
+        const v = `${ctrl.vendor || ''} ${ctrl.model || ''}`.toLowerCase();
+        if (v.includes('nvidia') || v.includes('geforce') || v.includes('rtx') || v.includes('gtx')) { gpuVendor = 'nvidia'; break; }
+        if (v.includes('amd') || v.includes('radeon')) { gpuVendor = 'amd'; break; }
+        if (v.includes('apple')) { gpuVendor = 'apple'; break; }
+        if (v.includes('intel') || v.includes('arc') || v.includes('iris')) { gpuVendor = 'intel'; break; }
+      }
+      detectedGpuVendor = gpuVendor;
+    } catch {}
+  }
+
+  const cuda = gpuVendor === 'nvidia' ? getDetectedCudaVersion() : null;
+  let avx512 = false;
+  let avx2 = true;
+  let avx = true;
+
+  try {
+    const flags = (await si.cpuFlags()).toLowerCase();
+    avx512 = flags.includes('avx512');
+    avx2 = flags.includes('avx2');
+    avx = flags.includes('avx');
+  } catch {}
+
+  return {
+    os: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
+    arch: process.arch === 'arm64' ? 'arm64' : 'x64',
+    gpuVendor,
+    cudaMajor: cuda ? cuda.major : null,
+    cpuFlags: { avx512, avx2, avx },
+  };
+}
+
 function queryNvidiaGpu(): GpuStatus | null {
   try {
     const raw = execSync(
       'nvidia-smi --query-gpu=name,utilization.gpu,memory.used,memory.total,temperature.gpu,power.draw --format=csv,noheader,nounits',
       { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' },
     );
-
     const line = raw.split('\n')[0];
     const parts = line.split(',').map(s => s);
     if (parts.length < 4) return null;
-
     return {
       vendor: 'nvidia',
       name: parts[0],
@@ -1321,17 +1474,14 @@ function queryAmdGpu(): GpuStatus | null {
     const raw = execSync('rocm-smi --showuse --showmeminfo vram --json', {
       stdio: 'pipe', timeout: 3000, encoding: 'utf-8',
     });
-
     const data = JSON.parse(raw);
     const cardKeys = Object.keys(data).filter(k => k.startsWith('card'));
     if (cardKeys.length === 0) return null;
-
     const card = data[cardKeys[0]];
     const gpuUse   = card['GPU use (%)']               ?? card['gpu_use_percent']  ?? 0;
     const memUsed  = card['VRAM Total Used Memory (MB)'] ?? card['vram_used_mb']   ?? 0;
     const memTotal = card['VRAM Total Memory (MB)']      ?? card['vram_total_mb']  ?? 0;
     const temp     = card['Temperature (Sensor edge) (C)'] ?? card['temp_edge_c']  ?? null;
-
     return {
       vendor: 'amd',
       name: cardKeys[0],
@@ -1352,10 +1502,8 @@ function queryIntelGpu(): GpuStatus | null {
     const raw = execSync('xpu-smi discovery', {
       stdio: 'pipe', timeout: 3000, encoding: 'utf-8',
     });
-
     const devices = JSON.parse(raw);
     if (!Array.isArray(devices) || devices.length === 0) return null;
-
     const dev = devices[0];
     return {
       vendor: 'intel',
@@ -1377,7 +1525,6 @@ function queryAppleGpu(): GpuStatus | null {
     const raw = execSync('ioreg -r -c AGXAccelerator -d 1', { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' });
     const nameMatch = raw.match(/"IOClass"\s*=\s*"([^"]+)"/);
     const gpuName = nameMatch ? nameMatch[1] : 'Apple GPU';
-
     let utilization = 0;
     let power: number | null = null;
     try {
@@ -1389,14 +1536,12 @@ function queryAppleGpu(): GpuStatus | null {
         power = gpu.gpu_power_mw ? gpu.gpu_power_mw / 1000 : null;
       }
     } catch {}
-
     let memTotal = 0;
     try {
       const sysctlRaw = execSync('sysctl hw.memsize', { stdio: 'pipe', timeout: 1000, encoding: 'utf-8' });
       const memMatch = sysctlRaw.match(/(\d+)/);
       if (memMatch) memTotal = Math.round(Number.parseInt(memMatch[1], 10) / (1024 * 1024));
     } catch {}
-
     return {
       vendor: 'apple',
       name: gpuName,
@@ -1457,7 +1602,7 @@ function getMimeType(ext: string): string {
 
 const MANIFEST_DIRS = [
   'character_data', 'multiplayer_character_data', 'token_sampler_data', 'context_data',
-  'location_data', 'model_data', 'stop_pattern_data', 'knowledge_configuration_data', 'interaction_messages',
+  'location_data', 'language_model_data', 'stop_pattern_data', 'knowledge_configuration_data', 'interaction_messages',
   'interaction_data', 'entity_folders', 'budget_strategies', 'profile_data', 'world_data',
   'webpage_data', 'memory_data', 'audio_track_data', 'prompt_block_data',
   'account_data', 'multiplayer_data',
@@ -1466,24 +1611,19 @@ const MANIFEST_DIRS = [
 function sanitizeManifestDir(dirName: string): number {
   const dirPath = path.join(ROOT_DIR, 'user_data', dirName);
   const manifestPath = path.join(dirPath, 'manifest.json');
-
   if (!fs.existsSync(dirPath)) {
     try { fs.mkdirSync(dirPath, { recursive: true }); log.info(`Created directory: ${dirPath}`); } catch {}
   }
-
   if (!fs.existsSync(manifestPath)) {
     try { fs.writeFileSync(manifestPath, '[]', 'utf-8'); } catch {}
     return 0;
   }
-
   try {
     const raw = fs.readFileSync(manifestPath, 'utf-8');
     const manifest: unknown = JSON.parse(raw);
     if (!Array.isArray(manifest)) return 0;
-
     const validIds: string[] = [];
     let removedCount = 0;
-
     for (const entry of manifest) {
       const id = typeof entry === 'string' ? entry : String(entry);
       if (fs.existsSync(path.join(dirPath, `${id}.json`))) {
@@ -1492,7 +1632,6 @@ function sanitizeManifestDir(dirName: string): number {
         removedCount++;
       }
     }
-
     if (removedCount > 0) {
       fs.writeFileSync(manifestPath, JSON.stringify(validIds, null, 2), 'utf-8');
       log.warn(`Sanitized ${dirName}/manifest.json: removed ${removedCount} orphaned entr${removedCount === 1 ? 'y' : 'ies'}`);
@@ -1508,9 +1647,7 @@ function sanitizeOrphanedMessages(): number {
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   if (!fs.existsSync(messagesDir)) return 0;
-
   const referencedMessageIds = new Set<string>();
-
   if (fs.existsSync(chatsDir)) {
     const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
     for (const file of chatFiles) {
@@ -1530,17 +1667,14 @@ function sanitizeOrphanedMessages(): number {
       } catch {}
     }
   }
-
   const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
   let orphanedCount = 0;
-
   for (const file of messageFiles) {
     const msgId = file.replace(/\.json$/, '');
     if (!referencedMessageIds.has(msgId)) {
       try { fs.unlinkSync(path.join(messagesDir, file)); orphanedCount++; } catch {}
     }
   }
-
   const messagesManifestPath = path.join(messagesDir, 'manifest.json');
   if (fs.existsSync(messagesManifestPath)) {
     try {
@@ -1552,7 +1686,6 @@ function sanitizeOrphanedMessages(): number {
       }
     } catch {}
   }
-
   if (orphanedCount > 0) {
     log.warn(`Sanitized interaction_messages/: removed ${orphanedCount} orphaned message file${orphanedCount === 1 ? '' : 's'}`);
   }
@@ -1562,10 +1695,8 @@ function sanitizeOrphanedMessages(): number {
 function sanitizeHollowMessages(): number {
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   if (!fs.existsSync(messagesDir)) return 0;
-
   const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
   let hollowCount = 0;
-
   for (const file of messageFiles) {
     try {
       const raw = fs.readFileSync(path.join(messagesDir, file), 'utf-8');
@@ -1576,7 +1707,6 @@ function sanitizeHollowMessages(): number {
       }
     } catch {}
   }
-
   if (hollowCount > 0) {
     log.warn(`Sanitized interaction_messages/: removed ${hollowCount} hollow message file${hollowCount === 1 ? '' : 's'}`);
   }
@@ -1587,22 +1717,18 @@ function sanitizeChatHistories(): number {
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   if (!fs.existsSync(chatsDir)) return 0;
-
   const existingMessageIds = new Set<string>();
   if (fs.existsSync(messagesDir)) {
     const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
     for (const f of msgFiles) existingMessageIds.add(f.replace(/\.json$/, ''));
   }
-
   const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
   let totalPruned = 0;
-
   for (const file of chatFiles) {
     try {
       const filePath = path.join(chatsDir, file);
       const raw = fs.readFileSync(filePath, 'utf-8');
       const chat = JSON.parse(raw);
-
       if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
         let pruned = 0;
         let changed = false;
@@ -1623,7 +1749,6 @@ function sanitizeChatHistories(): number {
       }
     } catch {}
   }
-
   if (totalPruned > 0) {
     log.warn(`Sanitized chat histories: pruned ${totalPruned} dangling message reference${totalPruned === 1 ? '' : 's'}`);
   }
@@ -1634,11 +1759,9 @@ function runStartupSanitization(): void {
   log.info('Running startup data sanitization...');
   let totalManifestOrphans = 0;
   for (const dir of MANIFEST_DIRS) totalManifestOrphans += sanitizeManifestDir(dir);
-
   const hollowMessages = sanitizeHollowMessages();
   const orphanedMessages = sanitizeOrphanedMessages();
   const prunedReferences = sanitizeChatHistories();
-
   sanitizeManifestDir('interaction_messages');
   const totalCleaned = totalManifestOrphans + hollowMessages + orphanedMessages + prunedReferences;
   if (totalCleaned > 0) {
@@ -1649,11 +1772,11 @@ function runStartupSanitization(): void {
 }
 
 // ─── Fast Snippet Extractor for Search ────────────────────────────────
+
 function createSnippet(text: string, query: string, radius = 50): string {
   const lowerText = text.toLowerCase();
   const idx = lowerText.indexOf(query.toLowerCase());
   if (idx === -1) return text.slice(0, radius * 2);
-
   const start = Math.max(0, idx - radius);
   const end = Math.min(text.length, idx + query.length + radius);
   return `${start > 0 ? '...' : ''}${text.slice(start, end)}${end < text.length ? '...' : ''}`;
@@ -1662,18 +1785,13 @@ function createSnippet(text: string, query: string, radius = 50): string {
 app.get('/search', async (req, response) => {
   const query = typeof req.query.q === 'string' ? req.query.q : '';
   const limit = Math.min(Number.parseInt(String(req.query.limit || '40'), 10), 100);
-
   if (!query) return response.json({ query, results: [], count: 0, durationMs: 0 });
-
   const startTime = Date.now();
   const lowerQuery = query.toLowerCase();
-
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
-
   const messageToChatsMap = new Map<string, Array<{ chatId: string; chatName: string }>>();
   const chatResults: Array<{ type: 'chat'; id: string; name: string }> = [];
-
   if (fs.existsSync(chatsDir)) {
     const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
     for (const file of chatFiles) {
@@ -1682,11 +1800,9 @@ app.get('/search', async (req, response) => {
         const chat = JSON.parse(raw);
         const chatId = file.replace(/\.json$/, '');
         const chatName = chat.name || 'Untitled Session';
-
         if (chatName.toLowerCase().includes(lowerQuery)) {
           chatResults.push({ type: 'chat', id: chatId, name: chatName });
         }
-
         if (chat.interactionHistories && typeof chat.interactionHistories === 'object') {
           for (const locId in chat.interactionHistories) {
             const msgIds = chat.interactionHistories[locId];
@@ -1704,12 +1820,10 @@ app.get('/search', async (req, response) => {
       } catch {}
     }
   }
-
   const messageResults: Array<{
     type: 'message'; id: string; chats: Array<{ chatId: string; chatName: string }>;
     characterId?: string; snippet: string; timestamp: number;
   }> = [];
-
   if (fs.existsSync(messagesDir)) {
     const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
     for (const file of msgFiles) {
@@ -1735,21 +1849,19 @@ app.get('/search', async (req, response) => {
       } catch {}
     }
   }
-
   const allResults = [...chatResults, ...messageResults].slice(0, limit);
   response.json({ query, results: allResults, count: allResults.length, durationMs: Date.now() - startTime });
 });
 
 // --- /user_data routes ---
+
 app.use('/user_data', (req, response) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
   if (!relativePath || relativePath.includes('..')) {
     return response.status(403).json({ error: 'Invalid path structure' });
   }
-
   const filePath  = path.join(ROOT_DIR, 'user_data', relativePath);
   const directory = path.dirname(filePath);
-
   if (req.method === 'HEAD') {
     if (!fs.existsSync(filePath)) {
       for (const ext of ALL_MEDIA_EXTENSIONS) {
@@ -1769,7 +1881,6 @@ app.use('/user_data', (req, response) => {
     });
     return;
   }
-
   if (req.method === 'GET') {
     if (!fs.existsSync(filePath)) {
       for (const ext of ALL_MEDIA_EXTENSIONS) {
@@ -1803,7 +1914,6 @@ app.use('/user_data', (req, response) => {
     });
     return;
   }
-
   if (req.method === 'PUT') {
     if (!fs.existsSync(directory)) {
       try { fs.mkdirSync(directory, { recursive: true }); } catch (e: any) {
@@ -1813,7 +1923,6 @@ app.use('/user_data', (req, response) => {
     const body: unknown = req.body;
     const base64 = typeof body === 'object' && body !== null && 'base64' in body && typeof (body as any).base64 === 'string'
       ? (body as any).base64 : undefined;
-
     if (isMediaUploadPath(relativePath) && base64) {
       try {
         const buffer = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
@@ -1824,7 +1933,6 @@ app.use('/user_data', (req, response) => {
         });
       } catch { return response.status(400).json({ error: 'Invalid Base64' }); }
     }
-
     fs.writeFile(filePath, JSON.stringify(body, null, 2), err => {
       if (err) return response.status(500).json({ error: 'Write JSON Failed' });
       broadcastSyncChange('PUT', relativePath, req.headers['x-client-id'] as string);
@@ -1832,7 +1940,6 @@ app.use('/user_data', (req, response) => {
     });
     return;
   }
-
   if (req.method === 'DELETE') {
     fs.unlink(filePath, (error) => {
       if (error && error.code !== 'ENOENT') return response.status(500).json({ error: 'Delete Failed' });
@@ -1856,7 +1963,6 @@ app.use('/user_data', (req, response) => {
     });
     return;
   }
-
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
@@ -1907,6 +2013,7 @@ app.get(SPATIOTEMPORAL_MODEL_STATUS_ROUTE, (_req, response) => {
 });
 
 // ─── Local Backends Management Endpoints for LanguageModelInferenceManager ───
+
 app.get(LANGUAGE_MODEL_ROUTE, (_req, res) => {
   const result = Object.entries(BACKEND_CONFIGS)
     .filter(([_, cfg]) => cfg.category !== 'spatiotemporal')
@@ -1934,7 +2041,6 @@ const handleInstall = async (req: express.Request, res: express.Response) => {
   if (!backend || !BACKEND_CONFIGS[backend as LocalBackend]) {
     return res.status(400).json({ error: `Invalid backend "${backend}".` });
   }
-
   try {
     installBackendOnDemand(backend as LocalBackend).catch((err) => {
       log.error(`[InstallManager] ${backend} failed: ${err.message}`);
@@ -1949,46 +2055,41 @@ const handleInstall = async (req: express.Request, res: express.Response) => {
 };
 
 // ─── Cancel Installation ─────────────────────────────────────────────
+
 const handleCancel = (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
   if (!backend) return res.status(400).json({ error: 'Missing backend' });
-
   cancelledInstalls.add(backend);
   broadcastNotify(backend, 'idle', 0, `Installation of ${backend} cancelled by user.`);
   activeNotifications.delete(backend);
-
   log.info(`[InstallManager] Cancellation requested for ${backend}.`);
   res.json({ success: true, message: `Cancellation requested for ${backend}.` });
 };
 
 // ─── Delete / Uninstall Backend ──────────────────────────────────────
+
 const handleDelete = async (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
   if (!backend || !BACKEND_CONFIGS[backend as LocalBackend]) {
     return res.status(400).json({ error: `Invalid backend "${backend}".` });
   }
-
   const config = BACKEND_CONFIGS[backend as LocalBackend];
   const destDir = config.cwd
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
     : path.dirname(config.binaryPath);
-
   const activeBackendModels = Array.from(activeModels.values()).filter(m => m.backend === backend);
   if (activeBackendModels.length > 0) {
     return res.status(409).json({
       error: `Cannot delete ${backend} while ${activeBackendModels.length} model(s) are still loaded. Please unload them first.`,
     });
   }
-
   try {
     const normalizedDest = path.resolve(destDir);
     const normalizedRoot = path.resolve(ROOT_DIR);
     const normalizedBackendsRoot = path.resolve(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH);
-
     if (normalizedDest === normalizedRoot || normalizedDest === normalizedBackendsRoot) {
       return res.status(400).json({ error: 'Cannot delete shared or root directories.' });
     }
-
     if (fs.existsSync(destDir)) {
       log.info(`[DeleteManager] Moving ${backend} directory to trash: ${destDir}`);
       await trash([destDir]); 
@@ -2005,7 +2106,6 @@ const handleDelete = async (req: express.Request, res: express.Response) => {
 
 const handleLoad = async (req: express.Request, response: express.Response) => {
   const { id, modelPath, port: requestedPort, args = [], backend: requestedBackend } = req.body;
-
   if (!id || !modelPath) return response.status(400).json({ error: 'Missing id or modelPath' });
   if (activeModels.has(id)) {
     return response.status(409).json({
@@ -2013,10 +2113,8 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
       port: activeModels.get(id)?.port,
     });
   }
-
   const backendName = (requestedBackend || 'Llama.cpp') as LocalBackend;
   const config = BACKEND_CONFIGS[backendName];
-
   if (!config) {
     return response.status(400).json({
       error: `Unsupported local backend: ${backendName}. Supported: ${Object.keys(BACKEND_CONFIGS).join(', ')}`,
@@ -2034,7 +2132,6 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
         error: `Automated on-demand installation of "${backendName}" failed: ${installErr.message}`,
       });
     }
-
     if (!fs.existsSync(config.binaryPath)) {
       return response.status(500).json({
         error: `${backendName} installation routine completed, but executable was not found at ${config.binaryPath}.`,
@@ -2046,30 +2143,23 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
   if (!config.modelNameNotPath && !fs.existsSync(absoluteModelPath)) {
     return response.status(404).json({ error: `Model file not found at ${absoluteModelPath}` });
   }
-
   const mutableArgs = [...args];
   if (backendName === 'Llama.cpp') validateAuxPaths(mutableArgs);
-
   const port = requestedPort || await getFreePort();
   log.info(`Starting ${backendName} model "${id}" on port ${port} ...`);
   log.info(`Model path : ${absoluteModelPath}`);
-
   const launchArgs = config.buildArgs(absoluteModelPath, port, mutableArgs);
   log.info(`Launch args: ${launchArgs.join(' ')}`);
-
   const spawnCwd = config.cwd
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
     : path.dirname(config.binaryPath);
-
   const envOverrides = config.envOverrides ? config.envOverrides(port) : {};
-
   const proc = spawn(config.binaryPath, launchArgs, {
     cwd: spawnCwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ...envOverrides },
     shell: IS_WINDOWS,
   });
-
   const instance: ModelInstance = {
     id,
     process: proc,
@@ -2080,13 +2170,11 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
     startTime: Date.now(),
   };
   activeModels.set(id, instance);
-
   proc.stdout?.on('data', (data: Buffer) => {
     const str = data.toString();
     if (str) log.backend(config.logLabel, `[${id}] ${str}`);
     if (config.readyPattern?.test(str)) instance.status = 'ready';
   });
-
   proc.stderr?.on('data', (data: Buffer) => {
     const str = data.toString();
     if (!str) return;
@@ -2096,15 +2184,12 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
     if (isError && !isFalsePositive) log.error(`[${config.logLabel}:${id}] ${str}`);
     else log.backend(config.logLabel, `[${id}] ${str}`);
   });
-
   proc.on('exit', (code) => {
     log.warn(`[${config.logLabel}:${id}] Process exited with code ${code}`);
     activeModels.delete(id);
   });
-
   const healthUrl = config.healthUrl(port);
   const isReady   = await waitForModelReady(healthUrl);
-
   if (isReady) {
     instance.status = 'ready';
     log.success(`${backendName} model "${id}" loaded successfully on port ${port}`);
@@ -2121,12 +2206,9 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
 const handleUnload = (req: express.Request, response: express.Response) => {
   const { id } = req.body;
   if (!id) return response.status(400).json({ error: 'Missing id' });
-
   const instance = activeModels.get(id);
   if (!instance) return response.status(404).json({ error: `Model ${id} not found` });
-
   log.info(`Unloading ${instance.backend} model "${id}" ...`);
-
   if (IS_WINDOWS) {
     try { execSync(`taskkill /PID ${instance.process.pid} /T /F`, { stdio: 'pipe' }); } catch {}
   } else {
@@ -2135,7 +2217,6 @@ const handleUnload = (req: express.Request, response: express.Response) => {
       if (instance.process.pid) { try { process.kill(instance.process.pid, 'SIGKILL'); } catch {} }
     }, 2000);
   }
-
   activeModels.delete(id);
   log.success(`${instance.backend} model "${id}" unloaded`);
   response.json({ success: true, message: 'Model unloaded' });
@@ -2143,16 +2224,12 @@ const handleUnload = (req: express.Request, response: express.Response) => {
 
 app.post(LANGUAGE_MODEL_INSTALL_ROUTE, handleInstall);
 app.post(SPATIOTEMPORAL_MODEL_INSTALL_ROUTE, handleInstall);
-
 app.post(LANGUAGE_MODEL_CANCEL_ROUTE, handleCancel);
 app.post(SPATIOTEMPORAL_MODEL_CANCEL_ROUTE, handleCancel);
-
 app.post(LANGUAGE_MODEL_DELETE_ROUTE, handleDelete);
 app.post(SPATIOTEMPORAL_MODEL_DELETE_ROUTE, handleDelete);
-
 app.post(LANGUAGE_MODEL_LOAD_ROUTE, handleLoad);
 app.post(SPATIOTEMPORAL_MODEL_LOAD_ROUTE, handleLoad);
-
 app.post(LANGUAGE_MODEL_UNLOAD_ROUTE, handleUnload);
 app.post(SPATIOTEMPORAL_MODEL_UNLOAD_ROUTE, handleUnload);
 
@@ -2160,13 +2237,10 @@ app.all('/proxy/:modelId/{*path}', async (req, response) => {
   const modelId       = req.params.modelId;
   const remainingPath = (req.params as { path?: string }).path || '';
   const instance      = activeModels.get(modelId);
-
   if (!instance || instance.status !== 'ready') {
     return response.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
   }
-
   const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath}`;
-
   try {
     const proxyRes = await fetch(targetUrl, {
       method: req.method,
@@ -2177,13 +2251,11 @@ app.all('/proxy/:modelId/{*path}', async (req, response) => {
       ),
       body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
     });
-
     response.status(proxyRes.status);
     proxyRes.headers.forEach((value, key) => {
       const skipHeaders = ['transfer-encoding', 'connection', 'keep-alive'];
       if (!skipHeaders.includes(key.toLowerCase())) response.setHeader(key, value);
     });
-
     if (proxyRes.body) {
       const reader = proxyRes.body.getReader();
       while (true) {
@@ -2206,7 +2278,6 @@ app.get('/gpu/status', (_req, response) => {
   if (now - lastGpuQueryTime < GPU_QUERY_MIN_INTERVAL_MS && lastGpuStatus) {
     return response.json(lastGpuStatus);
   }
-
   const status = queryGpuStatus();
   if (status) {
     lastGpuStatus    = status;
@@ -2231,6 +2302,7 @@ app.get('/gpu/status', (_req, response) => {
 // --- Web Fetch Proxy (CORS bypass) ---
 
 // In src/backend_src/server.ts
+
 import puppeteer, { type Browser } from 'puppeteer';
 
 function isBotChallenge(text: string): boolean {
@@ -2324,7 +2396,6 @@ app.post('/api/web/fetch', async (req, response) => {
 
     // Return the full, uncapped text to the model
     response.json({ ok: true, status: 200, contentType: 'text/plain', text: finalText });
-
   } catch (err: any) {
     if (browser?.connected) await browser.close();
     log.error(`[WebFetch] Puppeteer error: ${err.message}`);
@@ -2411,7 +2482,6 @@ app.post('/tool/power', (req, res) => {
   if (!['sleep', 'shutdown', 'restart'].includes(action)) {
     return res.status(400).json({ success: false, error: 'Invalid power action' });
   }
-
   try {
     log.warn(`⚠️ SYSTEM POWER COMMAND: ${action.toUpperCase()}`);
     if (IS_WINDOWS) {
@@ -2453,13 +2523,11 @@ app.post('/tool/screenshot', async (req, res) => {
     const { characterId } = req.body;
     const screenshotDir = path.join(ROOT_DIR, 'user_data', 'screenshots');
     ensureDirectory(screenshotDir);
-
     const imgBuffer = await screenshot({ format: 'jpg' });
     const cleanCharId = characterId ? `${String(characterId).replace(/[^a-zA-Z0-9_-]/g, '')}_` : '';
     const filename = `screenshot_${cleanCharId}${Date.now()}.jpg`;
     const filePath = path.join(screenshotDir, filename);
     fs.writeFileSync(filePath, imgBuffer);
-
     res.json({ success: true, contentType: 'image/jpeg', base64: imgBuffer.toString('base64'), path: filePath });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -2477,7 +2545,6 @@ app.post('/tool/file-watcher/start', (req, res) => {
   const { dirPath } = req.body;
   const targetDir = path.isAbsolute(dirPath) ? dirPath : path.join(ROOT_DIR, dirPath);
   if (activeWatchers.has(targetDir)) return res.json({ success: true, message: `Already watching ${targetDir}` });
-
   try {
     const watcher = chokidar.watch(targetDir, { ignoreInitial: true });
     watcher.on('all', (event, filePath) => {
@@ -2518,13 +2585,11 @@ app.get('/tool/window-monitor', async (_req, res) => {
 app.get('/tool/process-monitor', async (req, res) => {
   const filter = typeof req.query.q === 'string' ? req.query.q.toLowerCase() : '';
   const limit = Math.min(Number.parseInt(String(req.query.limit || '10'), 10), 50);
-
   try {
     const procData = await si.processes();
     let list = procData.list;
     if (filter) list = list.filter(p => p.name.toLowerCase().includes(filter));
     list = list.sort((a, b) => b.cpu - a.cpu).slice(0, limit);
-
     res.json({
       success: true,
       totalCount: procData.all,
@@ -2559,7 +2624,7 @@ app.post('/tool/read-file', async (req, response) => {
     await open(resolvedTarget);
     response.json({ success: true, target: resolvedTarget });
   } catch (error: any) {
-    response.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2572,7 +2637,7 @@ app.post('/tool/write-file', (req, response) => {
     fs.writeFileSync(resolvedPath, content, 'utf-8');
     response.json({ success: true, path: resolvedPath, bytes: Buffer.byteLength(content, 'utf-8') });
   } catch (error: any) {
-    response.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2581,12 +2646,10 @@ const execAsync = promisify(exec);
 app.post('/tool/shell', async (req, res) => {
   const { command } = req.body;
   if (!command || typeof command !== 'string') return res.status(400).json({ success: false, error: 'Missing command' });
-
   const dangerousPatterns = [/rm\s+-rf\s+\//i, /mkfs/i, />\s*\/dev\/sd/i];
   if (dangerousPatterns.some(pattern => pattern.test(command))) {
     return res.status(403).json({ success: false, error: 'Command blocked by security policy' });
   }
-
   try {
     const { stdout, stderr } = await execAsync(command, { timeout: 10000, cwd: ROOT_DIR });
     res.json({ success: true, stdout: stdout, stderr: stderr });
@@ -2621,16 +2684,13 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
   for (let i = 0; i < size; i++) sumOfSquares += buffer[i] * buffer[i];
   const rms = Math.sqrt(sumOfSquares / size);
   if (rms < 0.015) return null;
-
   const windowSize = Math.floor(size / 2);
   const minLag = Math.max(2, Math.floor(sampleRate / 8000));
   const maxLag = Math.min(windowSize - 1, Math.ceil(sampleRate / 16));
   if (minLag >= maxLag) return null;
-
   const nsdf = new Float32Array(maxLag + 1);
   let m0 = 0;
   for (let j = 0; j < windowSize; j++) m0 += buffer[j] * buffer[j] + buffer[j] * buffer[j];
-
   let runningM = m0;
   for (let tau = 1; tau <= maxLag; tau++) {
     const prevSample = buffer[tau - 1];
@@ -2642,7 +2702,6 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
       nsdf[tau] = runningM > 0 ? (2 * r) / runningM : 0;
     }
   }
-
   const localPeaks: number[] = [];
   let globalMaxVal = 0;
   for (let tau = minLag; tau < maxLag; tau++) {
@@ -2651,15 +2710,12 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
       if (nsdf[tau] > globalMaxVal) globalMaxVal = nsdf[tau];
     }
   }
-
   if (globalMaxVal < 0.65 || localPeaks.length === 0) return null;
-
   const peakThreshold = globalMaxVal * 0.85;
   let chosenPeak = localPeaks[0];
   for (const peak of localPeaks) {
     if (nsdf[peak] >= peakThreshold) { chosenPeak = peak; break; }
   }
-
   const y0 = nsdf[chosenPeak - 1];
   const y1 = nsdf[chosenPeak];
   const y2 = nsdf[chosenPeak + 1];
@@ -2667,10 +2723,8 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
   const delta = denom !== 0 ? (y0 - y2) / (2 * denom) : 0;
   const refinedLag = chosenPeak + delta;
   if (refinedLag <= 0) return null;
-
   const fundamentalFreq = sampleRate / refinedLag;
   if (fundamentalFreq < 16 || fundamentalFreq > 8000) return null;
-
   return { pitch: fundamentalFreq, clarity: Math.max(0, Math.min(1, y1 - 0.25 * (y0 - y2) * delta)) };
 }
 
@@ -2680,7 +2734,6 @@ function serverFrequencyToRichNote(freq: number): string | null {
   const roundedMidi = Math.round(exactMidi);
   const cents = Math.round((exactMidi - roundedMidi) * 100);
   if (Math.abs(cents) > 35) return null;
-
   const pitchClass = ((roundedMidi % 12) + 12) % 12;
   const octave = Math.floor(roundedMidi / 12) - 1;
   const info = PITCH_CLASSES[pitchClass];
@@ -2697,19 +2750,16 @@ function stopServerHearingStream(): void {
 app.post('/tool/virtual-hearing', (req, res) => {
   const { action = 'start', duration = 30 } = req.body;
   const normalizedAction = String(action).toLowerCase();
-
   if (normalizedAction === 'start') {
     stopServerHearingStream();
     serverHearingChunks = [];
     isServerHearingActive = true;
     const durationSec = Math.max(5, Math.min(120, Number(duration) || 30));
-
     const audioArgs = IS_WINDOWS
       ? ['-y', '-f', 'wasapi', '-i', 'default', '-t', durationSec.toString(), '-ar', '16000', '-ac', '1', '-f', 'f32le', 'pipe:1']
       : IS_MACOS
       ? ['-y', '-f', 'avfoundation', '-i', ':default', '-t', durationSec.toString(), '-ar', '16000', '-ac', '1', '-f', 'f32le', 'pipe:1']
       : ['-y', '-f', 'pulse', '-i', 'default', '-t', durationSec.toString(), '-ar', '16000', '-ac', '1', '-f', 'f32le', 'pipe:1'];
-
     try {
       serverHearingProcess = spawn('ffmpeg', audioArgs, { stdio: ['ignore', 'pipe', 'ignore'] });
       serverHearingProcess.stdout?.on('data', (data: Buffer) => { if (isServerHearingActive) serverHearingChunks.push(data); });
@@ -2721,16 +2771,13 @@ app.post('/tool/virtual-hearing', (req, res) => {
       return res.status(500).json({ success: false, error: err.message });
     }
   }
-
   if (normalizedAction === 'stop' || normalizedAction === 'end') {
     const capturedChunks = [...serverHearingChunks];
     stopServerHearingStream();
-
     const combinedBuffer = Buffer.concat(capturedChunks);
     const floatCount = Math.floor(combinedBuffer.length / 4);
     const pcmData = new Float32Array(floatCount);
     for (let i = 0; i < floatCount; i++) pcmData[i] = combinedBuffer.readFloatLE(i * 4);
-
     const detectedNotes: string[] = [];
     const chunkSize = 2048;
     for (let offset = 0; offset + chunkSize < pcmData.length; offset += chunkSize) {
@@ -2741,30 +2788,25 @@ app.post('/tool/virtual-hearing', (req, res) => {
         if (noteStr && (!detectedNotes.length || detectedNotes[detectedNotes.length - 1] !== noteStr)) detectedNotes.push(noteStr);
       }
     }
-
     let sumSquares = 0;
     for (let i = 0; i < pcmData.length; i++) sumSquares += pcmData[i] * pcmData[i];
     const rms = Math.sqrt(sumSquares / (pcmData.length || 1));
     const events: string[] = [];
     if (rms > 0.15) events.push('Heavy Bass/Impact');
     else if (rms > 0.05) events.push('Notification Sound');
-
     const melodyCompact = detectedNotes.slice(0, 12).join('-');
     const lines = ['[Virtual Hearing Perception]'];
     if (melodyCompact) lines.push(`- Melody:${melodyCompact}`);
     if (events.length > 0) lines.push(`- Sounds:[${events.join(',')}]`);
-
     return res.json({
       success: true, active: false,
       rawObservation: lines.length > 1 ? lines.join('\n') : '[Virtual Hearing Perception]\n- Ambient silence.',
       melody: melodyCompact ? [melodyCompact] : [], events,
     });
   }
-
   if (normalizedAction === 'status') {
     return res.json({ success: true, active: isServerHearingActive });
   }
-
   return res.status(400).json({ success: false, error: `Invalid action "${action}"` });
 });
 
@@ -2774,7 +2816,6 @@ app.post('/tool/virtual-vision', async (req, res) => {
     const screenBuffer = await screenshot({ format: 'png' });
     let cropRegion: { left: number; top: number; width: number; height: number } | null = null;
     let targetLabel = 'fullscreen';
-
     if (appName || title) {
       const allWins = typeof openWindows === 'function' ? await openWindows() : [];
       const matchedWin = allWins.find(w =>
@@ -2789,7 +2830,6 @@ app.post('/tool/virtual-vision', async (req, res) => {
         targetLabel = `window "${matchedWin.title}"`;
       }
     }
-
     if (!cropRegion && target === 'active') {
       const activeWin = await activeWindow();
       if (activeWin?.bounds) {
@@ -2803,7 +2843,6 @@ app.post('/tool/virtual-vision', async (req, res) => {
       cropRegion = { left: Math.max(0, x), top: Math.max(0, y), width: Math.max(1, width), height: Math.max(1, height) };
       targetLabel = `region (${x}, ${y}, ${width}x${height})`;
     }
-
     let finalBuffer = screenBuffer;
     if (cropRegion) {
       const metadata = await sharp(screenBuffer).metadata();
@@ -2818,7 +2857,6 @@ app.post('/tool/virtual-vision', async (req, res) => {
         })
         .png().toBuffer();
     }
-
     res.json({ success: true, target: targetLabel, contentType: 'image/png', base64: finalBuffer.toString('base64'), bounds: cropRegion });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message });
@@ -2826,6 +2864,7 @@ app.post('/tool/virtual-vision', async (req, res) => {
 });
 
 // ── Virtual Input Tool (Mouse & Keyboard) ───────────────────────────
+
 app.post('/tool/virtual-input', async (req, res) => {
   const { action, x, y, toX, toY, button = 'left', double = false, text, key, modifier, smooth = true, durationMs = 500 } = req.body;
   try {
@@ -2877,10 +2916,10 @@ app.post('/tool/virtual-input', async (req, res) => {
 });
 
 // ── Virtual Controller (Xbox 360 / ViGEmBus) ────────────────────────
+
 app.post('/tool/virtual-controller', (req, res) => {
   const { controller, error } = getOrInitVirtualController();
   if (!controller) return res.status(503).json({ success: false, error: error || 'Virtual controller unavailable.' });
-
   const { action = 'tap', button, stick = 'left', x, y, trigger = 'right', value, durationMs = 120 } = req.body;
   try {
     if (action === 'reset') {
@@ -2891,25 +2930,20 @@ app.post('/tool/virtual-controller', (req, res) => {
       controller.axis.dpadHorz?.setValue(0.0); controller.axis.dpadVert?.setValue(0.0);
       return res.json({ success: true, message: 'Virtual controller inputs reset to neutral.' });
     }
-
     if (action === 'status') return res.json({ success: true, message: 'Virtual Xbox 360 controller connected.' });
-
     if (action === 'stick') {
       const clampedX = Math.max(-1.0, Math.min(1.0, Number.isFinite(Number(x)) ? Number(x) : 0.0));
       const clampedY = Math.max(-1.0, Math.min(1.0, Number.isFinite(Number(y)) ? Number(y) : 0.0));
       const isRight = String(stick).toLowerCase() === 'right';
       const targetX = isRight ? controller.axis.rightX : controller.axis.leftX;
       const targetY = isRight ? controller.axis.rightY : controller.axis.leftY;
-
       targetX.setValue(clampedX);
       targetY.setValue(clampedY);
-
       if (durationMs > 0) {
         setTimeout(() => { try { targetX.setValue(0.0); targetY.setValue(0.0); } catch {} }, Math.max(30, Math.min(10000, durationMs)));
       }
       return res.json({ success: true, message: `${isRight ? 'Right' : 'Left'} stick set to (${clampedX}, ${clampedY})` });
     }
-
     if (action === 'trigger') {
       const clampedVal = Math.max(0.0, Math.min(1.0, Number.isFinite(Number(value)) ? Number(value) : 1.0));
       const isLeft = String(trigger).toLowerCase() === 'left';
@@ -2920,16 +2954,13 @@ app.post('/tool/virtual-controller', (req, res) => {
       }
       return res.json({ success: true, message: `${isLeft ? 'Left' : 'Right'} trigger set to ${clampedVal}` });
     }
-
     if (!button || typeof button !== 'string') return res.status(400).json({ success: false, error: 'Button name required.' });
     const normalizedBtn = button.toUpperCase();
-
     if (DPAD_DIRECTIONS.has(normalizedBtn)) {
       const isUp = normalizedBtn === 'UP' || normalizedBtn === 'DPAD_UP';
       const isDown = normalizedBtn === 'DOWN' || normalizedBtn === 'DPAD_DOWN';
       const isLeft = normalizedBtn === 'LEFT' || normalizedBtn === 'DPAD_LEFT';
       const isRight = normalizedBtn === 'RIGHT' || normalizedBtn === 'DPAD_RIGHT';
-
       if (action === 'press') {
         if (isUp) controller.axis.dpadVert.setValue(1.0);
         if (isDown) controller.axis.dpadVert.setValue(-1.0);
@@ -2952,15 +2983,12 @@ app.post('/tool/virtual-controller', (req, res) => {
       }
       return res.json({ success: true, message: `D-Pad ${normalizedBtn} ${action}ed` });
     }
-
     const internalKey = X360_BUTTON_MAP[normalizedBtn];
     if (!internalKey || !controller.button[internalKey]) {
       return res.status(400).json({ success: false, error: `Unknown button "${button}".` });
     }
-
     if (action === 'press') { controller.button[internalKey].setValue(true); return res.json({ success: true }); }
     if (action === 'release') { controller.button[internalKey].setValue(false); return res.json({ success: true }); }
-
     controller.button[internalKey].setValue(true);
     setTimeout(() => { try { controller.button[internalKey].setValue(false); } catch {} }, Math.max(30, Math.min(3000, durationMs)));
     return res.json({ success: true, message: `Tapped button ${normalizedBtn}` });
@@ -2970,6 +2998,7 @@ app.post('/tool/virtual-controller', (req, res) => {
 });
 
 // ── Hardware Control ────────────────────────────────────────────────
+
 app.get('/tool/hardware/list', async (_req, res) => {
   try { res.json({ success: true, ports: await SerialPort.list() }); } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
 });
@@ -2997,6 +3026,7 @@ const TTS_DIR = path.join(ROOT_DIR, 'user_data', 'text_to_speech_models');
 
 const textToSpeechModelFile = TEXT_TO_SPEECH_MODELS.MAIN_MODEL_FILE;
 const textToSpeechVoiceEncoderFile = TEXT_TO_SPEECH_MODELS.MMPROJ_VOICE_ENCODER_FILE;
+
 const TTS_MODEL_PATH = path.join(TTS_DIR, textToSpeechModelFile);
 const TTS_MMPROJ_PATH = path.join(TTS_DIR, textToSpeechVoiceEncoderFile);
 
@@ -3010,6 +3040,7 @@ const FFMPEG_BIN = path.join(FFMPEG_DIR, bin('ffmpeg'));
 const FFPROBE_BIN = path.join(FFMPEG_DIR, bin('ffprobe'));
 
 // ─── Sequential Queue to Prevent GPU/VRAM & CPU Contention ──────────────────
+
 let ttsQueue: Promise<any> = Promise.resolve();
 
 function enqueueTts<T>(task: () => Promise<T>): Promise<T> {
@@ -3141,19 +3172,15 @@ app.post('/api/text-to-speech/unload', (_req, res) => {
 
 app.post('/api/text-to-speech/synthesize', async (request, response) => {
   const { text, audioBase64, transcript, language, tokenSampler } = request.body;
-
   if (!text || !audioBase64 || !transcript) {
     return response.status(400).json({ error: 'Missing text, audioBase64, or transcript' });
   }
-
   if (!fs.existsSync(LLAMA_TTS_BINARY)) {
     return response.status(500).json({ error: 'llama-tts binary not found.' });
   }
-
   try {
     await ensureTtsModelsDownloaded(); 
     await ensureFfmpeg();
-
     const snippet = text.length > 30 ? `${text.substring(0, 30)}...` : text;
     log.info(`[Text To Speech] Enqueuing synthesis for: "${snippet}"`);
 
@@ -3165,7 +3192,6 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
       // 1. Decode base64 reference audio
       const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
       const audioBuffer = Buffer.from(base64Data, 'base64');
-
       let ext = '.raw';
       if (audioBuffer.length >= 12 && audioBuffer.toString('ascii', 0, 4) === 'RIFF') ext = '.wav';
       else if (audioBuffer.length >= 3 && audioBuffer.toString('ascii', 0, 3) === 'ID3') ext = '.mp3';
@@ -3286,7 +3312,6 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
         const extraDirs = [FFMPEG_DIR, LLAMA_DIR].join(path.delimiter);
         const existingPath = env.PATH || env.Path || '';
         const fullPath = `${extraDirs}${path.delimiter}${existingPath}`;
-
         env.PATH = fullPath;
         if (IS_WINDOWS) {
           env.Path = fullPath;
@@ -3331,7 +3356,6 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
 
     response.set('Content-Type', 'audio/wav');
     return response.send(wavBuffer);
-
   } catch (error: any) {
     log.error(`[Text To Speech] Synthesis failed: ${error.message}`);
     return response.status(500).json({ error: error.message });
@@ -3344,10 +3368,12 @@ process.on('SIGINT', () => {
     cleanupVirtualController(); 
     process.exit(0); 
 });
+
 process.on('SIGTERM', () => { 
     cleanupVirtualController(); 
     process.exit(0); 
 });
+
 process.on('exit', () => { 
     cleanupVirtualController(); 
 });
@@ -3355,25 +3381,21 @@ process.on('exit', () => {
 const startServer = () => {
   detectedGpuVendor = detectGpuVendor();
   runStartupSanitization();
-
   const border = '────────────────────────────────────────';
   const title  = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Server${Colors.Reset}`;
   const archLabel = process.arch === 'x64' ? 'x64' : process.arch === 'ia32' ? 'x86 (32-bit)' : process.arch === 'arm64' ? 'ARM64' : process.arch;
   const platLabel = IS_WINDOWS ? `Windows ${archLabel}` : IS_MACOS ? `macOS ${archLabel}` : `Linux ${archLabel}`;
-
   console.clear();
   console.log(`${Colors.BgBlue}${Colors.Bright}${Colors.FgWhite}  ${APP_NAME}  ${Colors.Reset}`);
   console.log(border);
   console.log(`  ${title}`);
   console.log(`  🖥️  Platform : ${Colors.Dim}${platLabel}${Colors.Reset}`);
   console.log(`  📂 Backends  : ${Colors.Dim}${path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH)}${Colors.Reset}`);
-
   for (const [name, cfg] of Object.entries(BACKEND_CONFIGS)) {
     const exists = fs.existsSync(cfg.binaryPath);
     const icon   = exists ? `${Colors.FgGreen}●${Colors.Reset}` : `${Colors.FgRed}○${Colors.Reset}`;
     console.log(`     ${icon} ${(name as string).padEnd(16)} ${Colors.Dim}${cfg.binaryPath}${Colors.Reset}`);
   }
-
   console.log(border);
   console.log(`  📡 API Port  : ${Colors.FgGreen}http://127.0.0.1:${PORT}${Colors.Reset}`);
   console.log(`  💾 Data Path : ${Colors.Dim}/user_data/${Colors.Reset}`);
@@ -3382,8 +3404,7 @@ const startServer = () => {
   console.log(`  ${Colors.FgGreen}●${Colors.Reset} System Ready.`);
   console.log(`  ${Colors.FgMagenta}●${Colors.Reset} Multi-Backend Model Control Enabled.`);
   console.log('');
-
   app.listen(PORT, '0.0.0.0', () => {});
 };
 
-startServer()
+startServer();
