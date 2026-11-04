@@ -8,10 +8,6 @@ LinkedIn: https://www.linkedin.com/in/aqwam-harish-aiman/
 	
 YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
 
-## If You Wonder Why This Has Been Discontinued, Have A Look Here
-
-https://github.com/AqwamCreates/DataPredict/blob/main/docs/WhyDidThisLibraryWasCreatedInTheFirstPlace.md
-
 ## Preview
 
 * [Screenshots](screenshots.md)
@@ -76,3 +72,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 Small models (≤10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
 
 ## Image models, coming soon!
+
+## If You Wonder Why This Has Been Discontinued, Have A Look Here
+
+https://github.com/AqwamCreates/DataPredict/blob/main/docs/WhyDidThisLibraryWasCreatedInTheFirstPlace.md
