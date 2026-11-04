@@ -8,9 +8,9 @@ LinkedIn: https://www.linkedin.com/in/aqwam-harish-aiman/
 	
 YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
 
-## If You Wonder Why This Has Been Discontinued, Have A Look Here
+## Preview
 
-https://github.com/AqwamCreates/DataPredict/blob/main/docs/WhyDidThisLibraryWasCreatedInTheFirstPlace.md
+* [Screenshots](screenshots.md)
 
 ## Warning
 
@@ -21,6 +21,8 @@ LoreReactor grants AI characters unprecedented access to your host OS, hardware,
 First, you need to run ```git clone AqwamCreates/LoreReactor```.
 
 Then, you need to run ```cd LoreReactor```.
+
+Then, you need to run ```npm run install``` or ```npm install```.
 
 Finally, you need to run this code depending on your operating system.
 
@@ -70,3 +72,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 Small models (≤10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
 
 ## Image models, coming soon!
+
+## If You Wonder Why This Has Been Discontinued, Have A Look Here
+
+https://github.com/AqwamCreates/DataPredict/blob/main/docs/WhyDidThisLibraryWasCreatedInTheFirstPlace.md
