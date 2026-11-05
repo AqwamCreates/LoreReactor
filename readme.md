@@ -14,7 +14,7 @@ LoreReactor is a web UI + standalone app for language model roleplay that has a 
 
 You can also use it directly with limited functionalities on GitHub Pages [here](aqwamcreates.github.io/LoreReactor).
 
-Created using Typescript, React, Node.js and Tauri.
+Created using Typescript, Vite, React, Node.js and Tauri.
 
 ## Preview
 
