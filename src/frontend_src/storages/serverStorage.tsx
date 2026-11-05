@@ -33,7 +33,22 @@ import {
     browserListDirectory, browserExportAll, isServerAvailable,
 } from './browserStorage';
 import { defaultActions, defaultCharacterTools, defaultInputStrategy, defaultCharacter } from '../dictionaries/defaults';
+import { createDemoData, type DemoDataBundle } from '../dictionaries/demoData';
 import type { FMSerialized } from '../libraries/factorizationMachine';
+
+// =============================================================================
+// DEMO DATA FALLBACK (In-Memory until Edited)
+// =============================================================================
+
+let _demoData: DemoDataBundle | null = null;
+const deletedDemoIds = new Set<string>();
+
+function getDemoData(): DemoDataBundle {
+  if (!_demoData) {
+    _demoData = createDemoData();
+  }
+  return _demoData;
+}
 
 // =============================================================================
 // CONFIGURATION & CONSTANTS
@@ -227,13 +242,12 @@ async function fetchJson<T>(url: string): Promise<T | null> {
         'Pragma': 'no-cache',
       },
     });
-    
+
     if (!response.ok) {
       if (response.status === 404) return null;
       console.warn(`HTTP Error ${response.status} for ${cleanUrl}`);
       return null;
     }
-
     const contentType = response.headers.get("content-type");
     if (!contentType || (!contentType.includes("application/json") && !contentType.includes("text/plain"))) {
        if (contentType?.includes("text")) {
@@ -242,10 +256,9 @@ async function fetchJson<T>(url: string): Promise<T | null> {
            return null;
        }
     }
-
     const text = await response.text();
     if (!text) return null;
-    
+
     return JSON.parse(text) as T;
   } catch (error) { 
     if ((error as Error).message.includes('Failed to fetch') || (error as Error).message.includes('NetworkError')) {
@@ -343,9 +356,9 @@ async function upload(entityKey: EntityKey, pathParts: string, file: File): Prom
 async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
   const folderPath = PATHS[entityKey];
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
-  
+
   const currentIds = await fetchJson<string[]>(manifestUrl);
-  
+
   if (currentIds && Array.isArray(currentIds)) {
     return currentIds;
   }
@@ -358,7 +371,7 @@ async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
       const ids = entries
         .filter(f => f.endsWith('.json') && f !== MANIFEST_FILE)
         .map(f => f.replace('.json', ''));
-      
+
       if (ids.length > 0) {
         console.log(`Found ${ids.length} items in ${folderPath} (browser). Creating manifest.`);
         await putJson(manifestUrl, ids);
@@ -367,14 +380,14 @@ async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
     }
 
     const files = await fetchJson<string[]>(folderPath);
-    
+
     if (files && Array.isArray(files)) {
       const ids = files
         .filter(f => f.endsWith('.json') && f !== MANIFEST_FILE)
         .map(f => f.replace('.json', ''));
-      
+
       console.log(`Found ${ids.length} items in ${folderPath}. Creating manifest.`);
-      
+
       await putJson(manifestUrl, ids);
       return ids;
     }
@@ -388,7 +401,7 @@ async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
 async function updateManifest(entityKey: EntityKey, id: string, action: 'add' | 'remove'): Promise<void> {
   const folderPath = PATHS[entityKey];
   const currentIds = await ensureManifest(entityKey);
-  
+
   let newIds: string[];
   if (action === 'add') { 
     if (currentIds.includes(id)) return; 
@@ -396,7 +409,7 @@ async function updateManifest(entityKey: EntityKey, id: string, action: 'add' | 
   } else { 
     newIds = currentIds.filter(existingId => existingId !== id); 
   }
-  
+
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   await putJson(manifestUrl, newIds);
 }
@@ -462,7 +475,7 @@ function hydrateEntity<T extends { id: string }, R extends Record<string, any>>(
     transforms?: Partial<Record<keyof T, (raw: R, id: string) => any>>
 ): T {
     const now = Date.now();
-    
+
     const base = {
         ...defaults,
         ...raw,
@@ -490,21 +503,34 @@ interface RepositoryConfig<T, R> {
   serialize?: (entity: T) => R | Promise<R>;
   postLoad?: (entity: T) => T | Promise<T>;
   preSave?: (entity: T) => T | Promise<T>;
+  getDemoItems?: () => T[];
 }
 
 function createRepository<T extends { id: string }, R>(config: RepositoryConfig<T, R>) {
-  const { entityKey, hydrate, serialize, postLoad, preSave } = config;
+  const { entityKey, hydrate, serialize, postLoad, preSave, getDemoItems } = config;
   const folderPath = PATHS[entityKey];
 
   async function loadManifest(): Promise<string[]> {
-    return await ensureManifest(entityKey);
+    const storedIds = await ensureManifest(entityKey);
+    if (!(await getServerAvailable()) && getDemoItems) {
+      const demoIds = getDemoItems()
+        .map(item => item.id)
+        .filter(id => !deletedDemoIds.has(id));
+      return Array.from(new Set([...storedIds, ...demoIds]));
+    }
+    return storedIds;
   }
 
   async function loadRaw(id: string): Promise<T | null> {
     try {
       const raw = await fetchJson<R>(`${folderPath}/${id}.json`);
-      if (!raw) return null;
-      
+      if (!raw) {
+        if (!(await getServerAvailable()) && getDemoItems && !deletedDemoIds.has(id)) {
+          return getDemoItems().find(item => item.id === id) ?? null;
+        }
+        return null;
+      }
+
       let entity = await hydrate(raw, id);
       if (postLoad) entity = await postLoad(entity);
       return entity;
@@ -521,19 +547,21 @@ function createRepository<T extends { id: string }, R>(config: RepositoryConfig<
   }
 
   async function save(entity: T): Promise<void> {
+    deletedDemoIds.delete(entity.id);
     let processed = entity;
     if (preSave) processed = await preSave(processed);
-    
+
     const { id, ...rest } = processed as any;
     const payload = serialize 
       ? await serialize(processed)
       : { ...rest, lastUpdatedTimestamp: Date.now() };
-    
+
     await putJson(`${folderPath}/${id}.json`, payload);
     await updateManifest(entityKey, id, 'add');
   }
 
   async function remove(id: string): Promise<void> {
+    deletedDemoIds.add(id);
     await deleteResource(`${folderPath}/${id}.json`);
     await updateManifest(entityKey, id, 'remove');
   }
@@ -580,7 +608,6 @@ async function hydrateMemories(rawMemoryIds: Record<string, string[]> | undefine
     }
     memories[key] = loaded;
   }
-
   return memories;
 }
 
@@ -596,7 +623,6 @@ async function serializeMemories(memories: Record<string, Memory[]> | undefined)
     }
     rawMemories[key] = ids;
   }
-
   return rawMemories;
 }
 
@@ -606,6 +632,7 @@ async function serializeMemories(memories: Record<string, Memory[]> | undefined)
 
 const stopPatternRepo = createRepository<StopPattern, RawStopPattern>({
   entityKey: 'stopPatterns',
+  getDemoItems: () => getDemoData().stopPatterns,
   hydrate: (raw, id) => hydrateEntity<StopPattern, RawStopPattern>(raw, id, {
     name: 'Unknown Pattern',
   }),
@@ -623,6 +650,7 @@ export const deleteRawStopPattern = stopPatternRepo.remove;
 
 const retrievalConfigurationRepo = createRepository<RetrievalConfiguration, RawRetrievalConfiguration>({
   entityKey: 'retrievalConfigurations',
+  getDemoItems: () => getDemoData().retrievalConfigurations,
   hydrate: (raw, id) => hydrateEntity<RetrievalConfiguration, RawRetrievalConfiguration>(raw, id, {
     name: 'Unknown Retrieval Configuration',
     retrievalStrategy: 'dense',
@@ -644,6 +672,7 @@ export const deleteRawRetrievalConfiguration = retrievalConfigurationRepo.remove
 
 const tokenSamplerRepo = createRepository<TokenSampler, RawTokenSampler>({
   entityKey: 'tokenSamplers',
+  getDemoItems: () => getDemoData().tokenSamplers,
   hydrate: async (raw, id) => {
     const stopPatternIds = raw.stopPatternIds || [];
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
@@ -686,6 +715,7 @@ function createDeletedCharacterStub(id: string): Character {
 
 const characterRepo = createRepository<Character, RawCharacter>({
   entityKey: 'characters',
+  getDemoItems: () => getDemoData().characters,
   hydrate: async (raw, id) => {
     const lmTokenSamplerId = raw.languageModelTokenSamplerId;
     let languageModelTokenSampler: TokenSampler | undefined = undefined;
@@ -707,10 +737,13 @@ const characterRepo = createRepository<Character, RawCharacter>({
 
     let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.dialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.dialogueRetrievalConfigurationId) ?? undefined;
+
     let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.starterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.starterPromptRetrievalConfigurationId) ?? undefined;
+
     let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.knowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.knowledgeRetrievalConfigurationId) ?? undefined;
+
     let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.memoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.memoryRetrievalConfigurationId) ?? undefined;
 
@@ -741,7 +774,6 @@ const characterRepo = createRepository<Character, RawCharacter>({
   serialize: async (character) => {
     const { languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
-
     return {
       ...rest,
       languageModelTokenSamplerId: languageModelTokenSampler?.id,
@@ -765,14 +797,17 @@ export const deleteRawCharacter = characterRepo.remove;
 
 export async function loadCharacterShell(id: string): Promise<Character | null> {
     const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
-    if (!rawCharacter) return null;
-
+    if (!rawCharacter) {
+        if (!(await getServerAvailable()) && !deletedDemoIds.has(id)) {
+            return getDemoData().characters.find(c => c.id === id) ?? null;
+        }
+        return null;
+    }
     const memories = await hydrateMemories(rawCharacter.memories);
     const images: Record<string, string> = rawCharacter.images ?? {};
     if (Object.keys(images).length === 0 && 'image' in rawCharacter && typeof rawCharacter.image === 'string') {
       images.neutral = rawCharacter.image;
     }
-
     return hydrateEntity<Character, RawCharacter>(rawCharacter, id, {
         name: 'Unknown Character',
         images: {},
@@ -824,10 +859,13 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
 
     let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.dialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.dialogueRetrievalConfigurationId) ?? undefined;
+
     let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.starterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.starterPromptRetrievalConfigurationId) ?? undefined;
+
     let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.knowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.knowledgeRetrievalConfigurationId) ?? undefined;
+
     let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.memoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.memoryRetrievalConfigurationId) ?? undefined;
 
@@ -837,7 +875,7 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
     if (Object.keys(images).length === 0 && legacyImage) {
       images.neutral = legacyImage;
     }
-    
+
     return hydrateEntity<Character, RawCharacter>(raw, id, {
         name: 'Unknown Multiplayer Character',
         images: {},
@@ -858,7 +896,6 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
   serialize: async (character) => {
     const { languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
-
     return {
       ...rest,
       languageModelTokenSamplerId: languageModelTokenSampler?.id,
@@ -884,6 +921,7 @@ export const deleteRawMultiplayerCharacter = multiplayerCharacterRepo.remove;
 
 const contextRepo = createRepository<Context, RawContext>({
   entityKey: 'contexts',
+  getDemoItems: () => getDemoData().contexts,
   hydrate: (raw, id) => hydrateEntity<Context, RawContext>(raw, id, {
     name: 'Unknown Context',
     searchTerms: [],
@@ -907,6 +945,7 @@ export const deleteRawContext = contextRepo.remove;
 
 const locationRepo = createRepository<Location, RawLocation>({
   entityKey: 'locations',
+  getDemoItems: () => getDemoData().locations,
   hydrate: (raw, id) => hydrateEntity<Location, RawLocation>(raw, id, {
     name: 'Unknown Location',
     hasSkyView: true,
@@ -940,6 +979,7 @@ export const deleteRawLocation = locationRepo.remove;
 
 const audioTrackRepo = createRepository<AudioTrack, RawAudioTrack>({
   entityKey: 'audioTracks',
+  getDemoItems: () => getDemoData().audioTracks,
   hydrate: (raw, id) => hydrateEntity<AudioTrack, RawAudioTrack>(raw, id, {
     name: 'Untitled Track',
     filename: '',
@@ -968,6 +1008,7 @@ export const deleteRawAudioTrack = audioTrackRepo.remove;
 
 const promptBlockRepo = createRepository<PromptBlock, RawPromptBlock>({
   entityKey: 'promptBlocks',
+  getDemoItems: () => getDemoData().promptBlocks,
   hydrate: (raw, id) => hydrateEntity<PromptBlock, RawPromptBlock>(raw, id, {
     name: 'Untitled Prompt Block',
     textContent: '',
@@ -990,6 +1031,7 @@ export const deleteRawPromptBlock = promptBlockRepo.remove;
 
 const modelRepo = createRepository<LanguageModel, RawLanguageModel>({
   entityKey: 'languageModels',
+  getDemoItems: () => getDemoData().languageModels,
   hydrate: (raw, id) => hydrateEntity<LanguageModel, RawLanguageModel>(raw, id, {
     name: 'Unknown Model',
     backend: 'Other',
@@ -1009,6 +1051,7 @@ export const deleteRawModel = modelRepo.remove;
 
 const spatiotemporalModelRepo = createRepository<SpatiotemporalModel, RawSpatiotemporalModel>({
   entityKey: 'spatiotemporalModels',
+  getDemoItems: () => getDemoData().spatiotemporalModels,
   hydrate: (raw, id) => hydrateEntity<SpatiotemporalModel, RawSpatiotemporalModel>(raw, id, {
     name: 'Unknown Model',
     backend: 'stable-diffusion.cpp',
@@ -1027,6 +1070,7 @@ export const deleteRawSpatiotemporalModel = spatiotemporalModelRepo.remove;
 
 const budgetStrategyRepo = createRepository<BudgetStrategy, RawBudgetStrategy>({
   entityKey: 'budgetStrategies',
+  getDemoItems: () => getDemoData().budgetStrategies,
   hydrate: (raw, id) => hydrateEntity<BudgetStrategy, RawBudgetStrategy>(raw, id, {
     name: 'Unknown Strategy',
     modelIds: [],
@@ -1058,6 +1102,7 @@ export const deleteRawBudgetStrategy = budgetStrategyRepo.remove;
 
 const profileRepo = createRepository<Profile, RawProfile>({
   entityKey: 'profiles',
+  getDemoItems: () => getDemoData().profiles,
   hydrate: async (raw, id) => {
     const now = Date.now();
     const summarizationSteps: SummarizationStep[] = raw.summarizationSteps != null
@@ -1109,10 +1154,13 @@ const profileRepo = createRepository<Profile, RawProfile>({
     // Resolve Retrieval Configurations (Fixed to match RawProfile property names)
     let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterDialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterDialogueRetrievalConfigurationId) ?? undefined;
+
     let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterStarterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterStarterPromptRetrievalConfigurationId) ?? undefined;
+
     let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterKnowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterKnowledgeRetrievalConfigurationId) ?? undefined;
+
     let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterMemoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterMemoryRetrievalConfigurationId) ?? undefined;
 
@@ -1126,13 +1174,12 @@ const profileRepo = createRepository<Profile, RawProfile>({
         toolUsageDisplayMode: 'none',
         toolUsageDisplayPlacementMode: 'before sentence',
         enableCharacterExpression: false,
-        
+
         enableAutoSpeechDetection: false,
         speechVolumeActivationThreshold: 18,
         speechSilenceVolumeActivationThreshold: 8,
         speechSilenceThresholdMs: 1400,
         voiceActivityProbabilityThreshold: 0.5,
-
         randomizeTextCharacterInjection: false,
         randomizeTextCharacterInjectionOnRetry: true,
         maximumNumberOfTextCharacterRandomizationPerModel: 1,
@@ -1198,9 +1245,9 @@ const profileRepo = createRepository<Profile, RawProfile>({
       characterMemoryRetrievalConfiguration,
       ...rest 
     } = profile;
-    
+
     const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ ...stepRest }) => stepRest);
-    
+
     return {
       ...rest,
       summarizationSteps: rawSteps,
@@ -1256,6 +1303,7 @@ export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
 
 const worldRepo = createRepository<World, World>({
   entityKey: 'worlds',
+  getDemoItems: () => getDemoData().worlds,
   hydrate: (raw, id) => hydrateEntity<World, World>(raw, id, {
     name: 'Untitled World',
     characterIds: [],
@@ -1329,8 +1377,37 @@ export async function deleteRawMessage(id: string): Promise<void> {
 // INTERACTION DATA REPOSITORY
 // =============================================================================
 
+function interactionDataToRawShell(d: InteractionData): RawInteractionData {
+  return {
+    id: d.id,
+    name: d.name,
+    description: d.description,
+    protagonistIds: d.protagonistIds || [],
+    participantIds: d.participants.map(p => p.id),
+    contextIds: d.contexts?.map(c => c.id) || [],
+    locationIds: d.locations?.map(l => l.id) || [],
+    audioTrackIds: d.audioTracks?.map(a => a.id) || [],
+    interactionHistories: Object.fromEntries(
+      Object.entries(d.interactionHistories || {}).map(([locId, msgs]) => [locId, msgs.map(m => m.id)])
+    ),
+    parentInteractionDataId: d.parentInteractionDataId ?? null,
+    parentMessageId: d.parentMessageId ?? null,
+    profileId: d.profile?.id,
+    worldIds: d.worldIds ?? [],
+    firstCreatedTimestamp: d.firstCreatedTimestamp,
+    lastUpdatedTimestamp: d.lastUpdatedTimestamp,
+  };
+}
+
 export async function loadRawChatManifest(): Promise<string[]> { 
-    return await ensureManifest('interactionData'); 
+    const storedIds = await ensureManifest('interactionData');
+    if (!(await getServerAvailable())) {
+      const demoIds = getDemoData().interactionData
+        .map(d => d.id)
+        .filter(id => !deletedDemoIds.has(id));
+      return Array.from(new Set([...storedIds, ...demoIds]));
+    }
+    return storedIds;
 }
 
 async function buildInteractionDataShell(
@@ -1342,11 +1419,11 @@ async function buildInteractionDataShell(
   profileMap: Map<string, Profile>,
   audioTrackMap?: Map<string, AudioTrack>,
 ): Promise<InteractionData | null> {
-  
+
   const protagonistIds = rawInteractionData.protagonistIds || [];
   const participants = (rawInteractionData.participantIds || [])
     .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
-    
+
   // Ensure protagonists are also present in the participants array
   for (const pid of protagonistIds) {
     if (!participants.find(p => p.id === pid)) {
@@ -1413,7 +1490,6 @@ export async function loadInteractionMessages(interactionData: InteractionData):
 
     for (const [locationId, messageIds] of Object.entries(rawInteractionData.interactionHistories)) {
         interactionHistories[locationId] = new Array(messageIds.length);
-
         messageIds.forEach((messageId, index) => {
             allPromises.push((async () => {
                 const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage | RawWhisperMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
@@ -1439,7 +1515,6 @@ export async function loadInteractionMessages(interactionData: InteractionData):
     }
 
     const totalMessages = Object.values(interactionHistories).reduce((sum, arr) => sum + arr.length, 0);
-
     return { ...interactionData, interactionHistories, numberOfMessages: totalMessages };
 }
 
@@ -1448,10 +1523,14 @@ export async function loadRawInteractionData(
   existingCharShells?: Character[]
 ): Promise<InteractionData | null> {
   const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
-  if (!rawInteractionData) return null;
+  if (!rawInteractionData) {
+    if (!(await getServerAvailable()) && !deletedDemoIds.has(id)) {
+      return getDemoData().interactionData.find(d => d.id === id) ?? null;
+    }
+    return null;
+  }
 
   const charMap = new Map<string, Character>();
-
   if (existingCharShells && existingCharShells.length > 0) {
     for (const c of existingCharShells) charMap.set(c.id, c);
   } else {
@@ -1459,7 +1538,7 @@ export async function loadRawInteractionData(
       ...(rawInteractionData.protagonistIds || []),
       ...(rawInteractionData.participantIds || []),
     ])];
-    
+
     const shells = await Promise.all(neededIds.map(async (cid) => {
         let shell = await loadCharacterShell(cid);
         if (!shell) shell = await loadRawMultiplayerCharacter(cid);
@@ -1529,12 +1608,19 @@ export async function loadAllRawInteractionDataShells(): Promise<RawInteractionD
   const ids = await loadRawChatManifest();
   if (ids.length === 0) return [];
 
+  const serverUp = await getServerAvailable();
   const results: (RawInteractionData | null)[] = [];
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const batchIds = ids.slice(i, i + BATCH_SIZE);
     const batchPromises = batchIds.map(async (id): Promise<RawInteractionData | null> => {
       const raw = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
-      if (!raw) return null;
+      if (!raw) {
+        if (!serverUp && !deletedDemoIds.has(id)) {
+          const demoChat = getDemoData().interactionData.find(d => d.id === id);
+          if (demoChat) return interactionDataToRawShell(demoChat);
+        }
+        return null;
+      }
       raw.id = id;
       return raw;
     });
@@ -1544,13 +1630,13 @@ export async function loadAllRawInteractionDataShells(): Promise<RawInteractionD
       await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS / 2));
     }
   }
-
   return results.filter((r): r is RawInteractionData => r !== null);
 }
 
 export async function saveRawInteractionData(interactionData: InteractionData): Promise<void> {
+  deletedDemoIds.delete(interactionData.id);
   const allMessages = Object.values(interactionData.interactionHistories).flat();
-  
+
   const saveMessagePromises = allMessages.map(message => {
     const { id, character, ...rawMsg } = message;
     const payload = {
@@ -1560,13 +1646,13 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     };
     return putJson(`${PATHS.interactionMessages}/${id}.json`, payload);
   });
-  
+
   for (let i = 0; i < saveMessagePromises.length; i += BATCH_SIZE) {
     await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
 
   const { id, protagonistIds, participants, contexts, locations, audioTracks, interactionHistories, parentInteractionDataId, parentMessageId, profile, ...rawInteractionData } = interactionData;
-  
+
   const rawHistories: Record<string, string[]> = {};
   for (const [locId, messages] of Object.entries(interactionHistories)) {
       rawHistories[locId] = messages.map(m => m.id);
@@ -1594,10 +1680,10 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
 export async function branchRawInteractionData(parentInteractionDataId: string, parentMessageId: string): Promise<string> {
   const sourceChat = await loadRawInteractionData(parentInteractionDataId);
   if (!sourceChat) throw new Error("Source chat not found");
-  
+
   let branchLocationId: string | null = null;
   let branchIndex = -1;
-  
+
   for (const [locId, messages] of Object.entries(sourceChat.interactionHistories)) {
       const idx = messages.findIndex(m => m.id === parentMessageId);
       if (idx !== -1) {
@@ -1606,11 +1692,11 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
           break;
       }
   }
-  
+
   if (branchIndex === -1 || !branchLocationId) throw new Error("Branch point message not found");
-  
+
   const newChatId = uuidv4();
-  
+
   const slicedHistories: Record<string, string[]> = {};
   for (const [locId, messages] of Object.entries(sourceChat.interactionHistories)) {
       if (locId === branchLocationId) {
@@ -1643,6 +1729,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
 }
 
 export async function deleteRawInteractionData(id: string): Promise<void> {
+  deletedDemoIds.add(id);
   try { await deleteResource(`${PATHS.kvCaches}/${id}`); } catch (e) { console.warn("KV cache cleanup failed", e); }
   await deleteResource(`${PATHS.interactionData}/${id}.json`);
   await updateManifest('interactionData', id, 'remove');
@@ -1654,6 +1741,7 @@ export async function deleteRawInteractionData(id: string): Promise<void> {
 
 const entityFolderRepo = createRepository<EntityFolder, RawEntityFolder>({
   entityKey: 'entityFolders',
+  getDemoItems: () => getDemoData().entityFolders,
   hydrate: (raw, id) => hydrateEntity<EntityFolder, RawEntityFolder>(raw, id, {
     name: 'Untitled Folder',
     entityType: 'character' as any, // Fallback, actual type comes from raw
@@ -1683,11 +1771,9 @@ export async function saveInterjectableActions(actions: InterjectableAction[]): 
 export async function loadRawBudgetData(): Promise<BudgetData | null> {
     const raw = await fetchJson<RawBudgetData>(BUDGET_DATA_PATH);
     if (!raw) return null;
-
     try {
         const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
         if (!strategy) return null;
-
         return hydrateEntity<BudgetData, RawBudgetData>(raw as any, raw.id || 'global-budget-data', {
             name: 'Global Budget Data',
             description: 'Persistent runtime budget tracking',
@@ -1753,7 +1839,6 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
         firstCreatedTimestamp: data.firstCreatedTimestamp,
         lastUpdatedTimestamp: Date.now(),
     };
-
     await putJson(BUDGET_DATA_PATH, payload);
 }
 
@@ -1801,13 +1886,11 @@ export async function uploadCharacterImage(characterId: string, file: File): Pro
 export async function cloneCharacterImage(sourceCharacterId: string, targetCharacterId: string, characterExpression: string): Promise<string | null> {
     const sourceImageUrl = getCharacterImageUrl(sourceCharacterId, characterExpression);
     if (!sourceImageUrl) return null;
-
     const filename = characterExpression
         ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
         : `clone-${targetCharacterId}.png`;
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
-
     return uploadCharacterImage(targetCharacterId, file);
 }
 
@@ -1823,11 +1906,9 @@ export async function uploadCharacterVoice(characterId: string, file: File): Pro
 export async function cloneCharacterVoice(sourceCharacterId: string, targetCharacterId: string, voiceFileName: string): Promise<string | null> {
     const sourceVoiceUrl = getCharacterVoiceURL(sourceCharacterId, voiceFileName);
     if (!sourceVoiceUrl) return null;
-
     const filename = voiceFileName || `voice-${targetCharacterId}.wav`;
     const file = await urlToFile(sourceVoiceUrl, filename);
     if (!file) return null;
-
     return uploadCharacterVoice(targetCharacterId, file);
 }
 
@@ -1843,11 +1924,9 @@ export async function uploadContextImage(contextId: string, file: File): Promise
 export async function cloneContextImage(sourceContextId: string, targetContextId: string, imageFilename: string): Promise<string | null> {
     const sourceImageUrl = getContextImageUrl(sourceContextId, imageFilename);
     if (!sourceImageUrl) return null;
-
     const filename = imageFilename || `${targetContextId}.png`;
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
-
     return uploadContextImage(targetContextId, file);
 }
 
@@ -1863,11 +1942,9 @@ export async function uploadLocationImage(locationId: string, file: File): Promi
 export async function cloneLocationImage(sourceLocationId: string, targetLocationId: string, imageFilename: string): Promise<string | null> {
     const sourceImageUrl = getLocationImageUrl(sourceLocationId, imageFilename);
     if (!sourceImageUrl) return null;
-
     const filename = imageFilename || `${targetLocationId}.png`;
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
-
     return uploadLocationImage(targetLocationId, file);
 }
 
@@ -1883,11 +1960,9 @@ export async function uploadAudioTrack(audioTrackId: string, file: File): Promis
 export async function cloneAudioTrack(sourceAudioTrackId: string, targetAudioTrackId: string, audioFilename: string): Promise<string | null> {
     const sourceAudioUrl = getAudioTrackUrl(sourceAudioTrackId, audioFilename);
     if (!sourceAudioUrl) return null;
-
     const filename = audioFilename || `${targetAudioTrackId}.mp3`;
     const file = await urlToFile(sourceAudioUrl, filename);
     if (!file) return null;
-
     return uploadAudioTrack(targetAudioTrackId, file);
 }
 
@@ -1903,11 +1978,9 @@ export async function uploadPromptBlockImage(promptBlockId: string, file: File):
 export async function clonePromptBlockImage(sourcePromptBlockId: string, targetPromptBlockId: string, imageFilename: string): Promise<string | null> {
     const sourceImageUrl = getPromptBlockImageUrl(sourcePromptBlockId, imageFilename);
     if (!sourceImageUrl) return null;
-
     const filename = imageFilename || `prompt-${targetPromptBlockId}.png`;
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
-
     return uploadPromptBlockImage(targetPromptBlockId, file);
 }
 
@@ -1924,13 +1997,11 @@ export async function uploadMultiplayerCharacterImage(characterId: string, file:
 export async function cloneMultiplayerCharacterImage(sourceCharacterId: string, targetCharacterId: string, characterExpression: string): Promise<string | null> {
     const sourceImageUrl = getMultiplayerCharacterImageUrl(sourceCharacterId, characterExpression);
     if (!sourceImageUrl) return null;
-
     const filename = characterExpression
         ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
         : `clone-${targetCharacterId}.png`;
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
-
     return uploadMultiplayerCharacterImage(targetCharacterId, file);
 }
 
@@ -1946,11 +2017,9 @@ export async function uploadMultiplayerCharacterVoice(characterId: string, file:
 export async function cloneMultiplayerCharacterVoice(sourceCharacterId: string, targetCharacterId: string, voiceFileName: string): Promise<string | null> {
     const sourceVoiceUrl = getMultiplayerCharacterVoiceUrl(sourceCharacterId, voiceFileName);
     if (!sourceVoiceUrl) return null;
-
     const filename = voiceFileName || `voice-${targetCharacterId}.wav`;
     const file = await urlToFile(sourceVoiceUrl, filename);
     if (!file) return null;
-
     return uploadMultiplayerCharacterVoice(targetCharacterId, file);
 }
 
@@ -2066,7 +2135,6 @@ const SESSION_KEY = 'session_data';
 export async function loadRawSessionData(): Promise<SessionData> {
     const cached = preferencesCache.get<SessionData>(SESSION_KEY);
     if (cached) return cached;
-
     const data = await fetchPreferences<SessionData>(SESSION_KEY);
     if (data) {
         preferencesCache.set(SESSION_KEY, data);
@@ -2077,9 +2145,8 @@ export async function loadRawSessionData(): Promise<SessionData> {
 export async function saveRawSessionData(data: Partial<SessionData>): Promise<void> {
     const existing = preferencesCache.get<SessionData>(SESSION_KEY) || {};
     const merged: SessionData = { ...existing, ...data };
-    
-    preferencesCache.set(SESSION_KEY, merged);
 
+    preferencesCache.set(SESSION_KEY, merged);
     saveQueue.enqueue(SESSION_KEY, merged, async (saveData) => {
         await savePreferences(SESSION_KEY, saveData as SessionData);
     });
@@ -2103,7 +2170,6 @@ const MULTIPLAYER_JOIN_KEY = 'multiplayer_join_data';
 export async function loadRawMultiplayerJoinData(): Promise<MultiplayerJoinData> {
     const cached = preferencesCache.get<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
     if (cached) return cached;
-
     const data = await fetchPreferences<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
     if (data) {
         preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
@@ -2113,7 +2179,6 @@ export async function loadRawMultiplayerJoinData(): Promise<MultiplayerJoinData>
 
 export async function saveRawMultiplayerJoinData(data: MultiplayerJoinData): Promise<void> {
     preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
-
     saveQueue.enqueue(MULTIPLAYER_JOIN_KEY, data, async (saveData) => {
         await savePreferences(MULTIPLAYER_JOIN_KEY, saveData as MultiplayerJoinData);
     });
@@ -2137,7 +2202,6 @@ const ACTION_FORMAT_KEY = 'action_format_data';
 export async function loadActionFormatData(): Promise<ActionFormatData> {
     const cached = preferencesCache.get<ActionFormatData>(ACTION_FORMAT_KEY);
     if (cached) return cached;
-
     const data = await fetchPreferences<ActionFormatData>(ACTION_FORMAT_KEY);
     if (data) {
         preferencesCache.set(ACTION_FORMAT_KEY, data);
@@ -2147,7 +2211,6 @@ export async function loadActionFormatData(): Promise<ActionFormatData> {
 
 export async function saveActionFormatData(data: ActionFormatData): Promise<void> {
     preferencesCache.set(ACTION_FORMAT_KEY, data);
-
     saveQueue.enqueue(ACTION_FORMAT_KEY, data, async (saveData) => {
         await savePreferences(ACTION_FORMAT_KEY, saveData as ActionFormatData);
     });
@@ -2171,7 +2234,6 @@ const FORMAT_PREFERENCES_KEY = 'format_preferences';
 export async function loadRawFormatPreferences(): Promise<FormatPreferenceData | null> {
     const cached = preferencesCache.get<FormatPreferenceData>(FORMAT_PREFERENCES_KEY);
     if (cached) return cached;
-
     const data = await fetchPreferences<FormatPreferenceData>(FORMAT_PREFERENCES_KEY);
     if (data) {
         preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
@@ -2181,7 +2243,6 @@ export async function loadRawFormatPreferences(): Promise<FormatPreferenceData |
 
 export async function saveRawFormatPreferences(data: FormatPreferenceData): Promise<void> {
     preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
-
     saveQueue.enqueue(FORMAT_PREFERENCES_KEY, data, async (saveData) => {
         await savePreferences(FORMAT_PREFERENCES_KEY, saveData as FormatPreferenceData);
     });
