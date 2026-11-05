@@ -1,7 +1,9 @@
 // src/frontend_src/hooks/useChatUI.ts
+
 import { useRef, useEffect, useCallback } from 'react';
 import { getAudioEngine } from '../services/AudioEngine';
 import { useCharacterVoice } from './useCharacterVoice';
+import { useGenerationStore } from './useGenerationStore';
 import type { Character, InteractionData } from '../types';
 
 export function useChatUI(
@@ -11,12 +13,21 @@ export function useChatUI(
 ) {
     const chatHistoryRef = useRef<HTMLDivElement>(null);
     const messageEndRef = useRef<HTMLDivElement>(null);
-    const hasScrolledToBottomRef = useRef(false);
     const previousChatIdRef = useRef<string | null>(null);
+    const previousMessageCountRef = useRef<number>(0);
 
+    const streamingText = useGenerationStore(s => s.streamingText);
     const { speakMessage } = useCharacterVoice(allCharacters);
 
-    const interactionDataId = interactionData?.id ?? null;
+    const scrollToBottom = useCallback(() => {
+        const el = chatHistoryRef.current;
+        if (el) {
+            el.scrollTop = el.scrollHeight;
+        } else if (messageEndRef.current) {
+            messageEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+        }
+        isAtBottomRef.current = true;
+    }, [isAtBottomRef]);
 
     // --- Audio Engine Lifecycle ---
     useEffect(() => {
@@ -33,41 +44,54 @@ export function useChatUI(
         audioEngine.evaluate(interactionData);
     }, [interactionData]);
 
-    // --- Reset scroll tracking whenever the active chat changes ---
+    // --- Chat Switch, New Message Auto-Scroll & Scroll Listener ---
     useEffect(() => {
-        if (interactionDataId !== previousChatIdRef.current) {
-            previousChatIdRef.current = interactionDataId;
-            hasScrolledToBottomRef.current = false;
+        if (!interactionData) {
+            previousChatIdRef.current = null;
+            previousMessageCountRef.current = 0;
+            return;
         }
-    }, [interactionDataId]);
 
-    // --- Auto-scroll to bottom on initial chat load ---
+        const el = chatHistoryRef.current;
+        const handleScroll = () => {
+            if (!el) return;
+            isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        };
+
+        el?.addEventListener('scroll', handleScroll, { passive: true });
+
+        const totalMessages = Object.values(interactionData.interactionHistories || {}).reduce(
+            (sum, msgs) => sum + msgs.length,
+            0
+        );
+
+        const isChatSwitched = interactionData.id !== previousChatIdRef.current;
+        const isMessageAdded = totalMessages > previousMessageCountRef.current;
+
+        previousChatIdRef.current = interactionData.id;
+        previousMessageCountRef.current = totalMessages;
+
+        let frameId: number | null = null;
+        if ((isChatSwitched || isMessageAdded) && totalMessages > 0) {
+            frameId = requestAnimationFrame(() => {
+                scrollToBottom();
+            });
+        }
+
+        return () => {
+            el?.removeEventListener('scroll', handleScroll);
+            if (frameId !== null) cancelAnimationFrame(frameId);
+        };
+    }, [interactionData, isAtBottomRef, scrollToBottom]);
+
+    // --- Keep pinned to bottom while streaming tokens ---
     useEffect(() => {
-        if (!interactionData || hasScrolledToBottomRef.current) return;
-        
-        // FIX: Replaced non-existent flat interactionHistory array with a reduction 
-        // over the spatial interactionHistories Record to accurately count total messages.
-        const messageCount = Object.values(interactionData.interactionHistories || {}).reduce((sum, msgs) => sum + msgs.length, 0);
-        if (messageCount === 0) return;
-
+        if (!streamingText || !isAtBottomRef.current) return;
         const frameId = requestAnimationFrame(() => {
-            if (messageEndRef.current) {
-                messageEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
-                hasScrolledToBottomRef.current = true;
-                isAtBottomRef.current = true;
-            }
+            scrollToBottom();
         });
         return () => cancelAnimationFrame(frameId);
-    }, [interactionData, isAtBottomRef]);
-
-    // --- Scroll Tracking ---
-    useEffect(() => {
-        const el = chatHistoryRef.current; 
-        if (!el) return;
-        const fn = () => { isAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80; };
-        el.addEventListener('scroll', fn, { passive: true });
-        return () => el.removeEventListener('scroll', fn);
-    }, [isAtBottomRef]);
+    }, [streamingText, isAtBottomRef, scrollToBottom]);
 
     const playVoice = useCallback((text: string, character: Character) => {
         speakMessage(text, character);
