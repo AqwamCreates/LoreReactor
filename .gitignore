@@ -55,7 +55,6 @@ lerna-debug.log*
 ehthumbs.db
 Thumbs.db
 
-llama/
 user_data/
 =======
 *.suo
