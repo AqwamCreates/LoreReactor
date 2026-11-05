@@ -41,7 +41,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ## Features
 
-### Character-Related
+### Characters
 
 * Each character have their own memories and information based on their own perspectives, so the characters will not know other characters' memories and information.
 
@@ -53,11 +53,11 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Internal ID prompt safety: All characters are referenced as Character N internally in prompts, with display names converted back post-generation. This prevents attribution collapse with unrevealed characters, similar names, or multi-character conversations. An identity map in the system block teaches the model real names progressively.
 
-### Tool-Related
+### Tools
 
 * Over 50 tools that includes OS-level controls and web searches. This includes running shells, controlling your inputs and opening your web browsers.
 
-### Model-Related
+### Models
 
 * Uses user-defined language models and spatiotemporal models either locally or from the cloud.
 
@@ -67,11 +67,15 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Helps controlling your costs by using both of your free tiers and premium tiers thorugh budget strategies.
 
-### Chat-Related
+### Chats
 
-* A chat can use multiple instructions that can be triggered using regular expressions. These instructions can also include images as well.
+* Each chat session can have independent Characters, Contexts, Locations and Audio Tracks.
 
-### Immersion-Related
+* A chat session can use multiple instructions that can be triggered using regular expressions. These instructions can also include images as well.
+
+* Save the chat session as a template through the World objects for future roleplays.
+
+### Immersion
 
 * Branch-to-new-window with position labeling: Branching clones conversation history into an independent session. Original chat remains untouched.
 
