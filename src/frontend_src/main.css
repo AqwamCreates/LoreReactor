@@ -2861,7 +2861,7 @@ background: rgba(0, 0, 0, 0.6);
 display: flex;
 align-items: center;
 justify-content: center;
-z-index: var(--layer-modal); /* Kept cleanly at 100 to beat page contents & VN sprites */
+z-index: var(--layer-modal);
 backdrop-filter: blur(4px);
 -webkit-backdrop-filter: blur(4px);
 }
@@ -3923,7 +3923,7 @@ transition: opacity 0.15s;
 position: fixed;
 top: calc(20px + env(safe-area-inset-top, 0px));
 right: 20px;
-z-index: var(--layer-toast); /* 200: Always visible over open modals */
+z-index: var(--layer-toast);
 display: flex;
 flex-direction: column;
 gap: 10px;
@@ -3993,7 +3993,7 @@ background: var(--bg);
 border: 1px solid var(--border);
 border-radius: 8px;
 box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-z-index: var(--layer-dropdown); /* 20 */
+z-index: var(--layer-dropdown);
 display: flex;
 flex-direction: column;
 overflow: hidden;
