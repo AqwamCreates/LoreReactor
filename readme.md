@@ -43,6 +43,8 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ### Character-Related
 
+* Each character have their own memories and information based on their own perspectives, so the characters will not know other characters' memories and information.
+
 * Per-character Token Sampler profiles override generation parameters independently.
 
 * Each character has independent ```maximumChatStamina``` (determines the maximum number of paragraphs per message), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
@@ -55,7 +57,11 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ### Model-Related
 
-* Supports multiple local and cloud model backends.
+* Uses user-defined language models and spatiotemporal models either locally or from the cloud.
+
+* Uses WebGPU for sentimental analysis, embedding and speech-to-text tasks.
+
+* Use llama-tts.cpp for text-to-speech tasks.
 
 * Helps controlling your costs by using both of your free tiers and premium tiers thorugh budget strategies.
 
