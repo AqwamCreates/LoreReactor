@@ -8,6 +8,10 @@ LinkedIn: https://www.linkedin.com/in/aqwam-harish-aiman/
 	
 YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
 
+## What is it?
+
+LoreReactor is a web UI + standalone app for language model roleplay that has a lot of configurations you can make!
+
 ## Preview
 
 * [Screenshots](screenshots.md)
