@@ -26,11 +26,13 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies
-        run: npm install --ignore-scripts --legacy-peer-deps
+      - name: Install dependencies (bypassing Windows-only vigemclient check)
+        run: |
+          rm -f package-lock.json
+          npm install --ignore-scripts --force --no-audit
 
       - name: Build Vite frontend
-        run: npx vite build
+        run: npx vite build --base=/LoreReactor/
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
