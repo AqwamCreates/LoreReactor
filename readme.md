@@ -109,7 +109,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Imports all kinds of character cards and convert them into LoreReactor-compatible ones.
 
-* Capable of exporting and importing LoreReactor data including bulk character, context, location and audio track selections in JSON format. This means you will be able to share the full world with other people without manually needing to attach individual lore books to each characters.
+* Capable of exporting and importing LoreReactor data including bulk character, context, location, audio track and world selections in JSON format. This means you will be able to share the full world with other people without manually needing to attach individual lore books to each characters.
 
 ## Architecture Notes
 
