@@ -81,6 +81,9 @@ export function useSpatiotemporalModelManager() {
     }, [selectedSpatiotemporalModelId, spatiotemporalModels]);
 
     const fetchSpatiotemporalModelStatusFn = useCallback(async () => {
+        const hasRunning = Object.values(runningSpatiotemporalModelsRef.current).some(m => m.isRunning);
+        if (!hasRunning) return;
+
         try {
             const response = await fetch(`${API_BASE}/spatiotemporal_models/status`);
             if (!response.ok) return;
@@ -89,8 +92,6 @@ export function useSpatiotemporalModelManager() {
             const newStatus: Record<string, SpatiotemporalModelState> = {};
 
             for (const m of data.activeModels || []) {
-                // Spatiotemporal models (like image generators) don't typically expose /slots.
-                // We consider them idle and ready to accept jobs as soon as the server is up.
                 newStatus[m.id] = {
                     isRunning: true,
                     port: m.port,
@@ -273,6 +274,8 @@ export function useSpatiotemporalModelManager() {
         }
     }, [unloadSpatiotemporalModel]);
 
+    const hasRunningSpatiotemporalModels = Object.values(runningSpatiotemporalModels).some(m => m.isRunning);
+
     useEffect(() => {
         let cancelled = false;
 
@@ -281,7 +284,6 @@ export function useSpatiotemporalModelManager() {
             try {
                 const data = await loadAllRawSpatiotemporalModels();
                 if (!cancelled) setSpatiotemporalModels(data);
-                await fetchSpatiotemporalModelStatusRef.current();
             } catch (e) {
                 const message = e instanceof Error ? e.message : "Unknown error";
                 console.error("Failed to load spatiotemporal models", e);
@@ -292,13 +294,18 @@ export function useSpatiotemporalModelManager() {
         };
 
         initialLoad();
-        const interval = setInterval(() => { void fetchSpatiotemporalModelStatusRef.current(); }, 3000);
 
         return () => {
             cancelled = true;
-            clearInterval(interval);
         };
     }, []);
+
+    // Only poll status when at least one spatiotemporal model is actually running
+    useEffect(() => {
+        if (!hasRunningSpatiotemporalModels) return;
+        const interval = setInterval(() => { void fetchSpatiotemporalModelStatusRef.current(); }, 3000);
+        return () => clearInterval(interval);
+    }, [hasRunningSpatiotemporalModels]);
 
     return {
         spatiotemporalModels,

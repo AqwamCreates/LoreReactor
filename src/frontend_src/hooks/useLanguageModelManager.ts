@@ -90,6 +90,9 @@ export function useLanguageModelManager() {
     }, [selectedLanguageModelId, languageModels]);
 
     const fetchLanguageModelStatusFn = useCallback(async () => {
+        const hasRunning = Object.values(runningLanguageModelsRef.current).some(m => m.isRunning);
+        if (!hasRunning) return;
+
         try {
             const response = await fetch(`${API_BASE}/language_models/status`);
             if (!response.ok) return;
@@ -322,6 +325,8 @@ export function useLanguageModelManager() {
         }
     }, [unloadLanguageModel]);
 
+    const hasRunningLanguageModels = Object.values(runningLanguageModels).some(m => m.isRunning);
+
     useEffect(() => {
         let cancelled = false;
 
@@ -330,7 +335,6 @@ export function useLanguageModelManager() {
             try {
                 const data = await loadAllRawModels();
                 if (!cancelled) setLanguageModels(data);
-                await fetchLanguageModelStatusRef.current();
             } catch (e) {
                 const message = e instanceof Error ? e.message : "Unknown error";
                 console.error("Failed to load language models", e);
@@ -341,13 +345,18 @@ export function useLanguageModelManager() {
         };
 
         initialLoad();
-        const interval = setInterval(() => { void fetchLanguageModelStatusRef.current(); }, 3000);
 
         return () => {
             cancelled = true;
-            clearInterval(interval);
         };
     }, []);
+
+    // Only poll status when at least one language model is actually running
+    useEffect(() => {
+        if (!hasRunningLanguageModels) return;
+        const interval = setInterval(() => { void fetchLanguageModelStatusRef.current(); }, 3000);
+        return () => clearInterval(interval);
+    }, [hasRunningLanguageModels]);
 
     return {
         languageModels,
