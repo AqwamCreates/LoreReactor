@@ -1,4 +1,5 @@
 // src/frontend_src/storages/serverStorage.tsx
+
 import type { 
   StopPattern, RawStopPattern, TokenSampler, RawTokenSampler, Context, RawContext, LanguageModel, RawLanguageModel,
   SpatiotemporalModel, RawSpatiotemporalModel,
@@ -24,16 +25,13 @@ import type {
   RetrievalConfiguration,
   RawRetrievalConfiguration,
 } from '../types';
-
 import type { FormatPreferenceData } from '../services/FormatPreferenceEngine';
-
 import { localURL, clientId } from '../../configurations';
 import { v4 as uuidv4 } from 'uuid';
 import {
     browserReadJson, browserWriteJson, browserDeleteFile,
-    browserListDirectory, isServerAvailable,
+    browserListDirectory, browserExportAll, isServerAvailable,
 } from './browserStorage';
-
 import { defaultActions, defaultCharacterTools, defaultInputStrategy, defaultCharacter } from '../dictionaries/defaults';
 import type { FMSerialized } from '../libraries/factorizationMachine';
 
@@ -156,10 +154,54 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
 // =============================================================================
 
 let _serverAvailable: boolean | null = null;
+const browserMediaUrlCache = new Map<string, string>();
+let browserMediaCacheHydrated = false;
+
+function inferMimeTypeFromPath(filePath: string): string {
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    const mimeMap: Record<string, string> = {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        webp: 'image/webp',
+        gif: 'image/gif',
+        svg: 'image/svg+xml',
+        mp3: 'audio/mpeg',
+        wav: 'audio/wav',
+        ogg: 'audio/ogg',
+        flac: 'audio/flac',
+    };
+    return mimeMap[ext] || 'image/png';
+}
+
+async function hydrateBrowserMediaCache(): Promise<void> {
+    if (browserMediaCacheHydrated) return;
+    browserMediaCacheHydrated = true;
+    try {
+        const allData = await browserExportAll();
+        for (const [key, val] of Object.entries(allData)) {
+            const cleanKey = normalizeUrl(key);
+            if (val && typeof val === 'object' && 'base64' in (val as Record<string, unknown>)) {
+                const b64 = String((val as { base64: string }).base64 || '');
+                if (b64) {
+                    const mime = inferMimeTypeFromPath(cleanKey);
+                    browserMediaUrlCache.set(cleanKey, b64.startsWith('data:') ? b64 : `data:${mime};base64,${b64}`);
+                }
+            } else if (typeof val === 'string' && val.startsWith('data:')) {
+                browserMediaUrlCache.set(cleanKey, val);
+            }
+        }
+    } catch (e) {
+        console.warn('Failed to hydrate browser media cache:', e);
+    }
+}
 
 async function getServerAvailable(): Promise<boolean> {
     if (_serverAvailable !== null) return _serverAvailable;
     _serverAvailable = await isServerAvailable();
+    if (!_serverAvailable) {
+        await hydrateBrowserMediaCache();
+    }
     return _serverAvailable;
 }
 
@@ -172,12 +214,12 @@ function normalizeUrl(url: string): string {
 }
 
 async function fetchJson<T>(url: string): Promise<T | null> {
+  const cleanUrl = normalizeUrl(url);
   if (!(await getServerAvailable())) {
-    return browserReadJson<T>(url);
+    return browserReadJson<T>(cleanUrl);
   }
-
   try {
-    const targetUrl = `${localURL}${normalizeUrl(url)}`;
+    const targetUrl = `${localURL}${cleanUrl}`;
     const response = await fetch(targetUrl, {
       cache: 'no-store',
       headers: {
@@ -188,7 +230,7 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     
     if (!response.ok) {
       if (response.status === 404) return null;
-      console.warn(`HTTP Error ${response.status} for ${url}`);
+      console.warn(`HTTP Error ${response.status} for ${cleanUrl}`);
       return null;
     }
 
@@ -206,25 +248,26 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     
     return JSON.parse(text) as T;
   } catch (error) { 
-    if ((error as Error).message.includes('Failed to fetch')) {
-      console.warn(`Network error for ${url}, falling back to browser storage`);
-      resetServerAvailability();
-      return browserReadJson<T>(url);
+    if ((error as Error).message.includes('Failed to fetch') || (error as Error).message.includes('NetworkError')) {
+      console.warn(`Network error for ${cleanUrl}, falling back to browser storage`);
+      _serverAvailable = false;
+      await hydrateBrowserMediaCache();
+      return browserReadJson<T>(cleanUrl);
     }
-    console.warn(`Failed to parse JSON from ${url}:`, error);
+    console.warn(`Failed to parse JSON from ${cleanUrl}:`, error);
     return null; 
   }
 }
 
 async function putJson<T>(url: string, data: T): Promise<void> {
+  const cleanUrl = normalizeUrl(url);
   if (!(await getServerAvailable())) {
-    await browserWriteJson(url, data);
+    await browserWriteJson(cleanUrl, data);
     return;
   }
-
   try {
     // Keep URL clean without query parameters to prevent illegal characters on disk
-    const targetUrl = `${localURL}${normalizeUrl(url)}`;
+    const targetUrl = `${localURL}${cleanUrl}`;
     const response = await fetch(targetUrl, { 
       method: 'PUT', 
       headers: { 
@@ -236,9 +279,10 @@ async function putJson<T>(url: string, data: T): Promise<void> {
     if (!response.ok) throw new Error(`Failed to save data to ${targetUrl}: HTTP ${response.status}`);
   } catch (e) {
     if ((e as Error).message.includes('Failed to fetch') || (e as Error).message.includes('NetworkError')) {
-      console.warn(`Network error saving ${url}, falling back to browser storage`);
-      resetServerAvailability();
-      await browserWriteJson(url, data);
+      console.warn(`Network error saving ${cleanUrl}, falling back to browser storage`);
+      _serverAvailable = false;
+      await hydrateBrowserMediaCache();
+      await browserWriteJson(cleanUrl, data);
     } else {
       throw e;
     }
@@ -246,14 +290,15 @@ async function putJson<T>(url: string, data: T): Promise<void> {
 }
 
 async function deleteResource(url: string): Promise<void> {
+  const cleanUrl = normalizeUrl(url);
+  browserMediaUrlCache.delete(cleanUrl);
   if (!(await getServerAvailable())) {
-    await browserDeleteFile(url);
+    await browserDeleteFile(cleanUrl);
     return;
   }
-
   try {
     // Keep URL clean without query parameters
-    const targetUrl = `${localURL}${normalizeUrl(url)}`;
+    const targetUrl = `${localURL}${cleanUrl}`;
     const response = await fetch(targetUrl, { 
       method: 'DELETE',
       headers: {
@@ -263,9 +308,9 @@ async function deleteResource(url: string): Promise<void> {
     if (!response.ok && response.status !== 404) throw new Error(`Failed to delete resource at ${targetUrl}: HTTP ${response.status}`);
   } catch (e) {
     if ((e as Error).message.includes('Failed to fetch') || (e as Error).message.includes('NetworkError')) {
-      console.warn(`Network error deleting ${url}, falling back to browser storage`);
-      resetServerAvailability();
-      await browserDeleteFile(url);
+      console.warn(`Network error deleting ${cleanUrl}, falling back to browser storage`);
+      _serverAvailable = false;
+      await browserDeleteFile(cleanUrl);
     } else {
       throw e;
     }
@@ -274,14 +319,19 @@ async function deleteResource(url: string): Promise<void> {
 
 function getURL(entityKey: EntityKey, ...pathParts: string[]): string | null {
   const basePath = PATHS[entityKey];
-  const cleanPath = basePath.startsWith('/') ? basePath : `/${basePath}`;
-  return `${localURL}${cleanPath}/${pathParts.join('/')}`;
+  const cleanPath = normalizeUrl(`${basePath}/${pathParts.join('/')}`);
+  if (_serverAvailable === false) {
+    return browserMediaUrlCache.get(cleanPath) ?? null;
+  }
+  return `${localURL}${cleanPath}`;
 }
 
 async function upload(entityKey: EntityKey, pathParts: string, file: File): Promise<string> {
   const base64 = await fileToBase64(file);
   const filename = getCleanFileName(file);
-  const imagePath = `${PATHS[entityKey]}/${[pathParts, filename].join('/')}`;
+  const imagePath = normalizeUrl(`${PATHS[entityKey]}/${[pathParts, filename].join('/')}`);
+  const mime = file.type || inferMimeTypeFromPath(filename);
+  browserMediaUrlCache.set(imagePath, `data:${mime};base64,${base64}`);
   await putJson(imagePath, { base64 });
   return filename;
 }
@@ -301,6 +351,7 @@ async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
   }
 
   console.log(`Manifest missing for ${folderPath}. Scanning directory...`);
+
   try {
     if (!(await getServerAvailable())) {
       const entries = await browserListDirectory(folderPath);
@@ -520,6 +571,7 @@ export const deleteRawMemory = memoryRepo.remove;
 async function hydrateMemories(rawMemoryIds: Record<string, string[]> | undefined): Promise<Record<string, Memory[]>> {
   const memories: Record<string, Memory[]> = {};
   if (!rawMemoryIds) return memories;
+
   for (const [key, ids] of Object.entries(rawMemoryIds)) {
     const loaded: Memory[] = [];
     for (const id of ids) {
@@ -528,12 +580,14 @@ async function hydrateMemories(rawMemoryIds: Record<string, string[]> | undefine
     }
     memories[key] = loaded;
   }
+
   return memories;
 }
 
 async function serializeMemories(memories: Record<string, Memory[]> | undefined): Promise<Record<string, string[]>> {
   const rawMemories: Record<string, string[]> = {};
   if (!memories) return rawMemories;
+
   for (const [key, mems] of Object.entries(memories)) {
     const ids: string[] = [];
     for (const mem of mems) {
@@ -542,6 +596,7 @@ async function serializeMemories(memories: Record<string, Memory[]> | undefined)
     }
     rawMemories[key] = ids;
   }
+
   return rawMemories;
 }
 
@@ -660,7 +715,6 @@ const characterRepo = createRepository<Character, RawCharacter>({
     if (raw.memoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.memoryRetrievalConfigurationId) ?? undefined;
 
     const memories = await hydrateMemories(raw.memories);
-
     const images: Record<string, string> = raw.images ?? {};
     const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
     if (Object.keys(images).length === 0 && legacyImage) {
@@ -687,6 +741,7 @@ const characterRepo = createRepository<Character, RawCharacter>({
   serialize: async (character) => {
     const { languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
+
     return {
       ...rest,
       languageModelTokenSamplerId: languageModelTokenSampler?.id,
@@ -713,7 +768,6 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
     if (!rawCharacter) return null;
 
     const memories = await hydrateMemories(rawCharacter.memories);
-
     const images: Record<string, string> = rawCharacter.images ?? {};
     if (Object.keys(images).length === 0 && 'image' in rawCharacter && typeof rawCharacter.image === 'string') {
       images.neutral = rawCharacter.image;
@@ -804,6 +858,7 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
   serialize: async (character) => {
     const { languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
+
     return {
       ...rest,
       languageModelTokenSamplerId: languageModelTokenSampler?.id,
@@ -1005,7 +1060,6 @@ const profileRepo = createRepository<Profile, RawProfile>({
   entityKey: 'profiles',
   hydrate: async (raw, id) => {
     const now = Date.now();
-
     const summarizationSteps: SummarizationStep[] = raw.summarizationSteps != null
       ? raw.summarizationSteps.map((step, i) => ({
           id: step.id || `step-${uuidv4()}`,
@@ -1272,7 +1326,7 @@ export async function deleteRawMessage(id: string): Promise<void> {
 }
 
 // =============================================================================
-// INTERACTION  DATA REPOSITORY
+// INTERACTION DATA REPOSITORY
 // =============================================================================
 
 export async function loadRawChatManifest(): Promise<string[]> { 
@@ -1290,7 +1344,6 @@ async function buildInteractionDataShell(
 ): Promise<InteractionData | null> {
   
   const protagonistIds = rawInteractionData.protagonistIds || [];
-
   const participants = (rawInteractionData.participantIds || [])
     .map(pid => charMap.get(pid) ?? createDeletedCharacterStub(pid));
     
@@ -1360,6 +1413,7 @@ export async function loadInteractionMessages(interactionData: InteractionData):
 
     for (const [locationId, messageIds] of Object.entries(rawInteractionData.interactionHistories)) {
         interactionHistories[locationId] = new Array(messageIds.length);
+
         messageIds.forEach((messageId, index) => {
             allPromises.push((async () => {
                 const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage | RawWhisperMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
@@ -1367,10 +1421,8 @@ export async function loadInteractionMessages(interactionData: InteractionData):
                     interactionHistories[locationId][index] = null as any;
                     return;
                 }
-
                 const character = charMap.get(rawMessage.characterId);
                 const { characterId, ...messageWithoutCharId } = rawMessage;
-
                 interactionHistories[locationId][index] = {
                     id: messageId,
                     ...messageWithoutCharId,
@@ -1399,6 +1451,7 @@ export async function loadRawInteractionData(
   if (!rawInteractionData) return null;
 
   const charMap = new Map<string, Character>();
+
   if (existingCharShells && existingCharShells.length > 0) {
     for (const c of existingCharShells) charMap.set(c.id, c);
   } else {
@@ -1477,7 +1530,6 @@ export async function loadAllRawInteractionDataShells(): Promise<RawInteractionD
   if (ids.length === 0) return [];
 
   const results: (RawInteractionData | null)[] = [];
-
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const batchIds = ids.slice(i, i + BATCH_SIZE);
     const batchPromises = batchIds.map(async (id): Promise<RawInteractionData | null> => {
@@ -1486,10 +1538,8 @@ export async function loadAllRawInteractionDataShells(): Promise<RawInteractionD
       raw.id = id;
       return raw;
     });
-
     const batchResults = await Promise.all(batchPromises);
     results.push(...batchResults);
-
     if (i + BATCH_SIZE < ids.length) {
       await new Promise(resolve => setTimeout(resolve, BATCH_DELAY_MS / 2));
     }
@@ -1536,6 +1586,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     worldIds: interactionData.worldIds || [],
     lastUpdatedTimestamp: Date.now(),
   };
+
   await putJson(`${PATHS.interactionData}/${id}.json`, payload);
   await updateManifest('interactionData', id, 'add');
 }
@@ -1584,8 +1635,10 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     profileId: sourceChat.profile?.id,
     worldIds: sourceChat.worldIds || [],
   };
+
   await putJson(`${PATHS.interactionData}/${newChatId}.json`, newPayload);
   await updateManifest('interactionData', newChatId, 'add');
+
   return newChatId;
 }
 
@@ -1700,6 +1753,7 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
         firstCreatedTimestamp: data.firstCreatedTimestamp,
         lastUpdatedTimestamp: Date.now(),
     };
+
     await putJson(BUDGET_DATA_PATH, payload);
 }
 
@@ -1713,19 +1767,21 @@ export function getCharacterImageUrl(characterId: string, characterExpression: s
 
 export async function getCharacterImageUrlWithFallBack(characterId: string, characterExpression?: string): Promise<string | null> {
     const characterImageUrl = getCharacterImageUrl(characterId, characterExpression || 'neutral');
-    if (!characterImageUrl) return null;
-
-    try {
-        const response = await fetch(characterImageUrl, { method: 'HEAD' });
-        if (response.ok) return characterImageUrl;
-    } catch {
-        // File doesn't exist or network error
+    if (characterImageUrl) {
+        if (characterImageUrl.startsWith('data:')) return characterImageUrl;
+        try {
+            const response = await fetch(characterImageUrl, { method: 'HEAD' });
+            if (response.ok) return characterImageUrl;
+        } catch {
+            // File doesn't exist or network error
+        }
     }
 
     const effectiveExpression = characterExpression || "neutral";
     if (effectiveExpression !== 'neutral') {
         const neutralUrl = getCharacterImageUrl(characterId, 'neutral');
         if (neutralUrl) {
+            if (neutralUrl.startsWith('data:')) return neutralUrl;
             try {
                 const response = await fetch(neutralUrl, { method: 'HEAD' });
                 if (response.ok) return neutralUrl;
@@ -1749,7 +1805,6 @@ export async function cloneCharacterImage(sourceCharacterId: string, targetChara
     const filename = characterExpression
         ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
         : `clone-${targetCharacterId}.png`;
-
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
 
@@ -1873,7 +1928,6 @@ export async function cloneMultiplayerCharacterImage(sourceCharacterId: string, 
     const filename = characterExpression
         ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
         : `clone-${targetCharacterId}.png`;
-
     const file = await urlToFile(sourceImageUrl, filename);
     if (!file) return null;
 
@@ -1988,49 +2042,19 @@ class SaveQueue {
 const saveQueue = new SaveQueue();
 
 // =============================================================================
-// PREFERENCES API HELPERS
+// PREFERENCES API HELPERS (Unified with Browser/IndexedDB Fallback)
 // =============================================================================
 
 async function fetchPreferences<T>(endpoint: string): Promise<T | null> {
-    try {
-        const response = await fetch(`${localURL}/user_data/${endpoint}.json`, {
-            method: 'GET',
-            headers: { 'Content-Type': 'application/json' },
-        });
-
-        if (!response.ok) {
-            if (response.status === 404) return null;
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        return await response.json() as T;
-    } catch (error) {
-        console.error(`Failed to fetch ${endpoint}:`, error);
-        return null;
-    }
+    return await fetchJson<T>(`/user_data/${endpoint}.json`);
 }
 
 async function savePreferences<T>(endpoint: string, data: T): Promise<void> {
-    const response = await fetch(`${localURL}/user_data/${endpoint}.json`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-    });
-
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-    }
+    await putJson(`/user_data/${endpoint}.json`, data);
 }
 
 async function deletePreferences(endpoint: string): Promise<void> {
-    const response = await fetch(`${localURL}/user_data/${endpoint}.json`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-    });
-
-    if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-    }
+    await deleteResource(`/user_data/${endpoint}.json`);
 }
 
 // =============================================================================
@@ -2047,7 +2071,6 @@ export async function loadRawSessionData(): Promise<SessionData> {
     if (data) {
         preferencesCache.set(SESSION_KEY, data);
     }
-
     return data || {};
 }
 
@@ -2064,7 +2087,6 @@ export async function saveRawSessionData(data: Partial<SessionData>): Promise<vo
 
 export async function deleteSessionData(): Promise<void> {
     preferencesCache.delete(SESSION_KEY);
-
     try {
         await deletePreferences(SESSION_KEY);
     } catch (error) {
@@ -2086,7 +2108,6 @@ export async function loadRawMultiplayerJoinData(): Promise<MultiplayerJoinData>
     if (data) {
         preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
     }
-
     return data || {};
 }
 
@@ -2100,7 +2121,6 @@ export async function saveRawMultiplayerJoinData(data: MultiplayerJoinData): Pro
 
 export async function deleteMultiplayerJoinData(): Promise<void> {
     preferencesCache.delete(MULTIPLAYER_JOIN_KEY);
-
     try {
         await deletePreferences(MULTIPLAYER_JOIN_KEY);
     } catch (error) {
@@ -2122,7 +2142,6 @@ export async function loadActionFormatData(): Promise<ActionFormatData> {
     if (data) {
         preferencesCache.set(ACTION_FORMAT_KEY, data);
     }
-
     return data || {};
 }
 
@@ -2136,7 +2155,6 @@ export async function saveActionFormatData(data: ActionFormatData): Promise<void
 
 export async function deleteActionFormatData(): Promise<void> {
     preferencesCache.delete(ACTION_FORMAT_KEY);
-
     try {
         await deletePreferences(ACTION_FORMAT_KEY);
     } catch (error) {
@@ -2158,7 +2176,6 @@ export async function loadRawFormatPreferences(): Promise<FormatPreferenceData |
     if (data) {
         preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
     }
-
     return data || null;
 }
 
@@ -2172,7 +2189,6 @@ export async function saveRawFormatPreferences(data: FormatPreferenceData): Prom
 
 export async function deleteFormatPreferences(): Promise<void> {
     preferencesCache.delete(FORMAT_PREFERENCES_KEY);
-
     try {
         await deletePreferences(FORMAT_PREFERENCES_KEY);
     } catch (error) {
