@@ -105,6 +105,12 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Uses Markov to cut costs by using the entirety of the characters' own messages as training data to produce character-specific messages without the need for language model inference.
 
+### Data
+
+* Imports all kinds of character cards and convert them into LoreReactor-compatible ones.
+
+* Capable of exporting and importing LoreReactor data including bulk character, context, location and audio track selections in JSON format. This means you will be able to share the full world with other people without manually needing to attach individual lore books to each characters.
+
 ## Architecture Notes
 
 ### Why Separate initiativeWeight, chatProbability and maximumChatStamina?
