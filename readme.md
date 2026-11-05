@@ -77,7 +77,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Character names appear beneath their profile picture starting from the message after they first say their name. This preserves the surprise of reading the revelation in-dialogue before seeing it reflected in the UI.
 
-* Multiple view modes to match the vibe of your roleplay:
+* Multiple view modes to match the atmosphere of your roleplay:
 
 	* Ladder mode: Classical text message app style.
 
