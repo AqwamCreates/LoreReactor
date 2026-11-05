@@ -47,7 +47,7 @@ export interface DemoDataBundle {
   entityFolders: EntityFolder[];
 }
 
-const TEMP_NOTICE = '[Temporary preset unless edited — changes are saved to local IndexedDB once modified]';
+const TEMP_NOTICE = '[Temporary preset unless edited]';
 
 export function createDemoData(): DemoDataBundle {
   const now = Date.now();
@@ -577,7 +577,7 @@ export function createDemoData(): DemoDataBundle {
           messageType: 'narration',
           character: guideCharacter,
           textContent:
-            'Workspace initialized in Main Office (Temporary Demo Session — any edits or new messages are saved locally to your browser). Connected locations: Conference Room (10m) and Executive Lounge (15m).',
+            `${TEMP_NOTICE} Workspace initialized in Main Office. Connected locations: Conference Room (10m) and Executive Lounge (15m).`,
           characterClothingWearingStatuses: {
             [clothingBlazerId]: true,
             [clothingShirtId]: true,
