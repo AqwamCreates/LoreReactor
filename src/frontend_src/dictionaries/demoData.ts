@@ -275,6 +275,7 @@ export function createDemoData(): DemoDataBundle {
   };
 
   // ─── 7. Character ('character') ─────────────────────────────────────────────
+  // userCharacter is defined and returned FIRST so it is always loaded first and set as Protagonist
   const userCharacterId = uuidv4();
   const guideCharacterId = uuidv4();
 
@@ -767,7 +768,7 @@ export function createDemoData(): DemoDataBundle {
   ];
 
   return {
-    characters: [guideCharacter, userCharacter],
+    characters: [userCharacter, guideCharacter],
     contexts: [demoContext],
     locations: [mainOfficeLocation, conferenceRoomLocation, breakRoomLocation],
     audioTracks: [demoAudioTrack],
