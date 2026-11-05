@@ -55,6 +55,8 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Supports multiple local and cloud model backends.
 
+* Helps controlling your costs by using both of your free tiers and premium tiers thorugh budget strategies.
+
 ### Chat-Related
 
 * A chat can use multiple instructions that can be triggered using regular expressions. These instructions can also include images as well.
