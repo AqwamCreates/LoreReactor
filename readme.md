@@ -81,7 +81,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ### Why Separate initiativeWeight, chatProbability and maximumChatStamina?
 
-"When should they speak?", "should this character speak?", and "can they speak?" are orthogonal personality axes. A shy-but-quick character differs from a boisterous-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
+"When should they speak?", "should this character speak?", and "can they speak?" are orthogonal personality axes. A shy-but-quick character differs from a loud-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
 
 ### Why IDs Instead Of Names For Internal Prompt Creation?
 
