@@ -49,7 +49,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ### Tool-Related
 
-* Over 50 tools that includes OS-level controls!
+* Over 50 tools that includes OS-level controls and web searches!
 
 ### Chat-Related
 
@@ -60,6 +60,16 @@ You then can use LoreReactor directly or install the local backends first. The c
 * Branch-to-new-window with position labeling: Branching clones conversation history into an independent session. Original chat remains untouched.
 
 * Character names appear beneath their profile picture starting from the message after they first say their name. This preserves the surprise of reading the revelation in-dialogue before seeing it reflected in the UI.
+
+* Multiple view modes to match the vibe of your roleplay:
+
+	* Ladder mode: Classical text message app style.
+
+	* Cinematic mode: Focused on face-to-face interaction.
+
+ 	* Visual Novel mode: See characters' movements and interactions based on the locations.
+
+	* Card mode: Dungeon master style without any profile pictures.
 
 ## Architecture Notes
 
