@@ -26,13 +26,20 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install dependencies (bypassing Windows-only vigemclient check)
+      - name: Install dependencies (preserving lockfile on Linux)
         run: |
-          rm -f package-lock.json
+          node -e '
+            const fs = require("fs");
+            if (fs.existsSync("package-lock.json")) {
+              const lock = fs.readFileSync("package-lock.json", "utf8")
+                .replace(/"os":\s*\[\s*"win32"\s*\]/g, "\"os\": [\"win32\", \"linux\"]");
+              fs.writeFileSync("package-lock.json", lock);
+            }
+          '
           npm install --ignore-scripts --force --no-audit
 
       - name: Build Vite frontend
-        run: npx vite build --base=/LoreReactor/
+        run: npx vite build
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
