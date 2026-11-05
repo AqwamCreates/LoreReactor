@@ -39,6 +39,8 @@ jobs:
           npm install --ignore-scripts --force --no-audit
 
       - name: Build Vite frontend
+        env:
+          VITE_HOST_IP: localhost
         run: npx vite build
 
       - name: Setup Pages
