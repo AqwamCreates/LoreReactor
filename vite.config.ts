@@ -43,7 +43,7 @@ export default defineConfig(({ command }) => ({
         ],
       },
       workbox: {
-        maximumFileSizeToCacheInBytes: 10485760,
+        maximumFileSizeToCacheInBytes: 5242880,
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         navigateFallbackDenylist: [/^\/api\//],
         runtimeCaching: [
