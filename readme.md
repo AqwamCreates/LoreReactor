@@ -12,7 +12,7 @@ YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
 
 LoreReactor is a web UI + standalone app for language model roleplay that has a lot of configurations you can make! 
 
-You can also use it directly with more limited functionalities on GitHub Pages [here](aqwamcreates.github.io/LoreReactor).
+You can also use it directly with limited functionalities on GitHub Pages [here](aqwamcreates.github.io/LoreReactor).
 
 ## Preview
 
