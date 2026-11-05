@@ -80,7 +80,7 @@ import { ChatStatisticsBar } from './ChatStatisticsBar';
 import { ChatHistoryPanel } from './ChatHistoryPanel';
 import { ChatViewArea } from './views/ChatViewArea';
 import type { ViewModeProps, viewMode } from './views/types';
-import { ViewModeDropdown } from './ViewModeDropown';
+import { ViewModeDropdown } from './ViewModeDropdown';
 import { defaultContextLength } from '../dictionaries/defaults';
 import '../main.css';
 import { useWorldManager } from '../hooks/useWorldManager';
