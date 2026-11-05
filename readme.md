@@ -26,12 +26,12 @@ LoreReactor grants AI characters unprecedented access to your host OS, hardware,
 
 ## Capabilities
 
-| Aspect                          | Standalone App | Web UI        | GitHub Pages  |
-|---------------------------------|----------------|---------------|---------------|
-| Desktop Overlay                 | Supported      | Not Supported | Not Supported |
-| OS Tools                        | Supported      | Supported     | Not Supported |
-| Local Non-WebGPU/WASM Inference | Supported      | Supported     | Not Supported |
-| Accessible From Other Devices   | Not Supported  | Supported     | Not Supported | 
+| Aspect                                | Standalone App | Web UI        | GitHub Pages  |
+|---------------------------------------|----------------|---------------|---------------|
+| Desktop Overlay                       | Supported      | Not Supported | Not Supported |
+| OS Tools                              | Supported      | Supported     | Not Supported |
+| Local Non-WebGPU / Non-WASM Inference | Supported      | Supported     | Not Supported |
+| Accessible From Other Devices         | Not Supported  | Supported     | Not Supported | 
 
 ## Quick Setup
 
@@ -72,7 +72,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Uses user-defined language models and spatiotemporal models either locally or from the cloud.
 
-* Uses WebGPU for sentimental analysis, embedding and speech-to-text tasks.
+* Uses WebGPU / WASM for sentimental analysis, embedding and speech-to-text tasks.
 
 * Use llama-tts.cpp for text-to-speech tasks.
 
