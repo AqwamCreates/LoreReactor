@@ -47,7 +47,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Supports per-location group chats.
 
-* Per-character Token Sampler profiles override generation parameters independently.
+* Characters can use their own Token Sampler or shared Token Samplers.
 
 * Each character has independent ```maximumChatStamina``` (determines the maximum number of paragraphs per message), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
 
