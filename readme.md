@@ -35,25 +35,21 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ## Features
 
-### Context-Related
-
-* The character's profile images inject speaker-conditionally on first chat, with embeddings cached per-character for instant reuse.
-
-* Internal ID prompt safety: All characters are referenced as Character N internally in prompts, with display names converted back post-generation. This prevents attribution collapse with unrevealed characters, similar names, or multi-character conversations. An identity map in the system block teaches the model real names progressively.
-
 ### Character-Related
 
 * Per-character Token Sampler profiles override generation parameters independently.
 
 * Each character has independent ```maximumChatStamina``` (determines the maximum number of paragraphs per message), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
 
+* Internal ID prompt safety: All characters are referenced as Character N internally in prompts, with display names converted back post-generation. This prevents attribution collapse with unrevealed characters, similar names, or multi-character conversations. An identity map in the system block teaches the model real names progressively.
+
+### Tool-Related
+
+* Over 50 tools that includes OS-level controls!
+
 ### Chat-Related
 
 * A chat can use multiple instructions that can be triggered using regular expressions. These instructions can also include images as well.
-
-### Sampler-Related
-
-* Multiple tokenSamplers can use the same stop pattern configuration.
 
 ### Immersion-Related
 
