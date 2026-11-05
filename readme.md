@@ -24,6 +24,15 @@ Created using Typescript, Vite, React, Node.js and Tauri.
 
 LoreReactor grants AI characters unprecedented access to your host OS, hardware, and physical environment. Use the Tool Permission section wisely. We are not responsible if your AI waifu / husbando locks you out of your PC.
 
+## Capabilities
+
+| Aspect                          | Standalone App | Web UI        | GitHub Pages  |
+|---------------------------------|----------------|---------------|---------------|
+| Desktop Overlay                 | Supported      | Not Supported | Not Supported |
+| OS Tools                        | Supported      | Supported     | Not Supported |
+| Local Non-WebGPU/WASM Inference | Supported      | Supported     | Not Supported |
+| Accessible From Other Devices   | Not Supported  | Supported     | Not Supported | 
+
 ## Quick Setup
 
 First, you need to run ```git clone AqwamCreates/LoreReactor```.
