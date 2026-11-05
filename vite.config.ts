@@ -1,6 +1,7 @@
-import { defineConfig } from 'vite'
-import react from '@vitejs/plugin-react'
-import { VitePWA } from 'vite-plugin-pwa'
+// vite.config.ts
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import os from 'node:os';
 
 function getLocalIP() {
@@ -15,7 +16,11 @@ function getLocalIP() {
   return '127.0.0.1';
 }
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // '/' in dev server so HMR & proxies work normally;
+  // './' in production builds so the app works on GitHub Pages (/repo-name/),
+  // local static servers (http://localhost:xxxx/), and Tauri desktop builds.
+  base: command === 'build' ? './' : '/',
   plugins: [
     react(),
     VitePWA({
@@ -30,6 +35,8 @@ export default defineConfig({
         background_color: '#0f0f0f',
         display: 'standalone',
         orientation: 'portrait-primary',
+        scope: './',
+        start_url: './',
         icons: [
           { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
@@ -58,8 +65,8 @@ export default defineConfig({
     port: 4444,
     // ✅ ADD THESE HEADERS FOR SHARED ARRAY BUFFER / WASM MULTI-THREADING
     headers: {
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Embedder-Policy": "require-corp"
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
     proxy: {
       '/api/language_models': {
@@ -72,6 +79,14 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api\/web/, ''),
       },
+    },
+  },
+   preview: {
+    host: '0.0.0.0',
+    port: 4444,
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
   },
   optimizeDeps: {
@@ -96,4 +111,4 @@ export default defineConfig({
   define: {
     'import.meta.env.VITE_HOST_IP': JSON.stringify(getLocalIP()),
   },
-});
+}));
