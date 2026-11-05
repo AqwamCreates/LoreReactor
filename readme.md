@@ -91,6 +91,18 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 	* Card mode: Dungeon master style without any profile pictures.
 
+### Quality-Of-Life
+
+* Uses Factorization Machines to determine the best model to choose from based on censorship and user-acceptance criteria.
+
+	* The selected model would be rewarded when the user continues chatting without any interruption.
+
+ 	* Otherwise, the selected model would be punished when the user regenerates the message, receives censorship messages or have broken response.
+
+* Uses Naive Bayes to determine how you would like to format your roleplay, making LoreReactor able to predict your desired formatting in a click of a button.
+
+* Uses Markov to cut costs by using the entirety of the characters' own messages as training data to produce character-specific messages without the need for language model inference.
+
 ## Architecture Notes
 
 ### Why Separate initiativeWeight, chatProbability and maximumChatStamina?
