@@ -49,7 +49,11 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ### Tool-Related
 
-* Over 50 tools that includes OS-level controls and web searches!
+* Over 50 tools that includes OS-level controls and web searches. This includes running shells, controlling your inputs and opening your web browsers.
+
+### Model-Related
+
+* Supports multiple local and cloud model backends.
 
 ### Chat-Related
 
