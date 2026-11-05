@@ -8,6 +8,10 @@ LinkedIn: https://www.linkedin.com/in/aqwam-harish-aiman/
 	
 YouTube: https://www.youtube.com/channel/UCUrwoxv5dufEmbGsxyEUPZw
 
+## Introduction
+
+LoreReactor is a web UI + standalone app for language model roleplay that has a lot of configurations you can make!
+
 ## Preview
 
 * [Screenshots](screenshots.md)
@@ -35,31 +39,41 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 ## Features
 
-### Context-Related
-
-* The character's profile images inject speaker-conditionally on first chat, with embeddings cached per-character for instant reuse.
-
-* Internal ID prompt safety: All characters are referenced as Character N internally in prompts, with display names converted back post-generation. This prevents attribution collapse with unrevealed characters, similar names, or multi-character conversations. An identity map in the system block teaches the model real names progressively.
-
 ### Character-Related
 
 * Per-character Token Sampler profiles override generation parameters independently.
 
 * Each character has independent ```maximumChatStamina``` (determines the maximum number of paragraphs per message), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
 
+* Internal ID prompt safety: All characters are referenced as Character N internally in prompts, with display names converted back post-generation. This prevents attribution collapse with unrevealed characters, similar names, or multi-character conversations. An identity map in the system block teaches the model real names progressively.
+
+### Tool-Related
+
+* Over 50 tools that includes OS-level controls and web searches. This includes running shells, controlling your inputs and opening your web browsers.
+
+### Model-Related
+
+* Supports multiple local and cloud model backends.
+
 ### Chat-Related
 
 * A chat can use multiple instructions that can be triggered using regular expressions. These instructions can also include images as well.
-
-### Sampler-Related
-
-* Multiple tokenSamplers can use the same stop pattern configuration.
 
 ### Immersion-Related
 
 * Branch-to-new-window with position labeling: Branching clones conversation history into an independent session. Original chat remains untouched.
 
 * Character names appear beneath their profile picture starting from the message after they first say their name. This preserves the surprise of reading the revelation in-dialogue before seeing it reflected in the UI.
+
+* Multiple view modes to match the vibe of your roleplay:
+
+	* Ladder mode: Classical text message app style.
+
+	* Cinematic mode: Focused on face-to-face interaction.
+
+ 	* Visual Novel mode: See characters' movements and interactions based on the locations.
+
+	* Card mode: Dungeon master style without any profile pictures.
 
 ## Architecture Notes
 
