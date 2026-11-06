@@ -64,15 +64,21 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Each character has these character stats:
 
-| Character Stat                    | Properties                                                                   |
-|-----------------------------------|------------------------------------------------------------------------------|
-| ```initiativeWeight```            | The speaking order when multiple characters respond.                         |
-| ```chatProbability```             | The chance of responding per turn.                                           |
-| ```maximumChatStamina```          | The maximum number of paragraphs per message.                                |
-| ```chatStaminaRegenerationRate``` | The chat stamina regeneration per second.                                    |
-| ```nameSensitivity```             | The modifier for ```initiativeWeight``` when the character's name is called. |
+| Character Stat                      | Properties                                                                   |
+|-------------------------------------|------------------------------------------------------------------------------|
+| ```initiativeWeight```              | The speaking order when multiple characters respond.                         |
+| ```chatProbability```               | The chance of responding per turn.                                           |
+| ```maximumChatStamina```            | The maximum number of paragraphs per message.                                |
+| ```chatStaminaRegenerationRate```   | The chat stamina regeneration per second.                                    |
+| ```chatImpatienceSensitivity```     | The overall modifier for how long the character will be able to stay quiet.  |
+| ```contextSensitivity```            | The sensitivity control on triggering context involving the character.       |
+| ```skipProbability```               | The probability of skipping an action.                                       |
+| ```memoryRetentionWeight```         | The threshold on activating the memories.                                    |
+| ```contextSensitivity```            | The sensitivity control on triggering context involving the character.       |
+| ```maximumActionStamina```          | The maximum distance that the character can go.                              |
+| ```actionStaminaRegenerationRate``` | The action stamina regeneration per second.                                  |
 
-These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
+These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one.
 
 * Internal ID prompt safety: All characters are referenced as Character N internally in prompts, with display names converted back post-generation. This prevents attribution collapse with unrevealed characters, similar names, or multi-character conversations. An identity map in the system block teaches the model real names progressively.
 
