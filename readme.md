@@ -14,7 +14,7 @@ LoreReactor is a web UI + standalone app for language model roleplay that has a 
 
 You can also use it directly with limited functionalities on GitHub Pages [here](aqwamcreates.github.io/LoreReactor).
 
-Created using Typescript, Vite, React, Node.js and Tauri.
+Created using Typescript, Vite, React, Node.js, Express.js and Tauri.
 
 ## Preview
 
@@ -82,7 +82,9 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Each chat session can have independent Characters, Contexts, Locations and Audio Tracks.
 
-* A chat session can use multiple instructions that can be triggered using regular expressions. These instructions can also include images as well.
+* A chat session can use multiple instructions that can be triggered using regular expressions and binding to entities like Characters, Contexts and Locations. These instructions can also include images as well.
+
+* Messages can also be filtered based on regular expression and co-located Characters criteria.
 
 * Save the chat session as a template through the World objects for future roleplays.
 
