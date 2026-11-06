@@ -1,7 +1,6 @@
 // src/frontend_src/storages/browserStorage.ts
 
 import { openDB, type IDBPDatabase } from 'idb';
-import { localURL } from '../../configurations';
 
 const DB_NAME = 'LoreReactor';
 const DB_VERSION = 1;
@@ -20,29 +19,6 @@ function getDb(): Promise<IDBPDatabase> {
         });
     }
     return dbPromise;
-}
-
-/**
- * Check if the server-side /user_data API is reachable.
- * Returns true if running with backend, false for browser-only/GitHub Pages/PWA mode.
- */
-export async function isServerAvailable(): Promise<boolean> {
-    // If hosted on GitHub Pages or an external HTTPS domain where localURL is localhost,
-    // check if the local backend is actually reachable and returning valid responses.
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 1200);
-        const res = await fetch(`${localURL}/gpu/status`, {
-            method: 'GET',
-            signal: controller.signal,
-            cache: 'no-store',
-        });
-        clearTimeout(timeout);
-        const contentType = res.headers.get('content-type') || '';
-        return res.ok && contentType.includes('application/json');
-    } catch {
-        return false;
-    }
 }
 
 // ─── Read Operations ────────────────────────────────────────────────
