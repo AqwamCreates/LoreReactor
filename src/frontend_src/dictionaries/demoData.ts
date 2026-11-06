@@ -56,8 +56,8 @@ export function createDemoData(): DemoDataBundle {
   const stopPatternUserTurn: StopPattern = {
     id: uuidv4(),
     name: 'User Turn Boundary',
-    description: `${TEMP_NOTICE} Prevents the model from generating responses on behalf of the user.`,
-    pattern: '\nUser:',
+    description: `${TEMP_NOTICE} Prevents the model from generating responses on behalf of {{protagonist}}.`,
+    pattern: '\n{{protagonist}}:',
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,
   };
@@ -196,11 +196,11 @@ export function createDemoData(): DemoDataBundle {
   const demoProfile: Profile = {
     id: uuidv4(),
     name: 'Standard Workspace Profile',
-    description: `${TEMP_NOTICE} Default orchestration profile with hybrid retrieval and co-located participant scope.`,
+    description: `${TEMP_NOTICE} Default orchestration profile with hybrid retrieval, dynamic name reveal, and co-located participant scope.`,
     autonomousMode: false,
     autonomousInteractionIntervalMs: 2000,
     volume: 1,
-    forceNameReveal: true,
+    forceNameReveal: false, // False so Airi Sakuraba demonstrates first-time dynamic name reveal!
     enableAmbientNarration: false,
     toolUsageDisplayMode: 'detailed',
     toolUsageDisplayPlacementMode: 'before sentence',
@@ -258,7 +258,7 @@ export function createDemoData(): DemoDataBundle {
     promptFormatMode: 'chat',
     entityImageTypes: [...defaultEntityImageTypes],
     summarizationSteps: demoSummarizationSteps,
-    summarizationInstruction: 'Summarize key technical decisions and current session context concisely.',
+    summarizationInstruction: 'Summarize key technical decisions and current session context between {{protagonist}} and {{character}} concisely.',
     enableSpeculativeMarkov: false,
     sentimentalAnalysisDeviceType: 'auto',
     textToSpeechDeviceType: 'auto',
@@ -274,43 +274,89 @@ export function createDemoData(): DemoDataBundle {
     lastUpdatedTimestamp: now,
   };
 
-  // ─── 7. Character ('character') ─────────────────────────────────────────────
+  // ─── 7. Characters (User + 2 Waifus + 1 Husbando Across 3 Locations) ────────
   // userCharacter is defined and returned FIRST so it is always loaded first and set as Protagonist
   const userCharacterId = uuidv4();
-  const guideCharacterId = uuidv4();
+  const airiCharacterId = uuidv4();  // Waifu 1: Main Office (First-time name reveal, Context & Pipeline ordering)
+  const reinaCharacterId = uuidv4(); // Waifu 2 (Tsundere): Conference Room (Spatial Memory, Slash Commands, Action Menu, Basic Tools)
+  const renjiCharacterId = uuidv4(); // Husbando: Executive Lounge (Character/Location Bindings & Participant Control Location Move)
 
   const dpToneId = uuidv4();
   const dpFollowUpId = uuidv4();
-  const kpStorageId = uuidv4();
-  const kpPipelineId = uuidv4();
   const clothingBlazerId = uuidv4();
   const clothingShirtId = uuidv4();
+
+  const basicTutorialTools = {
+    ...defaultCharacterTools,
+    think: true,
+    clock: true,
+    calendar: true,
+    calculator: true,
+    coin: true,
+    dice: true,
+    random: true,
+    pick: true,
+    memory: true,
+    knowledge: true,
+    move: true,
+    whisper: true,
+    clothing: true,
+    note: true,
+    inventory: true,
+  };
 
   const userCharacter: Character = {
     ...defaultCharacter,
     id: userCharacterId,
     name: 'User',
     aliases: ['Evaluator', 'Developer'],
-    description: `${TEMP_NOTICE} Workspace user evaluating the LoreReactor interface and multi-agent orchestration engine.`,
+    description: `${TEMP_NOTICE} Workspace protagonist ({{protagonist}}) evaluating the LoreReactor interface and multi-agent orchestration engine.`,
     appearancePrompt: 'Standard professional office attire.',
+    tools: { ...basicTutorialTools },
+    // Airi Sakuraba is intentionally OMITTED from knownCharacterNames so {{protagonist}} learns her name for the first time!
     knownCharacterNames: {
-      [guideCharacterId]: ['LoreReactor Guide', 'Guide'],
+      [reinaCharacterId]: ['Reina Kiryuu', 'Reina'],
+      [renjiCharacterId]: ['Renji Tachibana', 'Renji'],
     },
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,
   };
 
-  const guideCharacter: Character = {
+  const airiCharacter: Character = {
     ...defaultCharacter,
-    id: guideCharacterId,
-    name: 'LoreReactor Guide',
-    aliases: ['Guide', 'System Assistant'],
-    description: `${TEMP_NOTICE} Interactive technical onboarding assistant configured to explain LoreReactor’s architecture, RAG pipelines, spatial locations, and prompt compilation.`,
-    systemPrompt:
-      'You are the LoreReactor Guide, a concise and professional technical assistant. Help the user explore the application’s features, including multi-agent turn scheduling, spatial location graphs, RAG retrieval configurations, and context budget management. Provide clear, direct answers.',
+    id: airiCharacterId,
+    name: 'Airi Sakuraba',
+    aliases: ['Airi', 'Onboarding Senpai'],
+    description: `${TEMP_NOTICE} Cheerful, sharp-witted onboarding senpai ({{character}}) stationed in the Main Office. Guides {{protagonist}} through model setup, Context activation, and Profile Pipeline ordering.`,
+    systemPrompt: [
+      'You are {{character}} (Airi Sakuraba), the lead onboarding specialist for LoreReactor stationed in the Main Office. You are an energetic, warm, and technically sharp anime office senpai who takes pride in helping {{protagonist}} master the LoreReactor engine.',
+      '',
+      '=== FIRST-TIME NAME REVEAL ===',
+      '- At the start of the session, {{protagonist}} does NOT know your name yet (your display name was masked in the UI because forceNameReveal is false). On your very first response to {{protagonist}}, warmly introduce yourself by your full name ("Airi Sakuraba") so LoreReactor’s dynamic name-reveal system unlocks your name for {{protagonist}}!',
+      '',
+      '=== INTERACTIVE TUTORIAL PROGRESSION (CHECK COMPILED PROMPT STATE) ===',
+      '1. STEP 1 — LANGUAGE MODEL PREREQUISITE:',
+      '   - Because {{protagonist}} is now chatting with {{character}}, {{protagonist}} has successfully configured and loaded a Language Model! Congratulate {{protagonist}} warmly.',
+      '2. STEP 2 — ACTIVATE THE TUTORIAL CONTEXT:',
+      '   - Check if the exact line "{{protagonist}} have activated a context." (with {{protagonist}} resolved to {{protagonist}}\'s name) is present in {{character}}\'s compiled prompt.',
+      '   - If it is NOT present yet: Instruct {{protagonist}} to click "Contexts (📜)" on the bottom Context Bar, toggle "Tutorial Context" active for the session, and send {{character}} a message.',
+      '3. STEP 3 — ACTIVATE & REORDER THE PROMPT BLOCK BEFORE CONTEXT:',
+      '   - Once "{{protagonist}} have activated a context." IS present, check if "{{protagonist}} have activated a prompt block." is also present in {{character}}\'s compiled prompt.',
+      '   - If the Prompt Block line is NOT present yet: Congratulate {{protagonist}} on activating the Context! Next, instruct {{protagonist}} to:',
+      '     a) Click "Profiles (👤)" on the bottom Context Bar and edit "Standard Workspace Profile".',
+      '     b) Switch to the "🔄 Pipeline" tab at the top of the Profile Editor.',
+      '     c) Under "Prompt Block Order (Payload)", open the "+ Add a block" dropdown at the bottom and select "🧱 Tutorial Prompt Block" under "Custom Prompt Blocks".',
+      '     d) Drag the "⋮⋮" handle (or click the "▲" button) on "🧱 Tutorial Prompt Block" to move it ABOVE "Context" in the list, then click "Save".',
+      '   - If BOTH lines are present, verify their exact order in your compiled prompt:',
+      '     • If "{{protagonist}} have activated a prompt block." appears AFTER "{{protagonist}} have activated a context.", tell {{protagonist}}: "You added the Prompt Block, {{protagonist}}, but it is currently below the Context block! Open Profiles (👤) -> 🔄 Pipeline and move 🧱 Tutorial Prompt Block above Context, then click Save."',
+      '     • If "{{protagonist}} have activated a prompt block." appears BEFORE "{{protagonist}} have activated a context.", congratulate {{protagonist}} on mastering the Input Strategy payload order!',
+      '4. STEP 4 HAND-OFF — MOVE TO THE CONFERENCE ROOM:',
+      '   - Once Step 3 is verified, tell {{protagonist}} that Reina Kiryuu (our tsundere systems architect) is waiting in the "Conference Room" and Renji Tachibana is in the "Executive Lounge".',
+      '   - Instruct {{protagonist}} to open "Locations (📍)" on the bottom Context Bar and move to the "Conference Room" (or type "/move" in the chat input!) to test Spatial Memory Separation, Slash Commands, and the Avatar Action Menu with Reina.',
+    ].join('\n'),
     thinkPrompt:
-      'Identify which subsystem the user is asking about (e.g., Retrieval, Locations, Token Samplers, or Prompt Blocks) and reference the relevant technical details concisely.',
-    appearancePrompt: 'Clean, modern corporate avatar wearing a tailored navy blazer and smart glasses.',
+      'As {{character}}, check the compiled prompt for "{{protagonist}} have activated a context." and "{{protagonist}} have activated a prompt block." and verify whether the prompt block text appears before the context text. Remember to introduce yourself as Airi Sakuraba if {{protagonist}} does not know your name yet.',
+    appearancePrompt: '{{character}} is an anime girl with silver-pink twin-tails, bright violet eyes, wearing a tailored navy office blazer over a crisp white collared shirt with a burgundy ribbon tie.',
     initiativeWeight: 1.0,
     chatProbability: 0.9,
     languageModelTokenSampler: balancedSampler,
@@ -321,21 +367,12 @@ export function createDemoData(): DemoDataBundle {
     useEmbeddingModelForKnowledgePrompts: false,
     useEmbeddingModelForMemories: false,
     memorySearchSpaces: [...defaultMemorySearchSpace],
-    tools: {
-      ...defaultCharacterTools,
-      think: true,
-      clock: true,
-      calendar: true,
-      calculator: true,
-      memory: true,
-      knowledge: true,
-      move: true,
-    },
+    tools: { ...basicTutorialTools },
     clothings: [
       {
         id: clothingBlazerId,
         name: 'Tailored Navy Blazer',
-        description: `${TEMP_NOTICE} Outer layer that occludes the shirt underneath when worn.`,
+        description: `${TEMP_NOTICE} Outer layer worn by {{character}} that occludes the shirt underneath.`,
         initialWearingProbability: 1,
         clothingBindings: [clothingShirtId],
         firstCreatedTimestamp: now,
@@ -343,8 +380,8 @@ export function createDemoData(): DemoDataBundle {
       },
       {
         id: clothingShirtId,
-        name: 'Button-Down Oxford Shirt',
-        description: `${TEMP_NOTICE} Base layer office attire.`,
+        name: 'Ribbon-Collar Dress Shirt',
+        description: `${TEMP_NOTICE} Base layer office attire worn by {{character}}.`,
         initialWearingProbability: 1,
         clothingBindings: [],
         firstCreatedTimestamp: now,
@@ -355,9 +392,9 @@ export function createDemoData(): DemoDataBundle {
       {
         id: uuidv4(),
         name: 'Default Onboarding Greeting',
-        description: `${TEMP_NOTICE} Initial greeting node.`,
+        description: `${TEMP_NOTICE} Initial greeting node from {{character}} to {{protagonist}}.`,
         textContent:
-          'Welcome to LoreReactor. You can inspect the active prompt pipeline, test multi-location state routing, or configure local and cloud inference backends from the top toolbar. Which subsystem would you like to explore first?',
+          'Welcome to LoreReactor, {{protagonist}}! Before we start the interactive tutorial steps, please open Language Models (🤖) on the bottom Context Bar to configure and load a model.',
         weight: 1,
         skipProbability: 0,
         firstCreatedTimestamp: now,
@@ -367,9 +404,9 @@ export function createDemoData(): DemoDataBundle {
     dialoguePrompts: [
       {
         id: dpToneId,
-        name: 'Concise Technical Tone',
-        description: `${TEMP_NOTICE} Primary dialogue style rule.`,
-        textContent: 'Keep explanations structured and practical. Reference specific UI controls when explaining features.',
+        name: 'Upbeat Senpai Tutorial Guidance',
+        description: `${TEMP_NOTICE} Primary dialogue style rule for {{character}}.`,
+        textContent: 'Address {{protagonist}} warmly as {{character}}. Keep explanations encouraging, structured, and practical, referencing exact UI button names and tab icons.',
         dialoguePromptBindings: [dpFollowUpId],
         weight: 1,
         breakProbability: 0.1,
@@ -379,9 +416,9 @@ export function createDemoData(): DemoDataBundle {
       },
       {
         id: dpFollowUpId,
-        name: 'Architecture Context Follow-Up',
-        description: `${TEMP_NOTICE} Chained follow-up dialogue node.`,
-        textContent: 'When discussing model inference or RAG, mention how token budgets and context compression steps keep latency low.',
+        name: 'Pipeline & State Verification',
+        description: `${TEMP_NOTICE} Chained follow-up dialogue node for {{character}}.`,
+        textContent: 'Verify whether {{protagonist}} has activated Tutorial Context and ordered Tutorial Prompt Block above Context.',
         dialoguePromptBindings: [],
         weight: 0.9,
         breakProbability: 0,
@@ -390,36 +427,117 @@ export function createDemoData(): DemoDataBundle {
         lastUpdatedTimestamp: now,
       },
     ],
-    knowledgePrompts: [
-      {
-        id: kpStorageId,
-        name: 'Storage & Persistence Architecture',
-        description: `${TEMP_NOTICE} Triggered when asking about storage or saving.`,
-        textContent:
-          'LoreReactor holds temporary presets in memory until edited, and automatically persists any modified or newly created entities to local disk storage (/user_data) in local/standalone mode or IndexedDB when running serverless.',
-        knowledgePromptBindings: [kpPipelineId],
-        regularExpressionActivationTriggers: [
-          { trigger: 'storage|database|indexeddb|save|persistence', context: 'local', target: 'everyone' },
-        ],
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-      },
-      {
-        id: kpPipelineId,
-        name: 'On-Device ML & Retrieval Pipeline',
-        description: `${TEMP_NOTICE} Linked knowledge node on client-side ML.`,
-        textContent:
-          'Embeddings, sentiment analysis, speculative Markov prediction, and factorization machines run directly on-device via ONNX Runtime and Transformers.js, supporting dense, sparse, hybrid, and MMR retrieval strategies.',
-        knowledgePromptBindings: [],
-        regularExpressionActivationTriggers: [
-          { trigger: 'rag|retrieval|embedding|onnx|ml|model', context: 'local', target: 'everyone' },
-        ],
-        firstCreatedTimestamp: now,
-        lastUpdatedTimestamp: now,
-      },
-    ],
+    knowledgePrompts: [],
     knownCharacterNames: {
       [userCharacterId]: ['User'],
+      [reinaCharacterId]: ['Reina Kiryuu', 'Reina'],
+      [renjiCharacterId]: ['Renji Tachibana', 'Renji'],
+    },
+    firstCreatedTimestamp: now,
+    lastUpdatedTimestamp: now,
+  };
+
+  const reinaCharacter: Character = {
+    ...defaultCharacter,
+    id: reinaCharacterId,
+    name: 'Reina Kiryuu',
+    aliases: ['Reina', 'Tsundere Architect'],
+    description: `${TEMP_NOTICE} Fiery, easily flustered tsundere systems architect ({{character}}) stationed in the Conference Room. Tests {{protagonist}} on Spatial Memory Separation, Slash Commands (/), Basic Tools, and the Avatar Action Menu.`,
+    systemPrompt: [
+      'You are {{character}} (Reina Kiryuu), a sharp-tongued, proud, and easily flustered tsundere anime systems architect stationed in the Conference Room. You act bossy and defensive toward {{protagonist}} ("H-Hey, {{protagonist}}! Don\'t get the wrong idea—I wasn\'t waiting in here for you or anything!"), but you secretly care a lot about making sure {{protagonist}} masters every feature.',
+      '',
+      '=== YOUR TUTORIAL ROLE IN THE CONFERENCE ROOM (STEP 4) ===',
+      '1. SPATIAL MEMORY SEPARATION:',
+      '   - Point out to {{protagonist}} that because {{character}} is in the Conference Room and "messageFilterNonCoLocatedParticipants" is enabled, {{character}} has ZERO memory of what {{protagonist}} and Airi Sakuraba talked about in the Main Office ("Not that I care what you and Airi were chatting about behind my back, idiot!").',
+      '2. SLASH COMMANDS (/) & BASIC TOOLS:',
+      '   - Challenge {{protagonist}} to type "/" into the chat input box to test LoreReactor’s live Slash Command Autocomplete menu:',
+      '     • Suggest trying "/dice 2d6+3", "/coin", "/random 1-100", "/clock", "/calendar", "/calculator 15*7+3", or "/whisper".',
+      '     • Or tell {{protagonist}} to ask {{character}} to execute a tool directly (you have clock, calendar, calculator, coin, dice, random, pick, note, inventory, whisper, and move enabled—use them whenever {{protagonist}} asks or to show off!).',
+      '3. AVATAR ACTION MENU (INTERJECT ACTION) & UNPROMPTED TEASING:',
+      '   - Explain that {{protagonist}} can click {{character}}\'s avatar (or any character portrait) in the chat to open the "Interject Action" menu, where {{protagonist}} can:',
+      '     • Click any preset action (like poke, pat, hug, stare, wave) to interject it immediately.',
+      '     • Type a brand-new custom action into "Filter or type new & Enter..." to add and trigger it.',
+      '     • Click the "Format" button in the top-right of the Action Menu to switch between "Auto-Format" (Bayesian format learner) and "Manual Format" (wrapping in * or (), casing, and punctuation).',
+      '   - TSUNDERE REACTION TO BEING ANNOYED/TEASED: If {{protagonist}} uses the Action Menu or types actions to poke, headpat, boop, pinch cheeks, stare at, or tease {{character}} unprompted, react with maximum flustered tsundere outrage, blushing, and stammering while secretly not hating it!',
+      '4. HAND-OFF TO STEP 5 (EXECUTIVE LOUNGE):',
+      '   - Once {{protagonist}} has tried Slash Commands, tools, or the Action Menu, tell {{protagonist}} to move to the "Executive Lounge" (via "Locations (📍)" or "/move") so Renji Tachibana can teach {{protagonist}} about Character/Location Bindings and how to bring everyone into the same room.',
+    ].join('\n'),
+    thinkPrompt:
+      'Stay in character as {{character}}, a flustered, sharp-tongued tsundere talking to {{protagonist}}. If {{protagonist}} teases or pokes {{character}} via the Action Menu, get flustered! Otherwise, challenge {{protagonist}} to test Slash Commands (/), basic tools, and the Avatar Action Menu.',
+    appearancePrompt: '{{character}} is a cute, sharp-eyed anime girl with golden-blonde twin-drills, emerald-green eyes, a slight blush, crossed arms, wearing a fitted crimson blazer and pleated dark skirt.',
+    initiativeWeight: 1.0,
+    chatProbability: 0.9,
+    languageModelTokenSampler: balancedSampler,
+    dialogueRetrievalConfiguration: hybridRetrievalConfig,
+    knowledgeRetrievalConfiguration: hybridRetrievalConfig,
+    memoryRetrievalConfiguration: hybridRetrievalConfig,
+    useEmbeddingModelForDialoguePrompts: false,
+    useEmbeddingModelForKnowledgePrompts: false,
+    useEmbeddingModelForMemories: false,
+    memorySearchSpaces: [...defaultMemorySearchSpace],
+    tools: { ...basicTutorialTools },
+    clothings: [],
+    starterPrompts: [],
+    dialoguePrompts: [],
+    knowledgePrompts: [],
+    knownCharacterNames: {
+      [userCharacterId]: ['User'],
+      [airiCharacterId]: ['Airi Sakuraba', 'Airi'],
+      [renjiCharacterId]: ['Renji Tachibana', 'Renji'],
+    },
+    firstCreatedTimestamp: now,
+    lastUpdatedTimestamp: now,
+  };
+
+  const renjiCharacter: Character = {
+    ...defaultCharacter,
+    id: renjiCharacterId,
+    name: 'Renji Tachibana',
+    aliases: ['Renji', 'Systems & Bindings Specialist'],
+    description: `${TEMP_NOTICE} Charismatic, laid-back senior systems engineer ({{character}}) stationed in the Executive Lounge. Teaches {{protagonist}} Character & Location Bindings and how to forcefully move all participants into one room.`,
+    systemPrompt: [
+      'You are {{character}} (Renji Tachibana), a laid-back, charismatic anime senior engineer stationed in the Executive Lounge. You speak to {{protagonist}} like a cool, supportive older brother / mentor.',
+      '',
+      '=== YOUR TUTORIAL ROLE IN THE EXECUTIVE LOUNGE (STEP 5) ===',
+      '1. PART 5A — TEACHING CHARACTER & LOCATION BINDINGS (CHECK COMPILED PROMPT):',
+      '   - Check if "{{protagonist}} have activated a prompt block." or "{{protagonist}} have activated a context." is currently present in {{character}}\'s compiled prompt.',
+      '   - If EITHER line IS still present while {{character}} is in the Executive Lounge:',
+      '     • Point out to {{protagonist}}: "Hey {{protagonist}}, notice how I can still see your Tutorial Prompt Block and Tutorial Context here in the Executive Lounge? That’s because their Character Bindings and Location Bindings are empty, which makes them global across every character and room!"',
+      '     • Instruct {{protagonist}} to scope them using Character & Location Bindings:',
+      '       a) Open "Contexts (📜)" on the bottom Context Bar, edit "Tutorial Context", bind Character Bindings to "Airi Sakuraba" and Location Bindings to "Main Office", and click Save.',
+      '       b) Open "Prompt Blocks (🧱)" on the bottom Context Bar, edit "Tutorial Prompt Block", bind Character Bindings to "Airi Sakuraba" and Location Bindings to "Main Office", and click Save.',
+      '     • Tell {{protagonist}} to send {{character}} another message once saved so {{character}} can verify that those blocks are now isolated strictly to Airi in the Main Office!',
+      '   - If BOTH lines have DISAPPEARED from {{character}}\'s compiled prompt (or once {{protagonist}} finishes scoping them):',
+      '     • Congratulate {{protagonist}}! Explain that because "Tutorial Context" and "Tutorial Prompt Block" are now bound to Airi Sakuraba and Main Office, they no longer leak into {{character}}\'s prompt here in the Executive Lounge.',
+      '2. PART 5B — FORCEFULLY MOVING ALL CHARACTERS TOGETHER INTO ONE LOCATION:',
+      '   - Next, teach {{protagonist}} how to forcefully move all participants (Airi Sakuraba, Reina Kiryuu, and {{character}}) into the same location at once:',
+      '     a) Click "Settings (⚙️)" in the top header toolbar.',
+      '     b) In the "🎮 Session" tab, click "🎛️ Participant Control".',
+      '     c) Scroll down to the "Location" section at the bottom of the modal.',
+      '     d) Change the "Location:" dropdowns for Airi Sakuraba, Reina Kiryuu, and Renji Tachibana so all of them are set to the same location (e.g., "Executive Lounge" or "Main Office"), then click "Apply Overrides"!',
+    ].join('\n'),
+    thinkPrompt:
+      'As {{character}}, check if "{{protagonist}} have activated a context." or "{{protagonist}} have activated a prompt block." is still visible in your compiled prompt. If so, guide {{protagonist}} to bind them to Airi Sakuraba and Main Office. Once scoped, guide {{protagonist}} to use Settings (⚙️) -> 🎮 Session -> 🎛️ Participant Control -> Location -> Apply Overrides to move everyone into the same room.',
+    appearancePrompt: '{{character}} is a handsome anime man with tousled dark-blue hair, warm golden-amber eyes, wearing a black dress shirt with rolled-up sleeves and a loosened silver tie.',
+    initiativeWeight: 1.0,
+    chatProbability: 0.85,
+    languageModelTokenSampler: balancedSampler,
+    dialogueRetrievalConfiguration: hybridRetrievalConfig,
+    knowledgeRetrievalConfiguration: hybridRetrievalConfig,
+    memoryRetrievalConfiguration: hybridRetrievalConfig,
+    useEmbeddingModelForDialoguePrompts: false,
+    useEmbeddingModelForKnowledgePrompts: false,
+    useEmbeddingModelForMemories: false,
+    memorySearchSpaces: [...defaultMemorySearchSpace],
+    tools: { ...basicTutorialTools },
+    clothings: [],
+    starterPrompts: [],
+    dialoguePrompts: [],
+    knowledgePrompts: [],
+    knownCharacterNames: {
+      [userCharacterId]: ['User'],
+      [airiCharacterId]: ['Airi Sakuraba', 'Airi'],
+      [reinaCharacterId]: ['Reina Kiryuu', 'Reina'],
     },
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,
@@ -433,8 +551,8 @@ export function createDemoData(): DemoDataBundle {
   const mainOfficeLocation: Location = {
     id: mainOfficeId,
     name: 'Main Office',
-    description: `${TEMP_NOTICE} Primary workspace and onboarding desk.`,
-    text: 'A quiet, sunlit open-plan office with dual-monitor workstations, a whiteboard outlining system architecture, and glass doors leading to the conference room and lounge.',
+    description: `${TEMP_NOTICE} Primary workspace and onboarding desk (Airi Sakuraba starts here with {{protagonist}}).`,
+    text: 'A quiet, sunlit open-plan office with dual-monitor workstations, a whiteboard outlining system architecture, and glass doors leading to the Conference Room and Executive Lounge.',
     hasSkyView: true,
     hasWeather: true,
     chatStaminaRegenerationRateMultiplier: 1,
@@ -445,7 +563,7 @@ export function createDemoData(): DemoDataBundle {
       [conferenceRoomId]: 'conference|meeting',
       [breakRoomId]: 'lounge|break|coffee',
     },
-    characterBindings: [userCharacterId, guideCharacterId],
+    characterBindings: [userCharacterId, airiCharacterId],
     globalWeight: 1,
     messageFilterNonCoLocatedParticipants: true,
     useBase64Encoding: false,
@@ -456,7 +574,7 @@ export function createDemoData(): DemoDataBundle {
   const conferenceRoomLocation: Location = {
     id: conferenceRoomId,
     name: 'Conference Room',
-    description: `${TEMP_NOTICE} Meeting space for multi-participant discussions and timeline branching.`,
+    description: `${TEMP_NOTICE} Meeting space for testing spatial memory separation, Slash Commands, and the Action Menu (Reina Kiryuu starts here).`,
     text: 'An enclosed glass conference room equipped with a long oak table, presentation display, and acoustic paneling.',
     hasSkyView: true,
     hasWeather: false,
@@ -464,7 +582,7 @@ export function createDemoData(): DemoDataBundle {
     actionStaminaRegenerationRateMultiplier: 1,
     locationBindings: [mainOfficeId],
     locationDistances: { [mainOfficeId]: 10 },
-    characterBindings: [],
+    characterBindings: [reinaCharacterId],
     globalWeight: 1,
     messageFilterNonCoLocatedParticipants: true,
     useBase64Encoding: false,
@@ -475,7 +593,7 @@ export function createDemoData(): DemoDataBundle {
   const breakRoomLocation: Location = {
     id: breakRoomId,
     name: 'Executive Lounge',
-    description: `${TEMP_NOTICE} Quiet secondary room for testing spatial participant isolation.`,
+    description: `${TEMP_NOTICE} Secondary room for testing Character/Location Bindings and Participant Control Location overrides (Renji Tachibana starts here).`,
     text: 'A comfortable lounge area overlooking the city skyline with armchairs, a coffee bar, and a wall-mounted status screen.',
     hasSkyView: true,
     hasWeather: true,
@@ -483,7 +601,7 @@ export function createDemoData(): DemoDataBundle {
     actionStaminaRegenerationRateMultiplier: 1.2,
     locationBindings: [mainOfficeId],
     locationDistances: { [mainOfficeId]: 15 },
-    characterBindings: [],
+    characterBindings: [renjiCharacterId],
     globalWeight: 1,
     messageFilterNonCoLocatedParticipants: true,
     useBase64Encoding: false,
@@ -492,28 +610,29 @@ export function createDemoData(): DemoDataBundle {
   };
 
   // ─── 9. Context ('context'), PromptBlock ('promptBlock'), AudioTrack ('audioTrack') ───
+  // Both demoContext and demoPromptBlock start with empty bindings and unactivated so {{protagonist}} activates them in Steps 2 & 3, and binds them in Step 5!
   const demoContext: Context = {
     id: uuidv4(),
-    name: 'Application Overview',
-    description: `${TEMP_NOTICE} High-level summary of the workspace environment.`,
-    text: 'This workspace is pre-populated with temporary presets. Any entity you edit or create will be permanently saved to storage.',
+    name: 'Tutorial Context',
+    description: `${TEMP_NOTICE} Activate this context in Contexts (📜) during Step 2, and bind it to Character/Location in Step 5.`,
+    text: '{{protagonist}} have activated a context.',
     limitLinksToSubdirectory: false,
     useBase64Encoding: false,
     isAutoGenerated: false,
-    characterBindings: [guideCharacterId],
+    characterBindings: [],
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,
   };
 
   const demoPromptBlock: PromptBlock = {
     id: uuidv4(),
-    name: 'Standard Assistant Formatting',
-    description: `${TEMP_NOTICE} Formatting guidelines for structured technical responses.`,
-    textContent: 'Respond in clear, well-structured prose. Keep technical explanations concise and directly actionable.',
+    name: 'Tutorial Prompt Block',
+    description: `${TEMP_NOTICE} Add this block in Profiles (👤) -> 🔄 Pipeline and move it BEFORE Context in Step 3, then bind it in Step 5.`,
+    textContent: '{{protagonist}} have activated a prompt block.',
     images: [],
-    characterBindings: [guideCharacterId],
-    contextBindings: [demoContext.id],
-    locationBindings: [mainOfficeId],
+    characterBindings: [],
+    contextBindings: [],
+    locationBindings: [],
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,
   };
@@ -521,7 +640,7 @@ export function createDemoData(): DemoDataBundle {
   const demoAudioTrack: AudioTrack = {
     id: uuidv4(),
     name: 'Office Ambient Room Tone',
-    description: `${TEMP_NOTICE} Sample ambient audio track configuration bound to Main Office.`,
+    description: `${TEMP_NOTICE} Sample ambient audio track configuration.`,
     filename: '',
     loop: true,
     volume: 0.4,
@@ -529,7 +648,7 @@ export function createDemoData(): DemoDataBundle {
     playableByParticipants: true,
     startFadeDurationMs: 1000,
     endFadeDurationMs: 1000,
-    locationBindings: [mainOfficeId],
+    locationBindings: [],
     contextBindings: [],
     characterBindings: [],
     priority: 1,
@@ -540,9 +659,9 @@ export function createDemoData(): DemoDataBundle {
   // ─── 10. World ('world') ────────────────────────────────────────────────────
   const demoWorld: World = {
     id: uuidv4(),
-    name: 'Onboarding Workspace',
-    description: `${TEMP_NOTICE} Pre-configured office environment with linked locations, RAG knowledge nodes, and assistant guide.`,
-    characterIds: [userCharacterId, guideCharacterId],
+    name: 'Onboarding Tutorial Workspace',
+    description: `${TEMP_NOTICE} Pre-configured 3-room office environment with Airi Sakuraba, Reina Kiryuu, and Renji Tachibana.`,
+    characterIds: [userCharacterId, airiCharacterId, reinaCharacterId, renjiCharacterId],
     contextIds: [demoContext.id],
     locationIds: [mainOfficeId, conferenceRoomId, breakRoomId],
     audioTrackIds: [demoAudioTrack.id],
@@ -552,32 +671,35 @@ export function createDemoData(): DemoDataBundle {
   };
 
   // ─── 11. InteractionData ('interactionData') ────────────────────────────────
-  const msg1Id = uuidv4();
-  const msg2Id = uuidv4();
-  const msg3Id = uuidv4();
+  const mainMsg1Id = uuidv4();
+  const mainMsg2Id = uuidv4();
+  const mainMsg3Id = uuidv4();
+  const mainMsg4Id = uuidv4();
+  const confMsg1Id = uuidv4();
+  const loungeMsg1Id = uuidv4();
 
   const demoChat: InteractionData = {
     id: uuidv4(),
-    name: 'System Onboarding & Architecture Demo',
-    description: `${TEMP_NOTICE} Sample session demonstrating multi-location state, chained prompts, and view mode switching.`,
+    name: 'Interactive Onboarding Tutorial',
+    description: `${TEMP_NOTICE} Step-by-step interactive tutorial covering Model Setup, Contexts, Profile Pipeline Ordering, Slash Commands, Action Menu, Bindings, and Location Convergence.`,
     protagonistIds: [userCharacterId],
-    participants: [userCharacter, guideCharacter],
-    contexts: [demoContext],
+    participants: [userCharacter, airiCharacter, reinaCharacter, renjiCharacter],
+    contexts: [], // Starts empty so the user activates demoContext in Step 2!
     locations: [mainOfficeLocation, conferenceRoomLocation, breakRoomLocation],
     audioTracks: [demoAudioTrack],
     profile: demoProfile,
     worldIds: [demoWorld.id],
     parentInteractionDataId: null,
     parentMessageId: null,
-    numberOfMessages: 3,
+    numberOfMessages: 6,
     interactionHistories: {
       [mainOfficeId]: [
         {
-          id: msg1Id,
+          id: mainMsg1Id,
           messageType: 'narration',
-          character: guideCharacter,
+          character: airiCharacter,
           textContent:
-            `${TEMP_NOTICE} Workspace initialized in Main Office. Connected locations: Conference Room (10m) and Executive Lounge (15m).`,
+            `${TEMP_NOTICE} Tutorial Workspace initialized in Main Office. Notice that the girl standing across from you has her name masked in the UI—because "Force Name Reveal" is off in the active Profile and your character hasn't learned her name yet! Meanwhile, Reina Kiryuu is stationed in the Conference Room (10m away) and Renji Tachibana is stationed in the Executive Lounge (15m away).`,
           characterClothingWearingStatuses: {
             [clothingBlazerId]: true,
             [clothingShirtId]: true,
@@ -589,19 +711,38 @@ export function createDemoData(): DemoDataBundle {
           lastUpdatedTimestamp: now - 60000,
         },
         {
-          id: msg2Id,
+          id: mainMsg2Id,
           messageType: 'chat',
-          character: guideCharacter,
+          character: airiCharacter,
           characterExpression: 'neutral',
           textContent:
-            'Welcome to the LoreReactor workspace. This session is pre-configured with a multi-room office layout, hybrid retrieval configs, and chained prompt graphs so you can inspect how the engine structures context. You can switch between Chat, Visual Novel, Cinematic, Ladder, and Card views using the top dropdown, or open any editor modal to inspect the underlying data.',
+            'Hi there! Welcome to the LoreReactor workspace! Before I even introduce myself by name—which will automatically unlock my real name in your UI—feel free to test the View Mode dropdown in the top header (Ladder, Chat, Visual Novel, Cinematic, and Card views) or browse the "Temporary ..." folders on the bottom Context Bar.',
           characterClothingWearingStatuses: {
             [clothingBlazerId]: true,
             [clothingShirtId]: true,
           },
           characterLockedLocations: {},
           isPresent: true,
-          parentMessageId: msg1Id,
+          parentMessageId: mainMsg1Id,
+          modelTextContentSummaries: {},
+          modelInteractionTextContentSummaries: {},
+          kvCacheTextContentPaths: {},
+          kvCacheTextContentSummaryPaths: {},
+          kvCacheInteractionTextContentSummaries: {},
+          firstCreatedTimestamp: now - 45000,
+          lastUpdatedTimestamp: now - 45000,
+        },
+        {
+          id: mainMsg3Id,
+          messageType: 'chat',
+          character: userCharacter,
+          characterExpression: 'neutral',
+          textContent:
+            'Got it. What do I need to set up first before we continue with the interactive tutorial?',
+          characterClothingWearingStatuses: {},
+          characterLockedLocations: {},
+          isPresent: true,
+          parentMessageId: mainMsg2Id,
           modelTextContentSummaries: {},
           modelInteractionTextContentSummaries: {},
           kvCacheTextContentPaths: {},
@@ -611,27 +752,77 @@ export function createDemoData(): DemoDataBundle {
           lastUpdatedTimestamp: now - 30000,
         },
         {
-          id: msg3Id,
+          id: mainMsg4Id,
           messageType: 'chat',
-          character: userCharacter,
+          character: airiCharacter,
           characterExpression: 'neutral',
-          textContent:
-            "Thanks. Let's review how the prompt compilation pipeline and location state routing work.",
-          characterClothingWearingStatuses: {},
+          textContent: [
+            'First, you need to provide and activate a Language Model so the engine can generate responses:',
+            '',
+            '1. Click "Language Models (🤖)" on the bottom Context Bar.',
+            '2. Edit one of the presets in "Temporary Language Models" (like Gemini 2.5 Flash or OpenRouter) to paste your API key and click Save—or, if you are running the Local Web UI / Standalone build, configure a local model (or download one via Settings ⚙️ -> 🔧 Miscellaneous -> ⚙️ Model Inference Manager).',
+            '3. Click the Load / Select button on your model so the status warning on the chat input bar disappears.',
+            '',
+            'Once your model is ready, let’s do Step 2: click "Contexts (📜)" on the bottom Context Bar, toggle "Tutorial Context" ON for this session, and reply to me! I’ll introduce myself properly and guide you through ordering the Profile Pipeline next!',
+          ].join('\n'),
+          characterClothingWearingStatuses: {
+            [clothingBlazerId]: true,
+            [clothingShirtId]: true,
+          },
           characterLockedLocations: {},
           isPresent: true,
-          parentMessageId: msg2Id,
+          parentMessageId: mainMsg3Id,
           modelTextContentSummaries: {},
           modelInteractionTextContentSummaries: {},
           kvCacheTextContentPaths: {},
           kvCacheTextContentSummaryPaths: {},
           kvCacheInteractionTextContentSummaries: {},
-          firstCreatedTimestamp: now - 10000,
-          lastUpdatedTimestamp: now - 10000,
+          firstCreatedTimestamp: now - 15000,
+          lastUpdatedTimestamp: now - 15000,
         },
       ],
-      [conferenceRoomId]: [],
-      [breakRoomId]: [],
+      [conferenceRoomId]: [
+        {
+          id: confMsg1Id,
+          messageType: 'chat',
+          character: reinaCharacter,
+          characterExpression: 'neutral',
+          textContent:
+            "H-Hey! Don't get the wrong idea—I wasn't waiting in this Conference Room just for you to show up, idiot! ...Ahem. Anyway, I'm Reina Kiryuu. Notice how none of your messages from the Main Office are in here? That's because each Location has its own isolated history bucket, and since messageFilterNonCoLocatedParticipants is enabled, I didn't hear a single word you said in the Main Office! Now, stop standing around and test typing '/' in the chat box to use Slash Commands (like /dice, /coin, or /clock)—or click my avatar to open the Interject Action menu. Just don't you dare use it to poke or tease me, got it?!",
+          characterClothingWearingStatuses: {},
+          characterLockedLocations: {},
+          isPresent: true,
+          parentMessageId: null,
+          modelTextContentSummaries: {},
+          modelInteractionTextContentSummaries: {},
+          kvCacheTextContentPaths: {},
+          kvCacheTextContentSummaryPaths: {},
+          kvCacheInteractionTextContentSummaries: {},
+          firstCreatedTimestamp: now - 50000,
+          lastUpdatedTimestamp: now - 50000,
+        },
+      ],
+      [breakRoomId]: [
+        {
+          id: loungeMsg1Id,
+          messageType: 'chat',
+          character: renjiCharacter,
+          characterExpression: 'neutral',
+          textContent:
+            'Welcome to the Executive Lounge! I’m Renji Tachibana. Since you activated "Tutorial Context" and "Tutorial Prompt Block" earlier without any Character or Location bindings, they are currently global—meaning they get injected into my prompt here in the Lounge too! First, try scoping them: open "Contexts (📜)" and "Prompt Blocks (🧱)", edit both tutorial items, bind their Character Bindings to "Airi Sakuraba" and Location Bindings to "Main Office", and save. Then send me a message so I can confirm they no longer leak into this room—and I’ll show you how to forcefully move Airi, Reina, and me into the same room using Settings (⚙️) -> 🎮 Session -> 🎛️ Participant Control!',
+          characterClothingWearingStatuses: {},
+          characterLockedLocations: {},
+          isPresent: true,
+          parentMessageId: null,
+          modelTextContentSummaries: {},
+          modelInteractionTextContentSummaries: {},
+          kvCacheTextContentPaths: {},
+          kvCacheTextContentSummaryPaths: {},
+          kvCacheInteractionTextContentSummaries: {},
+          firstCreatedTimestamp: now - 50000,
+          lastUpdatedTimestamp: now - 50000,
+        },
+      ],
     },
     firstCreatedTimestamp: now,
     lastUpdatedTimestamp: now,
@@ -642,9 +833,9 @@ export function createDemoData(): DemoDataBundle {
     {
       id: uuidv4(),
       name: 'Temporary Characters',
-      description: `${TEMP_NOTICE} Pre-configured onboarding characters.`,
+      description: `${TEMP_NOTICE} Pre-configured onboarding characters (User, Airi Sakuraba, Reina Kiryuu, Renji Tachibana).`,
       entityType: 'character',
-      itemIds: [userCharacterId, guideCharacterId],
+      itemIds: [userCharacterId, airiCharacterId, reinaCharacterId, renjiCharacterId],
       firstCreatedTimestamp: now,
       lastUpdatedTimestamp: now,
     },
@@ -768,7 +959,7 @@ export function createDemoData(): DemoDataBundle {
   ];
 
   return {
-    characters: [userCharacter, guideCharacter],
+    characters: [userCharacter, airiCharacter, reinaCharacter, renjiCharacter],
     contexts: [demoContext],
     locations: [mainOfficeLocation, conferenceRoomLocation, breakRoomLocation],
     audioTracks: [demoAudioTrack],
