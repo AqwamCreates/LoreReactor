@@ -99,7 +99,7 @@ export function createDemoData(): DemoDataBundle {
   const geminiFlashLiteModel: LanguageModel = {
     id: uuidv4(),
     name: 'Gemini 3.1 Flash Lite (Google Cloud API)',
-    description: `${TEMP_NOTICE} Click ✏️ to enter your Google AI Studio API key and Save, then click the row body to Select.`,
+    description: `${TEMP_NOTICE} Click ✏️ to open the Model Editor, enter your Google AI Studio API key, and Save, then click the row body to Select.`,
     backend: 'Google',
     model: 'gemini-3.1-flash-lite',
     contextLength: 32768,
@@ -115,7 +115,7 @@ export function createDemoData(): DemoDataBundle {
   const openRouterModel: LanguageModel = {
     id: uuidv4(),
     name: 'OpenRouter Free Tier (Cloud API)',
-    description: `${TEMP_NOTICE} Click ✏️ to add an OpenRouter API key and Save, then click the row body to Select.`,
+    description: `${TEMP_NOTICE} Click ✏️ to open the Model Editor, add an OpenRouter API key, and Save, then click the row body to Select.`,
     backend: 'OpenRouter',
     model: 'meta-llama/llama-3.3-70b-instruct:free',
     contextLength: 16384,
@@ -344,6 +344,7 @@ export function createDemoData(): DemoDataBundle {
       '   - Its always-visible bottom row contains the 6 core narrative buttons: "💬 Chat List", "🎭 Characters", "📜 Contexts", "📍 Locations", "🔊 Audio Tracks", and "🌍 Worlds", plus a "▲ / ▼" chevron toggle button on the right.',
       '   - Clicking the "▲" chevron button on the bottom-right of the Context Bar expands the top advanced configuration row containing: "🧱 Prompt Blocks", "🤖 Language Models", "🎨 Spatiotemporal Models", "🎚️ Token Samplers", "🛑 Stop Patterns", "🧭 Retrieval Configurations", "💰 Budgets", and "👤 Profiles"!',
       '   - Inside any Manager Modal, presets are stored inside "📁 Temporary ..." folders. If a folder is collapsed (▶), {{protagonist}} must click the folder row first to expand it (▼)!',
+      '   - In "🤖 Language Models", clicking "✏️" on a model (or "➕" in the modal header) opens the Language Model Editor Modal (with tabs: 🤖 General, 📋 Templates, ⚙️ Inference, 🔧 Advanced, 💰 Cost) where {{protagonist}} configures the Backend, Model Path / API Key, and parameters. (Whereas "Settings ⚙️ -> 🔧 Miscellaneous -> ⚙️ Model Inference Manager" is strictly for downloading/installing local backend binaries like Llama.cpp, Ollama, or vLLM on a local machine!).',
       '   - For ordered session lists (Characters, Contexts, Locations, Audio Tracks, Worlds), clicking the "+" button on the right adds the item to the active session (turning "+" into a numbered badge like "1"), while clicking "✏️" edits the item.',
       '   - For single-selection lists (Language Models, Profiles, Budget Strategies), clicking "✏️" edits the item, and clicking the item\'s main row body/title selects or loads it!',
       '3. STEP 2 — ACTIVATING THE TUTORIAL CONTEXT:',
@@ -408,7 +409,7 @@ export function createDemoData(): DemoDataBundle {
         name: 'Airi Onboarding Greeting',
         description: `${TEMP_NOTICE} Initial greeting node for {{character}}.`,
         textContent:
-          'Welcome to LoreReactor, {{protagonist}}! Before we begin the interactive steps, click the "Open Language Models" button on the input banner (or click "▲" on the bottom Context Bar and select "🤖" Language Models), expand "📁 Temporary Language Models", click "✏️" on Gemini 3.1 Flash Lite or OpenRouter to paste your API key and Save, and click its row body to load/select it!',
+          'Welcome to LoreReactor, {{protagonist}}! Before we begin the interactive steps, click the "Open Language Models" button on the input banner (or click "▲" on the bottom Context Bar and select "🤖" Language Models), expand "📁 Temporary Language Models", click "✏️" on Gemini 3.1 Flash Lite or OpenRouter to open the Model Editor, paste your API key and Save, and click its row body to load/select it!',
         weight: 1,
         skipProbability: 0,
         firstCreatedTimestamp: now,
@@ -432,7 +433,7 @@ export function createDemoData(): DemoDataBundle {
         id: dpAiriFollowUpId,
         name: 'Exact UI Button Guidance',
         description: `${TEMP_NOTICE} Chained follow-up dialogue node for {{character}}.`,
-        textContent: 'Always distinguish between clicking "▲" on the Context Bar (to reveal the top row of advanced tools), clicking "✏️" (to open an item\'s Editor), clicking "+" (to toggle an item into an ordered session list), and clicking the row body (to select/load a Model or Profile, or move to a Location).',
+        textContent: 'Always distinguish between clicking "▲" on the Context Bar (to reveal the top row of advanced tools), clicking "✏️" (to open an item\'s Editor Modal), clicking "+" (to toggle an item into an ordered session list), and clicking the row body (to select/load a Model or Profile, or move to a Location).',
         dialoguePromptBindings: [],
         weight: 0.9,
         breakProbability: 0,
@@ -845,7 +846,7 @@ export function createDemoData(): DemoDataBundle {
           character: airiCharacter,
           characterExpression: 'neutral',
           textContent:
-            'STEP 1 (PREREQUISITE — PROVIDE & SELECT A LANGUAGE MODEL):\nBefore you can send messages or run interactive commands, you must activate a Language Model:\n1. Click the "Open Language Models" button on the status banner right above the chat input—OR click the "▲" toggle button on the bottom-right of the Context Bar to expand the top row and click "🤖" (Language Models).\n2. Click the "📁 Temporary Language Models" folder row (▶) to expand it (▼).\n3. Click the "✏️" (Edit) button on one of the presets (such as Gemini 3.1 Flash Lite or OpenRouter) to paste your API key and click "Save"—or click "➕" in the top-right header (or open Settings ⚙️ -> 🔧 Miscellaneous -> ⚙️ Model Inference Manager) if you are configuring a local backend.\n4. Back in the Language Models list, click directly on the model\'s main row body/title to Load & Select it (it will highlight as active)!\n\nOnce your model is active and the input bar unlocks, send me a quick "Hello!" here. I\'ll introduce myself so you can see Dynamic Name Reveal in action, and then I\'ll walk you through Step 2 (activating "Tutorial Context" with the "+" button in 📜 Contexts) and Step 3 (expanding "▲" -> 👤 Profiles to order "🧱 Tutorial Prompt Block" before Context)!',
+            'STEP 1 (PREREQUISITE — PROVIDE & SELECT A LANGUAGE MODEL):\nBefore you can send messages or run interactive commands, you must configure and select a Language Model:\n1. Click the "Open Language Models" button on the status banner right above the chat input—OR click the "▲" toggle button on the bottom-right of the Context Bar to expand the top row and click "🤖" (Language Models).\n2. Click the "📁 Temporary Language Models" folder row (▶) to expand it (▼).\n3. To use a Cloud API preset: click the "✏️" (Edit) button on Gemini 3.1 Flash Lite or OpenRouter to open the Model Editor, paste your API key into the "API Key" field under the "🤖 General" tab, and click "Save".\n   • Or to configure a Local model (in Local Web UI / Standalone): click "➕" in the top-right header of the Language Models modal to open the Model Editor, choose your Backend (e.g., Llama.cpp, Ollama, vLLM), select your local Model Path (.gguf), and click "Save". (Note: if you haven\'t installed the local backend engine binary yet, you can download/install it anytime via Settings ⚙️ -> 🔧 Miscellaneous -> ⚙️ Model Inference Manager).\n4. Back in the Language Models list, click directly on the model\'s main row body/title to Load & Select it (it will highlight as active)!\n\nOnce your model is active and the input bar unlocks, send me a quick "Hello!" here. I\'ll introduce myself so you can see Dynamic Name Reveal in action, and then I\'ll walk you through Step 2 (activating "Tutorial Context" with the "+" button in 📜 Contexts) and Step 3 (expanding "▲" -> 👤 Profiles to order "🧱 Tutorial Prompt Block" before Context)!',
           characterClothingWearingStatuses: {
             [clothingBlazerId]: true,
             [clothingShirtId]: true,
