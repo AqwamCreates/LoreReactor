@@ -142,10 +142,6 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
 ## Architecture Notes
 
-### Why Separate initiativeWeight, chatProbability and maximumChatStamina?
-
-"When should they speak?", "should this character speak?", and "can they speak?" are orthogonal personality axes. A shy-but-quick character differs from a loud-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
-
 ### Why IDs Instead Of Names For Internal Prompt Creation?
 
 Small models (≤10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
