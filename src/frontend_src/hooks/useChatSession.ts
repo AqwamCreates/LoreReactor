@@ -1,4 +1,5 @@
 // src/frontend_src/hooks/useChatSession.ts
+
 import { useEffect, useCallback, useRef } from 'react';
 import { useChatStore } from './useChatStore';
 import { useGenerationStore } from './useGenerationStore';
@@ -14,6 +15,7 @@ import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { loadRawBudgetData } from '../storages/serverStorage';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { hasTextContent } from '../utilities/chatSessionLogic';
+import { isServerAvailable } from '../utilities/serverAvailability';
 import { localURL } from '../../configurations';
 
 import type {
@@ -126,6 +128,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            if (!(await isServerAvailable()) || cancelled) return;
             try {
                 const response = await fetch(`${localURL}/language_models/status`);
                 if (!response.ok || cancelled) return;
@@ -144,6 +147,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => {
         let cancelled = false;
         (async () => {
+            if (!(await isServerAvailable()) || cancelled) return;
             try {
                 const response = await fetch(`${localURL}/spatiotemporal_models/status`);
                 if (!response.ok || cancelled) return;
