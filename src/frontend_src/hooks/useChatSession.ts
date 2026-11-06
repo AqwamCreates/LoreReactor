@@ -134,7 +134,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                 for (const m of data.activeModels || []) status[m.id] = { isRunning: true, port: m.port };
                 if (!cancelled) updateRunningLanguageModels(status);
             } catch (e) {
-                if (!cancelled) addToast(`Failed to fetch models status: ${e}`, 'error');
+                if (!cancelled) addToast(`Failed to fetch language models status: ${e}`, 'error');
             }
         })();
         return () => { cancelled = true; };
