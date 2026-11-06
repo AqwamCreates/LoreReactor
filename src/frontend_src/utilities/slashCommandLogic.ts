@@ -3,6 +3,7 @@
 import type { Character, Location, Context, AudioTrack, World, PromptBlock, TokenSampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel, SpatiotemporalModel, tool } from '../types';
 import { getLocalMessageHistory } from './timelineLogic';
 import { getReachableLocationsByCharacter, getCoLocatedParticipants } from './locationLogic';
+import { getEffectiveTools } from './characterLogic';
 
 // ─── Tree Data Structures ─────────────────────────────────────────
 export type ArgType = 
@@ -285,31 +286,13 @@ export const COMMAND_TREE: SlashCmd[] = [
     ]},
 ];
 
-/**
- * Filter COMMAND_TREE based on localProtagonist's effective tool settings
- * (respecting Profile tristate overrides: 1 = force on, -1 = force off, 0 = defer to character.tools).
- */
 export function getAvailableCommandTree(
     localProtagonist: Character | null | undefined,
     interactionData?: InteractionData | null
 ): SlashCmd[] {
-    const activeChar = localProtagonist || (
-        interactionData?.protagonistIds?.[0]
-            ? interactionData.participants.find(p => p.id === interactionData.protagonistIds[0])
-            : null
-    );
-
-    if (!activeChar?.tools) return COMMAND_TREE;
-
-    const profileTools = interactionData?.profile?.tools;
-
-    return COMMAND_TREE.filter((cmd) => {
-        const toolKey = cmd.name as tool;
-        const profileOverride = profileTools?.[toolKey];
-        if (profileOverride === 1) return true;
-        if (profileOverride === -1) return false;
-        return Boolean(activeChar.tools?.[toolKey]);
-    });
+    if (!localProtagonist) return COMMAND_TREE;
+    const effectiveTools = getEffectiveTools(localProtagonist, interactionData?.profile);
+    return COMMAND_TREE.filter((cmd) => Boolean(effectiveTools[cmd.name as tool]));
 }
 
 export function getEntityDescription(entity: any): string {
@@ -488,7 +471,7 @@ export function getEntityOptions(
         if (!data || !localCharacter) return [];
         const localMessageHistory = getLocalMessageHistory(data, localCharacter, ['chat', 'whisper']);
         const lastMsg = localMessageHistory[localMessageHistory.length - 1];
-        
+
         if (lastMsg?.inventory) {
             return Object.entries(lastMsg.inventory)
                 .filter(([k]) => !k.startsWith('___'))
@@ -841,7 +824,7 @@ export function applySlashSelection(
 
     if (isTargetsArg) {
         const argOffset = cmd?.subs?.find(s => s.name === currentParts[1]) ? 2 : 1;
-        
+
         // Determine which token holds the current comma-separated list
         let baseIndex = -1;
         if (!isTypingNewToken && targetIndex < currentParts.length) {
@@ -854,7 +837,7 @@ export function applySlashSelection(
         if (baseIndex >= argOffset && baseIndex < currentParts.length) {
             const currentPart = currentParts[baseIndex];
             const lastComma = currentPart.lastIndexOf(',');
-            
+
             if (lastComma !== -1) {
                 const afterLastComma = currentPart.substring(lastComma + 1);
                 if (afterLastComma.length === 0) {
@@ -871,7 +854,7 @@ export function applySlashSelection(
                 // Empty, just add the value
                 newValue = opt.value;
             }
-            
+
             currentParts[baseIndex] = newValue;
             return `/${currentParts.join(' ')}`;
         }
