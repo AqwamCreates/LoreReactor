@@ -24,16 +24,16 @@ Licensed under a custom source-available license. Not an open-source one.
 
 ## Warning
 
-LoreReactor grants AI characters unprecedented access to your host OS, hardware, and physical environment. Use the Tool Permission section wisely. We are not responsible if your AI waifu / husbando locks you out of your PC.
+LoreReactor grants AI characters unrestricted access to your host OS, hardware, and physical environment. We are not responsible if your AI waifu / husbando locks you out of your PC.
 
 ## Capabilities
 
-| Aspect                                | Standalone App | Web UI        | GitHub Pages  |
-|---------------------------------------|----------------|---------------|---------------|
-| Desktop Overlay                       | Supported      | Not Supported | Not Supported |
-| OS Tools                              | Supported      | Supported     | Not Supported |
-| Local Non-WebGPU / Non-WASM Inference | Supported      | Supported     | Not Supported |
-| Accessible From Other Devices         | Not Supported  | Supported     | Not Supported | 
+| Feature                                              | Standalone App | PC Web UI     | Mobile Web UI  | GitHub Pages  |
+|------------------------------------------------------|----------------|---------------|----------------|---------------|
+| Desktop Overlay                                      | Supported      | Not Supported | Not Supported  | Not Supported |
+| OS Tools                                             | Supported      | Supported     | Not Supported  | Not Supported |
+| Local Non-WebGPU / Non-WASM Inference                | Supported      | Supported     | Not Supported  | Not Supported |
+| Accessible From Other Devices Through Local Networks | Not Supported  | Supported     | Not Supported  | Not Supported | 
 
 ## Quick Setup
 
@@ -141,10 +141,6 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 * Capable of exporting and importing LoreReactor data including bulk character, context, location, audio track and world selections in JSON format. This means you will be able to share the full world with other people without manually needing to attach individual lore books to each characters.
 
 ## Architecture Notes
-
-### Why Separate initiativeWeight, chatProbability and maximumChatStamina?
-
-"When should they speak?", "should this character speak?", and "can they speak?" are orthogonal personality axes. A shy-but-quick character differs from a loud-but-deferential one. Conflating these into a single weight produces unrealistic group dynamics.
 
 ### Why IDs Instead Of Names For Internal Prompt Creation?
 
