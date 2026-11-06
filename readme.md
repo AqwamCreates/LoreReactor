@@ -64,11 +64,11 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Each character has these character stats:
 
-| Character Stats          | Properties                                                |
-|--------------------------|-----------------------------------------------------------|
-| ```maximumChatStamina``` | Controls the maximum number of paragraphs per message.    |
-| ```initiativeWeight```   | Controls speaking order when multiple characters respond. |
-| ```chatProbability```    | Controls the chance of responding per turn.               |
+| Character Stat           | Properties                                           |
+|--------------------------|------------------------------------------------------|
+| ```maximumChatStamina``` | The maximum number of paragraphs per message.        |
+| ```initiativeWeight```   | The speaking order when multiple characters respond. |
+| ```chatProbability```    | The chance of responding per turn.                   |
 
 These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
 
