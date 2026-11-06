@@ -64,19 +64,19 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Each character has these character stats:
 
-| Character Stat                      | Properties                                                                   |
-|-------------------------------------|------------------------------------------------------------------------------|
-| ```initiativeWeight```              | The speaking order when multiple characters respond.                         |
-| ```chatProbability```               | The chance of responding per turn.                                           |
-| ```maximumChatStamina```            | The maximum number of paragraphs per message.                                |
-| ```chatStaminaRegenerationRate```   | The chat stamina regeneration per second.                                    |
-| ```chatImpatienceSensitivity```     | The overall modifier for how long the character will be able to stay quiet.  |
-| ```contextSensitivity```            | The sensitivity control on triggering context involving the character.       |
-| ```skipProbability```               | The probability of skipping an action.                                       |
-| ```memoryRetentionWeight```         | The threshold on activating the memories.                                    |
-| ```contextSensitivity```            | The sensitivity control on triggering context involving the character.       |
-| ```maximumActionStamina```          | The maximum distance that the character can go.                              |
-| ```actionStaminaRegenerationRate``` | The action stamina regeneration per second.                                  |
+| Character Stat                      | Properties                                                                             |
+|-------------------------------------|----------------------------------------------------------------------------------------|
+| ```initiativeWeight```              | The speaking order when multiple characters respond.                                   |
+| ```chatProbability```               | The chance of responding per turn.                                                     |
+| ```maximumChatStamina```            | The maximum number of paragraphs per message.                                          |
+| ```chatStaminaRegenerationRate```   | The chat stamina regeneration per second.                                              |
+| ```chatImpatienceSensitivity```     | The overall modifier for how long the character will be able to stay quiet.            |
+| ```contextSensitivity```            | The sensitivity control on triggering context involving the character.                 |
+| ```skipProbability```               | The probability of skipping an action.                                                 |
+| ```memoryRetentionWeight```         | The threshold on activating the memories.                                              |
+| ```contextSensitivity```            | The sensitivity control on triggering context involving the character.                 |
+| ```maximumActionStamina```          | The maximum distance that the character can go when travelling to different locations. |
+| ```actionStaminaRegenerationRate``` | The action stamina regeneration per second.                                            |
 
 These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one.
 
