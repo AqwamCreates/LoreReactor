@@ -16,6 +16,8 @@ You can also use it directly with limited functionalities on GitHub Pages [here]
 
 Created using Typescript, Vite, React, Node.js, Express.js and Tauri.
 
+Licensed under a custom source-available license. Not an open-source one.
+
 ## Preview
 
 * [Screenshots](screenshots.md)
