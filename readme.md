@@ -62,7 +62,15 @@ You then can use LoreReactor directly or install the local backends first. The c
 
 * Characters can use their own Token Sampler or shared Token Samplers.
 
-* Each character has independent ```maximumChatStamina``` (determines the maximum number of paragraphs per message), ```initiativeWeight``` (determines speaking order when multiple characters respond) and ```chatProbability```(independent chance of responding per turn). These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
+* Each character has these character stats:
+
+| Character Stats          | Properties                                                  |
+|--------------------------|-------------------------------------------------------------|
+| ```maximumChatStamina``` | Determines the maximum number of paragraphs per message.    |
+| ```initiativeWeight```   | Determines speaking order when multiple characters respond. |
+| ```chatProbability```    | An independent chance of responding per turn.               |
+
+These are orthogonal axes — a shy-but-quick character behaves differently from a boisterous-but-deferential one. We also have other bunch of stats as well!
 
 * Internal ID prompt safety: All characters are referenced as Character N internally in prompts, with display names converted back post-generation. This prevents attribution collapse with unrevealed characters, similar names, or multi-character conversations. An identity map in the system block teaches the model real names progressively.
 
