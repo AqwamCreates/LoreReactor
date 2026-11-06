@@ -1,5 +1,6 @@
 // src/frontend_src/utilities/slashCommandLogic.ts
-import type { Character, Location, Context, AudioTrack, World, PromptBlock, TokenSampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel, SpatiotemporalModel } from '../types';
+
+import type { Character, Location, Context, AudioTrack, World, PromptBlock, TokenSampler, StopPattern, Profile, Memory, Account, MultiplayerData, InteractionData, BudgetStrategy, LanguageModel, SpatiotemporalModel, tool } from '../types';
 import { getLocalMessageHistory } from './timelineLogic';
 import { getReachableLocationsByCharacter, getCoLocatedParticipants } from './locationLogic';
 
@@ -283,6 +284,33 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'send', desc: 'Send command to port', args: [{ name: 'port', type: 'text', desc: 'Port path', example: 'COM3' }, { name: 'command', type: 'text', desc: 'Command string', example: 'LED_ON' }] },
     ]},
 ];
+
+/**
+ * Filter COMMAND_TREE based on localProtagonist's effective tool settings
+ * (respecting Profile tristate overrides: 1 = force on, -1 = force off, 0 = defer to character.tools).
+ */
+export function getAvailableCommandTree(
+    localProtagonist: Character | null | undefined,
+    interactionData?: InteractionData | null
+): SlashCmd[] {
+    const activeChar = localProtagonist || (
+        interactionData?.protagonistIds?.[0]
+            ? interactionData.participants.find(p => p.id === interactionData.protagonistIds[0])
+            : null
+    );
+
+    if (!activeChar?.tools) return COMMAND_TREE;
+
+    const profileTools = interactionData?.profile?.tools;
+
+    return COMMAND_TREE.filter((cmd) => {
+        const toolKey = cmd.name as tool;
+        const profileOverride = profileTools?.[toolKey];
+        if (profileOverride === 1) return true;
+        if (profileOverride === -1) return false;
+        return Boolean(activeChar.tools?.[toolKey]);
+    });
+}
 
 export function getEntityDescription(entity: any): string {
     if (!entity) return '';
@@ -606,6 +634,8 @@ export function computeSlashAutocomplete(
         return { breadcrumbs: [], options: [], isComplete: false, isSlash: false, activeIndex: 0, currentQuery: '' };
     }
 
+    const availableCommands = getAvailableCommandTree(localProtagonist, interactionData);
+
     const textAfterSlash = raw.slice(1);
     const parts = textAfterSlash.split(/\s+/).filter(p => p.length > 0);
     const isTypingNewToken = inputText.endsWith(' ');
@@ -614,8 +644,8 @@ export function computeSlashAutocomplete(
 
     if (parts.length === 0) {
         return {
-            breadcrumbs: [`Command (${COMMAND_TREE.length})`],
-            options: COMMAND_TREE.map(c => ({ type: 'cmd' as const, value: c.name, label: c.name, id: '', desc: c.desc })),
+            breadcrumbs: [`Command (${availableCommands.length})`],
+            options: availableCommands.map(c => ({ type: 'cmd' as const, value: c.name, label: c.name, id: '', desc: c.desc })),
             isComplete: false,
             isSlash: true,
             activeIndex,
@@ -623,12 +653,12 @@ export function computeSlashAutocomplete(
         };
     }
 
-    const cmd = COMMAND_TREE.find(c => c.name === parts[0]);
+    const cmd = availableCommands.find(c => c.name === parts[0]);
 
     if (!cmd) {
-        const filtered = COMMAND_TREE.filter(c => c.name.toLowerCase().startsWith(parts[0].toLowerCase()));
+        const filtered = availableCommands.filter(c => c.name.toLowerCase().startsWith(parts[0].toLowerCase()));
         return {
-            breadcrumbs: [`Command (${filtered.length}/${COMMAND_TREE.length})`],
+            breadcrumbs: [`Command (${filtered.length}/${availableCommands.length})`],
             options: filtered.map(c => ({ type: 'cmd' as const, value: c.name, label: c.name, id: '', desc: c.desc })),
             isComplete: false,
             isSlash: true,
@@ -739,7 +769,7 @@ export function computeSlashAutocomplete(
 
         const entities = getEntityOptions(
             arg.type, interactionData, allCharacters, allLocations, allContexts,
-            allAudioTracks, allPromptBlocks, allLanguageModels, allSpatiotemporalModels,allTokenSamplers, allStopPatterns,
+            allAudioTracks, allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns,
             allProfiles, allWorlds, allMemories, allAccounts, allMultiplayerData,
             allBudgetStrategies, localProtagonist
         );
