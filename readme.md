@@ -28,12 +28,12 @@ LoreReactor grants AI characters unrestricted access to your host OS, hardware, 
 
 ## Capabilities
 
-| Aspect                                               | Standalone App | Web UI        | GitHub Pages  |
-|------------------------------------------------------|----------------|---------------|---------------|
-| Desktop Overlay                                      | Supported      | Not Supported | Not Supported |
-| OS Tools                                             | Supported      | Supported     | Not Supported |
-| Local Non-WebGPU / Non-WASM Inference                | Supported      | Supported     | Not Supported |
-| Accessible From Other Devices Through Local Networks | Not Supported  | Supported     | Not Supported | 
+| Aspect                                               | Standalone App | PC Web UI     | Mobile Web UI  | GitHub Pages  |
+|------------------------------------------------------|----------------|---------------|----------------|---------------|
+| Desktop Overlay                                      | Supported      | Not Supported | Not Supported  | Not Supported |
+| OS Tools                                             | Supported      | Supported     | Not Supported  | Not Supported |
+| Local Non-WebGPU / Non-WASM Inference                | Supported      | Supported     | Not Supported  | Not Supported |
+| Accessible From Other Devices Through Local Networks | Not Supported  | Supported     | Not Supported  | Not Supported | 
 
 ## Quick Setup
 
