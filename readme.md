@@ -24,7 +24,7 @@ Licensed under a custom source-available license. Not an open-source one.
 
 ## Warning
 
-LoreReactor grants AI characters unprecedented access to your host OS, hardware, and physical environment. Use the Tool Permission section wisely. We are not responsible if your AI waifu / husbando locks you out of your PC.
+LoreReactor grants AI characters unrestricted access to your host OS, hardware, and physical environment. We are not responsible if your AI waifu / husbando locks you out of your PC.
 
 ## Capabilities
 
