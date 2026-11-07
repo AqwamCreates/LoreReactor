@@ -29,13 +29,13 @@ import type { FormatPreferenceData } from '../services/FormatPreferenceEngine';
 import { localURL, clientId } from '../../configurations';
 import { v4 as uuidv4 } from 'uuid';
 import {
-  browserReadJson, browserWriteJson, browserDeleteFile,
-  browserListDirectory, browserExportAll,
+    browserReadJson, browserWriteJson, browserDeleteFile,
+    browserListDirectory, browserExportAll,
 } from './browserStorage';
 import {
-  isServerAvailable,
-  setServerAvailability,
-  resetServerAvailability as resetSharedServerAvailability,
+    isServerAvailable,
+    setServerAvailability,
+    resetServerAvailability as resetSharedServerAvailability,
 } from '../utilities/serverAvailability';
 import { defaultActions, defaultCharacterTools, defaultInputStrategy, defaultCharacter } from '../dictionaries/defaults';
 import { createDemoData, type DemoDataBundle } from '../dictionaries/demoData';
@@ -114,59 +114,59 @@ const BUDGET_DATA_PATH = '/user_data/budget_data.json';
 // =============================================================================
 
 function getDefaultSummarizationSteps(): SummarizationStep[] {
-  const now = Date.now();
-  return [
-    {
-      id: 'step-sliding-window',
-      name: 'Sliding Window Replace',
-      strategyType: 'Sliding Window Replace',
-      enabled: true,
-      order: 0,
-      slidingWindowSize: 10,
-      summaryTokenBudget: 256,
-      triggerTokenThreshold: 0,
-      firstCreatedTimestamp: now,
-      lastUpdatedTimestamp: now,
-    },
-    {
-      id: 'step-periodic-compression',
-      name: 'Periodic Compression',
-      strategyType: 'Periodic Compression',
-      enabled: false,
-      order: 1,
-      periodicCompressionInterval: 20,
-      periodicCompressionChunkSize: 10,
-      summaryTokenBudget: 512,
-      triggerTokenThreshold: 0,
-      firstCreatedTimestamp: now,
-      lastUpdatedTimestamp: now,
-    },
-    {
-      id: 'step-recursive-summary',
-      name: 'Recursive Summary',
-      strategyType: 'Recursive Summary',
-      enabled: false,
-      order: 2,
-      recursiveSummaryChunkSize: 10,
-      recursiveSummaryMaximumDepth: 3,
-      summaryTokenBudget: 1024,
-      triggerTokenThreshold: 0,
-      firstCreatedTimestamp: now,
-      lastUpdatedTimestamp: now,
-    },
-    {
-      id: 'step-observation-masking',
-      name: 'Observation Masking',
-      strategyType: 'Observation Masking',
-      enabled: false,
-      order: 3,
-      maskingRelevanceThreshold: 0.3,
-      maskingKeywordWeight: 0.7,
-      triggerTokenThreshold: 0,
-      firstCreatedTimestamp: now,
-      lastUpdatedTimestamp: now,
-    },
-  ];
+    const now = Date.now();
+    return [
+        {
+            id: 'step-sliding-window',
+            name: 'Sliding Window Replace',
+            strategyType: 'Sliding Window Replace',
+            enabled: true,
+            order: 0,
+            slidingWindowSize: 10,
+            summaryTokenBudget: 256,
+            triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+        {
+            id: 'step-periodic-compression',
+            name: 'Periodic Compression',
+            strategyType: 'Periodic Compression',
+            enabled: false,
+            order: 1,
+            periodicCompressionInterval: 20,
+            periodicCompressionChunkSize: 10,
+            summaryTokenBudget: 512,
+            triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+        {
+            id: 'step-recursive-summary',
+            name: 'Recursive Summary',
+            strategyType: 'Recursive Summary',
+            enabled: false,
+            order: 2,
+            recursiveSummaryChunkSize: 10,
+            recursiveSummaryMaximumDepth: 3,
+            summaryTokenBudget: 1024,
+            triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+        {
+            id: 'step-observation-masking',
+            name: 'Observation Masking',
+            strategyType: 'Observation Masking',
+            enabled: false,
+            order: 3,
+            maskingRelevanceThreshold: 0.3,
+            maskingKeywordWeight: 0.7,
+            triggerTokenThreshold: 0,
+            firstCreatedTimestamp: now,
+            lastUpdatedTimestamp: now,
+        },
+    ];
 }
 
 // =============================================================================
@@ -178,60 +178,60 @@ const browserMediaUrlCache = new Map<string, string>();
 let browserMediaCacheHydrated = false;
 
 function inferMimeTypeFromPath(filePath: string): string {
-  const ext = filePath.split('.').pop()?.toLowerCase() || '';
-  const mimeMap: Record<string, string> = {
-    png: 'image/png',
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    webp: 'image/webp',
-    gif: 'image/gif',
-    svg: 'image/svg+xml',
-    mp3: 'audio/mpeg',
-    wav: 'audio/wav',
-    ogg: 'audio/ogg',
-    flac: 'audio/flac',
-  };
-  return mimeMap[ext] || 'image/png';
+    const ext = filePath.split('.').pop()?.toLowerCase() || '';
+    const mimeMap: Record<string, string> = {
+        png: 'image/png',
+        jpg: 'image/jpeg',
+        jpeg: 'image/jpeg',
+        webp: 'image/webp',
+        gif: 'image/gif',
+        svg: 'image/svg+xml',
+        mp3: 'audio/mpeg',
+        wav: 'audio/wav',
+        ogg: 'audio/ogg',
+        flac: 'audio/flac',
+    };
+    return mimeMap[ext] || 'image/png';
 }
 
 async function hydrateBrowserMediaCache(): Promise<void> {
-  if (browserMediaCacheHydrated) return;
-  browserMediaCacheHydrated = true;
-  try {
-    const allData = await browserExportAll();
-    for (const [key, val] of Object.entries(allData)) {
-      const cleanKey = normalizeUrl(key);
-      if (val && typeof val === 'object' && 'base64' in (val as Record<string, unknown>)) {
-        const b64 = String((val as { base64: string }).base64 || '');
-        if (b64) {
-          const mime = inferMimeTypeFromPath(cleanKey);
-          browserMediaUrlCache.set(cleanKey, b64.startsWith('data:') ? b64 : `data:${mime};base64,${b64}`);
+    if (browserMediaCacheHydrated) return;
+    browserMediaCacheHydrated = true;
+    try {
+        const allData = await browserExportAll();
+        for (const [key, val] of Object.entries(allData)) {
+            const cleanKey = normalizeUrl(key);
+            if (val && typeof val === 'object' && 'base64' in (val as Record<string, unknown>)) {
+                const b64 = String((val as { base64: string }).base64 || '');
+                if (b64) {
+                    const mime = inferMimeTypeFromPath(cleanKey);
+                    browserMediaUrlCache.set(cleanKey, b64.startsWith('data:') ? b64 : `data:${mime};base64,${b64}`);
+                }
+            } else if (typeof val === 'string' && val.startsWith('data:')) {
+                browserMediaUrlCache.set(cleanKey, val);
+            }
         }
-      } else if (typeof val === 'string' && val.startsWith('data:')) {
-        browserMediaUrlCache.set(cleanKey, val);
-      }
+    } catch (e) {
+        console.warn('Failed to hydrate browser media cache:', e);
     }
-  } catch (e) {
-    console.warn('Failed to hydrate browser media cache:', e);
-  }
 }
 
 async function getServerAvailable(): Promise<boolean> {
-  if (_serverAvailable !== null) return _serverAvailable;
-  _serverAvailable = await isServerAvailable();
-  if (!_serverAvailable) {
-    await hydrateBrowserMediaCache();
-  }
-  return _serverAvailable;
+    if (_serverAvailable !== null) return _serverAvailable;
+    _serverAvailable = await isServerAvailable();
+    if (!_serverAvailable) {
+        await hydrateBrowserMediaCache();
+    }
+    return _serverAvailable;
 }
 
 export function resetServerAvailability(): void {
-  _serverAvailable = null;
-  resetSharedServerAvailability();
+    _serverAvailable = null;
+    resetSharedServerAvailability();
 }
 
 function normalizeUrl(url: string): string {
-  return url.startsWith('/') ? url : `/${url}`;
+    return url.startsWith('/') ? url : `/${url}`;
 }
 
 async function fetchJson<T>(url: string): Promise<T | null> {
@@ -255,7 +255,11 @@ async function fetchJson<T>(url: string): Promise<T | null> {
     }
     const contentType = response.headers.get("content-type");
     if (!contentType || (!contentType.includes("application/json") && !contentType.includes("text/plain"))) {
-      if (!contentType?.includes("text")) return null;
+       if (contentType?.includes("text")) {
+           // Fall through to parse
+       } else {
+           return null;
+       }
     }
     const text = await response.text();
     if (!text) return null;
@@ -358,9 +362,13 @@ async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
   const folderPath = PATHS[entityKey];
   const manifestUrl = `${folderPath}/${MANIFEST_FILE}`;
   const currentIds = await fetchJson<string[]>(manifestUrl);
-  if (currentIds && Array.isArray(currentIds)) {
+
+  // Only trust the manifest immediately if it is non-empty!
+  // If it's missing or empty ([]), scan the directory first so populated disk folders are never mistaken for empty.
+  if (currentIds && Array.isArray(currentIds) && currentIds.length > 0) {
     return currentIds;
   }
+
   try {
     if (!(await getServerAvailable())) {
       const entries = await browserListDirectory(folderPath);
@@ -377,7 +385,9 @@ async function ensureManifest(entityKey: EntityKey): Promise<string[]> {
       const ids = files
         .filter(f => f.endsWith('.json') && f !== MANIFEST_FILE)
         .map(f => f.replace('.json', ''));
-      await putJson(manifestUrl, ids);
+      if (ids.length > 0) {
+        await putJson(manifestUrl, ids);
+      }
       return ids;
     }
   } catch (e) {
@@ -455,25 +465,25 @@ export async function urlToFile(url: string, filename: string): Promise<File | n
 // =============================================================================
 
 function hydrateEntity<T extends { id: string }, R extends Record<string, any>>(
-  raw: R,
-  id: string,
-  defaults?: Partial<T>,
-  transforms?: Partial<Record<keyof T, (raw: R, id: string) => any>>
+    raw: R,
+    id: string,
+    defaults?: Partial<T>,
+    transforms?: Partial<Record<keyof T, (raw: R, id: string) => any>>
 ): T {
-  const now = Date.now();
-  const base = {
-    ...defaults,
-    ...raw,
-    id,
-    firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
-    lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
-  } as unknown as T;
-  if (transforms) {
-    for (const [key, fn] of Object.entries(transforms)) {
-      if (fn) (base as any)[key] = fn(raw, id);
+    const now = Date.now();
+    const base = {
+        ...defaults,
+        ...raw,
+        id,
+        firstCreatedTimestamp: raw.firstCreatedTimestamp || now,
+        lastUpdatedTimestamp: raw.lastUpdatedTimestamp || now,
+    } as unknown as T;
+    if (transforms) {
+        for (const [key, fn] of Object.entries(transforms)) {
+            if (fn) (base as any)[key] = fn(raw, id);
+        }
     }
-  }
-  return base;
+    return base;
 }
 
 // =============================================================================
@@ -495,11 +505,11 @@ function createRepository<T extends { id: string }, R>(config: RepositoryConfig<
 
   async function loadManifest(): Promise<string[]> {
     const storedIds = await ensureManifest(entityKey);
-    if (getDemoItems) {
-      const demoIds = getDemoItems()
+    // Strict "Only When Empty" rule: never merge demo data if storedIds has items!
+    if (storedIds.length === 0 && getDemoItems) {
+      return getDemoItems()
         .map(item => item.id)
         .filter(id => !deletedDemoIds.has(id));
-      return Array.from(new Set([...storedIds, ...demoIds]));
     }
     return storedIds;
   }
@@ -509,7 +519,10 @@ function createRepository<T extends { id: string }, R>(config: RepositoryConfig<
       const raw = await fetchJson<R>(`${folderPath}/${id}.json`);
       if (!raw) {
         if (getDemoItems && !deletedDemoIds.has(id)) {
-          return getDemoItems().find(item => item.id === id) ?? null;
+          const storedIds = await ensureManifest(entityKey);
+          if (storedIds.length === 0) {
+            return getDemoItems().find(item => item.id === id) ?? null;
+          }
         }
         return null;
       }
@@ -555,15 +568,19 @@ function createRepository<T extends { id: string }, R>(config: RepositoryConfig<
 
 const memoryRepo = createRepository<Memory, RawMemory>({
   entityKey: 'memories',
-  hydrate: (raw, id) => hydrateEntity<Memory, RawMemory>(raw, id, {
-    name: 'Untitled Memory',
-    textContent: '',
-    interactionDataId: '',
-  }),
-  serialize: (memory) => ({
-    ...memory,
-    lastUpdatedTimestamp: Date.now(),
-  } as RawMemory),
+  hydrate: (raw, id) => {
+    return hydrateEntity<Memory, RawMemory>(raw, id, {
+        name: 'Untitled Memory',
+        textContent: '',
+        interactionDataId: '',
+    });
+  },
+  serialize: (memory) => {
+    return {
+      ...memory,
+      lastUpdatedTimestamp: Date.now(),
+    } as RawMemory;
+  },
 });
 
 export const loadRawMemoryManifest = memoryRepo.loadManifest;
@@ -652,11 +669,11 @@ const tokenSamplerRepo = createRepository<TokenSampler, RawTokenSampler>({
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
     return hydrateEntity<TokenSampler, RawTokenSampler>(raw, id, {
-      name: 'Unknown Token Sampler',
-      parameters: {},
-      stopPatterns: [],
+        name: 'Unknown Token Sampler',
+        parameters: {},
+        stopPatterns: [],
     }, {
-      stopPatterns: () => stopPatterns,
+        stopPatterns: () => stopPatterns
     });
   },
   serialize: (tokenSampler) => {
@@ -680,10 +697,10 @@ export const deleteRawTokenSampler = tokenSamplerRepo.remove;
 // =============================================================================
 
 function createDeletedCharacterStub(id: string): Character {
-  const deletedCharacter = { ...defaultCharacter };
-  deletedCharacter.id = id;
-  deletedCharacter.name = 'Deleted Character';
-  return deletedCharacter;
+    const deletedCharacter = { ...defaultCharacter };
+    deletedCharacter.id = id;
+    deletedCharacter.name = 'Deleted Character';
+    return deletedCharacter;
 }
 
 const characterRepo = createRepository<Character, RawCharacter>({
@@ -696,60 +713,48 @@ const characterRepo = createRepository<Character, RawCharacter>({
       const loaded = await loadRawTokenSampler(lmTokenSamplerId);
       if (loaded) languageModelTokenSampler = loaded;
     }
-
     const ttsTokenSamplerId = raw.textToSpeechModelTokenSamplerId;
     let textToSpeechModelTokenSampler: TokenSampler | undefined = undefined;
     if (ttsTokenSamplerId) {
       const loaded = await loadRawTokenSampler(ttsTokenSamplerId);
       if (loaded) textToSpeechModelTokenSampler = loaded;
     }
-
     const stopPatternIds = raw.stopPatternIds || [];
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
-
     let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.dialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.dialogueRetrievalConfigurationId) ?? undefined;
-
     let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.starterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.starterPromptRetrievalConfigurationId) ?? undefined;
-
     let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.knowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.knowledgeRetrievalConfigurationId) ?? undefined;
-
     let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.memoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.memoryRetrievalConfigurationId) ?? undefined;
-
     const memories = await hydrateMemories(raw.memories);
     const images: Record<string, string> = raw.images ?? {};
     const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
     if (Object.keys(images).length === 0 && legacyImage) {
       images.neutral = legacyImage;
     }
-
     return hydrateEntity<Character, RawCharacter>(raw, id, {
-      name: 'Unknown Character',
-      images: {},
-      tools: { ...defaultCharacterTools },
-      memories: {},
+        name: 'Unknown Character',
+        images: {},
+        tools: { ...defaultCharacterTools },
+        memories: {},
     }, {
-      languageModelTokenSampler: () => languageModelTokenSampler,
-      textToSpeechModelTokenSampler: () => textToSpeechModelTokenSampler,
-      stopPatterns: () => stopPatterns,
-      dialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
-      starterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
-      knowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
-      memoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
-      memories: () => memories,
-      images: () => images,
+        languageModelTokenSampler: () => languageModelTokenSampler,
+        textToSpeechModelTokenSampler: () => textToSpeechModelTokenSampler,
+        stopPatterns: () => stopPatterns,
+        dialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
+        starterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
+        knowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
+        memoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
+        memories: () => memories,
+        images: () => images,
     });
   },
   serialize: async (character) => {
-    const { 
-      languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, 
-      dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, 
-      knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest 
-    } = character;
+    const { languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
@@ -773,40 +778,43 @@ export const saveRawCharacter = characterRepo.save;
 export const deleteRawCharacter = characterRepo.remove;
 
 export async function loadCharacterShell(id: string): Promise<Character | null> {
-  const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
-  if (!rawCharacter) {
-    if (!deletedDemoIds.has(id)) {
-      return getDemoData().characters.find(c => c.id === id) ?? null;
+    const rawCharacter = await fetchJson<RawCharacter>(`${PATHS.characters}/${id}.json`);
+    if (!rawCharacter) {
+        if (!deletedDemoIds.has(id)) {
+            const storedIds = await ensureManifest('characters');
+            if (storedIds.length === 0) {
+                return getDemoData().characters.find(c => c.id === id) ?? null;
+            }
+        }
+        return null;
     }
-    return null;
-  }
-  const memories = await hydrateMemories(rawCharacter.memories);
-  const images: Record<string, string> = rawCharacter.images ?? {};
-  if (Object.keys(images).length === 0 && 'image' in rawCharacter && typeof rawCharacter.image === 'string') {
-    images.neutral = rawCharacter.image;
-  }
-  return hydrateEntity<Character, RawCharacter>(rawCharacter, id, {
-    name: 'Unknown Character',
-    images: {},
-    tools: { ...defaultCharacterTools },
-    memories: {},
-    languageModelTokenSampler: undefined,
-    textToSpeechModelTokenSampler: undefined,
-    stopPatterns: [],
-    dialogueRetrievalConfiguration: undefined,
-    starterPromptRetrievalConfiguration: undefined,
-    knowledgeRetrievalConfiguration: undefined,
-    memoryRetrievalConfiguration: undefined,
-  }, {
-    memories: () => memories,
-    images: () => images,
-  });
+    const memories = await hydrateMemories(rawCharacter.memories);
+    const images: Record<string, string> = rawCharacter.images ?? {};
+    if (Object.keys(images).length === 0 && 'image' in rawCharacter && typeof rawCharacter.image === 'string') {
+      images.neutral = rawCharacter.image;
+    }
+    return hydrateEntity<Character, RawCharacter>(rawCharacter, id, {
+        name: 'Unknown Character',
+        images: {},
+        tools: { ...defaultCharacterTools },
+        memories: {},
+        languageModelTokenSampler: undefined,
+        textToSpeechModelTokenSampler: undefined,
+        stopPatterns: [],
+        dialogueRetrievalConfiguration: undefined,
+        starterPromptRetrievalConfiguration: undefined,
+        knowledgeRetrievalConfiguration: undefined,
+        memoryRetrievalConfiguration: undefined,
+    }, {
+        memories: () => memories,
+        images: () => images,
+    });
 }
 
 export async function loadAllCharacterShells(): Promise<Character[]> {
-  const ids = await loadRawCharacterManifest();
-  const results = await loadInBatches(ids, loadCharacterShell);
-  return results.filter((c): c is Character => c !== null);
+    const ids = await loadRawCharacterManifest();
+    const results = await loadInBatches(ids, loadCharacterShell);
+    return results.filter((c): c is Character => c !== null);
 }
 
 // =============================================================================
@@ -822,30 +830,23 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
       const loaded = await loadRawTokenSampler(lmTokenSamplerId);
       if (loaded) languageModelTokenSampler = loaded;
     }
-
     const ttsTokenSamplerId = raw.textToSpeechModelTokenSamplerId;
     let textToSpeechModelTokenSampler: TokenSampler | undefined = undefined;
     if (ttsTokenSamplerId) {
       const loaded = await loadRawTokenSampler(ttsTokenSamplerId);
       if (loaded) textToSpeechModelTokenSampler = loaded;
     }
-
     const stopPatternIds = raw.stopPatternIds || [];
     const stopPatternsResults = await Promise.all(stopPatternIds.map(sid => loadRawStopPattern(sid)));
     const stopPatterns = stopPatternsResults.filter((p): p is StopPattern => p !== null);
-
     let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.dialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.dialogueRetrievalConfigurationId) ?? undefined;
-
     let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.starterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.starterPromptRetrievalConfigurationId) ?? undefined;
-
     let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.knowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.knowledgeRetrievalConfigurationId) ?? undefined;
-
     let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.memoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.memoryRetrievalConfigurationId) ?? undefined;
-
     const memories = await hydrateMemories(raw.memories);
     const images: Record<string, string> = raw.images ?? {};
     const legacyImage = ('image' in raw && typeof raw.image === 'string') ? raw.image : undefined;
@@ -853,28 +854,24 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
       images.neutral = legacyImage;
     }
     return hydrateEntity<Character, RawCharacter>(raw, id, {
-      name: 'Unknown Multiplayer Character',
-      images: {},
-      tools: { ...defaultCharacterTools },
-      memories: {},
+        name: 'Unknown Multiplayer Character',
+        images: {},
+        tools: { ...defaultCharacterTools },
+        memories: {},
     }, {
-      languageModelTokenSampler: () => languageModelTokenSampler,
-      textToSpeechModelTokenSampler: () => textToSpeechModelTokenSampler,
-      stopPatterns: () => stopPatterns,
-      dialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
-      starterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
-      knowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
-      memoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
-      memories: () => memories,
-      images: () => images,
+        languageModelTokenSampler: () => languageModelTokenSampler,
+        textToSpeechModelTokenSampler: () => textToSpeechModelTokenSampler,
+        stopPatterns: () => stopPatterns,
+        dialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
+        starterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
+        knowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
+        memoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
+        memories: () => memories,
+        images: () => images,
     });
   },
   serialize: async (character) => {
-    const { 
-      languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, 
-      dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, 
-      knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest 
-    } = character;
+    const { languageModelTokenSampler, textToSpeechModelTokenSampler, stopPatterns, dialogueRetrievalConfiguration, starterPromptRetrievalConfiguration, knowledgeRetrievalConfiguration, memoryRetrievalConfiguration, memories, ...rest } = character;
     const serializedMemories = await serializeMemories(memories);
     return {
       ...rest,
@@ -1062,10 +1059,12 @@ const budgetStrategyRepo = createRepository<BudgetStrategy, RawBudgetStrategy>({
     modelDeactivationContextSize: {},
     maximumBudget: 10,
   }),
-  serialize: (strategy) => ({
-    ...strategy,
-    lastUpdatedTimestamp: Date.now(),
-  } as RawBudgetStrategy),
+  serialize: (strategy) => {
+    return {
+      ...strategy,
+      lastUpdatedTimestamp: Date.now(),
+    } as RawBudgetStrategy;
+  },
 });
 
 export const loadRawBudgetStrategyManifest = budgetStrategyRepo.loadManifest;
@@ -1113,7 +1112,6 @@ const profileRepo = createRepository<Profile, RawProfile>({
     let characterTextToSpeechModelTokenSampler: TokenSampler | undefined = undefined;
     let webSummarizationTokenSampler: TokenSampler | undefined = undefined;
     let interactionDataSummarizationTokenSampler: TokenSampler | undefined = undefined;
-
     if (raw.characterLanguageModelTokenSamplerId) characterLanguageModelTokenSampler = await loadRawTokenSampler(raw.characterLanguageModelTokenSamplerId) ?? undefined;
     if (raw.characterTextToSpeechModelTokenSamplerId) characterTextToSpeechModelTokenSampler = await loadRawTokenSampler(raw.characterTextToSpeechModelTokenSamplerId) ?? undefined;
     if (raw.webSummarizationTokenSamplerId) webSummarizationTokenSampler = await loadRawTokenSampler(raw.webSummarizationTokenSamplerId) ?? undefined;
@@ -1122,85 +1120,81 @@ const profileRepo = createRepository<Profile, RawProfile>({
     let characterStopPattern: StopPattern | undefined = undefined;
     let webSummarizationStopPattern: StopPattern | undefined = undefined;
     let interactionDataSummarizationStopPattern: StopPattern | undefined = undefined;
-
     if (raw.characterStopPatternId) characterStopPattern = await loadRawStopPattern(raw.characterStopPatternId) ?? undefined;
     if (raw.webSummarizationStopPatternId) webSummarizationStopPattern = await loadRawStopPattern(raw.webSummarizationStopPatternId) ?? undefined;
     if (raw.interactionDataSummarizationStopPatternId) interactionDataSummarizationStopPattern = await loadRawStopPattern(raw.interactionDataSummarizationStopPatternId) ?? undefined;
 
     let dialogueRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterDialogueRetrievalConfigurationId) dialogueRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterDialogueRetrievalConfigurationId) ?? undefined;
-
     let starterPromptRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterStarterPromptRetrievalConfigurationId) starterPromptRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterStarterPromptRetrievalConfigurationId) ?? undefined;
-
     let knowledgeRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterKnowledgeRetrievalConfigurationId) knowledgeRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterKnowledgeRetrievalConfigurationId) ?? undefined;
-
     let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterMemoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterMemoryRetrievalConfigurationId) ?? undefined;
 
     return hydrateEntity<Profile, RawProfile>(raw, id, {
-      name: 'Unknown profile',
-      autonomousMode: false,
-      autonomousInteractionIntervalMs: 1000,
-      volume: 1,
-      forceNameReveal: false,
-      enableAmbientNarration: false,
-      toolUsageDisplayMode: 'none',
-      toolUsageDisplayPlacementMode: 'before sentence',
-      enableCharacterExpression: false,
-      enableAutoSpeechDetection: false,
-      speechVolumeActivationThreshold: 18,
-      speechSilenceVolumeActivationThreshold: 8,
-      speechSilenceThresholdMs: 1400,
-      voiceActivityProbabilityThreshold: 0.5,
-      randomizeTextCharacterInjection: false,
-      randomizeTextCharacterInjectionOnRetry: true,
-      maximumNumberOfTextCharacterRandomizationPerModel: 1,
-      useFrontCameraImage: 0,
-      numberOfMessagesToDisableThinkPrompt: -1,
-      numberOfMessagesToDisableMetaThinkInstructions: -1,
-      numberOfMessagesToDisableDialoguePrompt: -1,
-      numberOfMessagesToDisableStarterPrompt: -1,
-      forceEqualInitiative: false,
-      chatProbability: -1,
-      maximumChatStamina: -1,
-      chatStaminaRegenerationRate: -1,
-      nameSensitivity: -1,
-      chatImpatienceSensitivity: -1,
-      skipProbability: -1,
-      memoryRetentionWeight: -1,
-      contextSensitivity: -1,
-      maximumActionStamina: -1,
-      actionStaminaRegenerationRate: -1,
-      participantScopeModes: { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' } as Record<cacheConfigurationType, participantScopeMode>,
-      participantInsertionModes: { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' } as Record<cacheConfigurationType, participantInsertionMode>,
-      participantsKnownNamesLimits: { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 } as Record<cacheConfigurationType, number>,
-      minimalVolatileCacheMode: false,
-      doNotInjectDefaultStopTokens: false,
-      tools: {} as Record<tool, tristateInteger>,
-      inputStrategy: [...defaultInputStrategy],
-      enableSpeculativeMarkov: false,
-      sentimentalAnalysisDeviceType: 'auto',
-      textToSpeechDeviceType: 'auto',
-      speechToTextDeviceType: 'auto',
-      voiceActivityDetectionDeviceType: 'auto',
-      embeddingDeviceType: 'auto',
-      summarizationInstruction: '',
-      autoResumeSignals: [],
+        name: 'Unknown profile',
+        autonomousMode: false,
+        autonomousInteractionIntervalMs: 1000,
+        volume: 1,
+        forceNameReveal: false,
+        enableAmbientNarration: false,
+        toolUsageDisplayMode: 'none',
+        toolUsageDisplayPlacementMode: 'before sentence',
+        enableCharacterExpression: false,
+        enableAutoSpeechDetection: false,
+        speechVolumeActivationThreshold: 18,
+        speechSilenceVolumeActivationThreshold: 8,
+        speechSilenceThresholdMs: 1400,
+        voiceActivityProbabilityThreshold: 0.5,
+        randomizeTextCharacterInjection: false,
+        randomizeTextCharacterInjectionOnRetry: true,
+        maximumNumberOfTextCharacterRandomizationPerModel: 1,
+        useFrontCameraImage: 0,
+        numberOfMessagesToDisableThinkPrompt: -1,
+        numberOfMessagesToDisableMetaThinkInstructions: -1,
+        numberOfMessagesToDisableDialoguePrompt: -1,
+        numberOfMessagesToDisableStarterPrompt: -1,
+        forceEqualInitiative: false,
+        chatProbability: -1,
+        maximumChatStamina: -1,
+        chatStaminaRegenerationRate: -1,
+        nameSensitivity: -1,
+        chatImpatienceSensitivity: -1,
+        skipProbability: -1,
+        memoryRetentionWeight: -1,
+        contextSensitivity: -1,
+        maximumActionStamina: -1,
+        actionStaminaRegenerationRate: -1,
+        participantScopeModes: { 'Character Name': 'coLocated', 'System Prompt': 'coLocated', 'Think Prompt': 'coLocated' } as Record<cacheConfigurationType, participantScopeMode>,
+        participantInsertionModes: { 'Character Name': 'dynamic', 'System Prompt': 'dynamic', 'Think Prompt': 'dynamic' } as Record<cacheConfigurationType, participantInsertionMode>,
+        participantsKnownNamesLimits: { 'Character Name': -1, 'System Prompt': -1, 'Think Prompt': -1 } as Record<cacheConfigurationType, number>,
+        minimalVolatileCacheMode: false,
+        doNotInjectDefaultStopTokens: false,
+        tools: {} as Record<tool, tristateInteger>,
+        inputStrategy: [...defaultInputStrategy],
+        enableSpeculativeMarkov: false,
+        sentimentalAnalysisDeviceType: 'auto',
+        textToSpeechDeviceType: 'auto',
+        speechToTextDeviceType: 'auto',
+        voiceActivityDetectionDeviceType: 'auto',
+        embeddingDeviceType: 'auto',
+        summarizationInstruction: '',
+        autoResumeSignals: [],
     }, {
-      summarizationSteps: () => summarizationSteps,
-      characterLanguageModelTokenSampler: () => characterLanguageModelTokenSampler,
-      characterTextToSpeechModelTokenSampler: () => characterTextToSpeechModelTokenSampler,
-      webSummarizationTokenSampler: () => webSummarizationTokenSampler,
-      interactionDataSummarizationTokenSampler: () => interactionDataSummarizationTokenSampler,
-      characterStopPattern: () => characterStopPattern,
-      webSummarizationStopPattern: () => webSummarizationStopPattern,
-      interactionDataSummarizationStopPattern: () => interactionDataSummarizationStopPattern,
-      characterDialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
-      characterStarterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
-      characterKnowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
-      characterMemoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
+        summarizationSteps: () => summarizationSteps,
+        characterLanguageModelTokenSampler: () => characterLanguageModelTokenSampler,
+        characterTextToSpeechModelTokenSampler: () => characterTextToSpeechModelTokenSampler,
+        webSummarizationTokenSampler: () => webSummarizationTokenSampler,
+        interactionDataSummarizationTokenSampler: () => interactionDataSummarizationTokenSampler,
+        characterStopPattern: () => characterStopPattern,
+        webSummarizationStopPattern: () => webSummarizationStopPattern,
+        interactionDataSummarizationStopPattern: () => interactionDataSummarizationStopPattern,
+        characterDialogueRetrievalConfiguration: () => dialogueRetrievalConfiguration,
+        characterStarterPromptRetrievalConfiguration: () => starterPromptRetrievalConfiguration,
+        characterKnowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
+        characterMemoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
     });
   },
   serialize: (profile) => {
@@ -1265,8 +1259,8 @@ export const saveRawWebpage = webpageRepo.save;
 export const deleteRawWebpage = webpageRepo.remove;
 
 export async function findWebpageByUrl(url: string): Promise<Webpage | null> {
-  const all = await loadAllRawWebpages();
-  return all.find(w => w.url === url) || null;
+    const all = await loadAllRawWebpages();
+    return all.find(w => w.url === url) || null;
 }
 
 // =============================================================================
@@ -1342,7 +1336,7 @@ export const deleteRawMultiplayerData = multiplayerDataRepo.remove;
 // =============================================================================
 
 export async function deleteRawMessage(id: string): Promise<void> { 
-  await deleteResource(`${PATHS.interactionMessages}/${id}.json`); 
+    await deleteResource(`${PATHS.interactionMessages}/${id}.json`); 
 }
 
 // =============================================================================
@@ -1372,11 +1366,14 @@ function interactionDataToRawShell(d: InteractionData): RawInteractionData {
 }
 
 export async function loadRawChatManifest(): Promise<string[]> { 
-  const storedIds = await ensureManifest('interactionData');
-  const demoIds = getDemoData().interactionData
-    .map(d => d.id)
-    .filter(id => !deletedDemoIds.has(id));
-  return Array.from(new Set([...storedIds, ...demoIds]));
+    const storedIds = await ensureManifest('interactionData');
+    // Strict "Only When Empty" rule: never merge demo data if storedIds has items!
+    if (storedIds.length === 0) {
+      return getDemoData().interactionData
+        .map(d => d.id)
+        .filter(id => !deletedDemoIds.has(id));
+    }
+    return storedIds;
 }
 
 async function buildInteractionDataShell(
@@ -1401,15 +1398,19 @@ async function buildInteractionDataShell(
   const contexts = (rawInteractionData.contextIds || [])
     .map(iid => contextMap.get(iid))
     .filter((i): i is Context => i !== undefined);
+
   const locations = (rawInteractionData.locationIds || [])
     .map(lid => locationMap.get(lid))
     .filter((l): l is Location => l !== undefined);
+
   const profile = rawInteractionData.profileId ? profileMap.get(rawInteractionData.profileId) : undefined;
+
   const audioTracks = audioTrackMap
     ? (rawInteractionData.audioTrackIds || [])
         .map(tid => audioTrackMap.get(tid))
         .filter((t): t is AudioTrack => t !== undefined)
     : [];
+
   const totalMessages = rawInteractionData.interactionHistories 
     ? Object.values(rawInteractionData.interactionHistories).reduce((sum, arr) => sum + arr.length, 0) 
     : 0;
@@ -1428,54 +1429,54 @@ async function buildInteractionDataShell(
     lastUpdatedTimestamp: rawInteractionData.lastUpdatedTimestamp || Date.now(),
     parentInteractionDataId: rawInteractionData.parentInteractionDataId || null, 
     parentMessageId: rawInteractionData.parentMessageId || null,
-    profile,
+    profile: profile,
     worldIds: rawInteractionData.worldIds || [],
   };
 }
 
 export async function loadInteractionMessages(interactionData: InteractionData): Promise<InteractionData> {
-  const hasMessages = Object.values(interactionData.interactionHistories).some(arr => arr.length > 0);
-  if (hasMessages) return interactionData;
+    const hasMessages = Object.values(interactionData.interactionHistories).some(arr => arr.length > 0);
+    if (hasMessages) return interactionData;
 
-  const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
-  if (!rawInteractionData || !rawInteractionData.interactionHistories || Object.keys(rawInteractionData.interactionHistories).length === 0) {
-    return interactionData;
-  }
+    const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${interactionData.id}.json`);
+    if (!rawInteractionData || !rawInteractionData.interactionHistories || Object.keys(rawInteractionData.interactionHistories).length === 0) {
+        return interactionData;
+    }
 
-  const charMap = new Map<string, Character>();
-  for (const p of interactionData.participants) {
-    charMap.set(p.id, p);
-  }
+    const charMap = new Map<string, Character>();
+    for (const p of interactionData.participants) {
+        charMap.set(p.id, p);
+    }
 
-  const interactionHistories: Record<string, HistoryMessage[]> = {};
-  const allPromises: Promise<void>[] = [];
+    const interactionHistories: Record<string, HistoryMessage[]> = {};
+    const allPromises: Promise<void>[] = [];
 
-  for (const [locationId, messageIds] of Object.entries(rawInteractionData.interactionHistories)) {
-    interactionHistories[locationId] = new Array(messageIds.length);
-    messageIds.forEach((messageId, index) => {
-      allPromises.push((async () => {
-        const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage | RawWhisperMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
-        if (!rawMessage) {
-          interactionHistories[locationId][index] = null as any;
-          return;
-        }
-        const character = charMap.get(rawMessage.characterId);
-        const { characterId, ...messageWithoutCharId } = rawMessage;
-        interactionHistories[locationId][index] = {
-          id: messageId,
-          ...messageWithoutCharId,
-          character: character || createDeletedCharacterStub(characterId),
-        } as HistoryMessage;
-      })());
-    });
-  }
+    for (const [locationId, messageIds] of Object.entries(rawInteractionData.interactionHistories)) {
+        interactionHistories[locationId] = new Array(messageIds.length);
+        messageIds.forEach((messageId, index) => {
+            allPromises.push((async () => {
+                const rawMessage = await fetchJson<RawInteractionMessage | RawChatMessage | RawWhisperMessage>(`${PATHS.interactionMessages}/${messageId}.json`);
+                if (!rawMessage) {
+                    interactionHistories[locationId][index] = null as any;
+                    return;
+                }
+                const character = charMap.get(rawMessage.characterId);
+                const { characterId, ...messageWithoutCharId } = rawMessage;
+                interactionHistories[locationId][index] = {
+                    id: messageId,
+                    ...messageWithoutCharId,
+                    character: character || createDeletedCharacterStub(characterId),
+                } as HistoryMessage;
+            })());
+        });
+    }
 
-  await Promise.all(allPromises);
-  for (const locId of Object.keys(interactionHistories)) {
-    interactionHistories[locId] = interactionHistories[locId].filter(m => m !== null);
-  }
-  const totalMessages = Object.values(interactionHistories).reduce((sum, arr) => sum + arr.length, 0);
-  return { ...interactionData, interactionHistories, numberOfMessages: totalMessages };
+    await Promise.all(allPromises);
+    for (const locId of Object.keys(interactionHistories)) {
+        interactionHistories[locId] = interactionHistories[locId].filter(m => m !== null);
+    }
+    const totalMessages = Object.values(interactionHistories).reduce((sum, arr) => sum + arr.length, 0);
+    return { ...interactionData, interactionHistories, numberOfMessages: totalMessages };
 }
 
 export async function loadRawInteractionData(
@@ -1485,7 +1486,10 @@ export async function loadRawInteractionData(
   const rawInteractionData = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
   if (!rawInteractionData) {
     if (!deletedDemoIds.has(id)) {
-      return getDemoData().interactionData.find(d => d.id === id) ?? null;
+      const storedIds = await ensureManifest('interactionData');
+      if (storedIds.length === 0) {
+        return getDemoData().interactionData.find(d => d.id === id) ?? null;
+      }
     }
     return null;
   }
@@ -1499,9 +1503,9 @@ export async function loadRawInteractionData(
       ...(rawInteractionData.participantIds || []),
     ])];
     const shells = await Promise.all(neededIds.map(async (cid) => {
-      let shell = await loadCharacterShell(cid);
-      if (!shell) shell = await loadRawMultiplayerCharacter(cid);
-      return shell;
+        let shell = await loadCharacterShell(cid);
+        if (!shell) shell = await loadRawMultiplayerCharacter(cid);
+        return shell;
     }));
     for (const s of shells) { if (s) charMap.set(s.id, s); }
   }
@@ -1563,15 +1567,20 @@ export async function loadRawInteractionData(
 }
 
 export async function loadAllRawInteractionDataShells(): Promise<RawInteractionData[]> {
-  const ids = await loadRawChatManifest();
+  const storedIds = await ensureManifest('interactionData');
+  const isEmpty = storedIds.length === 0;
+  const ids = isEmpty
+    ? getDemoData().interactionData.map(d => d.id).filter(id => !deletedDemoIds.has(id))
+    : storedIds;
   if (ids.length === 0) return [];
+
   const results: (RawInteractionData | null)[] = [];
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     const batchIds = ids.slice(i, i + BATCH_SIZE);
     const batchPromises = batchIds.map(async (id): Promise<RawInteractionData | null> => {
       const raw = await fetchJson<RawInteractionData>(`${PATHS.interactionData}/${id}.json`);
       if (!raw) {
-        if (!deletedDemoIds.has(id)) {
+        if (isEmpty && !deletedDemoIds.has(id)) {
           const demoChat = getDemoData().interactionData.find(d => d.id === id);
           if (demoChat) return interactionDataToRawShell(demoChat);
         }
@@ -1601,14 +1610,17 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     };
     return putJson(`${PATHS.interactionMessages}/${id}.json`, payload);
   });
+
   for (let i = 0; i < saveMessagePromises.length; i += BATCH_SIZE) {
     await Promise.all(saveMessagePromises.slice(i, i + BATCH_SIZE));
   }
+
   const { id, protagonistIds, participants, contexts, locations, audioTracks, interactionHistories, parentInteractionDataId, parentMessageId, profile, ...rawInteractionData } = interactionData;
   const rawHistories: Record<string, string[]> = {};
   for (const [locId, messages] of Object.entries(interactionHistories)) {
-    rawHistories[locId] = messages.map(m => m.id);
+      rawHistories[locId] = messages.map(m => m.id);
   }
+
   const payload: RawInteractionData = {
     ...rawInteractionData, 
     protagonistIds: protagonistIds || [],
@@ -1623,6 +1635,7 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
     worldIds: interactionData.worldIds || [],
     lastUpdatedTimestamp: Date.now(),
   };
+
   await putJson(`${PATHS.interactionData}/${id}.json`, payload);
   await updateManifest('interactionData', id, 'add');
 }
@@ -1630,26 +1643,29 @@ export async function saveRawInteractionData(interactionData: InteractionData): 
 export async function branchRawInteractionData(parentInteractionDataId: string, parentMessageId: string): Promise<string> {
   const sourceChat = await loadRawInteractionData(parentInteractionDataId);
   if (!sourceChat) throw new Error("Source chat not found");
+
   let branchLocationId: string | null = null;
   let branchIndex = -1;
   for (const [locId, messages] of Object.entries(sourceChat.interactionHistories)) {
-    const idx = messages.findIndex(m => m.id === parentMessageId);
-    if (idx !== -1) {
-      branchLocationId = locId;
-      branchIndex = idx;
-      break;
-    }
+      const idx = messages.findIndex(m => m.id === parentMessageId);
+      if (idx !== -1) {
+          branchLocationId = locId;
+          branchIndex = idx;
+          break;
+      }
   }
   if (branchIndex === -1 || !branchLocationId) throw new Error("Branch point message not found");
+
   const newChatId = uuidv4();
   const slicedHistories: Record<string, string[]> = {};
   for (const [locId, messages] of Object.entries(sourceChat.interactionHistories)) {
-    if (locId === branchLocationId) {
-      slicedHistories[locId] = messages.slice(0, branchIndex + 1).map(m => m.id);
-    } else {
-      slicedHistories[locId] = messages.map(m => m.id);
-    }
+      if (locId === branchLocationId) {
+          slicedHistories[locId] = messages.slice(0, branchIndex + 1).map(m => m.id);
+      } else {
+          slicedHistories[locId] = messages.map(m => m.id);
+      }
   }
+
   const newPayload: RawInteractionData = {
     name: `${sourceChat.name} (Branch)`, 
     protagonistIds: sourceChat.protagonistIds || [],
@@ -1665,6 +1681,7 @@ export async function branchRawInteractionData(parentInteractionDataId: string, 
     profileId: sourceChat.profile?.id,
     worldIds: sourceChat.worldIds || [],
   };
+
   await putJson(`${PATHS.interactionData}/${newChatId}.json`, newPayload);
   await updateManifest('interactionData', newChatId, 'add');
   return newChatId;
@@ -1711,77 +1728,77 @@ export async function saveInterjectableActions(actions: InterjectableAction[]): 
 }
 
 export async function loadRawBudgetData(): Promise<BudgetData | null> {
-  const raw = await fetchJson<RawBudgetData>(BUDGET_DATA_PATH);
-  if (!raw) return null;
-  try {
-    const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
-    if (!strategy) return null;
-    return hydrateEntity<BudgetData, RawBudgetData>(raw as any, raw.id || 'global-budget-data', {
-      name: 'Global Budget Data',
-      description: 'Persistent runtime budget tracking',
-      budgetSpent: 0,
-      modelLastUsedTimestamps: {},
-      modelLastQuotaHitTimeStamps: {},
-      modelLastErrorHitTimeStamps: {},
-      modelUsedCount: {},
-      modelCensorshipHitCount: {},
-      modelBrokenCount: {},
-      modelQuotaHitCount: {},
-      modelErrorHitCount: {},
-      modelBudgetSpent: {},
-      modelAverageLatencyMsPerToken: {},
-      modelAverageTimeToFirstToken: {},
-      modelTotalSessionDuration: {},
-    }, {
-      budgetStrategy: () => strategy,
-      budgetSpent: (r) => r.budgetSpent ?? 0,
-      modelLastUsedTimestamps: (r) => r.modelLastUsedTimestamps ?? {},
-      modelLastQuotaHitTimeStamps: (r) => r.modelLastQuotaHitTimeStamps ?? {},
-      modelLastErrorHitTimeStamps: (r) => r.modelLastErrorHitTimeStamps ?? {},
-      modelUsedCount: (r) => r.modelUsedCount ?? {},
-      modelCensorshipHitCount: (r) => r.modelCensorshipHitCount ?? {},
-      modelBrokenCount: (r) => r.modelBrokenCount ?? {},
-      modelQuotaHitCount: (r) => r.modelQuotaHitCount ?? {},
-      modelErrorHitCount: (r) => r.modelErrorHitCount ?? {},
-      modelBudgetSpent: (r) => r.modelBudgetSpent ?? {},
-      modelAverageLatencyMsPerToken: (r) => r.modelAverageLatencyMsPerToken ?? {},
-      modelAverageTimeToFirstToken: (r) => r.modelAverageTimeToFirstToken ?? {},
-      modelTotalSessionDuration: (r) => r.modelTotalSessionDuration ?? {},
-    });
-  } catch (e) {
-    console.warn('Failed to load budget data:', e);
-    return null;
-  }
+    const raw = await fetchJson<RawBudgetData>(BUDGET_DATA_PATH);
+    if (!raw) return null;
+    try {
+        const strategy = raw.budgetStrategyId ? await loadRawBudgetStrategy(raw.budgetStrategyId) : null;
+        if (!strategy) return null;
+        return hydrateEntity<BudgetData, RawBudgetData>(raw as any, raw.id || 'global-budget-data', {
+            name: 'Global Budget Data',
+            description: 'Persistent runtime budget tracking',
+            budgetSpent: 0,
+            modelLastUsedTimestamps: {},
+            modelLastQuotaHitTimeStamps: {},
+            modelLastErrorHitTimeStamps: {},
+            modelUsedCount: {},
+            modelCensorshipHitCount: {},
+            modelBrokenCount: {},
+            modelQuotaHitCount: {},
+            modelErrorHitCount: {},
+            modelBudgetSpent: {},
+            modelAverageLatencyMsPerToken: {},
+            modelAverageTimeToFirstToken: {},
+            modelTotalSessionDuration: {},
+        }, {
+            budgetStrategy: () => strategy,
+            budgetSpent: (r) => r.budgetSpent ?? 0,
+            modelLastUsedTimestamps: (r) => r.modelLastUsedTimestamps ?? {},
+            modelLastQuotaHitTimeStamps: (r) => r.modelLastQuotaHitTimeStamps ?? {},
+            modelLastErrorHitTimeStamps: (r) => r.modelLastErrorHitTimeStamps ?? {},
+            modelUsedCount: (r) => r.modelUsedCount ?? {},
+            modelCensorshipHitCount: (r) => r.modelCensorshipHitCount ?? {},
+            modelBrokenCount: (r) => r.modelBrokenCount ?? {},
+            modelQuotaHitCount: (r) => r.modelQuotaHitCount ?? {},
+            modelErrorHitCount: (r) => r.modelErrorHitCount ?? {},
+            modelBudgetSpent: (r) => r.modelBudgetSpent ?? {},
+            modelAverageLatencyMsPerToken: (r) => r.modelAverageLatencyMsPerToken ?? {},
+            modelAverageTimeToFirstToken: (r) => r.modelAverageTimeToFirstToken ?? {},
+            modelTotalSessionDuration: (r) => r.modelTotalSessionDuration ?? {},
+        });
+    } catch (e) {
+        console.warn('Failed to load budget data:', e);
+        return null;
+    }
 }
 
 export async function saveRawBudgetData(data: BudgetData): Promise<void> {
-  const payload: RawBudgetData = {
-    id: data.id,
-    name: data.name,
-    description: data.description,
-    budgetSpent: data.budgetSpent,
-    resetDuration: data.resetDuration,
-    averageLatencyMsPerTokenExponentialMovingAverageSmoothing: data.averageLatencyMsPerTokenExponentialMovingAverageSmoothing,
-    averageTimeToFirstTokenExponentialMovingAverageSmoothing: data.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
-    modelLastUsedTimestamps: data.modelLastUsedTimestamps,
-    modelLastQuotaHitTimeStamps: data.modelLastQuotaHitTimeStamps,
-    modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
-    modelUsedCount: data.modelUsedCount,
-    modelRegenerationCount: data.modelRegenerationCount,
-    modelCensorshipHitCount: data.modelCensorshipHitCount,
-    modelBrokenCount: data.modelBrokenCount,
-    modelQuotaHitCount: data.modelQuotaHitCount,
-    modelErrorHitCount: data.modelErrorHitCount,
-    lastResetTimestamp: data.lastResetTimestamp,
-    budgetStrategyId: data.budgetStrategy.id,
-    modelBudgetSpent: data.modelBudgetSpent,
-    modelAverageLatencyMsPerToken: data.modelAverageLatencyMsPerToken,
-    modelAverageTimeToFirstToken: data.modelAverageTimeToFirstToken,
-    modelTotalSessionDuration: data.modelTotalSessionDuration,
-    firstCreatedTimestamp: data.firstCreatedTimestamp,
-    lastUpdatedTimestamp: Date.now(),
-  };
-  await putJson(BUDGET_DATA_PATH, payload);
+    const payload: RawBudgetData = {
+        id: data.id,
+        name: data.name,
+        description: data.description,
+        budgetSpent: data.budgetSpent,
+        resetDuration: data.resetDuration,
+        averageLatencyMsPerTokenExponentialMovingAverageSmoothing: data.averageLatencyMsPerTokenExponentialMovingAverageSmoothing,
+        averageTimeToFirstTokenExponentialMovingAverageSmoothing: data.averageTimeToFirstTokenExponentialMovingAverageSmoothing,
+        modelLastUsedTimestamps: data.modelLastUsedTimestamps,
+        modelLastQuotaHitTimeStamps: data.modelLastQuotaHitTimeStamps,
+        modelLastErrorHitTimeStamps: data.modelLastErrorHitTimeStamps,
+        modelUsedCount: data.modelUsedCount,
+        modelRegenerationCount: data.modelRegenerationCount,
+        modelCensorshipHitCount: data.modelCensorshipHitCount,
+        modelBrokenCount: data.modelBrokenCount,
+        modelQuotaHitCount: data.modelQuotaHitCount,
+        modelErrorHitCount: data.modelErrorHitCount,
+        lastResetTimestamp: data.lastResetTimestamp,
+        budgetStrategyId: data.budgetStrategy.id,
+        modelBudgetSpent: data.modelBudgetSpent,
+        modelAverageLatencyMsPerToken: data.modelAverageLatencyMsPerToken,
+        modelAverageTimeToFirstToken: data.modelAverageTimeToFirstToken,
+        modelTotalSessionDuration: data.modelTotalSessionDuration,
+        firstCreatedTimestamp: data.firstCreatedTimestamp,
+        lastUpdatedTimestamp: Date.now(),
+    };
+    await putJson(BUDGET_DATA_PATH, payload);
 }
 
 // =============================================================================
@@ -1789,49 +1806,49 @@ export async function saveRawBudgetData(data: BudgetData): Promise<void> {
 // =============================================================================
 
 export function getCharacterImageUrl(characterId: string, characterExpression: string): string | null {
-  return getURL('characterImages', characterId, characterExpression);
+    return getURL('characterImages', characterId, characterExpression);
 }
 
 export async function getCharacterImageUrlWithFallBack(characterId: string, characterExpression?: string): Promise<string | null> {
-  const characterImageUrl = getCharacterImageUrl(characterId, characterExpression || 'neutral');
-  if (characterImageUrl) {
-    if (characterImageUrl.startsWith('data:')) return characterImageUrl;
-    try {
-      const response = await fetch(characterImageUrl, { method: 'HEAD' });
-      if (response.ok) return characterImageUrl;
-    } catch {
-      // File doesn't exist or network error
+    const characterImageUrl = getCharacterImageUrl(characterId, characterExpression || 'neutral');
+    if (characterImageUrl) {
+        if (characterImageUrl.startsWith('data:')) return characterImageUrl;
+        try {
+            const response = await fetch(characterImageUrl, { method: 'HEAD' });
+            if (response.ok) return characterImageUrl;
+        } catch {
+            // File doesn't exist or network error
+        }
     }
-  }
-  const effectiveExpression = characterExpression || "neutral";
-  if (effectiveExpression !== 'neutral') {
-    const neutralUrl = getCharacterImageUrl(characterId, 'neutral');
-    if (neutralUrl) {
-      if (neutralUrl.startsWith('data:')) return neutralUrl;
-      try {
-        const response = await fetch(neutralUrl, { method: 'HEAD' });
-        if (response.ok) return neutralUrl;
-      } catch {
-        // Neutral doesn't exist either
-      }
+    const effectiveExpression = characterExpression || "neutral";
+    if (effectiveExpression !== 'neutral') {
+        const neutralUrl = getCharacterImageUrl(characterId, 'neutral');
+        if (neutralUrl) {
+            if (neutralUrl.startsWith('data:')) return neutralUrl;
+            try {
+                const response = await fetch(neutralUrl, { method: 'HEAD' });
+                if (response.ok) return neutralUrl;
+            } catch {
+                // Neutral doesn't exist either
+            }
+        }
     }
-  }
-  return null;
+    return null;
 }
 
 export async function uploadCharacterImage(characterId: string, file: File): Promise<string> {
-  return upload('characterImages', characterId, file);
+    return upload('characterImages', characterId, file);
 }
 
 export async function cloneCharacterImage(sourceCharacterId: string, targetCharacterId: string, characterExpression: string): Promise<string | null> {
-  const sourceImageUrl = getCharacterImageUrl(sourceCharacterId, characterExpression);
-  if (!sourceImageUrl) return null;
-  const filename = characterExpression
-    ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
-    : `clone-${targetCharacterId}.png`;
-  const file = await urlToFile(sourceImageUrl, filename);
-  if (!file) return null;
-  return uploadCharacterImage(targetCharacterId, file);
+    const sourceImageUrl = getCharacterImageUrl(sourceCharacterId, characterExpression);
+    if (!sourceImageUrl) return null;
+    const filename = characterExpression
+        ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
+        : `clone-${targetCharacterId}.png`;
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+    return uploadCharacterImage(targetCharacterId, file);
 }
 
 export function getCharacterVoiceURL(characterId: string, voiceFileName: string | undefined): string | null {
@@ -1844,12 +1861,12 @@ export async function uploadCharacterVoice(characterId: string, file: File): Pro
 }
 
 export async function cloneCharacterVoice(sourceCharacterId: string, targetCharacterId: string, voiceFileName: string): Promise<string | null> {
-  const sourceVoiceUrl = getCharacterVoiceURL(sourceCharacterId, voiceFileName);
-  if (!sourceVoiceUrl) return null;
-  const filename = voiceFileName || `voice-${targetCharacterId}.wav`;
-  const file = await urlToFile(sourceVoiceUrl, filename);
-  if (!file) return null;
-  return uploadCharacterVoice(targetCharacterId, file);
+    const sourceVoiceUrl = getCharacterVoiceURL(sourceCharacterId, voiceFileName);
+    if (!sourceVoiceUrl) return null;
+    const filename = voiceFileName || `voice-${targetCharacterId}.wav`;
+    const file = await urlToFile(sourceVoiceUrl, filename);
+    if (!file) return null;
+    return uploadCharacterVoice(targetCharacterId, file);
 }
 
 export function getContextImageUrl(contextId: string, imageFilename: string | undefined): string | null {
@@ -1862,12 +1879,12 @@ export async function uploadContextImage(contextId: string, file: File): Promise
 }
 
 export async function cloneContextImage(sourceContextId: string, targetContextId: string, imageFilename: string): Promise<string | null> {
-  const sourceImageUrl = getContextImageUrl(sourceContextId, imageFilename);
-  if (!sourceImageUrl) return null;
-  const filename = imageFilename || `${targetContextId}.png`;
-  const file = await urlToFile(sourceImageUrl, filename);
-  if (!file) return null;
-  return uploadContextImage(targetContextId, file);
+    const sourceImageUrl = getContextImageUrl(sourceContextId, imageFilename);
+    if (!sourceImageUrl) return null;
+    const filename = imageFilename || `${targetContextId}.png`;
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+    return uploadContextImage(targetContextId, file);
 }
 
 export function getLocationImageUrl(locationId: string, imageFilename: string | undefined): string | null {
@@ -1880,12 +1897,12 @@ export async function uploadLocationImage(locationId: string, file: File): Promi
 }
 
 export async function cloneLocationImage(sourceLocationId: string, targetLocationId: string, imageFilename: string): Promise<string | null> {
-  const sourceImageUrl = getLocationImageUrl(sourceLocationId, imageFilename);
-  if (!sourceImageUrl) return null;
-  const filename = imageFilename || `${targetLocationId}.png`;
-  const file = await urlToFile(sourceImageUrl, filename);
-  if (!file) return null;
-  return uploadLocationImage(targetLocationId, file);
+    const sourceImageUrl = getLocationImageUrl(sourceLocationId, imageFilename);
+    if (!sourceImageUrl) return null;
+    const filename = imageFilename || `${targetLocationId}.png`;
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+    return uploadLocationImage(targetLocationId, file);
 }
 
 export function getAudioTrackUrl(audioTrackId: string, imageFilename: string | undefined): string | null {
@@ -1894,16 +1911,16 @@ export function getAudioTrackUrl(audioTrackId: string, imageFilename: string | u
 }
 
 export async function uploadAudioTrack(audioTrackId: string, file: File): Promise<string> {
-  return upload('audioTrackAudios', audioTrackId, file);
+    return upload('audioTrackAudios', audioTrackId, file);
 }
 
 export async function cloneAudioTrack(sourceAudioTrackId: string, targetAudioTrackId: string, audioFilename: string): Promise<string | null> {
-  const sourceAudioUrl = getAudioTrackUrl(sourceAudioTrackId, audioFilename);
-  if (!sourceAudioUrl) return null;
-  const filename = audioFilename || `${targetAudioTrackId}.mp3`;
-  const file = await urlToFile(sourceAudioUrl, filename);
-  if (!file) return null;
-  return uploadAudioTrack(targetAudioTrackId, file);
+    const sourceAudioUrl = getAudioTrackUrl(sourceAudioTrackId, audioFilename);
+    if (!sourceAudioUrl) return null;
+    const filename = audioFilename || `${targetAudioTrackId}.mp3`;
+    const file = await urlToFile(sourceAudioUrl, filename);
+    if (!file) return null;
+    return uploadAudioTrack(targetAudioTrackId, file);
 }
 
 export function getPromptBlockImageUrl(promptBlockId: string, imageFilename: string | undefined): string | null {
@@ -1916,33 +1933,33 @@ export async function uploadPromptBlockImage(promptBlockId: string, file: File):
 }
 
 export async function clonePromptBlockImage(sourcePromptBlockId: string, targetPromptBlockId: string, imageFilename: string): Promise<string | null> {
-  const sourceImageUrl = getPromptBlockImageUrl(sourcePromptBlockId, imageFilename);
-  if (!sourceImageUrl) return null;
-  const filename = imageFilename || `prompt-${targetPromptBlockId}.png`;
-  const file = await urlToFile(sourceImageUrl, filename);
-  if (!file) return null;
-  return uploadPromptBlockImage(targetPromptBlockId, file);
+    const sourceImageUrl = getPromptBlockImageUrl(sourcePromptBlockId, imageFilename);
+    if (!sourceImageUrl) return null;
+    const filename = imageFilename || `prompt-${targetPromptBlockId}.png`;
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+    return uploadPromptBlockImage(targetPromptBlockId, file);
 }
 
 // --- Isolated Multiplayer Character Assets ---
 
 export function getMultiplayerCharacterImageUrl(characterId: string, characterExpression?: string): string | null {
-  return getURL('multiplayerCharacterImages', characterId, characterExpression || 'neutral');
+    return getURL('multiplayerCharacterImages', characterId, characterExpression || 'neutral');
 }
 
 export async function uploadMultiplayerCharacterImage(characterId: string, file: File): Promise<string> {
-  return upload('multiplayerCharacterImages', characterId, file);
+    return upload('multiplayerCharacterImages', characterId, file);
 }
 
 export async function cloneMultiplayerCharacterImage(sourceCharacterId: string, targetCharacterId: string, characterExpression: string): Promise<string | null> {
-  const sourceImageUrl = getMultiplayerCharacterImageUrl(sourceCharacterId, characterExpression);
-  if (!sourceImageUrl) return null;
-  const filename = characterExpression
-    ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
-    : `clone-${targetCharacterId}.png`;
-  const file = await urlToFile(sourceImageUrl, filename);
-  if (!file) return null;
-  return uploadMultiplayerCharacterImage(targetCharacterId, file);
+    const sourceImageUrl = getMultiplayerCharacterImageUrl(sourceCharacterId, characterExpression);
+    if (!sourceImageUrl) return null;
+    const filename = characterExpression
+        ? (characterExpression.includes('.') ? characterExpression : `${characterExpression}.png`)
+        : `clone-${targetCharacterId}.png`;
+    const file = await urlToFile(sourceImageUrl, filename);
+    if (!file) return null;
+    return uploadMultiplayerCharacterImage(targetCharacterId, file);
 }
 
 export function getMultiplayerCharacterVoiceUrl(characterId: string, voiceFileName: string | undefined): string | null {
@@ -1955,24 +1972,24 @@ export async function uploadMultiplayerCharacterVoice(characterId: string, file:
 }
 
 export async function cloneMultiplayerCharacterVoice(sourceCharacterId: string, targetCharacterId: string, voiceFileName: string): Promise<string | null> {
-  const sourceVoiceUrl = getMultiplayerCharacterVoiceUrl(sourceCharacterId, voiceFileName);
-  if (!sourceVoiceUrl) return null;
-  const filename = voiceFileName || `voice-${targetCharacterId}.wav`;
-  const file = await urlToFile(sourceVoiceUrl, filename);
-  if (!file) return null;
-  return uploadMultiplayerCharacterVoice(targetCharacterId, file);
+    const sourceVoiceUrl = getMultiplayerCharacterVoiceUrl(sourceCharacterId, voiceFileName);
+    if (!sourceVoiceUrl) return null;
+    const filename = voiceFileName || `voice-${targetCharacterId}.wav`;
+    const file = await urlToFile(sourceVoiceUrl, filename);
+    if (!file) return null;
+    return uploadMultiplayerCharacterVoice(targetCharacterId, file);
 }
 
 export async function loadRawFactorizationMachine(name: string): Promise<FMSerialized | null> {
-  return await fetchJson<FMSerialized>(`${PATHS.factorizationMachines}/${name}.json`);
+    return await fetchJson<FMSerialized>(`${PATHS.factorizationMachines}/${name}.json`);
 }
 
 export async function saveRawFactorizationMachine(name: string, data: FMSerialized): Promise<void> {
-  await putJson(`${PATHS.factorizationMachines}/${name}.json`, data);
+    await putJson(`${PATHS.factorizationMachines}/${name}.json`, data);
 }
 
 export async function deleteRawFactorizationMachine(name: string): Promise<void> {
-  await deleteResource(`${PATHS.factorizationMachines}/${name}.json`);
+    await deleteResource(`${PATHS.factorizationMachines}/${name}.json`);
 }
 
 // =============================================================================
@@ -1980,70 +1997,63 @@ export async function deleteRawFactorizationMachine(name: string): Promise<void>
 // =============================================================================
 
 class PreferencesCache {
-  private cache = new Map<string, unknown>();
-
-  get<T>(key: string): T | null {
-    const entry = this.cache.get(key);
-    if (entry === undefined) return null;
-    return entry as T;
-  }
-
-  set<T>(key: string, data: T): void {
-    this.cache.set(key, data);
-  }
-
-  delete(key: string): void {
-    this.cache.delete(key);
-  }
-
-  clear(): void {
-    this.cache.clear();
-  }
+    private cache = new Map<string, unknown>();
+    get<T>(key: string): T | null {
+        const entry = this.cache.get(key);
+        if (entry === undefined) return null;
+        return entry as T;
+    }
+    set<T>(key: string, data: T): void {
+        this.cache.set(key, data);
+    }
+    delete(key: string): void {
+        this.cache.delete(key);
+    }
+    clear(): void {
+        this.cache.clear();
+    }
 }
 
 const preferencesCache = new PreferencesCache();
 
 class SaveQueue {
-  private pendingSaves = new Map<string, { data: unknown; timer: ReturnType<typeof setTimeout> | null; saveFn: (data: unknown) => Promise<void> }>();
-  private readonly DEBOUNCE_MS = 500;
-
-  enqueue(key: string, data: unknown, saveFn: (data: unknown) => Promise<void>): void {
-    const existing = this.pendingSaves.get(key);
-    if (existing?.timer) {
-      clearTimeout(existing.timer);
-    }
-    const timer = setTimeout(async () => {
-      const pending = this.pendingSaves.get(key);
-      if (pending) {
-        this.pendingSaves.delete(key);
-        try {
-          await pending.saveFn(pending.data);
-        } catch (error) {
-          console.error(`Failed to save ${key}:`, error);
+    private pendingSaves = new Map<string, { data: unknown; timer: ReturnType<typeof setTimeout> | null; saveFn: (data: unknown) => Promise<void> }>();
+    private readonly DEBOUNCE_MS = 500;
+    enqueue(key: string, data: unknown, saveFn: (data: unknown) => Promise<void>): void {
+        const existing = this.pendingSaves.get(key);
+        if (existing?.timer) {
+            clearTimeout(existing.timer);
         }
-      }
-    }, this.DEBOUNCE_MS);
-    this.pendingSaves.set(key, { data, timer, saveFn });
-  }
-
-  clear(): void {
-    for (const [, pending] of this.pendingSaves) {
-      if (pending.timer) clearTimeout(pending.timer);
+        const timer = setTimeout(async () => {
+            const pending = this.pendingSaves.get(key);
+            if (pending) {
+                this.pendingSaves.delete(key);
+                try {
+                    await pending.saveFn(pending.data);
+                } catch (error) {
+                    console.error(`Failed to save ${key}:`, error);
+                }
+            }
+        }, this.DEBOUNCE_MS);
+        this.pendingSaves.set(key, { data, timer, saveFn });
     }
-    this.pendingSaves.clear();
-  }
-
-  async flush(): Promise<void> {
-    const promises: Promise<void>[] = [];
-    for (const [, pending] of this.pendingSaves) {
-      if (pending.timer) {
-        clearTimeout(pending.timer);
-        promises.push(pending.saveFn(pending.data));
-      }
+    clear(): void {
+        for (const [, pending] of this.pendingSaves) {
+            if (pending.timer) clearTimeout(pending.timer);
+        }
+        this.pendingSaves.clear();
     }
-    this.pendingSaves.clear();
-    await Promise.all(promises);
-  }
+    async flush(): Promise<void> {
+        const promises: Promise<void>[] = [];
+        for (const [, pending] of this.pendingSaves) {
+            if (pending.timer) {
+                clearTimeout(pending.timer);
+                promises.push(pending.saveFn(pending.data));
+            }
+        }
+        this.pendingSaves.clear();
+        await Promise.all(promises);
+    }
 }
 
 const saveQueue = new SaveQueue();
@@ -2053,15 +2063,15 @@ const saveQueue = new SaveQueue();
 // =============================================================================
 
 async function fetchPreferences<T>(endpoint: string): Promise<T | null> {
-  return await fetchJson<T>(`/user_data/${endpoint}.json`);
+    return await fetchJson<T>(`/user_data/${endpoint}.json`);
 }
 
 async function savePreferences<T>(endpoint: string, data: T): Promise<void> {
-  await putJson(`/user_data/${endpoint}.json`, data);
+    await putJson(`/user_data/${endpoint}.json`, data);
 }
 
 async function deletePreferences(endpoint: string): Promise<void> {
-  await deleteResource(`/user_data/${endpoint}.json`);
+    await deleteResource(`/user_data/${endpoint}.json`);
 }
 
 // =============================================================================
@@ -2071,31 +2081,31 @@ async function deletePreferences(endpoint: string): Promise<void> {
 const SESSION_KEY = 'session_data';
 
 export async function loadRawSessionData(): Promise<SessionData> {
-  const cached = preferencesCache.get<SessionData>(SESSION_KEY);
-  if (cached) return cached;
-  const data = await fetchPreferences<SessionData>(SESSION_KEY);
-  if (data) {
-    preferencesCache.set(SESSION_KEY, data);
-  }
-  return data || {};
+    const cached = preferencesCache.get<SessionData>(SESSION_KEY);
+    if (cached) return cached;
+    const data = await fetchPreferences<SessionData>(SESSION_KEY);
+    if (data) {
+        preferencesCache.set(SESSION_KEY, data);
+    }
+    return data || {};
 }
 
 export async function saveRawSessionData(data: Partial<SessionData>): Promise<void> {
-  const existing = preferencesCache.get<SessionData>(SESSION_KEY) || {};
-  const merged: SessionData = { ...existing, ...data };
-  preferencesCache.set(SESSION_KEY, merged);
-  saveQueue.enqueue(SESSION_KEY, merged, async (saveData) => {
-    await savePreferences(SESSION_KEY, saveData as SessionData);
-  });
+    const existing = preferencesCache.get<SessionData>(SESSION_KEY) || {};
+    const merged: SessionData = { ...existing, ...data };
+    preferencesCache.set(SESSION_KEY, merged);
+    saveQueue.enqueue(SESSION_KEY, merged, async (saveData) => {
+        await savePreferences(SESSION_KEY, saveData as SessionData);
+    });
 }
 
 export async function deleteSessionData(): Promise<void> {
-  preferencesCache.delete(SESSION_KEY);
-  try {
-    await deletePreferences(SESSION_KEY);
-  } catch (error) {
-    console.error('Failed to delete session data:', error);
-  }
+    preferencesCache.delete(SESSION_KEY);
+    try {
+        await deletePreferences(SESSION_KEY);
+    } catch (error) {
+        console.error('Failed to delete session data:', error);
+    }
 }
 
 // =============================================================================
@@ -2105,29 +2115,29 @@ export async function deleteSessionData(): Promise<void> {
 const MULTIPLAYER_JOIN_KEY = 'multiplayer_join_data';
 
 export async function loadRawMultiplayerJoinData(): Promise<MultiplayerJoinData> {
-  const cached = preferencesCache.get<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
-  if (cached) return cached;
-  const data = await fetchPreferences<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
-  if (data) {
-    preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
-  }
-  return data || {};
+    const cached = preferencesCache.get<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
+    if (cached) return cached;
+    const data = await fetchPreferences<MultiplayerJoinData>(MULTIPLAYER_JOIN_KEY);
+    if (data) {
+        preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
+    }
+    return data || {};
 }
 
 export async function saveRawMultiplayerJoinData(data: MultiplayerJoinData): Promise<void> {
-  preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
-  saveQueue.enqueue(MULTIPLAYER_JOIN_KEY, data, async (saveData) => {
-    await savePreferences(MULTIPLAYER_JOIN_KEY, saveData as MultiplayerJoinData);
-  });
+    preferencesCache.set(MULTIPLAYER_JOIN_KEY, data);
+    saveQueue.enqueue(MULTIPLAYER_JOIN_KEY, data, async (saveData) => {
+        await savePreferences(MULTIPLAYER_JOIN_KEY, saveData as MultiplayerJoinData);
+    });
 }
 
 export async function deleteMultiplayerJoinData(): Promise<void> {
-  preferencesCache.delete(MULTIPLAYER_JOIN_KEY);
-  try {
-    await deletePreferences(MULTIPLAYER_JOIN_KEY);
-  } catch (error) {
-    console.error('Failed to delete multiplayer join data:', error);
-  }
+    preferencesCache.delete(MULTIPLAYER_JOIN_KEY);
+    try {
+        await deletePreferences(MULTIPLAYER_JOIN_KEY);
+    } catch (error) {
+        console.error('Failed to delete multiplayer join data:', error);
+    }
 }
 
 // =============================================================================
@@ -2137,29 +2147,29 @@ export async function deleteMultiplayerJoinData(): Promise<void> {
 const ACTION_FORMAT_KEY = 'action_format_data';
 
 export async function loadActionFormatData(): Promise<ActionFormatData> {
-  const cached = preferencesCache.get<ActionFormatData>(ACTION_FORMAT_KEY);
-  if (cached) return cached;
-  const data = await fetchPreferences<ActionFormatData>(ACTION_FORMAT_KEY);
-  if (data) {
-    preferencesCache.set(ACTION_FORMAT_KEY, data);
-  }
-  return data || {};
+    const cached = preferencesCache.get<ActionFormatData>(ACTION_FORMAT_KEY);
+    if (cached) return cached;
+    const data = await fetchPreferences<ActionFormatData>(ACTION_FORMAT_KEY);
+    if (data) {
+        preferencesCache.set(ACTION_FORMAT_KEY, data);
+    }
+    return data || {};
 }
 
 export async function saveActionFormatData(data: ActionFormatData): Promise<void> {
-  preferencesCache.set(ACTION_FORMAT_KEY, data);
-  saveQueue.enqueue(ACTION_FORMAT_KEY, data, async (saveData) => {
-    await savePreferences(ACTION_FORMAT_KEY, saveData as ActionFormatData);
-  });
+    preferencesCache.set(ACTION_FORMAT_KEY, data);
+    saveQueue.enqueue(ACTION_FORMAT_KEY, data, async (saveData) => {
+        await savePreferences(ACTION_FORMAT_KEY, saveData as ActionFormatData);
+    });
 }
 
 export async function deleteActionFormatData(): Promise<void> {
-  preferencesCache.delete(ACTION_FORMAT_KEY);
-  try {
-    await deletePreferences(ACTION_FORMAT_KEY);
-  } catch (error) {
-    console.error('Failed to delete action format data:', error);
-  }
+    preferencesCache.delete(ACTION_FORMAT_KEY);
+    try {
+        await deletePreferences(ACTION_FORMAT_KEY);
+    } catch (error) {
+        console.error('Failed to delete action format data:', error);
+    }
 }
 
 // =============================================================================
@@ -2169,29 +2179,29 @@ export async function deleteActionFormatData(): Promise<void> {
 const FORMAT_PREFERENCES_KEY = 'format_preferences';
 
 export async function loadRawFormatPreferences(): Promise<FormatPreferenceData | null> {
-  const cached = preferencesCache.get<FormatPreferenceData>(FORMAT_PREFERENCES_KEY);
-  if (cached) return cached;
-  const data = await fetchPreferences<FormatPreferenceData>(FORMAT_PREFERENCES_KEY);
-  if (data) {
-    preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
-  }
-  return data || null;
+    const cached = preferencesCache.get<FormatPreferenceData>(FORMAT_PREFERENCES_KEY);
+    if (cached) return cached;
+    const data = await fetchPreferences<FormatPreferenceData>(FORMAT_PREFERENCES_KEY);
+    if (data) {
+        preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
+    }
+    return data || null;
 }
 
 export async function saveRawFormatPreferences(data: FormatPreferenceData): Promise<void> {
-  preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
-  saveQueue.enqueue(FORMAT_PREFERENCES_KEY, data, async (saveData) => {
-    await savePreferences(FORMAT_PREFERENCES_KEY, saveData as FormatPreferenceData);
-  });
+    preferencesCache.set(FORMAT_PREFERENCES_KEY, data);
+    saveQueue.enqueue(FORMAT_PREFERENCES_KEY, data, async (saveData) => {
+        await savePreferences(FORMAT_PREFERENCES_KEY, saveData as FormatPreferenceData);
+    });
 }
 
 export async function deleteFormatPreferences(): Promise<void> {
-  preferencesCache.delete(FORMAT_PREFERENCES_KEY);
-  try {
-    await deletePreferences(FORMAT_PREFERENCES_KEY);
-  } catch (error) {
-    console.error('Failed to delete format preferences:', error);
-  }
+    preferencesCache.delete(FORMAT_PREFERENCES_KEY);
+    try {
+        await deletePreferences(FORMAT_PREFERENCES_KEY);
+    } catch (error) {
+        console.error('Failed to delete format preferences:', error);
+    }
 }
 
 // =============================================================================
@@ -2199,13 +2209,13 @@ export async function deleteFormatPreferences(): Promise<void> {
 // =============================================================================
 
 export function clearPreferencesCache(): void {
-  preferencesCache.clear();
+    preferencesCache.clear();
 }
 
 export function clearSaveQueue(): void {
-  saveQueue.clear();
+    saveQueue.clear();
 }
 
 export async function flushSaveQueue(): Promise<void> {
-  await saveQueue.flush();
+    await saveQueue.flush();
 }
