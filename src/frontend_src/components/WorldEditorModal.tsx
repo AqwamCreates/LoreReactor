@@ -1,4 +1,5 @@
 // src/frontend_src/components/WorldEditorModal.tsx
+
 import { useState } from 'react';
 import type { World, Character, Context, Location, Profile, AudioTrack } from '../types';
 import { EntitySelectList } from './EntitySelectList';
@@ -37,38 +38,40 @@ export function WorldEditorModal({
     const [ctxSearch, setCtxSearch] = useState('');
     const [locSearch, setLocSearch] = useState('');
     const [audioSearch, setAudioSearch] = useState('');
-    const [isCloned, setIsCloned] = useState(false);
 
     const toggleInList = (_ids: string[], setIds: React.Dispatch<React.SetStateAction<string[]>>, id: string) => {
         setIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
     };
 
-    const buildWorld = (): World | null => {
+    const buildWorld = (isNewClone: boolean): World | null => {
         if (!name) return null;
         const now = Date.now();
         return {
-            id: (existingWorld && !isCloned) ? existingWorld.id : uuidv4(),
-            name: isCloned ? `${name} (Clone)` : name,
+            id: isNewClone ? uuidv4() : (existingWorld?.id || uuidv4()),
+            name: isNewClone ? `${name} (Clone)` : name,
             description: description || undefined,
             characterIds: charIds,
             contextIds: ctxIds,
             locationIds: locIds,
             audioTrackIds: audioTrackIds,
             profileId: profileId || undefined,
-            firstCreatedTimestamp: (existingWorld && !isCloned) ? existingWorld.firstCreatedTimestamp : now,
+            firstCreatedTimestamp: isNewClone ? now : (existingWorld?.firstCreatedTimestamp || now),
             lastUpdatedTimestamp: now,
         };
     };
 
     const handleSave = () => {
-        const world = buildWorld();
+        const world = buildWorld(false);
         if (!world) return;
         onSave(world);
         onClose();
     };
 
     const handleClone = () => {
-        setIsCloned(true);
+        const clonedWorld = buildWorld(true);
+        if (!clonedWorld) return;
+        onSave(clonedWorld);
+        onClose();
     };
 
     const copyCharsFromChat = () => setCharIds([...selectedCharacterIds]);
@@ -81,11 +84,11 @@ export function WorldEditorModal({
         <div className="modal-overlay" onClick={onClose}>
             <div className="modal-content editor-modal-content" onClick={e => e.stopPropagation()}>
                 <div className="modal-header">
-                    <h2>{existingWorld ? (isCloned ? 'Clone World' : 'Edit World') : 'Create New World'}</h2>
+                    <h2>{existingWorld ? 'Edit World' : 'Create New World'}</h2>
                     <div className="editor-modal-actions">
                         <button type="button" className="editor-button editor-button-cancel" onClick={onClose}>Cancel</button>
-                        {existingWorld && !isCloned && (
-                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClone}>Clone</button>
+                        {existingWorld && (
+                            <button type="button" className="editor-button editor-button-cancel" onClick={handleClone} disabled={!name}>Clone</button>
                         )}
                         <button type="button" className="editor-button editor-button-save" onClick={handleSave} disabled={!name}>Save</button>
                     </div>
