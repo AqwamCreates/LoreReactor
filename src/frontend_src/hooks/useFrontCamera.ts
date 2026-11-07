@@ -1,7 +1,7 @@
 // src/frontend_src/hooks/useFrontCamera.ts
 import { useRef, useCallback, useEffect } from 'react';
 
-const CAMERA_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes to save phone battery
+const CAMERA_IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes to save battery
 
 export function useFrontCamera(
     addToast: (message: string, type: 'error' | 'success' | 'info') => void
