@@ -1,7 +1,8 @@
 // src/frontend_src/hooks/useFrontCamera.ts
+
 import { useRef, useCallback, useEffect } from 'react';
 
-const CAMERA_IDLE_TIMEOUT_MS = 3 * 60 * 1000; // 5 minutes to save battery
+const CAMERA_IDLE_TIMEOUT_MS = 3 * 60 * 1000; // 3 minutes to save battery
 
 export function useFrontCamera(
     addToast: (message: string, type: 'error' | 'success' | 'info') => void
@@ -13,7 +14,9 @@ export function useFrontCamera(
     // Cleanly destroy stream and DOM nodes
     const stopStream = useCallback(() => {
         if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => track.stop());
+            for (const track of streamRef.current.getTracks()) {
+                track.stop();
+            }
             streamRef.current = null;
         }
         if (videoRef.current) {
@@ -97,7 +100,7 @@ export function useFrontCamera(
             // Triggers the actual hardware shutter for full-res photos (e.g. 12MP)
             if ('ImageCapture' in window) {
                 try {
-                    const imageCapture = new ImageCapture(track);
+                    const imageCapture = new (window as any).ImageCapture(track);
                     const blob = await imageCapture.takePhoto();
                     return await new Promise<string>((resolve, reject) => {
                         const reader = new FileReader();
