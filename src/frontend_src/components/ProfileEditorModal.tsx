@@ -1,16 +1,26 @@
 // src/frontend_src/components/ProfileEditorModal.tsx
+
 import { useState, useMemo, useCallback, useRef, type CSSProperties } from 'react';
+
 import type { Profile, PromptBlock, promptBlockType, SummarizationStep, SummarizationStrategyType, tool, textType, toolUsageDisplayMode, toolUsageDisplayPlacementMode, TokenSampler, StopPattern, tristateInteger, cacheConfigurationType, AutoResumeSignal, deviceType, Character, RetrievalConfiguration, entityImageType, textGenerationBehaviourOnNarration, promptFormatMode, participantScopeMode, participantInsertionMode } from '../types';
+
 import { SliderInput } from './SliderInput';
+
 import { EntitySelect } from './EntitySelect';
+
 import '../main.css';
+
 import { 
     defaultInputStrategy, 
     defaultInputStrategyPositions,
     defaultNarrateTexts, 
-    defaultProfileTools, 
+    defaultProfileTools,
+    defaultEntityImageTypes,
+    defaultEntityImageTypePositions,
 } from '../dictionaries/defaults';
+
 import { narrateTextLabels, toolLabels } from '../dictionaries/texts';
+
 import { v4 as uuidv4 } from 'uuid';
 
 interface ProfileEditorModalProps {
@@ -58,6 +68,7 @@ const ALL_ENTITY_IMAGE_TYPES: { value: entityImageType; label: string; hint: str
     { value: 'context', label: 'Context Images', hint: 'Inject images attached to active contexts.' },
     { value: 'location', label: 'Location Images', hint: 'Inject images attached to the current location.' },
     { value: 'character', label: 'Character Images', hint: 'Inject current character and co-located participants appearance.' },
+    { value: 'screenshot', label: 'Screenshot Images', hint: 'Inject latest screenshot captured from the device or front camera.' },
 ];
 
 const PROMPT_FORMAT_MODES: { value: promptFormatMode; label: string; description: string }[] = [
@@ -89,21 +100,33 @@ function getDefaultSummarizationSteps(): SummarizationStep[] {
 }
 
 const ALL_BUILT_IN_BLOCK_TYPES = [...defaultInputStrategyPositions];
+
 const isBuiltInBlockType = (value: string): value is promptBlockType => (ALL_BUILT_IN_BLOCK_TYPES as string[]).includes(value);
+
 const sliderToDb = (sliderValue: number): number => { const clamped = Math.max(1, Math.min(100, sliderValue)); return Math.round(-60 + (clamped / 100) * 50); };
 
 // ─── Styles ─────────────────────────────────────────────────────────
 
 const CHECKBOX_HINT_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, marginTop: '4px', marginLeft: '26px' };
+
 const SLIDER_HEADER_STYLE: CSSProperties = { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' };
+
 const SLIDER_LABEL_STYLE: CSSProperties = { margin: 0 };
+
 const SLIDER_VALUE_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6 };
+
 const TOOLBAR_BTN_SMALL_STYLE: CSSProperties = { width: '24px', height: '24px', minWidth: '24px', minHeight: '24px', fontSize: '0.7rem', padding: 0 };
+
 const TOOLBAR_BTN_DELETE_STYLE: CSSProperties = { ...TOOLBAR_BTN_SMALL_STYLE, fontSize: '0.8rem', color: '#ff4444' };
+
 const STEP_EXPANDED_STYLE: CSSProperties = { padding: '10px 12px', margin: '0 0 4px 0', background: 'var(--social-bg)', border: '1px solid var(--border)', borderTop: 'none', borderRadius: '0 0 6px 6px', display: 'flex', flexDirection: 'column', gap: '8px' };
+
 const STEP_NAME_STYLE: CSSProperties = { fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-h)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
+
 const STEP_DESC_STYLE: CSSProperties = { fontSize: '0.65rem', opacity: 0.6, fontStyle: 'italic' };
+
 const INPUT_RIGHT_STYLE: CSSProperties = { textAlign: 'right' as const };
+
 const FIELD_HINT_STYLE: CSSProperties = { fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' };
 
 // ─── Sub-Components ─────────────────────────────────────────────────
@@ -262,7 +285,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [randomizeTextCharacterInjection, setRandomizeTextCharacterInjection] = useState<boolean>(ep?.randomizeTextCharacterInjection ?? false);
     const [randomizeTextCharacterInjectionOnRetry, setRandomizeTextCharacterInjectionOnRetry] = useState<boolean>(ep?.randomizeTextCharacterInjectionOnRetry ?? true);
     const [maximumNumberOfTextCharacterRandomizationPerModel, setMaximumNumberOfTextCharacterRandomizationPerModel] = useState<number>(ep?.maximumNumberOfTextCharacterRandomizationPerModel ?? 1);
-    const [entityImageTypes, setEntityImageTypes] = useState<entityImageType[]>(ep?.entityImageTypes ?? ['character', 'promptBlock', 'context', 'location']);
+    const [entityImageTypes, setEntityImageTypes] = useState<entityImageType[]>(ep?.entityImageTypes ?? defaultEntityImageTypes);
     const [numberOfMessagesToDisableThinkPrompt, setNumberOfMessagesToDisableThinkPrompt] = useState<number>(ep?.numberOfMessagesToDisableThinkPrompt ?? -1);
     const [numberOfMessagesToDisableMetaThinkInstructions, setNumberOfMessagesToDisableMetaThinkInstructions] = useState<number>(ep?.numberOfMessagesToDisableMetaThinkInstructions ?? -1);
     const [numberOfMessagesToDisableDialoguePrompt, setNumberOfMessagesToDisableDialoguePrompt] = useState<number>(ep?.numberOfMessagesToDisableDialoguePrompt ?? -1);
@@ -363,7 +386,6 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         [newOrder[index], newOrder[newIndex]] = [newOrder[newIndex], newOrder[index]];
         setEntityImageTypes(newOrder);
     }, [entityImageTypes]);
-
     const handleImageDragStart = (e: React.DragEvent, index: number) => {
         setDraggedImageIndex(index);
         e.dataTransfer.effectAllowed = 'move';
@@ -382,7 +404,6 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         setEntityImageTypes(newOrder);
         setDraggedImageIndex(null);
     };
-
     const validate = (): boolean => { const newErrors: { name?: string } = {}; if (!name) newErrors.name = 'Name is required.'; setErrors(newErrors); return Object.keys(newErrors).length === 0; };
     
     const buildProfile = (id: string, profileName: string): Profile => {
@@ -471,7 +492,6 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
         setSummarizationSteps(prev => [...prev, newStep]);
     };
     const removeSummarizationStep = (index: number) => { setSummarizationSteps(prev => prev.filter((_, i) => i !== index).map((s, i) => ({ ...s, order: i }))); if (expandedStepId === summarizationSteps[index]?.id) setExpandedStepId(null); };
-
     const renderOverrideSlider = (label: string, value: number, min: number, max: number, step: number, decimals: number, onChange: (val: number) => void, desc: string, valueLabel?: string) => (
         <div style={{ marginBottom: '12px' }}>
             <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{label}</label>{valueLabel && <span style={SLIDER_VALUE_STYLE}>{valueLabel}</span>}</div>
@@ -487,6 +507,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const filteredToolKeys = useMemo(() => { const q = toolSearchQuery.toLowerCase(); if (!q) return allToolKeys; return allToolKeys.filter(toolName => { const label = (toolLabels[toolName] ?? toolName).toLowerCase(); return label.includes(q) || toolName.toLowerCase().includes(q); }); }, [allToolKeys, toolSearchQuery]);
     const missingBuiltInBlocks = ALL_BUILT_IN_BLOCK_TYPES.filter(b => !inputStrategy.includes(b));
     const availablePromptBlocks = allPromptBlocks.filter((pb: PromptBlock) => !inputStrategy.includes(pb.id));
+
     const profileTabs: { id: ProfileTabId; label: string; icon: string }[] = [{ id: 'general', label: 'General', icon: '📝' }, { id: 'injection', label: 'Injection', icon: '💉' }, { id: 'behaviour', label: 'Behaviour', icon: '🧠' }, { id: 'tools', label: 'Tools', icon: '🔧' }, { id: 'pipeline', label: 'Pipeline', icon: '🔄' }, { id: 'cache', label: 'Cache', icon: '⚡' }, { id: 'models', label: 'Models', icon: '🤖' }];
     const cacheCategories: cacheConfigurationType[] = ['Character Name', 'System Prompt', 'Think Prompt'];
 
@@ -654,6 +675,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                         </label>
                                     ))}
                                 </div>
+
                                 {narrateTextKeys.filter(type => narrateTexts[type]).map(type => (
                                     <div key={type} style={{ marginBottom: '16px' }}>
                                         <EntityDropdown label={`Narrator for ${narrateTextLabels[type]}`} value={narrateTextCharacterIds[type] || ''} onChange={(id) => setNarrateTextCharacterIds(prev => ({ ...prev, [type]: id }))} items={allCharacters} noneLabel="System Default Narrator" noneDescription="Use the default TTS voice." />
@@ -713,13 +735,19 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                         );
                                     })}
                                 </div>
-                                {entityImageTypes.length < ALL_ENTITY_IMAGE_TYPES.length && (
+
+                                {entityImageTypes.length < defaultEntityImageTypePositions.length && (
                                     <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                         <select onChange={(e) => { const val = e.target.value as entityImageType; if (val) addImageType(val); e.target.value = ''; }} className="editor-select" defaultValue="" style={{ flex: 1 }}>
                                             <option value="" disabled>+ Add image type</option>
-                                            {ALL_ENTITY_IMAGE_TYPES.filter(c => !entityImageTypes.includes(c.value)).map(c => (
-                                                <option key={c.value} value={c.value}>{c.label}</option>
-                                            ))}
+                                            {defaultEntityImageTypePositions
+                                                .filter(type => !entityImageTypes.includes(type))
+                                                .map(type => {
+                                                    const config = ALL_ENTITY_IMAGE_TYPES.find(c => c.value === type);
+                                                    return (
+                                                        <option key={type} value={type}>{config?.label || type}</option>
+                                                    );
+                                                })}
                                         </select>
                                     </div>
                                 )}
@@ -760,6 +788,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                         <div className="editor-section">
                             <span className="editor-section-title">Tools</span>
                             <div style={{ ...CHECKBOX_HINT_STYLE, marginLeft: 0, marginBottom: '8px' }}>-1 = force off for all characters. 0 = defer to each character's own setting. 1 = force on for all characters.</div>
+
                             <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
                                 <button type="button" className="editor-bulk-action-button" onClick={handleSelectAllTools}>
                                     <span style={{ fontSize: '0.9rem' }}>✓</span> Force All On
@@ -771,8 +800,11 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                     <span style={{ fontSize: '0.9rem' }}>✗</span> Force All Off
                                 </button>
                             </div>
+
                             <input type="text" value={toolSearchQuery} onChange={e => setToolSearchQuery(e.target.value)} className="editor-input" placeholder="Search tools..." style={{ marginBottom: '12px', fontSize: '0.75rem', padding: '6px 10px' }} />
+
                             {filteredToolKeys.length === 0 && (<div style={{ fontSize: '0.7rem', opacity: 0.5, fontStyle: 'italic', padding: '8px 0' }}>No tools match "{toolSearchQuery}".</div>)}
+
                             {filteredToolKeys.map(toolName => (
                                 <div key={toolName} style={{ marginBottom: '12px' }}>
                                     <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>{toolLabels[toolName]} Override</label><span style={SLIDER_VALUE_STYLE}>{tools[toolName] === -1 ? '(Force Off)' : tools[toolName] === 1 ? '(Force On)' : '(Character default)'}</span></div>
@@ -817,6 +849,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                         );
                                     })}
                                 </div>
+
                                 {(missingBuiltInBlocks.length > 0 || availablePromptBlocks.length > 0) && (
                                     <div style={{ marginTop: '8px', display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                                         <select onChange={(e) => { const val = e.target.value; if (val) addBlock(val); e.target.value = ''; }} className="editor-select" defaultValue="" style={{ flex: 1 }}>
@@ -878,12 +911,14 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                         );
                                     })}
                                 </div>
+
                                 <div style={{ marginTop: '8px' }}>
                                     <select onChange={(e) => { const val = e.target.value as SummarizationStrategyType; if (val) addSummarizationStep(val); e.target.value = ''; }} className="editor-select" defaultValue="">
                                         <option value="" disabled>+ Add a summarization step</option>
                                         {ALL_STRATEGY_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                                     </select>
                                 </div>
+
                                 {summarizationSteps.length === 0 && (<div style={{ fontSize: '0.75rem', opacity: 0.5, fontStyle: 'italic', textAlign: 'center', padding: '12px 0' }}>No summarization steps configured. Add one above to enable context management.</div>)}
                                 
                                 <div style={{ marginTop: '16px' }}>
@@ -947,6 +982,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                     </div>
                                 ))}
                             </div>
+
                             <div className="editor-section">
                                 <span className="editor-section-title">Volatile Section Ordering</span>
                                 <ProfileCheckbox checked={minimalVolatileCacheMode} onChange={setMinimalVolatileCacheMode} label="Minimal Volatile Cache Mode" hint="When enabled, volatile sections are forced to the end of the prompt regardless of input strategy ordering." />
