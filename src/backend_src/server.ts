@@ -27,7 +27,6 @@ import { v4 as uuidv4 } from 'uuid';
 import { GITHUB_REPOSITORIES, DOCKER_IMAGES, DIRECT_DOWNLOADS, TEXT_TO_SPEECH_MODELS } from './externalUrls';
 
 // --- Configuration ---
-
 const app = express();
 const PORT = 8448;
 const ROOT_DIR = process.cwd();
@@ -35,7 +34,6 @@ const APP_NAME = "LoreReactor";
 const LOCAL_MODEL_BACKENDS_PATH = 'local_model_backends';
 
 // ── Platform helpers ────────────────────────────────────────────────
-
 const IS_WINDOWS = process.platform === 'win32';
 const IS_MACOS   = process.platform === 'darwin';
 
@@ -51,12 +49,10 @@ function bin(name: string): string {
 function pythonBin(backendDir: string): string {
   const direct = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, backendDir, bin('python'));
   if (fs.existsSync(direct)) return direct;
-
   const venvScript = IS_WINDOWS
     ? path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, backendDir, 'venv', 'Scripts', 'python.exe')
     : path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, backendDir, 'venv', 'bin', 'python');
   if (fs.existsSync(venvScript)) return venvScript;
-
   return direct;
 }
 
@@ -277,16 +273,18 @@ const log = {
 };
 
 app.use(cors({ origin: '*', credentials: true }));
-
 app.use((_req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
 });
-
 app.use(express.json({ limit: '50mb' }));
 
-// ─── Real-Time Notifications & SSE Dispatcher (/language_models/notify) ─
+// ─── Instant /ping Endpoint ───
+app.get('/ping', (_req, res) => {
+  res.json({ status: 'ok', server: APP_NAME, timestamp: Date.now() });
+});
 
+// ─── Real-Time Notifications & SSE Dispatcher (/language_models/notify) ─
 export interface BackendInstallNotification {
   backend: string;
   status: 'idle' | 'downloading' | 'extracting' | 'installing' | 'ready' | 'error';
@@ -311,10 +309,8 @@ function broadcastNotify(
     message,
     timestamp: Date.now(),
   };
-
   activeNotifications.set(backend, notification);
   log.info(`[Notify:${backend}] (${notification.percent}%) ${message}`);
-
   const payload = `data: ${JSON.stringify(notification)}\n\n`;
   for (const client of notifySseClients) {
     try {
@@ -351,7 +347,6 @@ app.post('/language_models/notify', (req, res) => {
 });
 
 // ─── Real-Time File Sync SSE Dispatcher (/sync) ─────────────
-
 const syncSseClients: Set<express.Response> = new Set();
 
 function broadcastSyncChange(method: string, path: string, clientId?: string) {
@@ -380,7 +375,6 @@ app.get('/sync', (req, res) => {
 });
 
 // ─── Automated On-Demand Installer Utilities ────────────────────────
-
 const cancelledInstalls = new Set<string>();
 
 function ensureDirectory(dir: string): void {
@@ -425,7 +419,6 @@ async function fetchGithubRelease(repo: string, tag?: string): Promise<any> {
   if (process.env.GITHUB_TOKEN) {
     headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
   }
-
   const urls = tag
     ? [
         `https://api.github.com/repos/${repo}/releases/tags/${tag}`,
@@ -435,7 +428,6 @@ async function fetchGithubRelease(repo: string, tag?: string): Promise<any> {
         `https://api.github.com/repos/${repo}/releases/latest`,
         `https://api.github.com/repos/${repo}/releases?per_page=5`,
       ];
-
   for (const url of urls) {
     try {
       const res = await fetch(url, { headers });
@@ -449,14 +441,9 @@ async function fetchGithubRelease(repo: string, tag?: string): Promise<any> {
       }
     } catch {}
   }
-
   throw new Error(`Could not fetch valid GitHub release with assets for ${repo}`);
 }
 
-/**
- * Hardware-aware GitHub Release Asset Scorer.
- * Filters out incompatible OS/Arch builds and scores remaining assets by GPU backend & CPU SIMD support.
- */
 function selectBestReleaseAsset(
   assets: any[],
   hw: HardwareProfile,
@@ -467,55 +454,42 @@ function selectBestReleaseAsset(
   } = {}
 ): any | null {
   if (!Array.isArray(assets) || assets.length === 0) return null;
-
   const candidates: { asset: any; score: number }[] = [];
-
   for (const asset of assets) {
     const name = String(asset.name || '').toLowerCase();
     if (!name || !asset.browser_download_url) continue;
-
-    // Skip checksums, signatures, debug symbols, source code
     if (/\.(sha256|sha512|md5|sig|asc|txt|deb|rpm|apk|msi|pkg|dmg)$/i.test(name)) continue;
     if (options.excludePatterns?.some((rx) => rx.test(name))) continue;
     if (options.requirePrefix && !options.requirePrefix.test(name)) continue;
-
     const isArchive = /\.(zip|tar\.gz|tgz|tar\.xz|tar\.bz2)$/i.test(name);
     const isExe = /\.exe$/i.test(name);
     if (!isArchive && !isExe && !options.allowRawBinary) continue;
 
-    // 1. Strict OS Filtering
     const mentionsWin = /(win|windows|msvc)/i.test(name);
     const mentionsMac = /(mac|macos|darwin|apple|osx)/i.test(name);
     const mentionsLinux = /(linux|ubuntu|debian|centos|glibc|musl)/i.test(name);
-
     if (hw.os === 'windows' && (!mentionsWin || mentionsMac || mentionsLinux)) continue;
     if (hw.os === 'macos' && (!mentionsMac || mentionsWin || mentionsLinux)) continue;
     if (hw.os === 'linux' && (!mentionsLinux || mentionsWin || mentionsMac)) continue;
 
-    // 2. Strict Architecture Filtering
     const mentionsArm = /(arm64|aarch64)/i.test(name);
     const mentionsX64 = /(x64|x86_64|amd64|win64)/i.test(name);
     const mentionsX86 = /(win32|i386|i686|x86(?!_64))/i.test(name);
     const mentionsUniversal = /universal/i.test(name);
-
     if (mentionsX86 && !mentionsX64) continue;
     if (hw.arch === 'arm64' && mentionsX64 && !mentionsArm && !mentionsUniversal) continue;
     if (hw.arch === 'x64' && mentionsArm && !mentionsX64 && !mentionsUniversal) continue;
 
     let score = 100;
-
-    // Architecture preference
     if (hw.arch === 'arm64' && mentionsArm) score += 30;
     else if (hw.arch === 'x64' && mentionsX64) score += 30;
     else if (mentionsUniversal) score += 20;
 
-    // 3. Hardware Acceleration / Backend Scoring
     const isCuda = /(cuda|cublas|cu1[123])/i.test(name);
     const isVulkan = /vulkan/i.test(name);
     const isRocm = /(rocm|hip|hipblas)/i.test(name);
     const isSycl = /(sycl|oneapi|opencl)/i.test(name);
     const isMetal = /metal/i.test(name);
-
     if (hw.os === 'macos') {
       if (isMetal) score += 60;
       if (isCuda || isRocm || isSycl) continue;
@@ -544,12 +518,10 @@ function selectBestReleaseAsset(
       if (isVulkan) score += 85;
       else if (isSycl) score += 80;
     } else {
-      // Unknown / CPU-only fallback
       if (isCuda || isRocm || isSycl) continue;
       if (isVulkan) score += 20;
     }
 
-    // 4. CPU SIMD Scoring (when no GPU backend is in asset name, or as tie-breaker)
     if (/avx512/i.test(name)) {
       if (!hw.cpuFlags.avx512) continue;
       score += 25;
@@ -562,10 +534,8 @@ function selectBestReleaseAsset(
     } else if (/noavx|basic|sse/i.test(name)) {
       score += 5;
     }
-
     candidates.push({ asset, score });
   }
-
   if (candidates.length === 0) return null;
   candidates.sort((a, b) => b.score - a.score);
   return candidates[0].asset;
@@ -614,7 +584,7 @@ $dockerArgs = @('run','--gpus','all','--rm','--shm-size','1g') + $volumes + @('$
 & docker @dockerArgs
 exit $LASTEXITCODE
 `;
-    const cmd = `@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0${path.basename(ps1Path)}" %*\r\n`;
+    const cmd = `@echo off\r\npowershell -NoProfile -ExecutionPolicy Bypass -File "%\~dp0${path.basename(ps1Path)}" %\*\r\n`;
     fs.writeFileSync(ps1Path, ps1, 'utf-8');
     fs.writeFileSync(binaryPath, cmd, 'utf-8');
     return;
@@ -696,11 +666,6 @@ function extractArchive(archivePath: string, destDir: string): void {
   }
 }
 
-/**
- * Recursively find a named binary (or fallback prefix) inside `searchDir`,
- * hoist it to `targetDest`, and copy all companion shared libraries (.dll/.so/.dylib)
- * from the binary's extracted directory into `path.dirname(targetDest)`.
- */
 function hoistBinaryIfExists(
   searchDir: string,
   binaryName: string,
@@ -709,10 +674,8 @@ function hoistBinaryIfExists(
 ): boolean {
   const targetDir = path.dirname(targetDest);
   ensureDirectory(targetDir);
-
   const candidatesToMatch = [binaryName, ...fallbackNames].map((n) => n.toLowerCase());
   let matchedFilePath: string | null = null;
-
   function walk(currentDir: string): void {
     if (matchedFilePath) return;
     const entries = fs.readdirSync(currentDir, { withFileTypes: true });
@@ -730,13 +693,9 @@ function hoistBinaryIfExists(
       }
     }
   }
-
   walk(searchDir);
   if (!matchedFilePath) return fs.existsSync(targetDest);
-
   const sourceDir = path.dirname(matchedFilePath);
-
-  // Copy companion shared libraries & executables from the nested folder so DLLs/dylibs/so aren't orphaned
   if (path.resolve(sourceDir) !== path.resolve(targetDir)) {
     const siblingEntries = fs.readdirSync(sourceDir, { withFileTypes: true });
     for (const sibling of siblingEntries) {
@@ -763,7 +722,6 @@ function hoistBinaryIfExists(
       }
     }
   }
-
   if (path.resolve(matchedFilePath) !== path.resolve(targetDest)) {
     fs.copyFileSync(matchedFilePath, targetDest);
   }
@@ -773,17 +731,12 @@ function hoistBinaryIfExists(
   return true;
 }
 
-/**
- * Bootstrap Astral's standalone `uv` executable.
- */
 async function ensureUv(): Promise<string> {
   const uvDir = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'tools', 'uv');
   const uvBinary = path.join(uvDir, bin('uv'));
   if (fs.existsSync(uvBinary)) return uvBinary;
-
   broadcastNotify('uv', 'downloading', 10, 'Bootstrapping standalone Python manager (uv)...');
   ensureDirectory(uvDir);
-
   const arch = process.arch === 'arm64' ? 'aarch64' : 'x86_64';
   let asset = '';
   if (IS_WINDOWS) {
@@ -793,19 +746,16 @@ async function ensureUv(): Promise<string> {
   } else {
     asset = arch === 'aarch64' ? DIRECT_DOWNLOADS.UV.LINUX_ARM : DIRECT_DOWNLOADS.UV.LINUX_X64;
   }
-
   const uvUrl = `${DIRECT_DOWNLOADS.UV.BASE_URL}/${asset}`;
   const tempArchive = path.join(uvDir, `uv_archive${asset.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset)}`);
   await downloadFileWithProgress(uvUrl, tempArchive, (loaded, total) => {
     const pct = Math.round((loaded / total) * 100);
     broadcastNotify('uv', 'downloading', pct, `Downloading uv installer: ${pct}%`);
   }, 'uv');
-
   broadcastNotify('uv', 'extracting', 90, 'Extracting uv standalone binary...');
   extractArchive(tempArchive, uvDir);
   try { fs.unlinkSync(tempArchive); } catch {}
   hoistBinaryIfExists(uvDir, bin('uv'), uvBinary);
-
   broadcastNotify('uv', 'ready', 100, 'Standalone Python manager initialized.');
   return uvBinary;
 }
@@ -820,9 +770,6 @@ function syncVenvPythonConfig(backend: LocalBackend, destDir: string): string {
   return venvPy;
 }
 
-/**
- * Primary On-Demand Installer Orchestrator
- */
 async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
   cancelledInstalls.delete(backend);
   const config = BACKEND_CONFIGS[backend];
@@ -830,12 +777,10 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
     : path.dirname(config.binaryPath);
   ensureDirectory(destDir);
-
   const hw = await getHardwareProfile();
   log.info(`[AutoInstaller] Initiating on-demand setup for "${backend}" (OS: ${hw.os}, Arch: ${hw.arch}, GPU: ${hw.gpuVendor}${hw.cudaMajor ? ` CUDA ${hw.cudaMajor}` : ''})...`);
   broadcastNotify(backend, 'downloading', 0, `Initializing setup for ${backend} (${hw.gpuVendor.toUpperCase()})...`);
 
-  // 1. LLAMA.CPP
   if (backend === 'Llama.cpp') {
     broadcastNotify(backend, 'downloading', 5, 'Resolving Llama.cpp release assets for hardware...');
     let release: any = null;
@@ -845,35 +790,28 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       log.warn(`[AutoInstaller] Latest Llama.cpp release lookup failed: ${err.message}`);
       release = await fetchGithubRelease(GITHUB_REPOSITORIES.LLAMA_CPP, GITHUB_REPOSITORIES.LLAMA_CPP_FALLBACK_TAG);
     }
-
     const asset = selectBestReleaseAsset(release.assets, hw, {
       excludePatterns: [/cudart/i, /kompute/i],
     });
     if (!asset?.browser_download_url) {
       throw new Error(`Could not locate a compatible Llama.cpp binary for ${hw.os}-${hw.arch} (${hw.gpuVendor}).`);
     }
-
     log.info(`[AutoInstaller] Selected Llama.cpp asset: ${asset.name}`);
     const ext = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
     const tempPath = path.join(destDir, `llama_pkg_${Date.now()}${ext}`);
-
     await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       broadcastNotify(backend, 'downloading', pct, `Downloading ${asset.name} (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
     }, backend);
-
     broadcastNotify(backend, 'extracting', 85, 'Extracting Llama.cpp binaries...');
     extractArchive(tempPath, destDir);
     try { fs.unlinkSync(tempPath); } catch {}
-
-    // If a CUDA build was selected on Windows, also fetch the matching cudart DLL bundle
     if (hw.os === 'windows' && /cuda|cu1[123]/i.test(asset.name)) {
       const cudaTagMatch = asset.name.match(/cu1[123](?:\.\d+)?/i);
       const cudartAsset = release.assets.find((a: any) =>
         /cudart-llama-bin-win/i.test(a.name) &&
         (!cudaTagMatch || a.name.toLowerCase().includes(cudaTagMatch[0].toLowerCase()))
       ) || release.assets.find((a: any) => /cudart-llama-bin-win/i.test(a.name));
-
       if (cudartAsset?.browser_download_url) {
         broadcastNotify(backend, 'downloading', 90, `Downloading CUDA runtime (${cudartAsset.name})...`);
         const tempCudaZip = path.join(destDir, `cudart_${Date.now()}.zip`);
@@ -882,14 +820,10 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
         try { fs.unlinkSync(tempCudaZip); } catch {}
       }
     }
-
     hoistBinaryIfExists(destDir, bin('llama-server'), config.binaryPath, [bin('server')]);
     const llamaTtsPath = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-tts'));
     hoistBinaryIfExists(destDir, bin('llama-tts'), llamaTtsPath, [bin('tts')]);
-  }
-
-  // 2. MISTRAL.RS
-  else if (backend === 'mistral.rs') {
+  } else if (backend === 'mistral.rs') {
     broadcastNotify(backend, 'downloading', 5, 'Resolving mistral.rs release assets...');
     let installedFromRelease = false;
     try {
@@ -922,7 +856,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     } catch (err: any) {
       log.warn(`[AutoInstaller] mistral.rs release lookup warning: ${err.message}`);
     }
-
     if (!installedFromRelease && !IS_WINDOWS) {
       broadcastNotify(backend, 'installing', 20, 'Running official mistral.rs installer script...');
       execSync(`curl -fsSL ${DIRECT_DOWNLOADS.MISTRAL_RS_INSTALLER} | sh`, {
@@ -943,18 +876,13 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       fs.copyFileSync(foundBinary, config.binaryPath);
       fs.chmodSync(config.binaryPath, 0o755);
     }
-
     if (!fs.existsSync(config.binaryPath)) {
       throw new Error(`Could not locate or install mistral.rs binary for ${hw.os}-${hw.arch}.`);
     }
-  }
-
-  // 3. OLLAMA
-  else if (backend === 'Ollama') {
+  } else if (backend === 'Ollama') {
     broadcastNotify(backend, 'downloading', 10, 'Fetching portable Ollama runtime...');
     ensureDirectory(path.dirname(config.binaryPath));
     const release = await fetchGithubRelease(GITHUB_REPOSITORIES.OLLAMA);
-
     let asset: any = null;
     if (IS_WINDOWS) {
       const archTag = hw.arch === 'arm64' ? 'arm64' : 'amd64';
@@ -969,19 +897,15 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       asset = release.assets.find((a: any) => new RegExp(`^ollama-linux-${archTag}\\.(tgz|tar\\.gz|tar\\.xz)$`, 'i').test(a.name))
         || selectBestReleaseAsset(release.assets, hw, { excludePatterns: [/rocm/i] });
     }
-
     const downloadUrl = asset?.browser_download_url || (IS_WINDOWS ? DIRECT_DOWNLOADS.OLLAMA_WINDOWS : null);
     if (!downloadUrl) throw new Error(`Could not locate portable Ollama asset for ${hw.os}-${hw.arch}.`);
-
     const assetName = asset?.name || 'ollama.zip';
     const ext = assetName.endsWith('.tar.gz') ? '.tar.gz' : (path.extname(assetName) || '.zip');
     const tempPath = path.join(destDir, `ollama_${Date.now()}${ext}`);
-
     await downloadFileWithProgress(downloadUrl, tempPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       broadcastNotify(backend, 'downloading', pct, `Downloading Ollama (${assetName}): ${pct}%`);
     }, backend);
-
     if (/\.(zip|tgz|tar\.gz|tar\.xz)$/i.test(assetName)) {
       broadcastNotify(backend, 'extracting', 85, 'Extracting portable Ollama runtime...');
       extractArchive(tempPath, destDir);
@@ -992,10 +916,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       try { fs.unlinkSync(tempPath); } catch {}
       if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
     }
-  }
-
-  // 4. LM STUDIO (CLI)
-  else if (backend === 'LM Studio') {
+  } else if (backend === 'LM Studio') {
     broadcastNotify(backend, 'installing', 30, 'Locating or installing LM Studio CLI (lms)...');
     ensureDirectory(path.dirname(config.binaryPath));
     const existingLms = findLmsBinary();
@@ -1013,15 +934,11 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       fs.copyFileSync(postInstallLms, config.binaryPath);
       if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
     }
-  }
-
-  // 5. LOCALAI
-  else if (backend === 'LocalAI') {
+  } else if (backend === 'LocalAI') {
     broadcastNotify(backend, 'downloading', 10, 'Locating prebuilt LocalAI distribution...');
     const release = await fetchGithubRelease(GITHUB_REPOSITORIES.LOCAL_AI);
     const asset = selectBestReleaseAsset(release.assets, hw, { allowRawBinary: true });
     if (!asset?.browser_download_url) throw new Error(`LocalAI prebuilt asset not found for ${hw.os}-${hw.arch}.`);
-
     log.info(`[AutoInstaller] Selected LocalAI asset: ${asset.name}`);
     const isArchive = /\.(zip|tar\.gz|tgz|tar\.xz)$/i.test(asset.name);
     if (isArchive) {
@@ -1043,10 +960,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       }, backend);
       if (!IS_WINDOWS) fs.chmodSync(config.binaryPath, 0o755);
     }
-  }
-
-  // 6. EXLLAMAV2 / EXLLAMAV3 / EXLLAMAV3 HF (Headless via TabbyAPI + uv)
-  else if (backend === 'ExLlamaV2' || backend === 'ExLlamaV3' || backend === 'ExLlamaV3 HF') {
+  } else if (backend === 'ExLlamaV2' || backend === 'ExLlamaV3' || backend === 'ExLlamaV3 HF') {
     const uvBin = await ensureUv();
     broadcastNotify(backend, 'downloading', 20, 'Downloading TabbyAPI engine code...');
     const zipUrl = DIRECT_DOWNLOADS.EXLLAMA_TABBY_API;
@@ -1063,12 +977,10 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       }
       try { fs.rmdirSync(extractedFolder); } catch {}
     }
-
     broadcastNotify(backend, 'installing', 40, 'Installing isolated Python 3.11 environment via uv...');
     execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
     execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
     const venvPy = syncVenvPythonConfig(backend, destDir);
-
     broadcastNotify(backend, 'installing', 60, `Installing ExLlama runtime dependencies for ${hw.gpuVendor.toUpperCase()}...`);
     try {
       execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
@@ -1079,7 +991,6 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     } catch (err: any) {
       log.warn(`[AutoInstaller] torch auto backend preinstall failed: ${err.message}`);
     }
-
     const extraTag = hw.gpuVendor === 'nvidia' ? getCudaExtra() : hw.gpuVendor === 'amd' ? 'rocm' : null;
     if (extraTag) {
       try {
@@ -1102,21 +1013,16 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
         timeout: 1800000,
       });
     }
-
     const rootPy = path.join(destDir, bin('python'));
     if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) {
       fs.copyFileSync(venvPy, rootPy);
     }
-  }
-
-  // 7. VLLM (Headless via uv)
-  else if (backend === 'vLLM') {
+  } else if (backend === 'vLLM') {
     const uvBin = await ensureUv();
     broadcastNotify(backend, 'installing', 25, 'Provisioning portable Python 3.11 for vLLM...');
     execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
     execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
     const venvPy = syncVenvPythonConfig(backend, destDir);
-
     broadcastNotify(backend, 'installing', 50, 'Fetching vLLM high-throughput engine wheels...');
     try {
       execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
@@ -1132,19 +1038,14 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       cwd: destDir,
       timeout: 1800000,
     });
-
     const rootPy = path.join(destDir, bin('python'));
     if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) fs.copyFileSync(venvPy, rootPy);
-  }
-
-  // 8. SGLANG (Headless via uv)
-  else if (backend === 'SGLang') {
+  } else if (backend === 'SGLang') {
     const uvBin = await ensureUv();
     broadcastNotify(backend, 'installing', 25, 'Provisioning isolated Python environment for SGLang...');
     execSync(`"${uvBin}" python install 3.11`, { stdio: 'pipe', timeout: 900000 });
     execSync(`"${uvBin}" venv "${path.join(destDir, 'venv')}" --python 3.11`, { stdio: 'pipe', timeout: 300000 });
     const venvPy = syncVenvPythonConfig(backend, destDir);
-
     broadcastNotify(backend, 'installing', 50, 'Installing sglang[srt] optimized runtime...');
     try {
       execSync(`"${uvBin}" pip --python "${venvPy}" install -U torch --torch-backend=auto`, {
@@ -1160,13 +1061,9 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
       cwd: destDir,
       timeout: 1800000,
     });
-
     const rootPy = path.join(destDir, bin('python'));
     if (fs.existsSync(venvPy) && !fs.existsSync(rootPy)) fs.copyFileSync(venvPy, rootPy);
-  }
-
-  // 9. DOCKER CONTAINERS (TensorRT-LLM & Transformers/TGI)
-  else if (backend === 'TensorRT-LLM' || backend === 'Transformers') {
+  } else if (backend === 'TensorRT-LLM' || backend === 'Transformers') {
     broadcastNotify(backend, 'installing', 20, `Verifying Docker engine for ${backend}...`);
     try {
       execSync('docker --version', { stdio: 'pipe', timeout: 15000 });
@@ -1179,10 +1076,7 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     broadcastNotify(backend, 'downloading', 40, `Pulling container image: ${image}...`);
     execSync(`docker pull ${image}`, { stdio: 'inherit', timeout: 3600000 });
     writeDockerWrapper(config.binaryPath, image);
-  }
-
-  // 10. STABLE-DIFFUSION.CPP
-  else if (backend === 'stable-diffusion.cpp') {
+  } else if (backend === 'stable-diffusion.cpp') {
     broadcastNotify(backend, 'downloading', 5, 'Resolving stable-diffusion.cpp release assets...');
     const release = await fetchGithubRelease(GITHUB_REPOSITORIES.STABLE_DIFFUSION_CPP || 'leejet/stable-diffusion.cpp');
     const asset = selectBestReleaseAsset(release.assets, hw, {
@@ -1191,21 +1085,16 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
     if (!asset?.browser_download_url) {
       throw new Error(`Could not locate a compatible stable-diffusion.cpp binary for ${hw.os}-${hw.arch} (${hw.gpuVendor}).`);
     }
-
     log.info(`[AutoInstaller] Selected stable-diffusion.cpp asset: ${asset.name}`);
     const ext = asset.name.endsWith('.tar.gz') ? '.tar.gz' : path.extname(asset.name);
     const tempPath = path.join(destDir, `sdcpp_pkg_${Date.now()}${ext}`);
-
     await downloadFileWithProgress(asset.browser_download_url, tempPath, (loaded, total) => {
       const pct = Math.round((loaded / total) * 100);
       broadcastNotify(backend, 'downloading', pct, `Downloading ${asset.name} (${(loaded / 1048576).toFixed(1)}MB / ${(total / 1048576).toFixed(1)}MB)`);
     }, backend);
-
     broadcastNotify(backend, 'extracting', 85, 'Extracting stable-diffusion.cpp binaries...');
     extractArchive(tempPath, destDir);
     try { fs.unlinkSync(tempPath); } catch {}
-
-    // If a CUDA build was selected on Windows, also extract its companion cudart zip if present in the release
     if (hw.os === 'windows' && /cuda|cublas|cu1[123]/i.test(asset.name)) {
       const cudartAsset = release.assets.find((a: any) => /cudart.*win/i.test(a.name));
       if (cudartAsset?.browser_download_url) {
@@ -1215,10 +1104,8 @@ async function installBackendOnDemand(backend: LocalBackend): Promise<void> {
         try { fs.unlinkSync(tempCudaZip); } catch {}
       }
     }
-
     hoistBinaryIfExists(destDir, bin('sd-server'), config.binaryPath, [bin('sd')]);
   }
-
   broadcastNotify(backend, 'ready', 100, `${backend} is installed and ready.`);
   log.success(`[AutoInstaller] ${backend} installed successfully!`);
   cancelledInstalls.delete(backend);
@@ -1271,7 +1158,6 @@ function validateAuxPaths(args: string[]): void {
 }
 
 // ─── Virtual Controller State (ViGEmBus / XInput) ────────────────────
-
 let ViGEmClient: any = null;
 let vigemBus: any = null;
 let x360Controller: any = null;
@@ -1340,7 +1226,6 @@ function cleanupVirtualController() {
 }
 
 // ─── GPU Monitoring ─────────────────────────────────────────────────
-
 type GpuVendor = 'nvidia' | 'amd' | 'intel' | 'apple' | 'unknown';
 
 interface GpuStatus {
@@ -1374,7 +1259,6 @@ function detectGpuVendor(): GpuVendor {
       return vendor;
     } catch {}
   }
-
   if (IS_WINDOWS) {
     try {
       const out = execSync(
@@ -1398,7 +1282,6 @@ function detectGpuVendor(): GpuVendor {
       if (out.includes('intel')) return 'intel';
     } catch {}
   }
-
   return 'unknown';
 }
 
@@ -1408,7 +1291,6 @@ async function getHardwareProfile(): Promise<HardwareProfile> {
   if (detectedGpuVendor === 'unknown') {
     detectedGpuVendor = detectGpuVendor();
   }
-
   let gpuVendor = detectedGpuVendor;
   if (gpuVendor === 'unknown') {
     try {
@@ -1423,19 +1305,16 @@ async function getHardwareProfile(): Promise<HardwareProfile> {
       detectedGpuVendor = gpuVendor;
     } catch {}
   }
-
   const cuda = gpuVendor === 'nvidia' ? getDetectedCudaVersion() : null;
   let avx512 = false;
   let avx2 = true;
   let avx = true;
-
   try {
     const flags = (await si.cpuFlags()).toLowerCase();
     avx512 = flags.includes('avx512');
     avx2 = flags.includes('avx2');
     avx = flags.includes('avx');
   } catch {}
-
   return {
     os: IS_WINDOWS ? 'windows' : IS_MACOS ? 'macos' : 'linux',
     arch: process.arch === 'arm64' ? 'arm64' : 'x64',
@@ -1452,7 +1331,7 @@ function queryNvidiaGpu(): GpuStatus | null {
       { stdio: 'pipe', timeout: 3000, encoding: 'utf-8' },
     );
     const line = raw.split('\n')[0];
-    const parts = line.split(',').map(s => s);
+    const parts = line.split(',').map(s => s.trim());
     if (parts.length < 4) return null;
     return {
       vendor: 'nvidia',
@@ -1572,7 +1451,6 @@ let lastGpuQueryTime = 0;
 const GPU_QUERY_MIN_INTERVAL_MS = 1000;
 
 // ─── Media file detection helpers ────────────────────────────────────
-
 const MEDIA_DIR_PREFIXES = [
   'character_images/', 'character_voices/',
   'multiplayer_character_images/', 'multiplayer_character_voices/',
@@ -1598,12 +1476,12 @@ function getMimeType(ext: string): string {
   return mimeMap[ext] || 'application/octet-stream';
 }
 
-// ─── Startup Data Sanitizer ──────────────────────────────────────────
-
+// ─── Startup Data Sanitizer & Auto Manifest-Rebuild ───────────────────
 const MANIFEST_DIRS = [
   'character_data', 'multiplayer_character_data', 'token_sampler_data', 'context_data',
-  'location_data', 'language_model_data', 'stop_pattern_data', 'knowledge_configuration_data', 'interaction_messages',
-  'interaction_data', 'entity_folders', 'budget_strategies', 'profile_data', 'world_data',
+  'location_data', 'language_model_data', 'spatiotemporal_model_data', 'stop_pattern_data',
+  'retrieval_configuration_data', 'interaction_messages', 'interaction_data',
+  'entity_folders', 'budget_strategies', 'profile_data', 'world_data',
   'webpage_data', 'memory_data', 'audio_track_data', 'prompt_block_data',
   'account_data', 'multiplayer_data',
 ];
@@ -1611,42 +1489,30 @@ const MANIFEST_DIRS = [
 function sanitizeManifestDir(dirName: string): number {
   const dirPath = path.join(ROOT_DIR, 'user_data', dirName);
   const manifestPath = path.join(dirPath, 'manifest.json');
-  if (!fs.existsSync(dirPath)) {
-    try { fs.mkdirSync(dirPath, { recursive: true }); log.info(`Created directory: ${dirPath}`); } catch {}
+  ensureDirectory(dirPath);
+
+  const filesOnDisk = fs.readdirSync(dirPath)
+    .filter(f => f.endsWith('.json') && f !== 'manifest.json')
+    .map(f => f.replace('.json', ''));
+
+  if (!fs.existsSync(manifestPath) || filesOnDisk.length > 0) {
+    try {
+      const currentManifest = fs.existsSync(manifestPath)
+        ? JSON.parse(fs.readFileSync(manifestPath, 'utf-8'))
+        : [];
+      const validIds = Array.isArray(currentManifest) ? currentManifest.filter((id: string) => filesOnDisk.includes(id)) : [];
+      const finalManifest = Array.from(new Set([...validIds, ...filesOnDisk]));
+      fs.writeFileSync(manifestPath, JSON.stringify(finalManifest, null, 2), 'utf-8');
+    } catch {}
   }
-  if (!fs.existsSync(manifestPath)) {
-    try { fs.writeFileSync(manifestPath, '[]', 'utf-8'); } catch {}
-    return 0;
-  }
-  try {
-    const raw = fs.readFileSync(manifestPath, 'utf-8');
-    const manifest: unknown = JSON.parse(raw);
-    if (!Array.isArray(manifest)) return 0;
-    const validIds: string[] = [];
-    let removedCount = 0;
-    for (const entry of manifest) {
-      const id = typeof entry === 'string' ? entry : String(entry);
-      if (fs.existsSync(path.join(dirPath, `${id}.json`))) {
-        validIds.push(id);
-      } else {
-        removedCount++;
-      }
-    }
-    if (removedCount > 0) {
-      fs.writeFileSync(manifestPath, JSON.stringify(validIds, null, 2), 'utf-8');
-      log.warn(`Sanitized ${dirName}/manifest.json: removed ${removedCount} orphaned entr${removedCount === 1 ? 'y' : 'ies'}`);
-    }
-    return removedCount;
-  } catch (e) {
-    log.warn(`Failed to sanitize ${dirName}/manifest.json: ${(e as Error).message}`);
-    return 0;
-  }
+  return filesOnDisk.length;
 }
 
 function sanitizeOrphanedMessages(): number {
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   if (!fs.existsSync(messagesDir)) return 0;
+
   const referencedMessageIds = new Set<string>();
   if (fs.existsSync(chatsDir)) {
     const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
@@ -1667,6 +1533,7 @@ function sanitizeOrphanedMessages(): number {
       } catch {}
     }
   }
+
   const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
   let orphanedCount = 0;
   for (const file of messageFiles) {
@@ -1675,6 +1542,7 @@ function sanitizeOrphanedMessages(): number {
       try { fs.unlinkSync(path.join(messagesDir, file)); orphanedCount++; } catch {}
     }
   }
+
   const messagesManifestPath = path.join(messagesDir, 'manifest.json');
   if (fs.existsSync(messagesManifestPath)) {
     try {
@@ -1686,6 +1554,7 @@ function sanitizeOrphanedMessages(): number {
       }
     } catch {}
   }
+
   if (orphanedCount > 0) {
     log.warn(`Sanitized interaction_messages/: removed ${orphanedCount} orphaned message file${orphanedCount === 1 ? '' : 's'}`);
   }
@@ -1695,6 +1564,7 @@ function sanitizeOrphanedMessages(): number {
 function sanitizeHollowMessages(): number {
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   if (!fs.existsSync(messagesDir)) return 0;
+
   const messageFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
   let hollowCount = 0;
   for (const file of messageFiles) {
@@ -1707,6 +1577,7 @@ function sanitizeHollowMessages(): number {
       }
     } catch {}
   }
+
   if (hollowCount > 0) {
     log.warn(`Sanitized interaction_messages/: removed ${hollowCount} hollow message file${hollowCount === 1 ? '' : 's'}`);
   }
@@ -1717,11 +1588,13 @@ function sanitizeChatHistories(): number {
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   if (!fs.existsSync(chatsDir)) return 0;
+
   const existingMessageIds = new Set<string>();
   if (fs.existsSync(messagesDir)) {
     const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
     for (const f of msgFiles) existingMessageIds.add(f.replace(/\.json$/, ''));
   }
+
   const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
   let totalPruned = 0;
   for (const file of chatFiles) {
@@ -1749,6 +1622,7 @@ function sanitizeChatHistories(): number {
       }
     } catch {}
   }
+
   if (totalPruned > 0) {
     log.warn(`Sanitized chat histories: pruned ${totalPruned} dangling message reference${totalPruned === 1 ? '' : 's'}`);
   }
@@ -1756,7 +1630,7 @@ function sanitizeChatHistories(): number {
 }
 
 function runStartupSanitization(): void {
-  log.info('Running startup data sanitization...');
+  log.info('Running startup data sanitization & manifest auto-scaffolding...');
   let totalManifestOrphans = 0;
   for (const dir of MANIFEST_DIRS) totalManifestOrphans += sanitizeManifestDir(dir);
   const hollowMessages = sanitizeHollowMessages();
@@ -1772,7 +1646,6 @@ function runStartupSanitization(): void {
 }
 
 // ─── Fast Snippet Extractor for Search ────────────────────────────────
-
 function createSnippet(text: string, query: string, radius = 50): string {
   const lowerText = text.toLowerCase();
   const idx = lowerText.indexOf(query.toLowerCase());
@@ -1786,12 +1659,14 @@ app.get('/search', async (req, response) => {
   const query = typeof req.query.q === 'string' ? req.query.q : '';
   const limit = Math.min(Number.parseInt(String(req.query.limit || '40'), 10), 100);
   if (!query) return response.json({ query, results: [], count: 0, durationMs: 0 });
+
   const startTime = Date.now();
   const lowerQuery = query.toLowerCase();
   const chatsDir = path.join(ROOT_DIR, 'user_data', 'interaction_data');
   const messagesDir = path.join(ROOT_DIR, 'user_data', 'interaction_messages');
   const messageToChatsMap = new Map<string, Array<{ chatId: string; chatName: string }>>();
   const chatResults: Array<{ type: 'chat'; id: string; name: string }> = [];
+
   if (fs.existsSync(chatsDir)) {
     const chatFiles = fs.readdirSync(chatsDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
     for (const file of chatFiles) {
@@ -1820,10 +1695,12 @@ app.get('/search', async (req, response) => {
       } catch {}
     }
   }
+
   const messageResults: Array<{
     type: 'message'; id: string; chats: Array<{ chatId: string; chatName: string }>;
     characterId?: string; snippet: string; timestamp: number;
   }> = [];
+
   if (fs.existsSync(messagesDir)) {
     const msgFiles = fs.readdirSync(messagesDir).filter(f => f.endsWith('.json') && f !== 'manifest.json');
     for (const file of msgFiles) {
@@ -1849,19 +1726,21 @@ app.get('/search', async (req, response) => {
       } catch {}
     }
   }
+
   const allResults = [...chatResults, ...messageResults].slice(0, limit);
   response.json({ query, results: allResults, count: allResults.length, durationMs: Date.now() - startTime });
 });
 
-// --- /user_data routes ---
-
+// --- /user_data routes with Automatic Folder Auto-Scaffolding ---
 app.use('/user_data', (req, response) => {
   const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
   if (!relativePath || relativePath.includes('..')) {
     return response.status(403).json({ error: 'Invalid path structure' });
   }
+
   const filePath  = path.join(ROOT_DIR, 'user_data', relativePath);
   const directory = path.dirname(filePath);
+
   if (req.method === 'HEAD') {
     if (!fs.existsSync(filePath)) {
       for (const ext of ALL_MEDIA_EXTENSIONS) {
@@ -1881,6 +1760,7 @@ app.use('/user_data', (req, response) => {
     });
     return;
   }
+
   if (req.method === 'GET') {
     if (!fs.existsSync(filePath)) {
       for (const ext of ALL_MEDIA_EXTENSIONS) {
@@ -1895,8 +1775,14 @@ app.use('/user_data', (req, response) => {
     fs.stat(filePath, (error, stats) => {
       if (error) return response.status(500).json({ error: 'FS Error' });
       if (stats.isDirectory()) {
+        const dirName = path.basename(filePath);
+        if (MANIFEST_DIRS.includes(dirName)) {
+          sanitizeManifestDir(dirName);
+        }
         const manifestPath = path.join(filePath, 'manifest.json');
-        if (!fs.existsSync(manifestPath)) { try { fs.writeFileSync(manifestPath, '[]', 'utf-8'); } catch {} }
+        if (!fs.existsSync(manifestPath)) { 
+          try { fs.writeFileSync(manifestPath, '[]', 'utf-8'); } catch {} 
+        }
         fs.readdir(filePath, (err, files) => err ? response.status(500).json({ error: 'Read Error' }) : response.json(files));
       } else {
         const ext = path.extname(filePath).toLowerCase();
@@ -1914,15 +1800,18 @@ app.use('/user_data', (req, response) => {
     });
     return;
   }
+
   if (req.method === 'PUT') {
     if (!fs.existsSync(directory)) {
       try { fs.mkdirSync(directory, { recursive: true }); } catch (e: any) {
         return response.status(500).json({ error: 'Mkdir Failed', details: e.message });
       }
     }
+
     const body: unknown = req.body;
     const base64 = typeof body === 'object' && body !== null && 'base64' in body && typeof (body as any).base64 === 'string'
       ? (body as any).base64 : undefined;
+
     if (isMediaUploadPath(relativePath) && base64) {
       try {
         const buffer = Buffer.from(base64.replace(/^data:[^;]+;base64,/, ''), 'base64');
@@ -1933,6 +1822,7 @@ app.use('/user_data', (req, response) => {
         });
       } catch { return response.status(400).json({ error: 'Invalid Base64' }); }
     }
+
     fs.writeFile(filePath, JSON.stringify(body, null, 2), err => {
       if (err) return response.status(500).json({ error: 'Write JSON Failed' });
       broadcastSyncChange('PUT', relativePath, req.headers['x-client-id'] as string);
@@ -1940,6 +1830,7 @@ app.use('/user_data', (req, response) => {
     });
     return;
   }
+
   if (req.method === 'DELETE') {
     fs.unlink(filePath, (error) => {
       if (error && error.code !== 'ENOENT') return response.status(500).json({ error: 'Delete Failed' });
@@ -1963,11 +1854,11 @@ app.use('/user_data', (req, response) => {
     });
     return;
   }
+
   response.status(405).json({ error: 'Method Not Allowed' });
 });
 
 // --- Language & Spatiotemporal Model Management ---
-
 const LANGUAGE_MODEL_ROUTE = '/language_models';
 const LANGUAGE_MODEL_STATUS_ROUTE = '/language_models/status';
 const LANGUAGE_MODEL_LOAD_ROUTE   = '/language_models/load';
@@ -2012,8 +1903,6 @@ app.get(SPATIOTEMPORAL_MODEL_STATUS_ROUTE, (_req, response) => {
   response.json({ activeModels: status, count: status.length });
 });
 
-// ─── Local Backends Management Endpoints for LanguageModelInferenceManager ───
-
 app.get(LANGUAGE_MODEL_ROUTE, (_req, res) => {
   const result = Object.entries(BACKEND_CONFIGS)
     .filter(([_, cfg]) => cfg.category !== 'spatiotemporal')
@@ -2054,8 +1943,6 @@ const handleInstall = async (req: express.Request, res: express.Response) => {
   }
 };
 
-// ─── Cancel Installation ─────────────────────────────────────────────
-
 const handleCancel = (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
   if (!backend) return res.status(400).json({ error: 'Missing backend' });
@@ -2065,8 +1952,6 @@ const handleCancel = (req: express.Request, res: express.Response) => {
   log.info(`[InstallManager] Cancellation requested for ${backend}.`);
   res.json({ success: true, message: `Cancellation requested for ${backend}.` });
 };
-
-// ─── Delete / Uninstall Backend ──────────────────────────────────────
 
 const handleDelete = async (req: express.Request, res: express.Response) => {
   const { backend } = req.body;
@@ -2113,6 +1998,7 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
       port: activeModels.get(id)?.port,
     });
   }
+
   const backendName = (requestedBackend || 'Llama.cpp') as LocalBackend;
   const config = BACKEND_CONFIGS[backendName];
   if (!config) {
@@ -2121,7 +2007,6 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
     });
   }
 
-  // ─── On-Demand Automatic Provisioning Hook ──────────────────────────
   if (!fs.existsSync(config.binaryPath)) {
     log.info(`Backend binary for "${backendName}" not found at ${config.binaryPath}. Triggering automated on-demand installation...`);
     try {
@@ -2143,23 +2028,29 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
   if (!config.modelNameNotPath && !fs.existsSync(absoluteModelPath)) {
     return response.status(404).json({ error: `Model file not found at ${absoluteModelPath}` });
   }
+
   const mutableArgs = [...args];
   if (backendName === 'Llama.cpp') validateAuxPaths(mutableArgs);
+
   const port = requestedPort || await getFreePort();
   log.info(`Starting ${backendName} model "${id}" on port ${port} ...`);
   log.info(`Model path : ${absoluteModelPath}`);
+
   const launchArgs = config.buildArgs(absoluteModelPath, port, mutableArgs);
   log.info(`Launch args: ${launchArgs.join(' ')}`);
+
   const spawnCwd = config.cwd
     ? (path.isAbsolute(config.cwd) ? config.cwd : path.join(ROOT_DIR, config.cwd))
     : path.dirname(config.binaryPath);
   const envOverrides = config.envOverrides ? config.envOverrides(port) : {};
+
   const proc = spawn(config.binaryPath, launchArgs, {
     cwd: spawnCwd,
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ...envOverrides },
     shell: IS_WINDOWS,
   });
+
   const instance: ModelInstance = {
     id,
     process: proc,
@@ -2169,12 +2060,15 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
     backend: backendName,
     startTime: Date.now(),
   };
+
   activeModels.set(id, instance);
+
   proc.stdout?.on('data', (data: Buffer) => {
     const str = data.toString();
     if (str) log.backend(config.logLabel, `[${id}] ${str}`);
     if (config.readyPattern?.test(str)) instance.status = 'ready';
   });
+
   proc.stderr?.on('data', (data: Buffer) => {
     const str = data.toString();
     if (!str) return;
@@ -2184,12 +2078,15 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
     if (isError && !isFalsePositive) log.error(`[${config.logLabel}:${id}] ${str}`);
     else log.backend(config.logLabel, `[${id}] ${str}`);
   });
+
   proc.on('exit', (code) => {
     log.warn(`[${config.logLabel}:${id}] Process exited with code ${code}`);
     activeModels.delete(id);
   });
+
   const healthUrl = config.healthUrl(port);
   const isReady   = await waitForModelReady(healthUrl);
+
   if (isReady) {
     instance.status = 'ready';
     log.success(`${backendName} model "${id}" loaded successfully on port ${port}`);
@@ -2208,6 +2105,7 @@ const handleUnload = (req: express.Request, response: express.Response) => {
   if (!id) return response.status(400).json({ error: 'Missing id' });
   const instance = activeModels.get(id);
   if (!instance) return response.status(404).json({ error: `Model ${id} not found` });
+
   log.info(`Unloading ${instance.backend} model "${id}" ...`);
   if (IS_WINDOWS) {
     try { execSync(`taskkill /PID ${instance.process.pid} /T /F`, { stdio: 'pipe' }); } catch {}
@@ -2237,9 +2135,11 @@ app.all('/proxy/:modelId/{*path}', async (req, response) => {
   const modelId       = req.params.modelId;
   const remainingPath = (req.params as { path?: string }).path || '';
   const instance      = activeModels.get(modelId);
+
   if (!instance || instance.status !== 'ready') {
     return response.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
   }
+
   const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath}`;
   try {
     const proxyRes = await fetch(targetUrl, {
@@ -2251,11 +2151,13 @@ app.all('/proxy/:modelId/{*path}', async (req, response) => {
       ),
       body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
     });
+
     response.status(proxyRes.status);
     proxyRes.headers.forEach((value, key) => {
       const skipHeaders = ['transfer-encoding', 'connection', 'keep-alive'];
       if (!skipHeaders.includes(key.toLowerCase())) response.setHeader(key, value);
     });
+
     if (proxyRes.body) {
       const reader = proxyRes.body.getReader();
       while (true) {
@@ -2272,7 +2174,6 @@ app.all('/proxy/:modelId/{*path}', async (req, response) => {
 });
 
 // --- GPU Status Endpoint ---
-
 app.get('/gpu/status', (_req, response) => {
   const now = Date.now();
   if (now - lastGpuQueryTime < GPU_QUERY_MIN_INTERVAL_MS && lastGpuStatus) {
@@ -2299,10 +2200,7 @@ app.get('/gpu/status', (_req, response) => {
   }
 });
 
-// --- Web Fetch Proxy (CORS bypass) ---
-
-// In src/backend_src/server.ts
-
+// --- Web Fetch Proxy (Puppeteer CORS bypass) ---
 import puppeteer, { type Browser } from 'puppeteer';
 
 function isBotChallenge(text: string): boolean {
@@ -2320,16 +2218,13 @@ function isBotChallenge(text: string): boolean {
 }
 
 app.post('/api/web/fetch', async (req, response) => {
-  // Prevent Node/Express from killing the socket while you're busy solving the CAPTCHA
   req.setTimeout(0);
   response.setTimeout(0);
-
   const { url, headers: reqHeaders } = req.body;
   if (!url || typeof url !== 'string') {
     return response.status(400).json({ error: 'Missing url' });
   }
 
-  // Fast-path images
   const isImageExt = /\.(png|jpe?g|webp|gif|svg|ico)$/i.test(url);
   if (isImageExt) {
     try {
@@ -2343,58 +2238,39 @@ app.post('/api/web/fetch', async (req, response) => {
   let browser: Browser | null = null;
   try {
     browser = await puppeteer.launch({
-      headless: false, // Visible window so you can interact with it
+      headless: false,
       userDataDir: path.join(ROOT_DIR, 'user_data', 'browser_profile'),
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=700,700'],
     });
-
     const page = await browser.newPage();
-    
-    // Disable all navigation timeouts so it never gives up on you
     page.setDefaultNavigationTimeout(0);
     page.setDefaultTimeout(0);
-
     await page.setUserAgent(
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
     );
-
-    // Initial navigation with zero timeout
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 0 });
 
     let finalText = '';
-
-    // UNLIMITED TIME LOOP:
-    // Keeps running as long as the window/tab is open and the challenge is active
     while (!page.isClosed() && browser.connected) {
       try {
         const currentText = await page.evaluate(() => document.body?.innerText || '');
-
-        // Check if page loaded real content and is no longer on a challenge screen
         if (currentText.length > 0 && !isBotChallenge(currentText)) {
-          // Brief pause to allow any late post-redirect DOM elements to settle
           await new Promise((r) => setTimeout(r, 1500));
           finalText = await page.evaluate(() => document.body?.innerText || '');
           break;
         }
       } catch {
-        // Can throw momentarily while the page is navigating/reloading after you click Submit
         if (page.isClosed() || !browser.connected) break;
       }
-
-      // Check every 500ms
       await new Promise((r) => setTimeout(r, 500));
     }
 
-    // Auto-close browser once solved or if window was closed
     if (browser.connected) {
       await browser.close();
     }
-
     if (!finalText) {
       return response.status(400).json({ ok: false, status: 400, contentType: '', error: 'Browser was closed before the page could be resolved.' });
     }
-
-    // Return the full, uncapped text to the model
     response.json({ ok: true, status: 200, contentType: 'text/plain', text: finalText });
   } catch (err: any) {
     if (browser?.connected) await browser.close();
@@ -2404,7 +2280,6 @@ app.post('/api/web/fetch', async (req, response) => {
 });
 
 // ─── Tool Endpoints (/tool) ──────────────────────────────────────────
-
 app.post('/tool/text_to_speech/start', (req, res) => {
   const { text, voice, speed = 1.0 } = req.body;
   if (!text) return res.status(400).json({ error: 'Missing text' });
@@ -2642,7 +2517,6 @@ app.post('/tool/write-file', (req, response) => {
 });
 
 const execAsync = promisify(exec);
-
 app.post('/tool/shell', async (req, res) => {
   const { command } = req.body;
   if (!command || typeof command !== 'string') return res.status(400).json({ success: false, error: 'Missing command' });
@@ -2652,7 +2526,7 @@ app.post('/tool/shell', async (req, res) => {
   }
   try {
     const { stdout, stderr } = await execAsync(command, { timeout: 10000, cwd: ROOT_DIR });
-    res.json({ success: true, stdout: stdout, stderr: stderr });
+    res.json({ success: true, stdout, stderr });
   } catch (error: any) {
     res.status(500).json({ success: false, error: error.message, stdout: error.stdout || '', stderr: error.stderr || '' });
   }
@@ -2684,10 +2558,12 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
   for (let i = 0; i < size; i++) sumOfSquares += buffer[i] * buffer[i];
   const rms = Math.sqrt(sumOfSquares / size);
   if (rms < 0.015) return null;
+
   const windowSize = Math.floor(size / 2);
   const minLag = Math.max(2, Math.floor(sampleRate / 8000));
   const maxLag = Math.min(windowSize - 1, Math.ceil(sampleRate / 16));
   if (minLag >= maxLag) return null;
+
   const nsdf = new Float32Array(maxLag + 1);
   let m0 = 0;
   for (let j = 0; j < windowSize; j++) m0 += buffer[j] * buffer[j] + buffer[j] * buffer[j];
@@ -2702,6 +2578,7 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
       nsdf[tau] = runningM > 0 ? (2 * r) / runningM : 0;
     }
   }
+
   const localPeaks: number[] = [];
   let globalMaxVal = 0;
   for (let tau = minLag; tau < maxLag; tau++) {
@@ -2710,12 +2587,14 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
       if (nsdf[tau] > globalMaxVal) globalMaxVal = nsdf[tau];
     }
   }
+
   if (globalMaxVal < 0.65 || localPeaks.length === 0) return null;
   const peakThreshold = globalMaxVal * 0.85;
   let chosenPeak = localPeaks[0];
   for (const peak of localPeaks) {
     if (nsdf[peak] >= peakThreshold) { chosenPeak = peak; break; }
   }
+
   const y0 = nsdf[chosenPeak - 1];
   const y1 = nsdf[chosenPeak];
   const y2 = nsdf[chosenPeak + 1];
@@ -2723,6 +2602,7 @@ function serverDetectPitch(buffer: Float32Array, sampleRate: number): { pitch: n
   const delta = denom !== 0 ? (y0 - y2) / (2 * denom) : 0;
   const refinedLag = chosenPeak + delta;
   if (refinedLag <= 0) return null;
+
   const fundamentalFreq = sampleRate / refinedLag;
   if (fundamentalFreq < 16 || fundamentalFreq > 8000) return null;
   return { pitch: fundamentalFreq, clarity: Math.max(0, Math.min(1, y1 - 0.25 * (y0 - y2) * delta)) };
@@ -2778,6 +2658,7 @@ app.post('/tool/virtual-hearing', (req, res) => {
     const floatCount = Math.floor(combinedBuffer.length / 4);
     const pcmData = new Float32Array(floatCount);
     for (let i = 0; i < floatCount; i++) pcmData[i] = combinedBuffer.readFloatLE(i * 4);
+
     const detectedNotes: string[] = [];
     const chunkSize = 2048;
     for (let offset = 0; offset + chunkSize < pcmData.length; offset += chunkSize) {
@@ -2816,6 +2697,7 @@ app.post('/tool/virtual-vision', async (req, res) => {
     const screenBuffer = await screenshot({ format: 'png' });
     let cropRegion: { left: number; top: number; width: number; height: number } | null = null;
     let targetLabel = 'fullscreen';
+
     if (appName || title) {
       const allWins = typeof openWindows === 'function' ? await openWindows() : [];
       const matchedWin = allWins.find(w =>
@@ -2830,6 +2712,7 @@ app.post('/tool/virtual-vision', async (req, res) => {
         targetLabel = `window "${matchedWin.title}"`;
       }
     }
+
     if (!cropRegion && target === 'active') {
       const activeWin = await activeWindow();
       if (activeWin?.bounds) {
@@ -2843,6 +2726,7 @@ app.post('/tool/virtual-vision', async (req, res) => {
       cropRegion = { left: Math.max(0, x), top: Math.max(0, y), width: Math.max(1, width), height: Math.max(1, height) };
       targetLabel = `region (${x}, ${y}, ${width}x${height})`;
     }
+
     let finalBuffer = screenBuffer;
     if (cropRegion) {
       const metadata = await sharp(screenBuffer).metadata();
@@ -2864,7 +2748,6 @@ app.post('/tool/virtual-vision', async (req, res) => {
 });
 
 // ── Virtual Input Tool (Mouse & Keyboard) ───────────────────────────
-
 app.post('/tool/virtual-input', async (req, res) => {
   const { action, x, y, toX, toY, button = 'left', double = false, text, key, modifier, smooth = true, durationMs = 500 } = req.body;
   try {
@@ -2916,10 +2799,10 @@ app.post('/tool/virtual-input', async (req, res) => {
 });
 
 // ── Virtual Controller (Xbox 360 / ViGEmBus) ────────────────────────
-
 app.post('/tool/virtual-controller', (req, res) => {
   const { controller, error } = getOrInitVirtualController();
   if (!controller) return res.status(503).json({ success: false, error: error || 'Virtual controller unavailable.' });
+
   const { action = 'tap', button, stick = 'left', x, y, trigger = 'right', value, durationMs = 120 } = req.body;
   try {
     if (action === 'reset') {
@@ -2950,7 +2833,7 @@ app.post('/tool/virtual-controller', (req, res) => {
       const targetTrigger = isLeft ? controller.axis.leftTrigger : controller.axis.rightTrigger;
       targetTrigger.setValue(clampedVal);
       if (durationMs > 0) {
-        setTimeout(() => { try { targetTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(10000, durationMs)));
+        setTimeout(() => { try { targetTrigger.setValue(0.0); targetTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(10000, durationMs)));
       }
       return res.json({ success: true, message: `${isLeft ? 'Left' : 'Right'} trigger set to ${clampedVal}` });
     }
@@ -2998,7 +2881,6 @@ app.post('/tool/virtual-controller', (req, res) => {
 });
 
 // ── Hardware Control ────────────────────────────────────────────────
-
 app.get('/tool/hardware/list', async (_req, res) => {
   try { res.json({ success: true, ports: await SerialPort.list() }); } catch (error: any) { res.status(500).json({ success: false, error: error.message }); }
 });
@@ -3019,42 +2901,32 @@ app.post('/tool/hardware/send', async (req, res) => {
 });
 
 // ─── Native C++ Text To Speech Pipeline (llama-tts) ─────────────
-
 const LLAMA_TTS_BINARY = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'llama', bin('llama-tts'));
 const LLAMA_DIR = path.dirname(LLAMA_TTS_BINARY);
 const TTS_DIR = path.join(ROOT_DIR, 'user_data', 'text_to_speech_models');
-
 const textToSpeechModelFile = TEXT_TO_SPEECH_MODELS.MAIN_MODEL_FILE;
 const textToSpeechVoiceEncoderFile = TEXT_TO_SPEECH_MODELS.MMPROJ_VOICE_ENCODER_FILE;
-
 const TTS_MODEL_PATH = path.join(TTS_DIR, textToSpeechModelFile);
 const TTS_MMPROJ_PATH = path.join(TTS_DIR, textToSpeechVoiceEncoderFile);
 
-// ✅ System temp directory outside of OneDrive sync to avoid file-locking (EBUSY)
 const TTS_TEMP_DIR = path.join(os.tmpdir(), 'LoreReactor_Text_To_Speech');
 ensureDirectory(TTS_TEMP_DIR);
 
-// ✅ Portable FFmpeg for decoding speaker audio
 const FFMPEG_DIR = path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH, 'tools', 'ffmpeg');
 const FFMPEG_BIN = path.join(FFMPEG_DIR, bin('ffmpeg'));
 const FFPROBE_BIN = path.join(FFMPEG_DIR, bin('ffprobe'));
-
-// ─── Sequential Queue to Prevent GPU/VRAM & CPU Contention ──────────────────
 
 let ttsQueue: Promise<any> = Promise.resolve();
 
 function enqueueTts<T>(task: () => Promise<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     ttsQueue = ttsQueue
-      .catch(() => {}) // Don't let a prior failure block subsequent requests
+      .catch(() => {})
       .then(() => task())
       .then(resolve, reject);
   });
 }
 
-/**
- * Asynchronous deletion with retries to handle Windows file locks and background indexers.
- */
 async function safeDelete(filePath: string, retries = 5, delayMs = 100): Promise<void> {
   if (!filePath || !fs.existsSync(filePath)) return;
   for (let i = 0; i < retries; i++) {
@@ -3070,7 +2942,6 @@ async function safeDelete(filePath: string, retries = 5, delayMs = 100): Promise
 }
 
 function syncFfmpegToLlamaDir(): void {
-  // Hoist binaries next to llama-tts.exe so Windows CreateProcess finds them natively
   if (fs.existsSync(FFMPEG_BIN)) {
     const targetFfmpeg = path.join(LLAMA_DIR, bin('ffmpeg'));
     if (!fs.existsSync(targetFfmpeg)) {
@@ -3102,7 +2973,6 @@ async function ensureFfmpeg() {
     log.warn('[Text To Speech] Non-Windows OS detected. Please ensure ffmpeg and ffprobe are installed in your system PATH.');
     return;
   }
-
   const zipPath = path.join(FFMPEG_DIR, 'ffmpeg.zip');
   await downloadFileWithProgress(zipUrl, zipPath, (loaded, total) => {
     const pct = Math.round((loaded / total) * 100);
@@ -3124,7 +2994,6 @@ async function ensureTtsModelsDownloaded() {
   ensureDirectory(TTS_DIR);
   const baseUrl = TEXT_TO_SPEECH_MODELS.BASE_URL;
     
-  // 1. Download Main Model
   if (!fs.existsSync(TTS_MODEL_PATH)) {
     log.info(`[Text To Speech] Downloading Qwen3-TTS Main Model (${textToSpeechModelFile})...`);
     let lastLoggedPct = -1;
@@ -3138,7 +3007,6 @@ async function ensureTtsModelsDownloaded() {
     log.success('[Text To Speech] Main Model downloaded.');
   }
     
-  // 2. Download MMProj / Vocoder
   if (!fs.existsSync(TTS_MMPROJ_PATH)) {
     log.info(`[Text To Speech] Downloading Qwen3-TTS MMProj (${textToSpeechVoiceEncoderFile})...`);
     let lastLoggedPct = -1;
@@ -3181,15 +3049,14 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
   try {
     await ensureTtsModelsDownloaded(); 
     await ensureFfmpeg();
+
     const snippet = text.length > 30 ? `${text.substring(0, 30)}...` : text;
     log.info(`[Text To Speech] Enqueuing synthesis for: "${snippet}"`);
 
-    // Serialize calls through the FIFO queue
     const wavBuffer = await enqueueTts(async () => {
       const requestId = uuidv4();
       ensureDirectory(TTS_TEMP_DIR);
 
-      // 1. Decode base64 reference audio
       const base64Data = audioBase64.replace(/^data:[^;]+;base64,/, '');
       const audioBuffer = Buffer.from(base64Data, 'base64');
       let ext = '.raw';
@@ -3204,8 +3071,6 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
 
       try {
         fs.writeFileSync(tempRawPath, audioBuffer);
-
-        // 2. Standardize reference audio to canonical 16-bit 24kHz mono RIFF WAV
         const ffmpegBinToUse = fs.existsSync(FFMPEG_BIN) ? `"${FFMPEG_BIN}"` : 'ffmpeg';
         try {
           execSync(`${ffmpegBinToUse} -y -i "${tempRawPath}" -ar 24000 -ac 1 -c:a pcm_s16le "${tempReferenceWavPath}"`, {
@@ -3222,7 +3087,6 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
         };
         const ttsLang = langMap[language] || 'en';
 
-        // 3. Build arguments: Flash Attention + thread clamping + video probe path
         const llamaTtsArgs = [
           '-m', TTS_MODEL_PATH,
           '--mmproj', TTS_MMPROJ_PATH, 
@@ -3236,78 +3100,65 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
           '--video-ffmpeg-dir', FFMPEG_DIR,
         ];
 
-        // ✅ INJECT TOKEN SAMPLER PARAMETERS INTO LLAMA-TTS (Respects UI Order & Enabled Toggles)
         if (tokenSampler && typeof tokenSampler === 'object' && tokenSampler.parameters) {
-            const params = tokenSampler.parameters;
-            
-            // 1. Get the exact order defined by the UI drag-and-drop
-            const order = Array.isArray(params._parameterOrder) 
-                ? (params._parameterOrder as string[]) 
-                : Object.keys(params).filter(k => !k.startsWith('_'));
-            
-            // 2. Map frontend keys to llama.cpp / llama-tts CLI flags
-            const paramToFlag: Record<string, string> = {
-                temperature: '--temp',
-                top_k: '--top-k',
-                top_p: '--top-p',
-                min_p: '--min-p',
-                typical_p: '--typical',
-                tfs_z: '--tfs',
-                repeat_penalty: '--repeat-penalty',
-                presence_penalty: '--presence-penalty',
-                frequency_penalty: '--frequency-penalty',
-                mirostat: '--mirostat',
-                mirostat_tau: '--mirostat-tau',
-                mirostat_eta: '--mirostat-eta',
-                seed: '--seed',
-                penalty_alpha: '--penalty-alpha',
-                top_a: '--top-a',
-                smoothing_factor: '--smoothing-factor',
-                smoothing_curve: '--smoothing-curve',
-                dry_allowed_length: '--dry-allowed-length',
-                dry_penalty_last_n: '--dry-penalty-last-n',
-                dry_base: '--dry-base',
-                dry_multiplier: '--dry-multiplier',
-                dry_sequence_breaker: '--dry-sequence-breaker',
-                dynamic_temperature: '--dynatemp',
-                dynatemp_low: '--dynatemp-low',
-                dynatemp_high: '--dynatemp-high',
-                dynatemp_exponent: '--dynatemp-exponent',
-                rep_penalty_range: '--repeat-penalty-range',
-                rep_penalty_slope: '--repeat-penalty-slope',
-                encoder_repetition_penalty: '--encoder-repetition-penalty',
-                no_repeat_ngram_size: '--no-repeat-ngram-size',
-                ignore_eos: '--ignore-eos'
-            };
+          const params = tokenSampler.parameters;
+          const order = Array.isArray(params._parameterOrder) 
+            ? (params._parameterOrder as string[]) 
+            : Object.keys(params).filter(k => !k.startsWith('_'));
+          
+          const paramToFlag: Record<string, string> = {
+            temperature: '--temp',
+            top_k: '--top-k',
+            top_p: '--top-p',
+            min_p: '--min-p',
+            typical_p: '--typical',
+            tfs_z: '--tfs',
+            repeat_penalty: '--repeat-penalty',
+            presence_penalty: '--presence-penalty',
+            frequency_penalty: '--frequency-penalty',
+            mirostat: '--mirostat',
+            mirostat_tau: '--mirostat-tau',
+            mirostat_eta: '--mirostat-eta',
+            seed: '--seed',
+            penalty_alpha: '--penalty-alpha',
+            top_a: '--top-a',
+            smoothing_factor: '--smoothing-factor',
+            smoothing_curve: '--smoothing-curve',
+            dry_allowed_length: '--dry-allowed-length',
+            dry_penalty_last_n: '--dry-penalty-last-n',
+            dry_base: '--dry-base',
+            dry_multiplier: '--dry-multiplier',
+            dry_sequence_breaker: '--dry-sequence-breaker',
+            dynamic_temperature: '--dynatemp',
+            dynatemp_low: '--dynatemp-low',
+            dynatemp_high: '--dynatemp-high',
+            dynatemp_exponent: '--dynatemp-exponent',
+            rep_penalty_range: '--repeat-penalty-range',
+            rep_penalty_slope: '--repeat-penalty-slope',
+            encoder_repetition_penalty: '--encoder-repetition-penalty',
+            no_repeat_ngram_size: '--no-repeat-ngram-size',
+            ignore_eos: '--ignore-eos'
+          };
 
-            // 3. Iterate in exact UI order, skipping disabled parameters
-            for (const key of order) {
-                // Skip if explicitly toggled off in the UI
-                if (params[`_enabled_${key}`] === false) continue;
-                
-                const value = params[key];
-                if (value === undefined || value === null || value === '') continue;
-
-                const flag = paramToFlag[key];
-                if (flag) {
-                    // For boolean flags like ignore_eos or dynamic_temperature
-                    if (typeof value === 'boolean') {
-                        if (value) llamaTtsArgs.push(flag);
-                    } else {
-                        llamaTtsArgs.push(flag, String(value));
-                    }
-                }
+          for (const key of order) {
+            if (params[`_enabled_${key}`] === false) continue;
+            const value = params[key];
+            if (value === undefined || value === null || value === '') continue;
+            const flag = paramToFlag[key];
+            if (flag) {
+              if (typeof value === 'boolean') {
+                if (value) llamaTtsArgs.push(flag);
+              } else {
+                llamaTtsArgs.push(flag, String(value));
+              }
             }
-            
-            // 4. Inject Max Tokens from the TokenSampler configuration
-            if (tokenSampler.maximumNumberOfTokens && tokenSampler.maximumNumberOfTokens > 0) {
-                llamaTtsArgs.push('-n', String(tokenSampler.maximumNumberOfTokens));
-            }
+          }
+          if (tokenSampler.maximumNumberOfTokens && tokenSampler.maximumNumberOfTokens > 0) {
+            llamaTtsArgs.push('-n', String(tokenSampler.maximumNumberOfTokens));
+          }
         }
 
         log.info(`[Text To Speech] Spawning llama-tts for: "${snippet}"`);
-
-        // 4. Configure environment with PATH synchronized
         const env: Record<string, string> = { ...process.env as Record<string, string> };
         const extraDirs = [FFMPEG_DIR, LLAMA_DIR].join(path.delimiter);
         const existingPath = env.PATH || env.Path || '';
@@ -3344,10 +3195,8 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
         if (!fs.existsSync(tempOutPath)) {
           throw new Error('llama-tts did not produce an output file.');
         }
-
         return fs.readFileSync(tempOutPath);
       } finally {
-        // 5. Clean up temporary files safely using retrying safeDelete
         await safeDelete(tempRawPath);
         await safeDelete(tempReferenceWavPath);
         await safeDelete(tempOutPath);
@@ -3363,19 +3212,16 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
 });
 
 // --- Startup & Cleanup ---
-
 process.on('SIGINT', () => { 
-    cleanupVirtualController(); 
-    process.exit(0); 
+  cleanupVirtualController(); 
+  process.exit(0); 
 });
-
 process.on('SIGTERM', () => { 
-    cleanupVirtualController(); 
-    process.exit(0); 
+  cleanupVirtualController(); 
+  process.exit(0); 
 });
-
 process.on('exit', () => { 
-    cleanupVirtualController(); 
+  cleanupVirtualController(); 
 });
 
 const startServer = () => {
@@ -3385,17 +3231,20 @@ const startServer = () => {
   const title  = `${Colors.Bright}${Colors.FgCyan}⚛️  ${APP_NAME} Server${Colors.Reset}`;
   const archLabel = process.arch === 'x64' ? 'x64' : process.arch === 'ia32' ? 'x86 (32-bit)' : process.arch === 'arm64' ? 'ARM64' : process.arch;
   const platLabel = IS_WINDOWS ? `Windows ${archLabel}` : IS_MACOS ? `macOS ${archLabel}` : `Linux ${archLabel}`;
+
   console.clear();
   console.log(`${Colors.BgBlue}${Colors.Bright}${Colors.FgWhite}  ${APP_NAME}  ${Colors.Reset}`);
   console.log(border);
   console.log(`  ${title}`);
   console.log(`  🖥️  Platform : ${Colors.Dim}${platLabel}${Colors.Reset}`);
   console.log(`  📂 Backends  : ${Colors.Dim}${path.join(ROOT_DIR, LOCAL_MODEL_BACKENDS_PATH)}${Colors.Reset}`);
+
   for (const [name, cfg] of Object.entries(BACKEND_CONFIGS)) {
     const exists = fs.existsSync(cfg.binaryPath);
     const icon   = exists ? `${Colors.FgGreen}●${Colors.Reset}` : `${Colors.FgRed}○${Colors.Reset}`;
     console.log(`     ${icon} ${(name as string).padEnd(16)} ${Colors.Dim}${cfg.binaryPath}${Colors.Reset}`);
   }
+
   console.log(border);
   console.log(`  📡 API Port  : ${Colors.FgGreen}http://127.0.0.1:${PORT}${Colors.Reset}`);
   console.log(`  💾 Data Path : ${Colors.Dim}/user_data/${Colors.Reset}`);
@@ -3404,6 +3253,7 @@ const startServer = () => {
   console.log(`  ${Colors.FgGreen}●${Colors.Reset} System Ready.`);
   console.log(`  ${Colors.FgMagenta}●${Colors.Reset} Multi-Backend Model Control Enabled.`);
   console.log('');
+
   app.listen(PORT, '0.0.0.0', () => {});
 };
 
