@@ -620,8 +620,9 @@ class ChatSessionCoordinator {
             if (this.deps.allActions.length > 0) {
                 const prevMsg = textMessages[textMessages.length - 1];
                 let prevWrap: '*' | '()' | 'none' | 'unknown' = 'unknown';
-                if (prevMsg && prevMsg.textContent.includes('*')) prevWrap = '*';
-                else if (prevMsg && prevMsg.textContent.includes('(') && prevMsg.textContent.includes(')')) prevWrap = '()';
+                const textContent = prevMsg?.textContent || '';
+                if (textContent.includes('*')) prevWrap = '*';
+                else if (textContent.includes('(') && textContent.includes(')')) prevWrap = '()';
                 else prevWrap = 'none';
                 learnFromUserMessage(text, this.deps.allActions.map(a => a.label), prevWrap);
             }
