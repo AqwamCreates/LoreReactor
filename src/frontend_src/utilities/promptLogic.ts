@@ -1,4 +1,5 @@
 // src/frontend_src/utilities/promptLogic.ts
+
 import type {
   Character,
   InteractionData,
@@ -18,7 +19,8 @@ import type {
   RawInteractionData,
   ToolExecutionResult,
   participantScopeMode,
-  participantInsertionMode
+  participantInsertionMode,
+  entityImageType
 } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
@@ -53,6 +55,7 @@ import { isEntityActiveWithCache, doesAnyTriggerMatchCached, type CombinationCac
 import { formatDuration } from './timeLogic';
 import { calculateEntropyPruningCutoff } from './entropyPruningLogic';
 import { resolveEffectiveStopTokens } from './chatSessionLogic';
+import { captureScreenshot } from './serverTools';
 
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. ";
 const beingIgnoredInstructions = "Anytime a character ignore me talking, there would be an awkward atmosphere. ";
@@ -85,7 +88,7 @@ export interface ResolvedImage {
 
 interface TrackedImage {
   globalId: number;
-  entityType: 'promptBlock' | 'context' | 'location' | 'character';
+  entityType: entityImageType;
   entityName: string;
   localIndex: number;
   base64Data: string;
@@ -112,7 +115,6 @@ export function sanitizeToolSyntax(
 ): string {
   if (!text) return text;
   let sanitized = text;
-
   if (toolExecutionResults && toolExecutionResults.length > 0) {
     for (const res of toolExecutionResults) {
       if (!sanitized.includes(res.rawMatch)) continue;
@@ -120,13 +122,11 @@ export function sanitizeToolSyntax(
       sanitized = sanitized.replace(res.rawMatch, stringReplacement);
     }
   }
-
   const escapeRegex = (str: string) => str.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
   const obsStart = escapeRegex(toolResultStartString);
   const obsEnd = escapeRegex(toolResultEndString);
   const callStart = escapeRegex(toolCallStartString);
   const callEnd = escapeRegex(toolCallEndString);
-
   const observationRegex = new RegExp(`${obsStart}[\\s\\S]*?${obsEnd}`, 'g');
   sanitized = sanitized.replace(observationRegex, '');
   
@@ -143,7 +143,6 @@ export function sanitizeThinkingSyntax(text: string): string {
   const escapeRegex = (str: string) => str.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
   const startPattern = pairs.map(p => escapeRegex(p.start)).join('|');
   const endPattern = pairs.map(p => escapeRegex(p.end)).join('|');
-
   const thinkRegex = new RegExp(`(?:${startPattern})[\\s\\S]*?(?:${endPattern}|$)[ \\t]*\\r?\\n?`, 'gi');
   return text.replace(thinkRegex, '').trim();
 }
@@ -180,7 +179,6 @@ function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string, exclude
   if (end < 0) end = 0;
   if (start > safeArr.length) start = safeArr.length;
   if (end > safeArr.length) end = safeArr.length;
-
   if (start > end) {
     const actualStart = end;
     const actualEnd = start;
@@ -189,7 +187,6 @@ function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string, exclude
     }
     return safeArr.slice(actualStart, actualEnd).reverse();
   }
-
   if (exclude) {
     return [...safeArr.slice(0, start), ...safeArr.slice(end)];
   }
@@ -256,6 +253,7 @@ export interface TemplateContext {
   promptBlockImageInstructions: string;
   contextImageInstructions: string;
   currentLocationImageInstructions: string;
+  screenshotImageInstructions: string;
   text: string;
   promptBuildContext?: PromptBuildContext;
   wearingStatus?: Record<string, boolean>;
@@ -273,7 +271,7 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   'Chat History': "{{systemBlockStart}}Start Of The Memory.{{systemBlockEnd}}\n{{chatHistory}}\n{{systemBlockStart}}End Of The Memory.{{systemBlockEnd}} ",
   'Appearance Prompt': "{{systemBlockStart}}Start Of The Characters' Appearances List.{{systemBlockEnd}}\n{{appearancePrompt}}\n{{systemBlockStart}}End Of The Characters' Appearances List.{{systemBlockEnd}} ",
   'Context': "{{systemBlockStart}}Start Of The Context.{{systemBlockEnd}}\n{{context}}\n{{systemBlockStart}}End Of The Context.{{systemBlockEnd}} ",
-  'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{location}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}} ",
+  'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{location}}\\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}} ",
   'Current Location With Description': "{{systemBlockStart}}Start Of Current Location With Description.{{systemBlockEnd}}\n{{locationWithDescription}}\n{{systemBlockStart}}End Of Current Location With Description.{{systemBlockEnd}} ",
   'Reachable Locations': "{{systemBlockStart}}Reachable Locations:\n{{locations-}}{{systemBlockEnd}} ",
   'Reachable Locations With Descriptions': "{{systemBlockStart}}Reachable Locations With Descriptions:\n{{locationsWithDescriptions-}}{{systemBlockEnd}} ",
@@ -350,7 +348,6 @@ export function resolveTemplate(
       
       const hasLimitOverride = limitStr !== undefined;
       const limitOverride = hasLimitOverride ? Number.parseInt(limitStr, 10) : undefined;
-
       const asLengthOrValue = (value: string | string[]): string => {
         if (Array.isArray(value)) {
           const slice = getSlicedArray(value, startStr, endStr, wantExclude);
@@ -365,7 +362,6 @@ export function resolveTemplate(
           const cleaned = slice.map(item => item.replace(/^- /, ''));
           return joinInlineList(cleaned);
         }
-
         if (wantLength) {
           return String(value.length);
         }
@@ -374,11 +370,9 @@ export function resolveTemplate(
         }
         return value;
       };
-
       let locationScope: 'reachable' | 'all' | undefined = undefined;
       let suffixScope: participantScopeMode | undefined = undefined;
       let rawKey = key;
-
       if (rawKey.endsWith('-')) {
         rawKey = rawKey.slice(0, -1);
         if (rawKey.startsWith('locations')) {
@@ -394,18 +388,14 @@ export function resolveTemplate(
           suffixScope = 'all';
         }
       }
-
       const isPossessive = rawKey.endsWith("'") || rawKey.endsWith("'s");
       const cleanKey = isPossessive ? rawKey.replace(/'s?$/, '') : rawKey;
-
       const hasScopeOverride = scopeStr !== undefined;
       let scopeOverride = hasScopeOverride ? (scopeStr as participantScopeMode) : undefined;
       if (scopeStr === '-' || scopeStr === '+') {
         scopeOverride = scopeStr === '-' ? 'coLocated' : 'all';
       }
-
       const effectiveScope = suffixScope ?? scopeOverride;
-
       const isCharacterUuidKey = cleanKey.startsWith('character@');
       const isLocationUuidKey = cleanKey.startsWith('location@');
       const isLocationDescUuidKey = cleanKey.startsWith('locationWithDescription@');
@@ -448,9 +438,7 @@ export function resolveTemplate(
           return asLengthOrValue(isPossessive ? "Unknown Location's" : "Unknown Location");
         }
       }
-
       const pCtx = ctx.promptBuildContext;
-
       if (pCtx && (
         cleanKey === 'character' || cleanKey === 'protagonist' || cleanKey === 'protagonists' || 
         cleanKey === 'characters' || cleanKey === 'locations' || cleanKey === 'locationsWithDescriptions'
@@ -474,14 +462,12 @@ export function resolveTemplate(
           const scope: 'reachable' | 'all' = locationScope ?? 'all';
           targetLocations = buildLocationsArray(pCtx, delimiters, scope, insertionOverride, withDescriptions);
         }
-
         if (isLocationKey) {
           if (isPossessive) {
             return asLengthOrValue(targetLocations.map(l => `${l}'s`));
           }
           return asLengthOrValue(targetLocations);
         }
-
         if (cleanKey === 'character' || cleanKey === 'protagonist') {
           const p = targetParticipants[0];
           if (!p) return asLengthOrValue('');
@@ -494,7 +480,6 @@ export function resolveTemplate(
           return asLengthOrValue(names);
         }
       }
-
       if (ctx.promptBuildContext && (hasScopeOverride || hasInsertionOverride || hasLimitOverride)) {
         const profile = pCtx!.profile;
         
@@ -522,10 +507,8 @@ export function resolveTemplate(
           return asLengthOrValue(buildThinkPromptText(pCtx!, effectiveScopeThink, effectiveInsertionThink));
         }
       }
-
       if (key === 'location') return asLengthOrValue(ctx.currentLocation);
       if (key === 'locationWithDescription') return asLengthOrValue(ctx.currentLocationWithDescription);
-
       if (key === 'chatHistory') {
         const val = ctx.chatHistory ?? [];
         const slice = getSlicedArray(val, startStr, endStr, wantExclude);
@@ -535,7 +518,6 @@ export function resolveTemplate(
         }
         return slice.join('\n');
       }
-
       if (key in ctx) {
         const val = (ctx as any)[key];
         if (Array.isArray(val)) {
@@ -543,7 +525,6 @@ export function resolveTemplate(
         }
         return asLengthOrValue(String(val));
       }
-
       if (key === 'systemBlockStart') {
         return asLengthOrValue(delimiters.blockStart('system'));
       }
@@ -571,7 +552,6 @@ export function resolveTemplate(
       if (key in GLOBAL_STRINGS) {
         return asLengthOrValue(GLOBAL_STRINGS[key]);
       }
-
       return '';
     }
   );
@@ -705,7 +685,6 @@ function getSingularDisplayName(
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
   if (limit === 0) return tag;
-
   const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
   
   let sliceEnd = variants.length;
@@ -729,7 +708,6 @@ function getSingularPossessiveName(
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
   if (limit === 0) return `${tag}'s`;
-
   const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
   
   let sliceEnd = variants.length;
@@ -754,19 +732,16 @@ function getPluralDisplayName(
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
   if (limit === 0) return tag;
-
   const knownMap = ctx.knownNames[participant.id];
   let knownNamesList: string[] = [];
   if (knownMap) {
     knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
   }
-
   if (limit !== undefined && limit > 0) {
     knownNamesList = knownNamesList.slice(0, limit);
   } else {
     knownNamesList = knownNamesList.slice(0, 1);
   }
-
   if (knownNamesList.length > 0) {
     return `${tag} (${joinInlineList(knownNamesList)})`;
   }
@@ -781,19 +756,16 @@ function getPluralPossessiveName(
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
   if (limit === 0) return `${tag}'s`;
-
   const knownMap = ctx.knownNames[participant.id];
   let knownNamesList: string[] = [];
   if (knownMap) {
     knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
   }
-
   if (limit !== undefined && limit > 0) {
     knownNamesList = knownNamesList.slice(0, limit);
   } else {
     knownNamesList = knownNamesList.slice(0, 1);
   }
-
   if (knownNamesList.length > 0) {
     return `${joinInlineList(knownNamesList)}'s`;
   }
@@ -846,7 +818,6 @@ function getFullDisplayName(
     if (resolvedNames.length > 0) return `${tag} (${joinInlineList(resolvedNames)})`;
     return tag;
   }
-
   const knownMap = knownNames[targetChar.id];
   let knownNamesList: string[] = [];
   if (knownMap) {
@@ -886,7 +857,6 @@ function buildProtagonistPossessiveString(
     if (resolvedNames.length > 0) return `${joinInlineList(resolvedNames)}'s`;
     return `${tag}'s`;
   }
-
   const knownMap = knownNames[p.id];
   let knownNamesList: string[] = [];
   if (knownMap) knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
@@ -904,7 +874,6 @@ export function resolveInnerText(
   delimiters: PromptDelimiters
 ): string {
   if (!text) return text;
-
   const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
@@ -921,7 +890,6 @@ export function resolveInnerText(
     if (knownNamesList.length > 0) return `${joinInlineList(knownNamesList)}'s`;
     return `${tag}'s`; // NO TRUE NAME FALLBACK
   });
-
   const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const charactersPossessiveList = ctx.participants.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
@@ -938,7 +906,6 @@ export function resolveInnerText(
     if (knownNamesList.length > 0) return `${joinInlineList(knownNamesList)}'s`;
     return `${tag}'s`; // NO TRUE NAME FALLBACK
   });
-
   const baseContext: TemplateContext = {
     characterParticipantTag: ctx.characterParticipantTag,
     characterName: ctx.characterName,
@@ -992,11 +959,11 @@ export function resolveInnerText(
     promptBlockImageInstructions: '',
     contextImageInstructions: '',
     currentLocationImageInstructions: '',
+    screenshotImageInstructions: '',
     text: '',
     promptBuildContext: ctx,
     wearingStatus: {}
   };
-
   return resolveTemplate(text, baseContext, delimiters);
 }
 
@@ -1575,14 +1542,12 @@ function getParticipantsForScopeAndInsertion(
   
   const currentLocationId = ctx.currentLocationId;
   if (!currentLocationId) return ctx.participants.filter(p => p.id === ctx.characterId);
-
   const locationHistory = ctx.interactionData.interactionHistories?.[currentLocationId] || [];
   let arrivalTimestamp = -1;
   const charMessagesInLoc = locationHistory.filter(m => m.character.id === ctx.characterId);
   if (charMessagesInLoc.length > 0) {
     arrivalTimestamp = Math.max(...charMessagesInLoc.map(m => m.firstCreatedTimestamp));
   }
-
   return candidates.filter(p => {
     if (p.id === ctx.characterId) return true;
     const talked = locationHistory.some(m => 
@@ -1603,7 +1568,6 @@ function buildCharacterTagsText(
   const tags: string[] = [];
   const tagsWithDescriptions: string[] = [];
   const actuallyPresentParticipants = getParticipantsForScopeAndInsertion(ctx, scope, insertion);
-
   for (const participant of actuallyPresentParticipants) {
     const displayName = getDisplayName(participant, ctx, limit);
     tags.push(`- ${displayName}`);
@@ -1715,7 +1679,6 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
     fallbackSearchSpace: dialogueSearchSpace,
     combinationCache: ctx.combinationCache,
   };
-
   const activeContents = await collectActiveDialoguePromptContent(
     ctx.character.dialoguePrompts,
     evalContext,
@@ -1725,7 +1688,6 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
       queryText: dialogueSearchSpace,
     }
   );
-
   if (activeContents.length === 0) return '';
   const lines: string[] = [];
   for (const content of activeContents) {
@@ -2159,15 +2121,12 @@ export async function createChatHistoryArray(
       const chunkSize = step.entropyPruningChunkSize ?? 3;
       const threshold = step.entropyPruningThreshold ?? 0.35;
       const maxRawTokens = step.entropyPruningTokenBudget ?? 2000;
-
       const candidates = processedMessages.map(p => ({
         id: p.msg.id,
         textContent: p.text,
         locationId: p.locationId,
       }));
-
       const cutoffIndex = await calculateEntropyPruningCutoff(candidates, chunkSize, threshold, maxRawTokens);
-
       for (let i = 0; i < processedMessages.length; i++) {
         const msg = processedMessages[i].msg;
         if (i < cutoffIndex && (msg as ChatMessage).modelTextContentSummaries?.[ctx.modelId]) {
@@ -2260,7 +2219,6 @@ export async function createChatHistoryArray(
         false
       );
     }
-
     const replacedText = resolveInnerText(historyText, ctx, ctx.delimiters);
     chatHistoryText = `${chatHistoryText}${replacedText}${ctx.delimiters.turnEnd}`;
     chatHistoryArray.push(chatHistoryText);
@@ -2286,10 +2244,11 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
   'Anti-Repetition Nudge',
   'Character Tags',
   'Character Tags With Descriptions',
+  'Character Image Instructions',
   'Prompt Block Image Instructions',
   'Context Image Instructions',
   'Current Location Image Instructions',
-  'Character Image Instructions',
+  'Screenshot Image Instructions',
   'Knowledge Prompt',
   'Dialogue Prompt',
   'Memory Prompt',
@@ -2426,6 +2385,11 @@ async function buildPromptBlocks(
     if (blockType === 'Current Location Image Instructions') {
       if (templateContext.currentLocationImageInstructions.length === 0) continue;
       blockMap[blockType] = [templateContext.currentLocationImageInstructions];
+      continue;
+    }
+    if (blockType === 'Screenshot Image Instructions') {
+      if (templateContext.screenshotImageInstructions.length === 0) continue;
+      blockMap[blockType] = [templateContext.screenshotImageInstructions];
       continue;
     }
     if (blockType === 'Anti-Repetition Nudge' && templateContext.antiRepetitionNudge.length === 0) continue;
@@ -2642,7 +2606,6 @@ export async function buildPrompt(
   
   const defaultThinkScope = profile?.participantScopeModes?.['Think Prompt'] ?? 'coLocated';
   const defaultThinkInsertion = profile?.participantInsertionModes?.['Think Prompt'] ?? 'dynamic';
-
   const characterTagsResult = buildCharacterTagsText(ctx, defaultCharScope, defaultCharInsertion, defaultCharLimit);
   
   let skyViewText = '';
@@ -2679,7 +2642,7 @@ export async function buildPrompt(
   const formatRatio = (val: number) => String(Math.round(val * 100) / 100);
   const hasBeenSummarized = chatHistoryResult.hasBeenSummarized;
   const textInjectionText = buildTextInjectionText(ctx, hasBeenSummarized, contextLines);
-  const allowedImageTypes = profile?.entityImageTypes ?? ['promptBlock', 'context', 'location', 'character'];
+  const allowedImageTypes = profile?.entityImageTypes ?? ['promptBlock', 'context', 'location', 'character', 'screenshot'];
   let globalIdCounter = 1;
   const nextGlobalId = () => globalIdCounter++;
   const trackedImages: TrackedImage[] = [];
@@ -2687,6 +2650,7 @@ export async function buildPrompt(
   const promptImgInst: string[] = [];
   const ctxImgInst: string[] = [];
   const locImgInst: string[] = [];
+  const screenshotImgInst: string[] = [];
 
   for (const imageType of allowedImageTypes) {
     if (imageType === 'character') {
@@ -2742,6 +2706,30 @@ export async function buildPrompt(
       await trackEntityImages(resolvedContextsWithWeb.map(r => r.context), 'context', getContextImageUrl, ctxImgInst, trackedImages, nextGlobalId);
     } else if (imageType === 'location' && ctx.currentLocation) {
       await trackEntityImages([ctx.currentLocation], 'location', getLocationImageUrl, locImgInst, trackedImages, nextGlobalId);
+    } else if (imageType === 'screenshot') {
+      try {
+        const res = await captureScreenshot(character.id);
+        if (res?.success && res.base64) {
+          const id = nextGlobalId();
+          const protagonistDisplay = buildProtagonistDisplayString(
+            ctx.coLocatedProtagonists,
+            ctx.participants,
+            ctx.knownNames,
+            ctx.characterId
+          ) || 'Protagonist';
+          const cleanBase64 = res.base64.includes(',') ? res.base64.split(',')[1] : res.base64;
+          trackedImages.push({
+            globalId: id,
+            entityType: 'screenshot',
+            entityName: `${protagonistDisplay}'s Screen`,
+            localIndex: 1,
+            base64Data: cleanBase64,
+          });
+          screenshotImgInst.push(`Image ${id} - ${protagonistDisplay}'s Screen`);
+        }
+      } catch {
+        // Ignore screenshot error when running in browser-only mode
+      }
     }
   }
 
@@ -2749,6 +2737,7 @@ export async function buildPrompt(
   const promptImgStr = promptImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(promptImgInst)}${delimiters.blockEnd}` : '';
   const ctxImgStr = ctxImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(ctxImgInst)}${delimiters.blockEnd}` : '';
   const locImgStr = locImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(locImgInst)}${delimiters.blockEnd}` : '';
+  const screenshotImgStr = screenshotImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(screenshotImgInst)}${delimiters.blockEnd}` : '';
   
   const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
@@ -2762,14 +2751,12 @@ export async function buildPrompt(
     const knownName = getKnownDisplayName(p, ctx.knownNames);
     return `${knownName ?? tag}'s`;
   });
-
   const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const charactersPossessiveList = ctx.participants.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
     const knownName = getKnownDisplayName(p, ctx.knownNames);
     return `${knownName ?? tag}'s`;
   });
-
   const templateContext: TemplateContext = {
     characterParticipantTag: ctx.characterParticipantTag,
     characterName: ctx.characterName,
@@ -2821,6 +2808,7 @@ export async function buildPrompt(
     promptBlockImageInstructions: promptImgStr,
     contextImageInstructions: ctxImgStr,
     currentLocationImageInstructions: locImgStr,
+    screenshotImageInstructions: screenshotImgStr,
     antiRepetitionNudge: buildAntiRepetitionNudgeText(ctx),
     textInjection: textInjectionText,
     text: existingCharacterText,
@@ -2884,7 +2872,6 @@ export async function buildPrompt(
   
   const promptFormatMode = profile?.promptFormatMode ?? 'none';
   let messages: OpenAIMessage[];
-
   if (promptFormatMode !== 'none') {
     const contentLines: string[] = [];
     for (const entry of inputStrategy) {
@@ -2902,13 +2889,10 @@ export async function buildPrompt(
       const lines = blockMap[blockId];
       if (lines?.length) contentLines.push(...lines);
     }
-
     const assembledContent = contentLines.join('\n');
     const promptLines: string[] = [];
-
     const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
     const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
-
     if (promptFormatMode === 'instruction' && resolvedInstructionTemplate?.instructionTemplate) {
       promptLines.push(
         resolvedInstructionTemplate.instructionTemplate
@@ -2996,14 +2980,12 @@ export async function buildPrompt(
       }
     }
   }
-
   const defaultStops = !profile?.doNotInjectDefaultStopTokens
     ? resolveEffectiveStopTokens()
     : [];
   const stops = [...defaultStops, ...activeStopPatterns.map(sp => sp.pattern)];
   const uniqueStops = Array.from(new Set(stops)).filter(s => typeof s === 'string' && s.length > 0);
   const imagePayloads = trackedImages.map(img => ({ data: img.base64Data, id: img.globalId }));
-
   return {
     messages,
     stops: uniqueStops,
