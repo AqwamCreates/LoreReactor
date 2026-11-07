@@ -593,7 +593,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                 {autonomousMode && (
                                     <div style={{ marginTop: '12px' }}>
                                         <div style={SLIDER_HEADER_STYLE}><label className="editor-label editor-label-small" style={SLIDER_LABEL_STYLE}>Interaction Interval</label><span style={SLIDER_VALUE_STYLE}>{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span></div>
-                                        <SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={60000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage." />
+                                        <SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={360000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions. Lower = more frequent activity, higher token usage." />
                                     </div>
                                 )}
                             </div>
