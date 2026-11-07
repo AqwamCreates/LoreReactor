@@ -101,7 +101,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         return unsubscribe;
     }, [options.isMultiplayerClient]);
 
-    // ─── 3. Background Effects (Budget, Polling, Tokens, FM Unload) ───
+    // ─── 3. Background Effects (Budget, Polling, Tokens, Autonomous Mode, FM Unload) ───
     const interactionData = useChatStore(s => s.interactionData);
     const selectedLanguageModel = useChatStore(s => s.selectedLanguageModel);
     const selectedSpatiotemporalModel = useChatStore(s => s.selectedSpatiotemporalModel);
@@ -184,6 +184,21 @@ export function useChatSession(options: UseChatSessionOptions) {
 
         return () => { cancelled = true; clearTimeout(timer); };
     }, [interactionData, setNumberOfTokens, lmEngine]);
+
+    // Autonomous Simulation Lifecycle
+    const activeChatId = interactionData?.id;
+    const autonomousMode = Boolean(interactionData?.profile?.autonomousMode);
+
+    useEffect(() => {
+        if (autonomousMode && activeChatId && !options.isMultiplayerClient) {
+            chatCoordinator.startAutonomousMode();
+        } else {
+            chatCoordinator.stopAutonomousMode();
+        }
+        return () => {
+            chatCoordinator.stopAutonomousMode();
+        };
+    }, [autonomousMode, activeChatId, options.isMultiplayerClient]);
 
     // Persist Factorization Machine Weights on Window Unload
     useEffect(() => {

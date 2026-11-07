@@ -1,7 +1,9 @@
 // src/frontend_src/services/ChatSessionCoordinator.ts
+
 import { useChatStore } from '../hooks/useChatStore';
 import { useGenerationStore } from '../hooks/useGenerationStore';
 import { CharacterActor, type TurnExecutionParams } from './CharacterActor';
+import { CharacterSoul } from './CharacterSoul';
 import { runTurnSequence } from './InteractionOrchestrator';
 import { getBudgetStrategyEngine } from './BudgetStrategyEngine';
 import { getLanguageModelEngine } from './LanguageModelEngine';
@@ -73,6 +75,7 @@ class ChatSessionCoordinator {
     private deps!: CoordinatorDependencies;
 
     private characterActor = new CharacterActor();
+    private characterSoul = new CharacterSoul();
 
     public setDependencies(deps: CoordinatorDependencies) {
         this.deps = deps;
@@ -151,6 +154,60 @@ class ChatSessionCoordinator {
         return profile?.inputStrategy 
             ? this.deps.allPromptBlocks.filter(pb => profile.inputStrategy.includes(pb.id))
             : this.deps.allPromptBlocks;
+    }
+
+    // ─── Autonomous Simulation Lifecycle ────────────────────────────────────────
+
+    public startAutonomousMode(): void {
+        if (this.deps?.isMultiplayerClient) {
+            this.stopAutonomousMode();
+            return;
+        }
+
+        const executor = async (d: InteractionData, c: Character, _signal: AbortSignal) => {
+            useGenerationStore.setState({ streamingCharacter: c, streamingText: '', streamingMessageId: null });
+            let updatedData = await this.runSingleTurn(d, c);
+
+            const preToolData = updatedData;
+            updatedData = processPendingToolActions(updatedData, this.deps?.allCharacters || [], { onToast: this.deps?.addToast });
+            broadcastToolStateChanges(preToolData, updatedData, this.deps?.onStateBroadcast);
+
+            return { interactionData: updatedData, isCompleted: true };
+        };
+
+        const checkCanAct = (): boolean => {
+            if (this.isGenerating) return false;
+            const state = useChatStore.getState();
+            const hasActiveModel = Boolean(state.selectedLanguageModel || state.activeStrategy);
+            return hasActiveModel && Boolean(state.interactionData?.profile?.autonomousMode);
+        };
+
+        const getData = (): InteractionData | null => useChatStore.getState().interactionData;
+
+        const setData = (data: InteractionData): void => {
+            useChatStore.setState({ interactionData: data });
+            saveRawInteractionData(data).catch(console.warn);
+            this.deps?.onStateBroadcast?.({});
+        };
+
+        const onSpeakerChange = (char: Character | null): void => {
+            useGenerationStore.setState({ streamingCharacter: char, streamingText: '', streamingMessageId: null });
+        };
+
+        this.characterSoul.start(
+            executor,
+            checkCanAct,
+            getData,
+            setData,
+            onSpeakerChange,
+            () => this.acquireLock(),
+            () => this.releaseLock(),
+            () => this.deps?.allCharacters || [],
+        );
+    }
+
+    public stopAutonomousMode(): void {
+        this.characterSoul.stop();
     }
 
     // ─── Core Orchestration ─────────────────────────────────────────────────────────
