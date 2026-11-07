@@ -54,6 +54,16 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
     const isScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const skipNextFocusScrollRef = useRef(false);
+    const prevMsgCountRef = useRef(displayMessages.length);
+
+    // Clear focusedMessageId when new messages arrive so auto-scroll is not hijacked
+    useEffect(() => {
+        if (displayMessages.length > prevMsgCountRef.current && focusedMessageId) {
+            skipNextFocusScrollRef.current = true;
+            setFocusedMessageId(null);
+        }
+        prevMsgCountRef.current = displayMessages.length;
+    }, [displayMessages.length, focusedMessageId, setFocusedMessageId]);
 
     useEffect(() => {
         if (editingId) {

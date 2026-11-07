@@ -22,7 +22,6 @@ import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
 import { useFrontCamera } from '../hooks/useFrontCamera';
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Account, MultiplayerData, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, RawInteractionData, cloudBackend, TextMessage } from '../types';
-
 import { useChatStore } from '../hooks/useChatStore';
 import { useGenerationStore } from '../hooks/useGenerationStore';
 import { useUIStore } from '../hooks/useUIStore';
@@ -86,7 +85,6 @@ import '../main.css';
 import { useWorldManager } from '../hooks/useWorldManager';
 
 // ─── Types & Helpers ─────────────────────────────────────────────────
-
 interface LoadStep { id: string; label: string; icon: string; done: boolean; }
 
 function deriveCurrentProtagonistId(
@@ -107,7 +105,6 @@ function deriveCurrentProtagonistId(
 }
 
 // ─── App Component ───────────────────────────────────────────────────
-
 function App() {
     const { addToast } = useToast();
     const { captureFrontCameraImage } = useFrontCamera(addToast);
@@ -162,6 +159,7 @@ function App() {
     const selectedCharacterId = useChatStore((s: any) => s.selectedCharacterId);
     const selectedBudgetStrategyId = useChatStore((s: any) => s.selectedBudgetStrategyId);
     const streamingText = useGenerationStore((s: any) => s.streamingText);
+
     const storeSetCurrentAccountId = useChatStore((s: any) => s.setCurrentAccountId);
     const storeSetSelectedCharacterId = useChatStore((s: any) => s.setSelectedCharacterId);
     const storeSetSelectedBudgetStrategyId = useChatStore((s: any) => s.setSelectedBudgetStrategyId);
@@ -216,7 +214,7 @@ function App() {
         interactionData, setInteractionData, setSelectedCharacter,
         isLoading, currentCharacterExpression,
         sendMessage, stopGeneration, resumeGeneration, regenerateFromMessage,
-        messageEndRef, chatHistoryRef, startNewChat, sendActionAndGetResponse,
+        messageEndRef, chatHistoryRef, scrollToBottom, startNewChat, sendActionAndGetResponse,
         setActiveBudgetStrategy, setSelectedGlobalModel,
         activeStrategy, budgetData, playVoice,
     } = session;
@@ -260,7 +258,6 @@ function App() {
     // ─── Auto-Associate Multiplayer Room (Strict Match or Reset to Solo) ──
     useEffect(() => {
         if (!interactionData?.id || mp.joinSessionId) return;
-
         const currentStoreMpData = useChatStore.getState().multiplayerData;
         const match = multiplayerDatas.multiplayerData.find(
             (m: MultiplayerData) => m.interactionDataIds.includes(interactionData.id!)
@@ -280,7 +277,6 @@ function App() {
     useEffect(() => {
         const handleBeforeUnload = () => {
             flushSaveQueue();
-
             const sync = mpSyncRef.current;
             if (sync?.isConnected) {
                 if (sync.isHost && sync.connectedPeers.length > 0) {
@@ -290,7 +286,6 @@ function App() {
                 }
             }
         };
-
         window.addEventListener('beforeunload', handleBeforeUnload);
         return () => window.removeEventListener('beforeunload', handleBeforeUnload);
     }, []);
@@ -360,7 +355,6 @@ function App() {
         const devicePref = profile?.sentimentalAnalysisDeviceType ?? 'auto';
         
         sentimentEngine.setDevicePreference(devicePref);
-
         if (enabled) {
             sentimentEngine.initialize();
         } else {
@@ -506,7 +500,6 @@ function App() {
     const [activeHeaderPanel, setActiveHeaderPanel] = useState<HeaderPanel>(null);
 
     const isHistoryOpen = activeHeaderPanel === 'history';
-
     const toggleHistory = () => setActiveHeaderPanel(prev => prev === 'history' ? null : 'history');
     const toggleViewMode = () => setActiveHeaderPanel(prev => prev === 'viewMode' ? null : 'viewMode');
     const toggleStats = () => setActiveHeaderPanel(prev => prev === 'stats' ? null : 'stats');
@@ -532,6 +525,7 @@ function App() {
 
     const messageToolbar = useMessageToolbar({ chatHistoryRef });
     const displayNameCache = useDisplayNameCache(interactionData, localProtagonistId);
+
     const { modals } = useAppModals();
 
     useEffect(() => {
@@ -590,7 +584,6 @@ function App() {
     }, [activeStrategy, allLanguageModels, languageModels]);
 
     const parentInteractionDataId = interactionData?.parentInteractionDataId;
-
     const parentChatName = useMemo(() => {
         if (!parentInteractionDataId) return null;
         return interactionDatas.allRawInteractionDataShells.find((s: RawInteractionData) => s.id === parentInteractionDataId)?.name ?? null;
@@ -612,6 +605,7 @@ function App() {
 
     const timeUntilResetRef = useRef<number | undefined>(undefined);
     const [timeUntilReset, setTimeUntilReset] = useState<number | undefined>(undefined);
+
     useEffect(() => {
         if (!budgetData || !activeStrategy || budgetData.resetDuration <= 0) { timeUntilResetRef.current = undefined; return; }
         const compute = () => Math.max(0, budgetData.resetDuration - (Date.now() - budgetData.lastResetTimestamp));
@@ -661,7 +655,6 @@ function App() {
     }, [loadSteps, isInitializing, activeChatRestored, interactionData]);
 
     const ensureChatsLoaded = interactionDatas.load;
-
     useEffect(() => { 
         if (!isInitializing && activeChatRestored) {
             ensureChatsLoaded(); 
@@ -682,14 +675,25 @@ function App() {
     const handleSend = useCallback(async (overrideText?: string) => {
         const textToSend = overrideText !== undefined ? overrideText : inputText;
         if (!textToSend && !pendingFiles.length) return;
+
+        // Clear focusedMessageId immediately so older messages do not pull the scroll back up
+        setFocusedMessageId(null);
+
         let frontCam: string | undefined;
         const profileCam = interactionData?.profile?.useFrontCameraImage;
         if (profileCam === 1) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
         else if (profileCam === 0 && currentCharacter?.useFrontCameraImage) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
+
         sendMessage(textToSend, pendingFiles, frontCam);
         setInputText(''); setPendingFiles([]);
         if (textareaRef.current) textareaRef.current.style.height = 'auto';
-    }, [inputText, pendingFiles, sendMessage, captureFrontCameraImage, interactionData, currentCharacter]);
+
+        requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+                scrollToBottom(true);
+            });
+        });
+    }, [inputText, pendingFiles, sendMessage, captureFrontCameraImage, interactionData, currentCharacter, scrollToBottom]);
 
     const handleToggleMic = useCallback(async () => {
         if (isRecording) { 
@@ -698,7 +702,6 @@ function App() {
         } else {
             const profile = interactionData?.profile;
             const isAuto = profile?.enableAutoSpeechDetection ?? false;
-
             const sttDevice = profile?.speechToTextDeviceType ?? 'auto';
             speechToTextEngine.setDevicePreference(sttDevice);
 
@@ -728,7 +731,6 @@ function App() {
                         vadDevicePreference: vadDevice
                     }
                 );
-
                 if (!started) { 
                     addToast('Failed to start voice activity detection.', 'error'); 
                     return; 
@@ -769,7 +771,6 @@ function App() {
             addToast('Companion overlay is only available in the PC application version', 'info');
             return;
         }
-
         try {
             const { WebviewWindow } = await import('@tauri-apps/api/webviewWindow');
             const { LogicalSize } = await import('@tauri-apps/api/dpi');
@@ -829,7 +830,6 @@ function App() {
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Sent first message as ${char.name}`, 'success');
-
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
             handleBroadcastMessage({ ...msg, doNotRespond: true });
         }
@@ -845,7 +845,6 @@ function App() {
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Sent message as ${char.name}`, 'success');
-
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
             handleBroadcastMessage(msg);
         }
@@ -861,7 +860,6 @@ function App() {
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Injected message as ${char.name}`, 'success');
-
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
             handleBroadcastMessage({ ...msg, doNotRespond: true });
         }
@@ -878,7 +876,6 @@ function App() {
         const updated = addMessageToInteractionData(interactionData, msg);
         setInteractionData(updated);
         addToast(`Injected first message as ${char.name}`, 'success');
-
         if (isMultiplayerChat && mp.multiplayerSync.isConnected) {
             handleBroadcastMessage({ ...msg, doNotRespond: true });
         }
@@ -894,7 +891,6 @@ function App() {
         const loaded = (currentInteractionData?.id === id)
             ? currentInteractionData
             : await loadRawInteractionData(id);
-
         if (!loaded) { addToast('Chat not found.', 'error'); return; }
         const updated = { ...loaded, name, lastUpdatedTimestamp: Date.now() };
         await saveRawInteractionData(updated);
@@ -912,10 +908,8 @@ function App() {
 
     const handleLoadWorlds = useCallback((activeWorlds: World[]) => {
         if (!interactionData) return;
-
         const prevWorldIds: string[] = interactionData?.worldIds || [];
         const prevWorlds = worlds.worlds.filter((w: World) => prevWorldIds.includes(w.id));
-
         const prevWorldCharIds = new Set(prevWorlds.flatMap(w => w.characterIds || []));
         const prevWorldCtxIds = new Set(prevWorlds.flatMap(w => w.contextIds || []));
         const prevWorldLocIds = new Set(prevWorlds.flatMap(w => w.locationIds || []));
@@ -1019,7 +1013,6 @@ function App() {
 
     const handleMoveProtagonist = useCallback(async (location: Location) => {
         if (!interactionData) return;
-
         if (!localProtagonist) {
             addToast('No local protagonist selected to move.', 'error');
             return;
@@ -1185,7 +1178,6 @@ function App() {
 
     const companionChannelRef = useRef<BroadcastChannel | null>(null);
     const getCompanionStateSnapshotRef = useRef(getCompanionStateSnapshot);
-
     useEffect(() => {
         getCompanionStateSnapshotRef.current = getCompanionStateSnapshot;
     }, [getCompanionStateSnapshot]);
@@ -1265,6 +1257,7 @@ function App() {
         };
 
         channel.addEventListener('message', handleChannelMessage);
+
         return () => {
             channel.removeEventListener('message', handleChannelMessage);
             channel.close();
@@ -1292,7 +1285,6 @@ function App() {
     return (
         <>
             {isInitializing && <LoadingScreen steps={loadSteps} isFadeOut={isFadeOut} />}
-
             <div
                 className={containerClass}
                 style={viewAssets.locationBackgroundUrl && viewMode !== 'visual novel' ? { '--location-bg': `url(${viewAssets.locationBackgroundUrl})` } as React.CSSProperties : undefined}
@@ -1332,7 +1324,6 @@ function App() {
                                             </>
                                         )}
                                     </div>
-
                                     <div className="header-toolbar pp-toolbar" style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end', flex: '0 1 auto', minWidth: 0, overflow: 'visible' }}>
                                         {mp.multiplayerSync.isConnected && (
                                             <div className="peer-badge" title={`${peerCount} connected peer${peerCount !== 1 ? 's' : ''}`}>
@@ -1340,7 +1331,6 @@ function App() {
                                                 <span className="peer-badge-count">{peerCount}</span>
                                             </div>
                                         )}
-
                                         <button
                                             type="button"
                                             className={`view-mode-toggle header-icon-button ${isHistoryOpen ? 'active' : ''}`}
@@ -1352,7 +1342,6 @@ function App() {
                                             <span>🔍</span>
                                             <span className="view-mode-label">History</span>
                                         </button>
-
                                         <ViewModeDropdown
                                             currentMode={viewMode}
                                             onSelectMode={handleChangeViewMode}
@@ -1360,7 +1349,6 @@ function App() {
                                             onToggle={toggleViewMode}
                                             onClose={closeHeaderPanel}
                                         />
-
                                         <button
                                             type="button"
                                             className="view-mode-toggle header-icon-button"
@@ -1369,7 +1357,6 @@ function App() {
                                         >
                                             <span>⚙️</span>
                                         </button>
-
                                         {isRunningInTauri && (
                                             <button
                                                 type="button"
@@ -1380,7 +1367,6 @@ function App() {
                                                 <span>🪟</span>
                                             </button>
                                         )}
-
                                         <button
                                             type="button"
                                             className="view-mode-toggle header-icon-button"
@@ -1389,7 +1375,6 @@ function App() {
                                         >
                                             <span>🧩</span>
                                         </button>
-
                                         <ChatStatisticsBar
                                             numberOfMessages={interactionData?.numberOfMessages ?? safeMessages.length}
                                             maximumNumberOfTokens={maxContextLength}
@@ -1404,7 +1389,6 @@ function App() {
                                         />
                                     </div>
                                 </div>
-
                                 <ChatHistoryPanel
                                     messages={safeMessages.filter((m: HistoryMessage): m is ChatMessage => m.messageType === 'chat')}
                                     containerRef={chatHistoryRef}
@@ -1419,7 +1403,6 @@ function App() {
                                 />
                             </div>
                         </header>
-
                         <ChatViewArea
                             viewMode={viewMode}
                             baseProps={baseViewProps}
@@ -1427,7 +1410,6 @@ function App() {
                             displayNameCache={displayNameCache}
                             isMultiplayerChat={isMultiplayerChat}
                         />
-
                         <ContextBar
                             viewMode={viewMode}
                             onOpenInteractionDataList={modals.interactionDataList.open} onOpenCharacters={modals.characterList.open}
@@ -1438,7 +1420,6 @@ function App() {
                             onOpenRetrievalConfigurations={modals.retrievalConfigurationList.open}
                             onOpenBudgets={modals.budgetStrategyList.open} onOpenProfiles={modals.profileList.open}
                         />
-
                         <ChatInput
                             inputText={inputText} setInputText={setInputText}
                             pendingFiles={pendingFiles} setPendingFiles={setPendingFiles}
@@ -1458,7 +1439,6 @@ function App() {
                     </>
                 )}
             </div>
-
             {/* ─── Modals mounted at root to guarantee viewport-fixed overlay behavior ─── */}
             <AppModals
                 isMultiplayerClient={mp.isMultiplayerClient}
@@ -1546,7 +1526,6 @@ function App() {
                 onAcceptJoinRequest={mp.multiplayerSync.acceptJoinRequest}
                 onRejectJoinRequest={mp.multiplayerSync.rejectJoinRequest}
             />
-
             <ActionMenu
                 actionMenuTarget={actionMenu.actionMenuTarget} interactionDataExists={!!interactionData}
                 menuSearchQuery={actionMenu.menuSearchQuery} setMenuSearchQuery={actionMenu.setMenuSearchQuery}

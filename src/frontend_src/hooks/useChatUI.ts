@@ -19,12 +19,18 @@ export function useChatUI(
     const streamingText = useGenerationStore(s => s.streamingText);
     const { speakMessage } = useCharacterVoice(allCharacters);
 
-    const scrollToBottom = useCallback(() => {
+    const scrollToBottom = useCallback((smooth: boolean = true) => {
         const el = chatHistoryRef.current;
         if (el) {
-            el.scrollTop = el.scrollHeight;
+            el.scrollTo({
+                top: el.scrollHeight,
+                behavior: smooth ? 'smooth' : 'auto',
+            });
         } else if (messageEndRef.current) {
-            messageEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' });
+            messageEndRef.current.scrollIntoView({
+                behavior: smooth ? 'smooth' : 'auto',
+                block: 'end',
+            });
         }
         isAtBottomRef.current = true;
     }, [isAtBottomRef]);
@@ -71,16 +77,21 @@ export function useChatUI(
         previousChatIdRef.current = interactionData.id;
         previousMessageCountRef.current = totalMessages;
 
-        let frameId: number | null = null;
+        let outerFrameId: number | null = null;
+        let innerFrameId: number | null = null;
+
         if ((isChatSwitched || isMessageAdded) && totalMessages > 0) {
-            frameId = requestAnimationFrame(() => {
-                scrollToBottom();
+            outerFrameId = requestAnimationFrame(() => {
+                innerFrameId = requestAnimationFrame(() => {
+                    scrollToBottom(!isChatSwitched);
+                });
             });
         }
 
         return () => {
             el?.removeEventListener('scroll', handleScroll);
-            if (frameId !== null) cancelAnimationFrame(frameId);
+            if (outerFrameId !== null) cancelAnimationFrame(outerFrameId);
+            if (innerFrameId !== null) cancelAnimationFrame(innerFrameId);
         };
     }, [interactionData, isAtBottomRef, scrollToBottom]);
 
@@ -88,10 +99,18 @@ export function useChatUI(
     useEffect(() => {
         if (!streamingText || !isAtBottomRef.current) return;
         const frameId = requestAnimationFrame(() => {
-            scrollToBottom();
+            const el = chatHistoryRef.current;
+            if (el) {
+                el.scrollTo({
+                    top: el.scrollHeight,
+                    behavior: 'smooth',
+                });
+            } else if (messageEndRef.current) {
+                messageEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+            }
         });
         return () => cancelAnimationFrame(frameId);
-    }, [streamingText, isAtBottomRef, scrollToBottom]);
+    }, [streamingText, isAtBottomRef]);
 
     const playVoice = useCallback((text: string, character: Character) => {
         speakMessage(text, character);
@@ -100,6 +119,7 @@ export function useChatUI(
     return {
         chatHistoryRef,
         messageEndRef,
+        scrollToBottom,
         playVoice,
     };
 }
