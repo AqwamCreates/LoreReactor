@@ -167,7 +167,7 @@ class ChatSessionCoordinator {
         const executor = async (d: InteractionData, c: Character, _signal: AbortSignal) => {
             useGenerationStore.setState({ streamingCharacter: c, streamingText: '', streamingMessageId: null });
             
-            // 📸 Capture fresh front camera image for the protagonist before the AI turn
+            // Capture fresh front camera image for the protagonist before the AI turn
             const protagonistId = d.protagonistIds?.[0];
             if (protagonistId && this.deps.captureFrontCameraImage) {
                 const protagonist = d.participants.find(p => p.id === protagonistId);
@@ -256,10 +256,23 @@ class ChatSessionCoordinator {
             activeData = addMessageToInteractionData(activeData, aiMessage, currentLocId);
             resumingMessageId = aiMessage.id;
             this.activeMessageId = aiMessage.id;
+            
+            // Synchronize generation state with chat state immediately to prevent empty stub flash
+            useGenerationStore.setState({
+                streamingCharacter: character,
+                streamingText: currentExistingText,
+                streamingMessageId: this.activeMessageId
+            });
             useChatStore.setState({ interactionData: activeData });
             saveRawInteractionData(activeData).catch(console.warn);
         } else {
             this.activeMessageId = resumingMessageId;
+            // Ensure streaming state is synced for resume turns
+            useGenerationStore.setState({
+                streamingCharacter: character,
+                streamingText: currentExistingText,
+                streamingMessageId: this.activeMessageId
+            });
         }
 
         if (profile?.enableCharacterExpression) {
