@@ -5,6 +5,7 @@ export type tristateInteger = -1 | 0 | 1
 export type regularExpressionContext = 'global' | 'local' | 'previous';
 
 export type regularExpressionTarget = 'everyone' | 'listener' | 'self' | 'protagonist' | 'non-protagonist' | 'narrator';
+
 export interface ObjectData {
   id: string;
   name: string;
@@ -46,6 +47,7 @@ export interface RawStopPattern extends RawData {
 export type retrievalStrategy = 'dense' | 'sparse' | 'hybrid' | 'maximal marginal relevance'
 
 export type retrievalSortOrder = 'highest' | 'lowest' | 'chronological' | 'reverse_chronological';
+
 export interface RetrievalConfiguration extends ObjectData {
   retrievalStrategy: retrievalStrategy
   topK: number,
@@ -202,6 +204,7 @@ export type localBackend =
 export type cloudBackend = 'DeepSeek' | 'Qwen' | 'Kimi' | 'GLM' | 'MiMo' | 'Minimax' | 'Google' | 'OpenAI' | 'Anthropic' | 'Mistral' | 'Grok' | 'Groq' | 'YandexGPT' | 'OpenRouter' | 'Inworld' | 'Cohere' | 'AI21' | 'Perplexity' | 'NovelAI' | 'Other'
 
 export type backend = localBackend | cloudBackend
+
 export interface LanguageModel extends ObjectData {
   backend: backend;
   contextLength: number;
@@ -520,6 +523,7 @@ export interface PendingToolAction {
   type: PendingToolActionType;
   payload: Record<string, string>;
 }
+
 export interface BaseMessage {
   id: string;
   character: Character;
@@ -542,6 +546,7 @@ export interface BaseMessage {
 export interface InteractionMessage extends BaseMessage {
   messageType: 'interaction';
 }
+
 export interface ChatMessage extends BaseMessage {
   messageType: 'chat';
   textContent: string;
@@ -644,6 +649,7 @@ export interface RawNarrationMessage extends RawBaseMessage { // Giving a charac
 }
 
 export type RawHistoryMessage = RawInteractionMessage | RawChatMessage | RawWhisperMessage | RawNarrationMessage;
+
 export interface Account extends ObjectData {
 
   username: string
@@ -748,6 +754,7 @@ export interface RawEntityFolder extends RawData {
     entityType: entityType;
     itemIds: string[];
 }
+
 export type ExtensionType = 'Image Generation API' | 'Accessibility' | 'Extra';
 
 export interface Extension extends ObjectData {
@@ -820,6 +827,7 @@ export interface RawBudgetData extends RawData {
   modelAverageTimeToFirstToken: Record<string, number>
   modelTotalSessionDuration: Record<string, number>
 }
+
 export interface PromptBlock extends ObjectData {
   textContent: string
   images: string[]
@@ -923,8 +931,9 @@ export type promptBlockType =
   | 'Tool Message Instructions'
   | 'Prompt Block Image Instructions'
   | 'Context Image Instructions'
-  | 'Current Location Image Instructions'
   | 'Character Image Instructions'
+  | 'Current Location Image Instructions'
+  | 'Screenshot Image Instructions'
   | 'Anti-Repetition Nudge'
   | 'Dialogue Prompt'
   | 'Knowledge Prompt'
@@ -957,6 +966,7 @@ export type participantScopeMode = 'current' | 'coLocated' | 'all'; // Default i
 export type participantInsertionMode = 'dynamic' | 'static' // Default is dynamic.
 
 export type cacheConfigurationType = 'Character Name' | 'System Prompt' | 'Think Prompt' // 0 -> No optimization, 1 -> Limited to co-located participants, 2 -> All participants
+
 export interface AutoResumeSignal {
 
   regularExpressionActivationTrigger?: string; // If not empty, this activates the auto-resume.
@@ -969,9 +979,10 @@ export interface AutoResumeSignal {
 
 export type deviceType = 'auto' | 'cpu' | 'gpu'
 
-export type entityImageType = 'promptBlock' | 'context' | 'location' | 'character'
+export type entityImageType = 'promptBlock' | 'context' | 'location' | 'character' | 'screenshot'
 
 export type textGenerationBehaviourOnNarration = 'wait' | 'continue' | 'interrupt' // Wait (default) -> The text generation waits for the voice narration to complete. Cascade -> Allows the text generation to continue despite the existing voice narration currently running. Interrupt -> Stops previous voice narration and immediately perform the next voice narration upon the next text being generated.
+
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;

@@ -197,6 +197,7 @@ export const defaultInputStrategyPositions: promptBlockType[] = [
     'Tool Message Instructions',
     'Character Image Instructions',
     'Current Location Image Instructions',
+    'Screenshot Image Instructions',
     'Anti-Repetition Nudge',
     'Dialogue Prompt',
     'Knowledge Prompt',
