@@ -96,7 +96,7 @@ export function useServerSync({ refreshers }: SyncProps) {
 
       es.onerror = () => {
         if (es?.readyState === EventSource.CLOSED) return;
-        isServerAvailable().then((available) => {
+        isServerAvailable(true).then((available) => {
           if (!available && es) {
             es.close();
             es = null;
