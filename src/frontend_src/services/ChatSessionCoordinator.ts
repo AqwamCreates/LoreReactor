@@ -24,7 +24,7 @@ import { detectName } from '../utilities/nameDetection';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { evaluateAutoResumeSignals, injectStopSignals, broadcastToolStateChanges, hasTextContent, NO_ARG_TOOLS, HOST_ONLY_TOOLS, finalizeMessageById } from '../utilities/chatSessionLogic';
 import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost } from '../utilities/dynamicCharacterLogic';
-import { generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage } from '../utilities/characterLogic';
+import { generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, getEffectiveUseFrontCameraImage } from '../utilities/characterLogic';
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { learnFromUserMessage } from './ActionFormatEngine';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
@@ -166,6 +166,26 @@ class ChatSessionCoordinator {
 
         const executor = async (d: InteractionData, c: Character, _signal: AbortSignal) => {
             useGenerationStore.setState({ streamingCharacter: c, streamingText: '', streamingMessageId: null });
+            
+            // 📸 Capture fresh front camera image for the protagonist before the AI turn
+            const protagonistId = d.protagonistIds?.[0];
+            if (protagonistId && this.deps.captureFrontCameraImage) {
+                const protagonist = d.participants.find(p => p.id === protagonistId);
+                if (protagonist && getEffectiveUseFrontCameraImage(protagonist, d.profile)) {
+                    try {
+                        const freshImageBase64 = await this.deps.captureFrontCameraImage();
+                        if (freshImageBase64) {
+                            const latestMsgInfo = findLatestMessage(d, protagonist);
+                            if (latestMsgInfo && latestMsgInfo.message.messageType === 'chat') {
+                                (latestMsgInfo.message as ChatMessage).frontCameraImage = freshImageBase64;
+                            }
+                        }
+                    } catch (e) {
+                        console.warn('Autonomous front camera capture failed:', e);
+                    }
+                }
+            }
+
             let updatedData = await this.runSingleTurn(d, c);
 
             const preToolData = updatedData;
