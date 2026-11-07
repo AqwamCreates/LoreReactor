@@ -164,7 +164,7 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
                                     <label className="editor-label editor-label-small editor-label-no-margin">Interaction Interval</label>
                                     <span className="slider-value-display">{(autonomousInteractionIntervalMs / 1000).toFixed(1)}s</span>
                                 </div>
-                                <SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={360000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions." />
+                                <SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={300000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions." />
                             </div>
                         )}
                     </div>
