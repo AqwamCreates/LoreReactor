@@ -167,7 +167,9 @@ export const defaultActions: InterjectableAction[] = [
     { label: 'Pout At', count: 0 },
 ];
 
-export const defaultEntityImageTypes: entityImageType[] = ['promptBlock', 'context', 'location', 'character']
+export const defaultEntityImageTypes: entityImageType[] = ['character', 'promptBlock', 'context', 'location']
+
+export const defaultEntityImageTypePositions: entityImageType[] = ['character', 'promptBlock', 'context', 'location', 'screenshot'];
 
 export const defaultInputStrategyPositions: promptBlockType[] = [
     'System Prompt',
