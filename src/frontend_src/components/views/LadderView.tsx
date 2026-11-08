@@ -210,6 +210,7 @@ export const LadderView = React.memo(function LadderView(props: ViewModeProps) {
                         setEditDraft={setEditDraft}
                         onNavigateToBranchSource={onNavigateToBranchSource}
                         canDelete={canDelete}
+                        isLoading={isLoading}
                     />
                 );
             })}

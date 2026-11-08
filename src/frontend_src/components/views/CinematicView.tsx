@@ -246,6 +246,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             setEditDraft={setEditDraft}
                             onNavigateToBranchSource={onNavigateToBranchSource}
                             canDelete={canDelete}
+                            isLoading={isLoading}
                         />
                     );
                 })}
