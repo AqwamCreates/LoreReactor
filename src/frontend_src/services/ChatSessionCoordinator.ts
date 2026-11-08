@@ -245,7 +245,7 @@ class ChatSessionCoordinator {
         const protagonist = protagonistId ? activeData.participants.find(p => p.id === protagonistId) : null;
         const protagonistLocationId = protagonist ? (getCurrentLocationId(activeData, protagonist) || 'global') : 'global';
         
-        // Determine if this generation is happening in a different room than the user
+        // Purely spatial check. If they are in different rooms, it's a background generation.
         const isBackground = charLocationId !== protagonistLocationId;
 
         if (!resumingMessageId) {
@@ -261,7 +261,6 @@ class ChatSessionCoordinator {
             const currentLoading = useGenerationStore.getState().loadingLocations || {};
             useGenerationStore.setState({
                 loadingLocations: { ...currentLoading, [charLocationId]: true },
-                // ONLY lock the global UI if this is a foreground generation
                 isLoading: isBackground ? useGenerationStore.getState().isLoading : true,
                 streamingCharacter: character,
                 streamingText: currentExistingText,
@@ -438,7 +437,6 @@ class ChatSessionCoordinator {
             delete currentLoading[charLocationId];
             useGenerationStore.setState({ 
                 loadingLocations: currentLoading,
-                // ONLY unlock the global UI if this was a foreground generation
                 isLoading: isBackground ? useGenerationStore.getState().isLoading : false,
                 streamingText: '', 
                 streamingCharacter: null, 
@@ -451,7 +449,7 @@ class ChatSessionCoordinator {
 
     private async runSequence(
         startData: InteractionData, 
-        excludeFromSequence?: Set<string>
+        excludeFromSequence?: Set<string>,
     ): Promise<InteractionData> {
         let currentData = startData;
         const preTurnCount = getGlobalMessageHistory(currentData).length;
@@ -868,7 +866,6 @@ class ChatSessionCoordinator {
              }
         }
         
-        // Hard stop clears the global UI lock and all relevant location locks
         useGenerationStore.setState({ 
             loadingLocations: Object.keys(currentLoading).length > 0 ? currentLoading : {},
             isLoading: false,
