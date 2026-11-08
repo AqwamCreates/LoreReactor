@@ -13,14 +13,15 @@ interface StreamingIndicatorsProps {
     streamingPortraitUrl: string | null;
     messagesLength: number;
     onAvatarClick: (e: React.MouseEvent, id: string, char: Character) => void;
+    isLoading: boolean;
 }
 
 export function StreamingIndicators({
     streamingText,
     viewMode, streamingPortraitUrl,
     messagesLength, onAvatarClick,
+    isLoading,
 }: StreamingIndicatorsProps) {
-    const isLoading = useGenerationStore(s => s.isLoading);
     const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
     const streamingMessageId = useGenerationStore(s => s.streamingMessageId);
     const interactionData = useChatStore(s => s.interactionData);
@@ -28,7 +29,7 @@ export function StreamingIndicators({
     const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const protagonistIds = useChatStore(s => s.interactionData?.protagonistIds || []);
 
-    // 🛠️ CRITICAL FIX: Only bail if not loading, OR if text has already started arriving into the message.
+    // Only bail if not loading, OR if text has already started arriving into the message.
     // While streamingText is empty (warmup/TTFT/thinking), keep this indicator visible!
     if (!isLoading || (streamingMessageId && streamingText)) return null;
 
@@ -62,7 +63,7 @@ export function StreamingIndicators({
         </div>
     );
 
-    // ── Thinking / Warmup Phase Indicator (before first token) ───────────────
+    // Thinking / Warmup Phase Indicator (before first token)
     if (!streamingText) {
         return (
             <div className={`message-row ${viewMode === 'cinematic' ? '' : 'message-left'}`} data-message-id="thinking-message">

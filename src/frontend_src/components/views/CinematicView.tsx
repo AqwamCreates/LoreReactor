@@ -24,13 +24,13 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, onNavigateToBranchSource,
         canDelete,
+        isLoading,
     } = props;
 
     const interactionData = useChatStore(s => s.interactionData);
     const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const selectedCharacterId = useChatStore(s => s.selectedCharacterId);
     
-    const isLoading = useGenerationStore(s => s.isLoading);
     const streamingMessageId = useGenerationStore(s => s.streamingMessageId);
     const streamingPortraitUrl = useGenerationStore(s => s.streamingCharacter ? portraitUrlCache.get(`${s.streamingCharacter.id}`) ?? null : null);
 
@@ -175,6 +175,7 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                         streamingPortraitUrl={streamingPortraitUrl}
                         messagesLength={displayMessages.length}
                         onAvatarClick={onAvatarClick}
+                        isLoading={isLoading}
                     />
                 )}
 
