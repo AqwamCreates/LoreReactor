@@ -23,7 +23,6 @@ interface MatchCandidate {
     isUnclosed?: boolean;
 }
 
-// Dynamic Thinking Regex from MODEL_TEMPLATES
 function escapeRegex(s: string): string {
     return s.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
 }
@@ -39,7 +38,6 @@ const thinkEndPattern = thinkPairs.length > 0
 const thinkRegex = new RegExp(`(?:${thinkStartPattern})([\\s\\S]*?)(?:${thinkEndPattern}|$)`, 'i');
 const thinkEndCheckRegex = new RegExp(`(?:${thinkEndPattern})`, 'i');
 
-// Persistent Expansion Memory
 const THINK_STATE_MAX = 500;
 const thinkExpansionState = new Map<string, boolean>();
 
@@ -53,51 +51,34 @@ function setThinkState(key: string, state: boolean) {
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
     const [copied, setCopied] = useState(false);
-
     const handleCopy = () => {
         navigator.clipboard.writeText(code.trim());
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
-
     return (
         <div className="fmt-code-block-container">
             <div className="fmt-code-block-header">
                 <span className="fmt-code-language">{language || 'text'}</span>
-                <button className="fmt-code-copy-btn" onClick={handleCopy}>
-                    {copied ? 'Copied!' : 'Copy'}
-                </button>
+                <button className="fmt-code-copy-btn" onClick={handleCopy}>{copied ? 'Copied!' : 'Copy'}</button>
             </div>
-            <pre className="fmt-code-block-pre">
-                <code>{code.trim()}</code>
-            </pre>
+            <pre className="fmt-code-block-pre"><code>{code.trim()}</code></pre>
         </div>
     );
 }
 
 function CollapsibleThinkBlock({ 
-    children, 
-    rawContent, 
-    blockKey,
-    isUnclosed = false,
+    children, rawContent, blockKey, isUnclosed = false,
 }: { 
-    children: React.ReactNode; 
-    rawContent: string; 
-    blockKey: string;
-    isUnclosed?: boolean;
+    children: React.ReactNode; rawContent: string; blockKey: string; isUnclosed?: boolean;
 }) {
-    const [isExpanded, setIsExpanded] = useState<boolean>(() => {
-        return thinkExpansionState.get(blockKey) ?? false;
-    });
-
+    const [isExpanded, setIsExpanded] = useState<boolean>(() => thinkExpansionState.get(blockKey) ?? false);
     const isLoading = useGenerationStore(s => s.isLoading);
     const canSkip = isLoading && isUnclosed;
 
     useEffect(() => {
         const cached = thinkExpansionState.get(blockKey);
-        if (cached !== undefined && cached !== isExpanded) {
-            setIsExpanded(cached);
-        }
+        if (cached !== undefined && cached !== isExpanded) setIsExpanded(cached);
     }, [blockKey]);
 
     const handleToggle = () => {
@@ -117,61 +98,40 @@ function CollapsibleThinkBlock({
 
     return (
         <div className={`fmt-think-container ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
-            <button
-                type="button"
-                className="fmt-think-header"
-                onClick={handleToggle}
-                aria-expanded={isExpanded}
-            >
+            <button type="button" className="fmt-think-header" onClick={handleToggle} aria-expanded={isExpanded}>
                 <div className="fmt-think-label">
                     <span className="fmt-think-icon">💭</span>
                     <span className="fmt-think-title">Thinking</span>
                     <span className="fmt-think-count">({wordCount} words)</span>
                 </div>
-
                 <div className="fmt-think-actions">
                     {canSkip && (
-                        <button
-                            type="button"
-                            className="fmt-think-skip-btn"
-                            onClick={handleSkip}
-                            title="Force model to finish thinking and answer now"
-                        >
-                            Skip Thinking
-                        </button>
+                        <button type="button" className="fmt-think-skip-btn" onClick={handleSkip} title="Force model to finish thinking and answer now">Skip Thinking</button>
                     )}
                     <span className="fmt-think-chevron">{isExpanded ? '▾' : '▸'}</span>
                 </div>
             </button>
-            {isExpanded && (
-                <div className="fmt-think-body">
-                    {children}
-                </div>
-            )}
+            {isExpanded && <div className="fmt-think-body">{children}</div>}
         </div>
     );
 }
 
-// Robust depth-counting scanner for identical paired markers (*, **, ***, _, ~~)
 function findPairedFormat(text: string, marker: string): { index: number, length: number, innerContent: string } | null {
     const mLen = marker.length;
-    let startIdx = -1;
+    const baseChar = marker[0];
     
-    const isMarker = (idx: number): boolean => {
-        if (idx < 0 || idx > text.length - mLen) return false;
-        if (text.substring(idx, idx + mLen) !== marker) return false;
-        
-        const charBefore = idx > 0 ? text[idx - 1] : '';
-        const charAfter = text[idx + mLen] || '';
-        
-        const baseChar = marker[0]; 
+    const isMarker = (str: string, idx: number): boolean => {
+        if (idx < 0 || idx > str.length - mLen) return false;
+        if (str.substring(idx, idx + mLen) !== marker) return false;
+        const charBefore = idx > 0 ? str[idx - 1] : '';
+        const charAfter = str[idx + mLen] || '';
         if (charBefore === baseChar || charAfter === baseChar) return false;
-        
         return true;
     };
 
+    let startIdx = -1;
     for (let i = 0; i <= text.length - mLen; i++) {
-        if (isMarker(i)) {
+        if (isMarker(text, i)) {
             const after = text[i + mLen] || '';
             if (!/\s/.test(after)) {
                 startIdx = i;
@@ -182,25 +142,60 @@ function findPairedFormat(text: string, marker: string): { index: number, length
     
     if (startIdx === -1) return null;
     
+    let paraEnd = text.indexOf('\n\n', startIdx);
+    if (paraEnd === -1) paraEnd = text.length;
+    const crlfEnd = text.indexOf('\r\n\r\n', startIdx);
+    if (crlfEnd !== -1 && (paraEnd === -1 || crlfEnd < paraEnd)) paraEnd = crlfEnd;
+    
+    const paragraphText = text.substring(startIdx, paraEnd);
+    
+    let markerIndices: number[] = [];
+    for (let j = 0; j <= paragraphText.length - mLen; j++) {
+        if (isMarker(paragraphText, j)) {
+            markerIndices.push(j);
+        }
+    }
+    
+    // FORGIVING FALLBACK WITH CONSUMPTION
+    // If paragraph starts and ends with the marker, and has an odd number of markers,
+    // pair the outer markers and physically strip the orphaned middle markers from the text.
+    if (markerIndices.length >= 3 && markerIndices.length % 2 !== 0) {
+        const lastIdx = markerIndices[markerIndices.length - 1];
+        const afterLast = paragraphText.substring(lastIdx + mLen).trim();
+        if (afterLast === '' || /^[.!?',"]+$/.test(afterLast)) {
+            let cleanInner = '';
+            let prevEnd = mLen; // Start immediately after the first opening marker
+            
+            // Iterate through the orphaned middle markers and skip over them
+            for (let i = 1; i < markerIndices.length - 1; i++) {
+                const orphanIdx = markerIndices[i];
+                cleanInner += paragraphText.substring(prevEnd, orphanIdx);
+                prevEnd = orphanIdx + mLen; // Consume/skip the orphaned marker
+            }
+            cleanInner += paragraphText.substring(prevEnd, lastIdx);
+            
+            return {
+                index: startIdx,
+                length: lastIdx + mLen - startIdx,
+                innerContent: cleanInner
+            };
+        }
+    }
+
     let depth = 1;
     let i = startIdx + mLen;
     
-    while (i <= text.length - mLen) {
-        if (text[i] === '\n' && (text[i + 1] === '\n' || (text[i + 1] === '\r' && text[i + 2] === '\n'))) return null;
-        if (text[i] === '\r' && text[i + 1] === '\n' && text[i + 2] === '\r' && text[i + 3] === '\n') return null;
-
-        if (isMarker(i)) {
+    while (i < paraEnd) {
+        if (isMarker(text, i)) {
             const before = i > 0 ? text[i - 1] : '';
             const after = text[i + mLen] || '';
             
             const canClose = !/\s/.test(before);
             const canOpen = !/\s/.test(after);
             
-            if (canClose && !canOpen) {
-                depth--;
-            } else if (!canClose && canOpen) {
-                depth++;
-            } else if (canClose && canOpen) {
+            if (canClose && !canOpen) depth--;
+            else if (!canClose && canOpen) depth++;
+            else if (canClose && canOpen) {
                 if (depth > 0) depth--;
                 else depth++;
             }
@@ -221,7 +216,6 @@ function findPairedFormat(text: string, marker: string): { index: number, length
     return null;
 }
 
-// Robust depth-counting scanner for distinct paired markers ((), [], {}, “”)
 function findDistinctPairedFormat(text: string, openChar: string, closeChar: string): { index: number, length: number, innerContent: string } | null {
     let startIdx = -1;
     
@@ -252,8 +246,8 @@ function findDistinctPairedFormat(text: string, openChar: string, closeChar: str
     let i = startIdx + 1;
     
     while (i < text.length) {
-        if (text[i] === '\n' && (text[i + 1] === '\n' || (text[i + 1] === '\r' && text[i + 2] === '\n'))) return null;
-        if (text[i] === '\r' && text[i + 1] === '\n' && text[i + 2] === '\r' && text[i + 3] === '\n') return null;
+        if (text[i] === '\n' && text[i+1] === '\n') return null;
+        if (text[i] === '\r' && text[i+1] === '\n' && text[i+2] === '\r' && text[i+3] === '\n') return null;
 
         if (text[i] === openChar && isOpening(i)) {
             depth++;
@@ -286,7 +280,6 @@ function parseFormattedText(
     while (remaining.length > 0) {
         const candidates: MatchCandidate[] = [];
 
-        // 0.0. Dynamic Thinking Block
         const thinkMatch = remaining.match(thinkRegex);
         if (thinkMatch && thinkMatch.index !== undefined) {
             const inner = thinkMatch[1].trim();
@@ -302,7 +295,6 @@ function parseFormattedText(
             });
         }
 
-        // 0.1. Fenced Code Block
         const codeBlockMatch = remaining.match(/```(?:([a-zA-Z0-9_+-]+)\r?\n)?([\s\S]*?)```/);
         if (codeBlockMatch && codeBlockMatch.index !== undefined) {
             candidates.push({
@@ -314,7 +306,6 @@ function parseFormattedText(
             });
         }
 
-        // 0.2. Inline Code
         const inlineCodeMatch = remaining.match(/(?<!`)`([^`]+)`(?!`)/);
         if (inlineCodeMatch && inlineCodeMatch.index !== undefined) {
              candidates.push({
@@ -325,7 +316,6 @@ function parseFormattedText(
              });
         }
 
-        // 1. List Item
         const listMatch = remaining.match(/(?:^|\r?\n)([ \t]*)([-*+•]|\d{1,3}[.)])[ \t]+([^\r\n]*)/);
         if (listMatch && listMatch.index !== undefined) {
             const indentStr = listMatch[1] ?? '';
@@ -340,7 +330,6 @@ function parseFormattedText(
             });
         }
 
-        // 2. Newlines
         const nlMatch = remaining.match(/\r?\n/);
         if (nlMatch && nlMatch.index !== undefined) {
             candidates.push({
@@ -350,46 +339,35 @@ function parseFormattedText(
             });
         }
 
-        // 3. Bold + Italic (***text***)
         const biMatch = findPairedFormat(remaining, '***');
         if (biMatch) candidates.push({ type: 'bold_italic', index: biMatch.index, length: biMatch.length, innerContent: biMatch.innerContent });
 
-        // 4. Bold (**text**)
         const boldMatch = findPairedFormat(remaining, '**');
         if (boldMatch) candidates.push({ type: 'bold', index: boldMatch.index, length: boldMatch.length, innerContent: boldMatch.innerContent });
 
-        // 5. Italic (*text*)
         const italicMatch = findPairedFormat(remaining, '*');
         if (italicMatch) candidates.push({ type: 'italic', index: italicMatch.index, length: italicMatch.length, innerContent: italicMatch.innerContent });
 
-        // 6. Underline (_text_)
         const underlineMatch = findPairedFormat(remaining, '_');
         if (underlineMatch) candidates.push({ type: 'underline', index: underlineMatch.index, length: underlineMatch.length, innerContent: underlineMatch.innerContent });
 
-        // 7. Strikethrough (~~text~~)
         const strikeMatch = findPairedFormat(remaining, '~~');
         if (strikeMatch) candidates.push({ type: 'strikethrough', index: strikeMatch.index, length: strikeMatch.length, innerContent: strikeMatch.innerContent });
 
-        // 8. Straight Quote ("text")
         const quoteMatch = findPairedFormat(remaining, '"');
         if (quoteMatch) candidates.push({ type: 'quote', index: quoteMatch.index, length: quoteMatch.length, innerContent: quoteMatch.innerContent });
 
-        // 9. Curly Quotes (“text”)
         const curlyMatch = findDistinctPairedFormat(remaining, LEFT_DOUBLE_QUOTE, RIGHT_DOUBLE_QUOTE);
         if (curlyMatch) candidates.push({ type: 'curly_quote', index: curlyMatch.index, length: curlyMatch.length, innerContent: curlyMatch.innerContent });
 
-        // 10. Parenthesis (text)
         const parenMatch = findDistinctPairedFormat(remaining, '(', ')');
         if (parenMatch) candidates.push({ type: 'parenthesis', index: parenMatch.index, length: parenMatch.length, innerContent: parenMatch.innerContent });
 
-        // 11. Bracket [text]
         const bracketMatch = findDistinctPairedFormat(remaining, '[', ']');
         if (bracketMatch) candidates.push({ type: 'bracket', index: bracketMatch.index, length: bracketMatch.length, innerContent: bracketMatch.innerContent });
 
-        // 12. Brace {text}
         const braceMatch = findDistinctPairedFormat(remaining, '{', '}');
         if (braceMatch) candidates.push({ type: 'brace', index: braceMatch.index, length: braceMatch.length, innerContent: braceMatch.innerContent });
-
 
         if (candidates.length === 0) {
             if (isTopLevel) {
@@ -425,15 +403,12 @@ function parseFormattedText(
                     </CollapsibleThinkBlock>
                 );
                 break;
-
             case 'code_block':
                 nodes.push(<CodeBlock key={keyGen.next()} code={match.innerContent || ''} language={match.language} />);
                 break;
-                
             case 'inline_code':
                 nodes.push(<code key={keyGen.next()} className="fmt-inline-code">{match.innerContent}</code>);
                 break;
-
             case 'list_item': {
                 const isBullet = /^[-*+•]$/.test(match.bullet ?? '');
                 const displayBullet = isBullet ? '•' : match.bullet;
@@ -445,23 +420,18 @@ function parseFormattedText(
                 );
                 break;
             }
-
             case 'newline':
                 nodes.push(<br key={keyGen.next()} />);
                 break;
-
             case 'bold_italic':
                 nodes.push(<span key={keyGen.next()} className="fmt-bold fmt-italic">{parseFormattedText(match.innerContent ?? '', false, keyGen)}</span>);
                 break;
-
             case 'bold':
                 nodes.push(<span key={keyGen.next()} className="fmt-bold">{parseFormattedText(match.innerContent ?? '', false, keyGen)}</span>);
                 break;
-
             case 'italic':
                 nodes.push(<span key={keyGen.next()} className="fmt-italic">{parseFormattedText(match.innerContent ?? '', false, keyGen)}</span>);
                 break;
-
             case 'underline':
                 nodes.push(
                     <span key={keyGen.next()} className="fmt-underline" style={{ textDecoration: 'underline', textDecorationColor: 'inherit', color: 'inherit' }}>
@@ -469,7 +439,6 @@ function parseFormattedText(
                     </span>
                 );
                 break;
-
             case 'strikethrough':
                 nodes.push(
                     <span key={keyGen.next()} className="fmt-strikethrough" style={{ textDecoration: 'line-through', textDecorationColor: 'inherit', color: 'inherit' }}>
@@ -477,11 +446,9 @@ function parseFormattedText(
                     </span>
                 );
                 break;
-
             case 'quote':
                 nodes.push(<span key={keyGen.next()} className="fmt-quote">"{parseFormattedText(match.innerContent ?? '', false, keyGen)}"</span>);
                 break;
-
             case 'curly_quote':
                 nodes.push(
                     <span key={keyGen.next()} className="fmt-quote">
@@ -489,15 +456,12 @@ function parseFormattedText(
                     </span>
                 );
                 break;
-
             case 'parenthesis':
                 nodes.push(<span key={keyGen.next()} className="fmt-parenthesis">({parseFormattedText(match.innerContent ?? '', false, keyGen)})</span>);
                 break;
-
             case 'bracket':
                 nodes.push(<span key={keyGen.next()} className="fmt-bracket">[{parseFormattedText(match.innerContent ?? '', false, keyGen)}]</span>);
                 break;
-
             case 'brace':
                 nodes.push(<span key={keyGen.next()} className="fmt-brace">{'{'}{parseFormattedText(match.innerContent ?? '', false, keyGen)}{'}'}</span>);
                 break;
@@ -511,10 +475,8 @@ function parseFormattedText(
 
 export function formatDisplayMessageText(text: string): React.ReactNode {
     if (!text) return null;
-
     let keyId = 0;
     const keyGen = { next: () => keyId++ };
-
     const nodes = parseFormattedText(text, true, keyGen);
     return <>{nodes}</>;
 }
