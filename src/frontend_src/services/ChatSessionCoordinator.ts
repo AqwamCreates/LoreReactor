@@ -108,7 +108,8 @@ class ChatSessionCoordinator {
         this.wasStopped = false;
         this.isSkippingThinking = false;
         this.pendingSkipText = null;
-        useGenerationStore.setState({ isLoading: true, streamingText: '', streamingCharacter: null, streamingMessageId: null });
+        // Global isLoading removed. Locks are now strictly managed via loadingLocations in runSingleTurn.
+        useGenerationStore.setState({ streamingText: '', streamingCharacter: null, streamingMessageId: null });
         return true;
     }
 
@@ -117,7 +118,7 @@ class ChatSessionCoordinator {
         this.activeMessageId = null;
         this.isSkippingThinking = false;
         this.pendingSkipText = null;
-        useGenerationStore.setState({ isLoading: false, streamingText: '', streamingCharacter: null, streamingMessageId: null });
+        useGenerationStore.setState({ streamingText: '', streamingCharacter: null, streamingMessageId: null });
         if (this.abortController) {
             this.abortController = null;
         }
@@ -245,20 +246,23 @@ class ChatSessionCoordinator {
         let autoResumeCount = 0;
         const narratorBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
 
+        const charLocationId = getCurrentLocationId(activeData, character) || 'global';
+
         // ─── SINGLE SOURCE OF TRUTH: INSTANT STUB ───────────────────────────
         if (!resumingMessageId) {
-            const currentLocId = getCurrentLocationId(activeData, character) || 'global';
             const aiMessage = createMessage(character, {
                 textContent: currentExistingText,
                 interactionData: activeData,
             }) as ChatMessage;
 
-            activeData = addMessageToInteractionData(activeData, aiMessage, currentLocId);
+            activeData = addMessageToInteractionData(activeData, aiMessage, charLocationId);
             resumingMessageId = aiMessage.id;
             this.activeMessageId = aiMessage.id;
             
-            // Synchronize generation state with chat state immediately to prevent empty stub flash
+            // Lock the specific location for the UI
+            const currentLoading = useGenerationStore.getState().loadingLocations || {};
             useGenerationStore.setState({
+                loadingLocations: { ...currentLoading, [charLocationId]: true },
                 streamingCharacter: character,
                 streamingText: currentExistingText,
                 streamingMessageId: this.activeMessageId
@@ -267,164 +271,178 @@ class ChatSessionCoordinator {
             saveRawInteractionData(activeData).catch(console.warn);
         } else {
             this.activeMessageId = resumingMessageId;
-            // Ensure streaming state is synced for resume turns
+            
+            // Lock the specific location for the UI on resume
+            const currentLoading = useGenerationStore.getState().loadingLocations || {};
             useGenerationStore.setState({
+                loadingLocations: { ...currentLoading, [charLocationId]: true },
                 streamingCharacter: character,
                 streamingText: currentExistingText,
                 streamingMessageId: this.activeMessageId
             });
         }
 
-        if (profile?.enableCharacterExpression) {
-            sentimentEngine.initialize().catch(() => {});
-        } else {
-            sentimentEngine.unload();
-        }
-
-        let borrowedModel: LanguageModel | null = null;
-        if (this.deps.requestBorrowedModel) {
-            try {
-                borrowedModel = await this.deps.requestBorrowedModel();
-            } catch (e) {
-                console.warn('Failed to borrow model from peer:', e);
-            }
-        }
-
-        const charHistory = getLocalMessageHistory(activeData, character, ['chat', 'whisper']) as TextMessage[];
-        speculativeMarkovEngine.syncMessages(
-            charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })),
-            character.id, activeData.id
-        );
-
-        while (true) {
-            this.abortController = new AbortController();
-            
-            if (this.voiceTracker && narratorBehaviour !== 'continue') {
-                this.voiceTracker.stopImmediate();
-                this.voiceTracker = null;
+        try {
+            if (profile?.enableCharacterExpression) {
+                sentimentEngine.initialize().catch(() => {});
+            } else {
+                sentimentEngine.unload();
             }
 
-            this.voiceTracker = new StreamingVoiceTracker(character, this.deps.allCharacters);
-            if (currentExistingText) this.voiceTracker.seed(currentExistingText);
-            await this.voiceTracker.start().catch(() => {});
+            let borrowedModel: LanguageModel | null = null;
+            if (this.deps.requestBorrowedModel) {
+                try {
+                    borrowedModel = await this.deps.requestBorrowedModel();
+                } catch (e) {
+                    console.warn('Failed to borrow model from peer:', e);
+                }
+            }
 
-            useGenerationStore.setState({ 
-                streamingCharacter: character, 
-                streamingText: currentExistingText,
-                streamingMessageId: this.activeMessageId 
-            });
+            const charHistory = getLocalMessageHistory(activeData, character, ['chat', 'whisper']) as TextMessage[];
+            speculativeMarkovEngine.syncMessages(
+                charHistory.map(m => ({ textContent: m.textContent, lastUpdatedTimestamp: m.lastUpdatedTimestamp })),
+                character.id, activeData.id
+            );
 
-            const currentState = useChatStore.getState();
-            
-            const callbacks = {
-                onDisplayText: (text: string) => {
-                    useGenerationStore.setState({ streamingText: text });
-                    const updated = updatePartialMessageInInteractionData(
-                        useChatStore.getState().interactionData!, 
-                        character, 
-                        text, 
-                        undefined, 
+            while (true) {
+                this.abortController = new AbortController();
+                
+                if (this.voiceTracker && narratorBehaviour !== 'continue') {
+                    this.voiceTracker.stopImmediate();
+                    this.voiceTracker = null;
+                }
+
+                this.voiceTracker = new StreamingVoiceTracker(character, this.deps.allCharacters);
+                if (currentExistingText) this.voiceTracker.seed(currentExistingText);
+                await this.voiceTracker.start().catch(() => {});
+
+                useGenerationStore.setState({ 
+                    streamingCharacter: character, 
+                    streamingText: currentExistingText,
+                    streamingMessageId: this.activeMessageId 
+                });
+
+                const currentState = useChatStore.getState();
+                
+                const callbacks = {
+                    onDisplayText: (text: string) => {
+                        useGenerationStore.setState({ streamingText: text });
+                        const updated = updatePartialMessageInInteractionData(
+                            useChatStore.getState().interactionData!, 
+                            character, 
+                            text, 
+                            undefined, 
+                            resumingMessageId!
+                        );
+                        useChatStore.setState({ interactionData: updated });
+                    },
+                    onLatency: (ms: number) => useGenerationStore.getState().setStats({ latency: ms }),
+                    onTimeToFirstToken: (ms: number) => useGenerationStore.getState().setStats({ timeToFirstToken: ms }),
+                    onExpression: (expr: string) => useGenerationStore.setState({ currentCharacterExpression: expr }),
+                };
+
+                const params: TurnExecutionParams = {
+                    data: activeData,
+                    character,
+                    signal: this.abortController.signal,
+                    selectedLanguageModel: currentState.selectedLanguageModel,
+                    runningLanguageModels: currentState.runningLanguageModels,
+                    activeStrategy: currentState.activeStrategy,
+                    allPromptBlocks: promptBlocks,
+                    existingCharacterText: currentExistingText,
+                    callbacks,
+                    isMultiplayerClient: this.deps.isMultiplayerClient,
+                    borrowedModel,
+                    toolContext: this.buildToolContext(),
+                    voiceTracker: this.voiceTracker,
+                    resumingMessageId: resumingMessageId,
+                };
+
+                const outcome = await this.characterActor.executeTurn(params);
+
+                useGenerationStore.setState({ streamingText: '' });
+
+                // Intercept Early Think Stop
+                if (this.isSkippingThinking && this.pendingSkipText) {
+                    this.isSkippingThinking = false;
+                    currentExistingText = this.pendingSkipText;
+                    this.pendingSkipText = null;
+
+                    activeData = updatePartialMessageInInteractionData(
+                        useChatStore.getState().interactionData!,
+                        character,
+                        currentExistingText,
+                        undefined,
                         resumingMessageId!
                     );
-                    useChatStore.setState({ interactionData: updated });
-                },
-                onLatency: (ms: number) => useGenerationStore.getState().setStats({ latency: ms }),
-                onTimeToFirstToken: (ms: number) => useGenerationStore.getState().setStats({ timeToFirstToken: ms }),
-                onExpression: (expr: string) => useGenerationStore.setState({ currentCharacterExpression: expr }),
-            };
+                    useChatStore.setState({ interactionData: activeData });
 
-            const params: TurnExecutionParams = {
-                data: activeData,
-                character,
-                signal: this.abortController.signal,
-                selectedLanguageModel: currentState.selectedLanguageModel,
-                runningLanguageModels: currentState.runningLanguageModels,
-                activeStrategy: currentState.activeStrategy,
-                allPromptBlocks: promptBlocks,
-                existingCharacterText: currentExistingText,
-                callbacks,
-                isMultiplayerClient: this.deps.isMultiplayerClient,
-                borrowedModel,
-                toolContext: this.buildToolContext(),
-                voiceTracker: this.voiceTracker,
-                resumingMessageId: resumingMessageId,
-            };
-
-            const outcome = await this.characterActor.executeTurn(params);
-
-            useGenerationStore.setState({ streamingText: '' });
-
-            // ── Intercept Early Think Stop ──────────────────────────────────────────
-            if (this.isSkippingThinking && this.pendingSkipText) {
-                this.isSkippingThinking = false;
-                currentExistingText = this.pendingSkipText;
-                this.pendingSkipText = null;
-
-                activeData = updatePartialMessageInInteractionData(
-                    useChatStore.getState().interactionData!,
-                    character,
-                    currentExistingText,
-                    undefined,
-                    resumingMessageId!
-                );
-                useChatStore.setState({ interactionData: activeData });
-
-                continue;
-            }
-
-            if ('error' in outcome) {
-                if (outcome.error.type !== 'aborted') {
-                    this.deps.addToast(`Inference Error: ${outcome.error.message}`, 'error');
+                    continue;
                 }
-                // Sync with the store where stopGeneration() finalized or cleaned the message
-                activeData = useChatStore.getState().interactionData || activeData;
-                break;
-            }
 
-            const { result } = outcome;
-            if (result.budgetData) useChatStore.setState({ budgetData: result.budgetData });
-            
-            activeData = result.updatedData;
+                if ('error' in outcome) {
+                    if (outcome.error.type !== 'aborted') {
+                        this.deps.addToast(`Inference Error: ${outcome.error.message}`, 'error');
+                    }
+                    activeData = useChatStore.getState().interactionData || activeData;
+                    break;
+                }
 
-            if (activeData) {
-                useChatStore.setState({ interactionData: activeData });
-                saveRawInteractionData(activeData).catch(console.warn);
-                this.deps.onStateBroadcast?.({});
+                const { result } = outcome;
+                if (result.budgetData) useChatStore.setState({ budgetData: result.budgetData });
                 
-                const targetBroadcastMsg = resumingMessageId 
-                    ? getMessageById(activeData, resumingMessageId)?.message
-                    : findLatestMessage(activeData, character)?.message;
+                activeData = result.updatedData;
+
+                if (activeData) {
+                    useChatStore.setState({ interactionData: activeData });
+                    saveRawInteractionData(activeData).catch(console.warn);
+                    this.deps.onStateBroadcast?.({});
                     
-                if (targetBroadcastMsg) this.deps.onMessageBroadcast?.(targetBroadcastMsg);
-            }
+                    const targetBroadcastMsg = resumingMessageId 
+                        ? getMessageById(activeData, resumingMessageId)?.message
+                        : findLatestMessage(activeData, character)?.message;
+                        
+                    if (targetBroadcastMsg) this.deps.onMessageBroadcast?.(targetBroadcastMsg);
+                }
 
-            const evaluation = evaluateAutoResumeSignals(profile, result.rawText, autoResumeCount);
-            if (evaluation.shouldResume && !this.wasStopped && !result.isCompleted) {
-                autoResumeCount++;
-                activeData = injectStopSignals(activeData, evaluation.patternsToInject);
+                const evaluation = evaluateAutoResumeSignals(profile, result.rawText, autoResumeCount);
+                if (evaluation.shouldResume && !this.wasStopped && !result.isCompleted) {
+                    autoResumeCount++;
+                    activeData = injectStopSignals(activeData, evaluation.patternsToInject);
+                    currentExistingText = result.rawText;
+                    continue;
+                }
+
+                const isVoiceEnabledInProfile = profile?.narrateTexts ? Object.values(profile.narrateTexts).some(v => v === true) : false;
+                if (this.voiceTracker && narratorBehaviour === 'wait' && isVoiceEnabledInProfile && !this.wasStopped) {
+                    await this.voiceTracker.waitForPlaybackCompletion().catch(() => {});
+                }
+
                 currentExistingText = result.rawText;
-                continue;
+                break; 
             }
 
-            const isVoiceEnabledInProfile = profile?.narrateTexts ? Object.values(profile.narrateTexts).some(v => v === true) : false;
-            if (this.voiceTracker && narratorBehaviour === 'wait' && isVoiceEnabledInProfile && !this.wasStopped) {
-                await this.voiceTracker.waitForPlaybackCompletion().catch(() => {});
+            const history = getGlobalMessageHistory(activeData);
+            const isAtTip = !resumingMessageId || (history.length > 0 && history[history.length - 1].id === resumingMessageId);
+
+            if (!this.wasStopped && isAtTip) {
+                await runSummarization({
+                    data: activeData,
+                    character,
+                    promptBlocks,
+                    setInteractionData: (d) => { activeData = d; useChatStore.setState({ interactionData: d }); },
+                    addToast: this.deps.addToast
+                });
             }
-
-            currentExistingText = result.rawText;
-            break; 
-        }
-
-        const history = getGlobalMessageHistory(activeData);
-        const isAtTip = !resumingMessageId || (history.length > 0 && history[history.length - 1].id === resumingMessageId);
-
-        if (!this.wasStopped && isAtTip) {
-            await runSummarization({
-                data: activeData,
-                character,
-                promptBlocks,
-                setInteractionData: (d) => { activeData = d; useChatStore.setState({ interactionData: d }); },
-                addToast: this.deps.addToast
+        } finally {
+            // ALWAYS release the specific location lock when the turn ends or errors out
+            const currentLoading = { ...(useGenerationStore.getState().loadingLocations || {}) };
+            delete currentLoading[charLocationId];
+            useGenerationStore.setState({ 
+                loadingLocations: currentLoading,
+                streamingText: '', 
+                streamingCharacter: null, 
+                streamingMessageId: null 
             });
         }
 
@@ -539,16 +557,35 @@ class ChatSessionCoordinator {
         let updatedData = addMessageToInteractionData(data, narrationMessage, currentLocId || 'global');
         useChatStore.setState({ interactionData: updatedData });
 
-        for (let i = 0; i < finalText.length; i++) {
-            if (signal.aborted) break;
-            const p = finalText.substring(0, i + 1);
-            useGenerationStore.setState({ streamingText: p });
-            updatedData = updatePartialMessageInInteractionData(updatedData, null as any, p, undefined, narrationMessage.id);
-            useChatStore.setState({ interactionData: updatedData });
-            await new Promise(r => setTimeout(r, 20));
+        const ambientLocId = currentLocId || 'global';
+        const currentLoading = useGenerationStore.getState().loadingLocations || {};
+        useGenerationStore.setState({
+            loadingLocations: { ...currentLoading, [ambientLocId]: true },
+            streamingText: '',
+            streamingCharacter: null,
+            streamingMessageId: narrationMessage.id
+        });
+
+        try {
+            for (let i = 0; i < finalText.length; i++) {
+                if (signal.aborted) break;
+                const p = finalText.substring(0, i + 1);
+                useGenerationStore.setState({ streamingText: p });
+                updatedData = updatePartialMessageInInteractionData(updatedData, null as any, p, undefined, narrationMessage.id);
+                useChatStore.setState({ interactionData: updatedData });
+                await new Promise(r => setTimeout(r, 20));
+            }
+        } finally {
+            const endLoading = { ...(useGenerationStore.getState().loadingLocations || {}) };
+            delete endLoading[ambientLocId];
+            useGenerationStore.setState({ 
+                loadingLocations: endLoading,
+                streamingText: '', 
+                streamingCharacter: null, 
+                streamingMessageId: null 
+            });
         }
 
-        useGenerationStore.setState({ streamingText: '' });
         return updatedData;
     }
 
@@ -822,6 +859,24 @@ class ChatSessionCoordinator {
                 saveRawInteractionData(updated).catch(console.warn);
             }
         }
+
+        // Clear the specific location lock if we know it, otherwise wipe all locks
+        const currentLoading = { ...(genState.loadingLocations || {}) };
+        if (this.activeMessageId && state.interactionData) {
+             for (const [locId, msgs] of Object.entries(state.interactionData.interactionHistories || {})) {
+                 if (msgs.some(m => m.id === this.activeMessageId)) {
+                     delete currentLoading[locId];
+                     break;
+                 }
+             }
+        }
+        
+        useGenerationStore.setState({ 
+            loadingLocations: Object.keys(currentLoading).length > 0 ? currentLoading : {},
+            streamingText: '', 
+            streamingCharacter: null, 
+            streamingMessageId: null 
+        });
 
         this.activeMessageId = null;
         this.releaseLock();

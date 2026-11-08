@@ -1,15 +1,13 @@
-// src/frontend_src/hooks/useGenerationStore.ts
 import { create } from 'zustand';
 import type { Character } from '../types';
 
 interface GenerationState {
-    isLoading: boolean;
     isNarrating: boolean;
     streamingText: string;
     streamingCharacter: Character | null;
-    streamingMessageId: string | null; // 👈 ADD THIS
+    streamingMessageId: string | null;
     currentCharacterExpression: string;
-    loadingLocations: Record<string, boolean>;
+    loadingLocations: Record<string, boolean>; // Single source of truth for locks
     abortController: AbortController | null;
     
     latency: number;
@@ -22,8 +20,7 @@ interface GenerationState {
     setStreamingState: (char: Character | null, text: string) => void;
     setStreamingText: (text: string) => void;
     setStreamingCharacter: (character: Character | null) => void;
-    setStreamingMessageId: (msgId: string | null) => void; // 👈 ADD THIS
-    setIsLoading: (isLoading: boolean) => void;
+    setStreamingMessageId: (msgId: string | null) => void;
     setIsNarrating: (isNarrating: boolean) => void;
     resetStreaming: () => void;
     setAbortController: (ctrl: AbortController | null) => void;
@@ -33,11 +30,10 @@ interface GenerationState {
 }
 
 export const useGenerationStore = create<GenerationState>()((set, get) => ({
-    isLoading: false,
     isNarrating: false,
     streamingText: '',
     streamingCharacter: null,
-    streamingMessageId: null, // 👈 ADD THIS
+    streamingMessageId: null,
     currentCharacterExpression: 'neutral',
     loadingLocations: {},
     abortController: null,
@@ -48,13 +44,20 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
     totalCost: 0,
     costWithoutCacheMisses: 0,
 
-    setStreamingState: (char, text) => set({ streamingCharacter: char, streamingText: text, isLoading: char !== null }),
+    setStreamingState: (char, text) => set({ streamingCharacter: char, streamingText: text }),
     setStreamingText: (text) => set({ streamingText: text }),
     setStreamingCharacter: (character) => set({ streamingCharacter: character }),
-    setStreamingMessageId: (streamingMessageId) => set({ streamingMessageId }), // 👈 ADD THIS
-    setIsLoading: (isLoading) => set({ isLoading }),
+    setStreamingMessageId: (streamingMessageId) => set({ streamingMessageId }),
     setIsNarrating: (isNarrating) => set({ isNarrating }),
-    resetStreaming: () => set({ streamingText: '', streamingCharacter: null, streamingMessageId: null, isLoading: false, isNarrating: false }), // 👈 UPDATE THIS
+    
+    resetStreaming: () => set({ 
+        streamingText: '', 
+        streamingCharacter: null, 
+        streamingMessageId: null, 
+        isNarrating: false,
+        loadingLocations: {} 
+    }),
+    
     setAbortController: (ctrl) => set({ abortController: ctrl }),
     setSelectedCharacterExpression: (expr) => set({ currentCharacterExpression: expr }),
     
@@ -75,6 +78,13 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
     stopGeneration: () => {
         const { abortController } = get();
         if (abortController) abortController.abort();
-        set({ streamingText: '', streamingCharacter: null, streamingMessageId: null, isLoading: false, isNarrating: false, abortController: null });
+        set({ 
+            streamingText: '', 
+            streamingCharacter: null, 
+            streamingMessageId: null, 
+            isNarrating: false, 
+            abortController: null,
+            loadingLocations: {} // Clear all location locks on hard stop
+        });
     },
 }));

@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useChatSession.ts
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useMemo } from 'react';
 import { useChatStore } from './useChatStore';
 import { useGenerationStore } from './useGenerationStore';
 import { useChatUI } from './useChatUI';
@@ -14,6 +14,7 @@ import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { loadRawBudgetData } from '../storages/serverStorage';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
+import { getCurrentLocationId } from '../utilities/locationLogic';
 import { hasTextContent } from '../utilities/chatSessionLogic';
 import { isServerAvailable } from '../utilities/serverAvailability';
 import { localURL } from '../../configurations';
@@ -220,7 +221,15 @@ export function useChatSession(options: UseChatSessionOptions) {
     const selectedModelId = useChatStore(s => s.selectedModelId);
     const selectedSpatiotemporalModelId = useChatStore(s => s.selectedSpatiotemporalModelId);
 
-    const isLoading = useGenerationStore(s => s.isLoading);
+    const loadingLocations = useGenerationStore(s => s.loadingLocations);
+    
+    // Derive location-aware loading state
+    const isLoading = useMemo(() => {
+        if (!interactionData || !localProtagonist) return false;
+        const locId = getCurrentLocationId(interactionData, localProtagonist) || 'global';
+        return Boolean(loadingLocations[locId]);
+    }, [loadingLocations, interactionData, localProtagonist]);
+
     const currentCharacterExpression = useGenerationStore(s => s.currentCharacterExpression);
     const streamingCharacter = useGenerationStore(s => s.streamingCharacter);
 
