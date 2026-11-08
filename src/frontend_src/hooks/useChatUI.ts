@@ -83,7 +83,8 @@ export function useChatUI(
         if ((isChatSwitched || isMessageAdded) && totalMessages > 0) {
             outerFrameId = requestAnimationFrame(() => {
                 innerFrameId = requestAnimationFrame(() => {
-                    scrollToBottom(!isChatSwitched);
+                    // Use instant scroll when the streaming stub is first added to prevent initial jump
+                    scrollToBottom(!isChatSwitched && !streamingText);
                 });
             });
         }
@@ -93,7 +94,7 @@ export function useChatUI(
             if (outerFrameId !== null) cancelAnimationFrame(outerFrameId);
             if (innerFrameId !== null) cancelAnimationFrame(innerFrameId);
         };
-    }, [interactionData, isAtBottomRef, scrollToBottom]);
+    }, [interactionData, isAtBottomRef, scrollToBottom, streamingText]);
 
     // --- Keep pinned to bottom while streaming tokens ---
     useEffect(() => {
@@ -103,10 +104,10 @@ export function useChatUI(
             if (el) {
                 el.scrollTo({
                     top: el.scrollHeight,
-                    behavior: 'smooth',
+                    behavior: 'auto', // FIX: Instant scroll during streaming to prevent animation overlap/stutter
                 });
             } else if (messageEndRef.current) {
-                messageEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                messageEndRef.current.scrollIntoView({ behavior: 'auto', block: 'end' }); // FIX
             }
         });
         return () => cancelAnimationFrame(frameId);
