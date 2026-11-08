@@ -2,12 +2,13 @@ import { create } from 'zustand';
 import type { Character } from '../types';
 
 interface GenerationState {
+    isLoading: boolean;
     isNarrating: boolean;
     streamingText: string;
     streamingCharacter: Character | null;
     streamingMessageId: string | null;
     currentCharacterExpression: string;
-    loadingLocations: Record<string, boolean>; // Single source of truth for locks
+    loadingLocations: Record<string, boolean>;
     abortController: AbortController | null;
     
     latency: number;
@@ -21,6 +22,7 @@ interface GenerationState {
     setStreamingText: (text: string) => void;
     setStreamingCharacter: (character: Character | null) => void;
     setStreamingMessageId: (msgId: string | null) => void;
+    setIsLoading: (isLoading: boolean) => void;
     setIsNarrating: (isNarrating: boolean) => void;
     resetStreaming: () => void;
     setAbortController: (ctrl: AbortController | null) => void;
@@ -30,6 +32,7 @@ interface GenerationState {
 }
 
 export const useGenerationStore = create<GenerationState>()((set, get) => ({
+    isLoading: false,
     isNarrating: false,
     streamingText: '',
     streamingCharacter: null,
@@ -48,12 +51,14 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
     setStreamingText: (text) => set({ streamingText: text }),
     setStreamingCharacter: (character) => set({ streamingCharacter: character }),
     setStreamingMessageId: (streamingMessageId) => set({ streamingMessageId }),
+    setIsLoading: (isLoading) => set({ isLoading }),
     setIsNarrating: (isNarrating) => set({ isNarrating }),
     
     resetStreaming: () => set({ 
         streamingText: '', 
         streamingCharacter: null, 
         streamingMessageId: null, 
+        isLoading: false, 
         isNarrating: false,
         loadingLocations: {} 
     }),
@@ -82,9 +87,10 @@ export const useGenerationStore = create<GenerationState>()((set, get) => ({
             streamingText: '', 
             streamingCharacter: null, 
             streamingMessageId: null, 
+            isLoading: false, 
             isNarrating: false, 
             abortController: null,
-            loadingLocations: {} // Clear all location locks on hard stop
+            loadingLocations: {}
         });
     },
 }));

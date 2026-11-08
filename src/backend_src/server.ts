@@ -2499,7 +2499,7 @@ app.post('/tool/read-file', async (req, response) => {
     await open(resolvedTarget);
     response.json({ success: true, target: resolvedTarget });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    response.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -2512,23 +2512,23 @@ app.post('/tool/write-file', (req, response) => {
     fs.writeFileSync(resolvedPath, content, 'utf-8');
     response.json({ success: true, path: resolvedPath, bytes: Buffer.byteLength(content, 'utf-8') });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message });
+    response.status(500).json({ success: false, error: error.message });
   }
 });
 
 const execAsync = promisify(exec);
-app.post('/tool/shell', async (req, res) => {
+app.post('/tool/shell', async (req, response) => {
   const { command } = req.body;
-  if (!command || typeof command !== 'string') return res.status(400).json({ success: false, error: 'Missing command' });
+  if (!command || typeof command !== 'string') return response.status(400).json({ success: false, error: 'Missing command' });
   const dangerousPatterns = [/rm\s+-rf\s+\//i, /mkfs/i, />\s*\/dev\/sd/i];
   if (dangerousPatterns.some(pattern => pattern.test(command))) {
-    return res.status(403).json({ success: false, error: 'Command blocked by security policy' });
+    return response.status(403).json({ success: false, error: 'Command blocked by security policy' });
   }
   try {
     const { stdout, stderr } = await execAsync(command, { timeout: 10000, cwd: ROOT_DIR });
-    res.json({ success: true, stdout, stderr });
+    response.json({ success: true, stdout, stderr });
   } catch (error: any) {
-    res.status(500).json({ success: false, error: error.message, stdout: error.stdout || '', stderr: error.stderr || '' });
+    response.status(500).json({ success: false, error: error.message, stdout: error.stdout || '', stderr: error.stderr || '' });
   }
 });
 

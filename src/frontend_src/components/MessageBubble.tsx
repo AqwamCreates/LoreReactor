@@ -4,6 +4,7 @@ import type { Character, NarrationMessage, TextMessage, textType } from '../type
 import { MemoizedMessageText } from './MemoizedMessageText';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { useChatStore } from '../hooks/useChatStore';
+import { useGenerationStore } from '../hooks/useGenerationStore';
 import { useCompiledMessageText } from '../hooks/useMessageDisplay';
 import {
     detectFormatSegments,
@@ -52,7 +53,6 @@ interface MessageBubbleProps {
     setEditDraft: (text: string) => void;
     onNavigateToBranchSource: () => void;
     canDelete: boolean;
-    isLoading: boolean;
 }
 
 export const MessageBubble = React.memo(function MessageBubble({
@@ -68,7 +68,6 @@ export const MessageBubble = React.memo(function MessageBubble({
     suppressNextClickRef, editTextAreaRef, setEditDraft,
     onNavigateToBranchSource,
     canDelete,
-    isLoading,
 }: MessageBubbleProps) {
     const isModelReady = useChatStore(s => {
         if (s.activeStrategy) return true;
@@ -78,6 +77,8 @@ export const MessageBubble = React.memo(function MessageBubble({
         const status = s.runningLanguageModels[m.id];
         return status?.isRunning && status?.isIdle;
     });
+
+    const isLoading = useGenerationStore(s => s.isLoading);
     
     const copyToClipboard = useChatStore(s => s.copyToClipboard);
     const deleteMessage = useChatStore(s => s.deleteMessage);

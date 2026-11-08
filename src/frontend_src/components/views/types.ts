@@ -32,5 +32,4 @@ export interface ViewModeProps {
     suppressNextClickRef: React.RefObject<boolean>;
     onNavigateToBranchSource: () => void;
     canDelete: boolean;
-    isLoading: boolean;
 }

@@ -1071,7 +1071,6 @@ function App() {
         suppressNextClickRef: messageToolbar.suppressNextClickRef,
         onNavigateToBranchSource: handleNavigateToBranchSource,
         canDelete,
-        isLoading,
     };
 
     const containerClass = [

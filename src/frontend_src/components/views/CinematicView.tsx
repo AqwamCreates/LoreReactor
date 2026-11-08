@@ -24,13 +24,13 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
         onTouchStart, onTouchEnd, onTouchMove,
         suppressNextClickRef, onNavigateToBranchSource,
         canDelete,
-        isLoading,
     } = props;
 
     const interactionData = useChatStore(s => s.interactionData);
     const localProtagonistId = useChatStore(s => s.localProtagonist?.id ?? s.interactionData?.protagonistIds?.[0] ?? null);
     const selectedCharacterId = useChatStore(s => s.selectedCharacterId);
     
+    const isLoading = useGenerationStore(s => s.isLoading);
     const streamingMessageId = useGenerationStore(s => s.streamingMessageId);
     const streamingPortraitUrl = useGenerationStore(s => s.streamingCharacter ? portraitUrlCache.get(`${s.streamingCharacter.id}`) ?? null : null);
 
@@ -58,16 +58,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
     const isScrollingRef = useRef(false);
     const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const skipNextFocusScrollRef = useRef(false);
-    const prevMsgCountRef = useRef(displayMessages.length);
-
-    // Clear focusedMessageId when new messages arrive so auto-scroll is not hijacked
-    useEffect(() => {
-        if (displayMessages.length > prevMsgCountRef.current && focusedMessageId) {
-            skipNextFocusScrollRef.current = true;
-            setFocusedMessageId(null);
-        }
-        prevMsgCountRef.current = displayMessages.length;
-    }, [displayMessages.length, focusedMessageId, setFocusedMessageId]);
 
     useEffect(() => {
         if (editingId) {
@@ -175,7 +165,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                         streamingPortraitUrl={streamingPortraitUrl}
                         messagesLength={displayMessages.length}
                         onAvatarClick={onAvatarClick}
-                        isLoading={isLoading}
                     />
                 )}
 
@@ -246,7 +235,6 @@ export const CinematicView = React.memo(function CinematicView(props: ViewModePr
                             setEditDraft={setEditDraft}
                             onNavigateToBranchSource={onNavigateToBranchSource}
                             canDelete={canDelete}
-                            isLoading={isLoading}
                         />
                     );
                 })}
