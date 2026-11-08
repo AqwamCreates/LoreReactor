@@ -230,8 +230,11 @@ export const defaultInputStrategy: promptBlockType[] = [
     'Starter Prompt',
     'Tool Instructions',
     'Tool Message Instructions',
-    'Current Location Image Instructions',
     'Character Image Instructions',
+    'Prompt Block Image Instructions',
+    'Context Image Instructions',
+    'Current Location Image Instructions',
+    'Screenshot Image Instructions',
     'Anti-Repetition Nudge',
     'Text Injection',
 ];
