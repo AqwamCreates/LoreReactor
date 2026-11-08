@@ -6,8 +6,8 @@ import { useGenerationStore } from '../hooks/useGenerationStore';
 import { chatCoordinator } from '../services/ChatSessionCoordinator';
 import { getModelThinkTokenPairs } from '../dictionaries/modelTemplates';
 
-const LEFT_DOUBLE_QUOTE = '\u201C'; // “
-const RIGHT_DOUBLE_QUOTE = '\u201D'; // ”
+const LEFT_DOUBLE_QUOTE = '\u201C';
+const RIGHT_DOUBLE_QUOTE = '\u201D';
 
 type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item';
 
@@ -35,6 +35,7 @@ const thinkEndPattern = thinkPairs.length > 0
     ? thinkPairs.map(p => escapeRegex(p.end)).join('|')
     : '<\\/think>|\\[\\/THINK\\]|<channel\\|>';
 
+// Think regex safely falls back to the end of the string ($) if unclosed
 const thinkRegex = new RegExp(`(?:${thinkStartPattern})([\\s\\S]*?)(?:${thinkEndPattern}|$)`, 'i');
 const thinkEndCheckRegex = new RegExp(`(?:${thinkEndPattern})`, 'i');
 
@@ -49,7 +50,7 @@ function setThinkState(key: string, state: boolean) {
     thinkExpansionState.set(key, state);
 }
 
-function CodeBlock({ code, language }: { code: string; language?: string }) {
+function CodeBlock({ code, language, isUnclosed }: { code: string; language?: string; isUnclosed?: boolean }) {
     const [copied, setCopied] = useState(false);
     const handleCopy = () => {
         navigator.clipboard.writeText(code.trim());
@@ -57,7 +58,7 @@ function CodeBlock({ code, language }: { code: string; language?: string }) {
         setTimeout(() => setCopied(false), 2000);
     };
     return (
-        <div className="fmt-code-block-container">
+        <div className={`fmt-code-block-container ${isUnclosed ? 'is-unclosed' : ''}`}>
             <div className="fmt-code-block-header">
                 <span className="fmt-code-language">{language || 'text'}</span>
                 <button className="fmt-code-copy-btn" onClick={handleCopy}>{copied ? 'Copied!' : 'Copy'}</button>
@@ -100,7 +101,6 @@ function CollapsibleThinkBlock({
         <div className={`fmt-think-container ${isExpanded ? 'is-expanded' : 'is-collapsed'}`}>
             <button type="button" className="fmt-think-header" onClick={handleToggle} aria-expanded={isExpanded}>
                 <div className="fmt-think-label">
-                    <span className="fmt-think-icon">💭</span>
                     <span className="fmt-think-title">Thinking</span>
                     <span className="fmt-think-count">({wordCount} words)</span>
                 </div>
@@ -116,6 +116,7 @@ function CollapsibleThinkBlock({
     );
 }
 
+// Robust depth-counting scanner for identical paired markers (*, **, ***, _, ~~)
 function findPairedFormat(text: string, marker: string): { index: number, length: number, innerContent: string } | null {
     const mLen = marker.length;
     const baseChar = marker[0];
@@ -156,29 +157,20 @@ function findPairedFormat(text: string, marker: string): { index: number, length
         }
     }
     
-    // FORGIVING FALLBACK WITH CONSUMPTION
-    // If paragraph starts and ends with the marker, and has an odd number of markers,
-    // pair the outer markers and physically strip the orphaned middle markers from the text.
+    // Forgiving fallback with consumption for orphaned middle markers
     if (markerIndices.length >= 3 && markerIndices.length % 2 !== 0) {
         const lastIdx = markerIndices[markerIndices.length - 1];
         const afterLast = paragraphText.substring(lastIdx + mLen).trim();
         if (afterLast === '' || /^[.!?',"]+$/.test(afterLast)) {
             let cleanInner = '';
-            let prevEnd = mLen; // Start immediately after the first opening marker
-            
-            // Iterate through the orphaned middle markers and skip over them
+            let prevEnd = mLen;
             for (let i = 1; i < markerIndices.length - 1; i++) {
                 const orphanIdx = markerIndices[i];
                 cleanInner += paragraphText.substring(prevEnd, orphanIdx);
-                prevEnd = orphanIdx + mLen; // Consume/skip the orphaned marker
+                prevEnd = orphanIdx + mLen;
             }
             cleanInner += paragraphText.substring(prevEnd, lastIdx);
-            
-            return {
-                index: startIdx,
-                length: lastIdx + mLen - startIdx,
-                innerContent: cleanInner
-            };
+            return { index: startIdx, length: lastIdx + mLen - startIdx, innerContent: cleanInner };
         }
     }
 
@@ -189,7 +181,6 @@ function findPairedFormat(text: string, marker: string): { index: number, length
         if (isMarker(text, i)) {
             const before = i > 0 ? text[i - 1] : '';
             const after = text[i + mLen] || '';
-            
             const canClose = !/\s/.test(before);
             const canOpen = !/\s/.test(after);
             
@@ -201,21 +192,17 @@ function findPairedFormat(text: string, marker: string): { index: number, length
             }
             
             if (depth === 0) {
-                return {
-                    index: startIdx,
-                    length: i + mLen - startIdx,
-                    innerContent: text.substring(startIdx + mLen, i)
-                };
+                return { index: startIdx, length: i + mLen - startIdx, innerContent: text.substring(startIdx + mLen, i) };
             }
             i += mLen;
         } else {
             i++;
         }
     }
-    
     return null;
 }
 
+// Robust depth-counting scanner for distinct paired markers ((), [], {}, etc)
 function findDistinctPairedFormat(text: string, openChar: string, closeChar: string): { index: number, length: number, innerContent: string } | null {
     let startIdx = -1;
     
@@ -234,36 +221,23 @@ function findDistinctPairedFormat(text: string, openChar: string, closeChar: str
     };
 
     for (let i = 0; i < text.length; i++) {
-        if (isOpening(i)) {
-            startIdx = i;
-            break;
-        }
+        if (isOpening(i)) { startIdx = i; break; }
     }
-    
     if (startIdx === -1) return null;
     
     let depth = 1;
     let i = startIdx + 1;
-    
     while (i < text.length) {
         if (text[i] === '\n' && text[i+1] === '\n') return null;
         if (text[i] === '\r' && text[i+1] === '\n' && text[i+2] === '\r' && text[i+3] === '\n') return null;
 
-        if (text[i] === openChar && isOpening(i)) {
-            depth++;
-        } else if (text[i] === closeChar && isClosing(i)) {
+        if (text[i] === openChar && isOpening(i)) depth++;
+        else if (text[i] === closeChar && isClosing(i)) {
             depth--;
-            if (depth === 0) {
-                return {
-                    index: startIdx,
-                    length: i - startIdx + 1,
-                    innerContent: text.substring(startIdx + 1, i)
-                };
-            }
+            if (depth === 0) return { index: startIdx, length: i - startIdx + 1, innerContent: text.substring(startIdx + 1, i) };
         }
         i++;
     }
-    
     return null;
 }
 
@@ -280,6 +254,7 @@ function parseFormattedText(
     while (remaining.length > 0) {
         const candidates: MatchCandidate[] = [];
 
+        // 0.0 Dynamic Thinking Block
         const thinkMatch = remaining.match(thinkRegex);
         if (thinkMatch && thinkMatch.index !== undefined) {
             const inner = thinkMatch[1].trim();
@@ -295,18 +270,22 @@ function parseFormattedText(
             });
         }
 
-        const codeBlockMatch = remaining.match(/```(?:([a-zA-Z0-9_+-]+)\r?\n)?([\s\S]*?)```/);
+        // 0.1 Fenced Code Block (FIX: Added |$ to safely catch unclosed blocks during streaming)
+        const codeBlockMatch = remaining.match(/```(?:([a-zA-Z0-9_+-]+)\r?\n)?([\s\S]*?)(?:```|$)/);
         if (codeBlockMatch && codeBlockMatch.index !== undefined) {
+            const isClosed = codeBlockMatch[0].endsWith('```');
             candidates.push({
                 type: 'code_block',
                 index: codeBlockMatch.index,
                 length: codeBlockMatch[0].length,
                 language: codeBlockMatch[1],
                 innerContent: codeBlockMatch[2],
+                isUnclosed: !isClosed,
             });
         }
 
-        const inlineCodeMatch = remaining.match(/(?<!`)`([^`]+)`(?!`)/);
+        // 0.2 Inline Code (FIX: Restricted to single lines to prevent swallowing paragraphs if unclosed)
+        const inlineCodeMatch = remaining.match(/(?<!`)`([^`\r\n]+)`(?!`)/);
         if (inlineCodeMatch && inlineCodeMatch.index !== undefined) {
              candidates.push({
                 type: 'inline_code',
@@ -316,6 +295,7 @@ function parseFormattedText(
              });
         }
 
+        // 1. List Item
         const listMatch = remaining.match(/(?:^|\r?\n)([ \t]*)([-*+•]|\d{1,3}[.)])[ \t]+([^\r\n]*)/);
         if (listMatch && listMatch.index !== undefined) {
             const indentStr = listMatch[1] ?? '';
@@ -330,15 +310,13 @@ function parseFormattedText(
             });
         }
 
+        // 2. Newlines
         const nlMatch = remaining.match(/\r?\n/);
         if (nlMatch && nlMatch.index !== undefined) {
-            candidates.push({
-                type: 'newline',
-                index: nlMatch.index,
-                length: nlMatch[0].length,
-            });
+            candidates.push({ type: 'newline', index: nlMatch.index, length: nlMatch[0].length });
         }
 
+        // 3 to 12: Paired Formatting
         const biMatch = findPairedFormat(remaining, '***');
         if (biMatch) candidates.push({ type: 'bold_italic', index: biMatch.index, length: biMatch.length, innerContent: biMatch.innerContent });
 
@@ -370,11 +348,8 @@ function parseFormattedText(
         if (braceMatch) candidates.push({ type: 'brace', index: braceMatch.index, length: braceMatch.length, innerContent: braceMatch.innerContent });
 
         if (candidates.length === 0) {
-            if (isTopLevel) {
-                nodes.push(<span key={keyGen.next()} className="fmt-normal">{remaining}</span>);
-            } else {
-                nodes.push(remaining);
-            }
+            if (isTopLevel) nodes.push(<span key={keyGen.next()} className="fmt-normal">{remaining}</span>);
+            else nodes.push(remaining);
             break;
         }
 
@@ -383,11 +358,8 @@ function parseFormattedText(
 
         if (match.index > 0) {
             const before = remaining.slice(0, match.index);
-            if (isTopLevel) {
-                nodes.push(<span key={keyGen.next()} className="fmt-normal">{before}</span>);
-            } else {
-                nodes.push(before);
-            }
+            if (isTopLevel) nodes.push(<span key={keyGen.next()} className="fmt-normal">{before}</span>);
+            else nodes.push(before);
         }
 
         switch (match.type) {
@@ -404,7 +376,14 @@ function parseFormattedText(
                 );
                 break;
             case 'code_block':
-                nodes.push(<CodeBlock key={keyGen.next()} code={match.innerContent || ''} language={match.language} />);
+                nodes.push(
+                    <CodeBlock 
+                        key={keyGen.next()} 
+                        code={match.innerContent || ''} 
+                        language={match.language} 
+                        isUnclosed={match.isUnclosed}
+                    />
+                );
                 break;
             case 'inline_code':
                 nodes.push(<code key={keyGen.next()} className="fmt-inline-code">{match.innerContent}</code>);
@@ -433,28 +412,16 @@ function parseFormattedText(
                 nodes.push(<span key={keyGen.next()} className="fmt-italic">{parseFormattedText(match.innerContent ?? '', false, keyGen)}</span>);
                 break;
             case 'underline':
-                nodes.push(
-                    <span key={keyGen.next()} className="fmt-underline" style={{ textDecoration: 'underline', textDecorationColor: 'inherit', color: 'inherit' }}>
-                        {parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen)}
-                    </span>
-                );
+                nodes.push(<span key={keyGen.next()} className="fmt-underline" style={{ textDecoration: 'underline', textDecorationColor: 'inherit', color: 'inherit' }}>{parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen)}</span>);
                 break;
             case 'strikethrough':
-                nodes.push(
-                    <span key={keyGen.next()} className="fmt-strikethrough" style={{ textDecoration: 'line-through', textDecorationColor: 'inherit', color: 'inherit' }}>
-                        {parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen)}
-                    </span>
-                );
+                nodes.push(<span key={keyGen.next()} className="fmt-strikethrough" style={{ textDecoration: 'line-through', textDecorationColor: 'inherit', color: 'inherit' }}>{parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen)}</span>);
                 break;
             case 'quote':
                 nodes.push(<span key={keyGen.next()} className="fmt-quote">"{parseFormattedText(match.innerContent ?? '', false, keyGen)}"</span>);
                 break;
             case 'curly_quote':
-                nodes.push(
-                    <span key={keyGen.next()} className="fmt-quote">
-                        {LEFT_DOUBLE_QUOTE}{parseFormattedText(match.innerContent ?? '', false, keyGen)}{RIGHT_DOUBLE_QUOTE}
-                    </span>
-                );
+                nodes.push(<span key={keyGen.next()} className="fmt-quote">{LEFT_DOUBLE_QUOTE}{parseFormattedText(match.innerContent ?? '', false, keyGen)}{RIGHT_DOUBLE_QUOTE}</span>);
                 break;
             case 'parenthesis':
                 nodes.push(<span key={keyGen.next()} className="fmt-parenthesis">({parseFormattedText(match.innerContent ?? '', false, keyGen)})</span>);
