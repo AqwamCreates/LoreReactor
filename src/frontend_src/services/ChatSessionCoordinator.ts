@@ -245,7 +245,6 @@ class ChatSessionCoordinator {
         const protagonist = protagonistId ? activeData.participants.find(p => p.id === protagonistId) : null;
         const protagonistLocationId = protagonist ? (getCurrentLocationId(activeData, protagonist) || 'global') : 'global';
         
-        // Purely spatial check. If they are in different rooms, it's a background generation.
         const isBackground = charLocationId !== protagonistLocationId;
 
         if (!resumingMessageId) {
@@ -311,9 +310,15 @@ class ChatSessionCoordinator {
                     this.voiceTracker = null;
                 }
 
-                this.voiceTracker = new StreamingVoiceTracker(character, this.deps.allCharacters);
-                if (currentExistingText) this.voiceTracker.seed(currentExistingText);
-                await this.voiceTracker.start().catch(() => {});
+                const isVoiceEnabledInProfile = profile?.narrateTexts ? Object.values(profile.narrateTexts).some(v => v === true) : false;
+
+                if (isVoiceEnabledInProfile) {
+                    this.voiceTracker = new StreamingVoiceTracker(character, this.deps.allCharacters);
+                    if (currentExistingText) this.voiceTracker.seed(currentExistingText);
+                    await this.voiceTracker.start().catch(() => {});
+                } else {
+                    this.voiceTracker = null;
+                }
 
                 useGenerationStore.setState({ 
                     streamingCharacter: character, 
@@ -411,8 +416,7 @@ class ChatSessionCoordinator {
                     continue;
                 }
 
-                const isVoiceEnabledInProfile = profile?.narrateTexts ? Object.values(profile.narrateTexts).some(v => v === true) : false;
-                if (this.voiceTracker && narratorBehaviour === 'wait' && isVoiceEnabledInProfile && !this.wasStopped) {
+                if (this.voiceTracker && narratorBehaviour === 'wait' && !this.wasStopped) {
                     await this.voiceTracker.waitForPlaybackCompletion().catch(() => {});
                 }
 
