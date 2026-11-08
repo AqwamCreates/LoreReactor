@@ -108,7 +108,6 @@ class ChatSessionCoordinator {
         this.wasStopped = false;
         this.isSkippingThinking = false;
         this.pendingSkipText = null;
-        // Global isLoading removed. Locks are now strictly managed via loadingLocations in runSingleTurn.
         useGenerationStore.setState({ streamingText: '', streamingCharacter: null, streamingMessageId: null });
         return true;
     }
@@ -157,8 +156,6 @@ class ChatSessionCoordinator {
             : this.deps.allPromptBlocks;
     }
 
-    // ─── Autonomous Simulation Lifecycle ────────────────────────────────────────
-
     public startAutonomousMode(): void {
         if (this.deps?.isMultiplayerClient) {
             this.stopAutonomousMode();
@@ -168,7 +165,6 @@ class ChatSessionCoordinator {
         const executor = async (d: InteractionData, c: Character, _signal: AbortSignal) => {
             useGenerationStore.setState({ streamingCharacter: c, streamingText: '', streamingMessageId: null });
             
-            // Capture fresh front camera image for the protagonist before the AI turn
             const protagonistId = d.protagonistIds?.[0];
             if (protagonistId && this.deps.captureFrontCameraImage) {
                 const protagonist = d.participants.find(p => p.id === protagonistId);
@@ -231,8 +227,6 @@ class ChatSessionCoordinator {
         this.characterSoul.stop();
     }
 
-    // ─── Core Orchestration ─────────────────────────────────────────────────────────
-
     private async runSingleTurn(
         currentData: InteractionData,
         character: Character,
@@ -247,8 +241,13 @@ class ChatSessionCoordinator {
         const narratorBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
 
         const charLocationId = getCurrentLocationId(activeData, character) || 'global';
+        const protagonistId = activeData.protagonistIds?.[0];
+        const protagonist = protagonistId ? activeData.participants.find(p => p.id === protagonistId) : null;
+        const protagonistLocationId = protagonist ? (getCurrentLocationId(activeData, protagonist) || 'global') : 'global';
+        
+        // Determine if this generation is happening in a different room than the user
+        const isBackground = charLocationId !== protagonistLocationId;
 
-        // ─── SINGLE SOURCE OF TRUTH: INSTANT STUB ───────────────────────────
         if (!resumingMessageId) {
             const aiMessage = createMessage(character, {
                 textContent: currentExistingText,
@@ -259,10 +258,11 @@ class ChatSessionCoordinator {
             resumingMessageId = aiMessage.id;
             this.activeMessageId = aiMessage.id;
             
-            // Lock the specific location for the UI
             const currentLoading = useGenerationStore.getState().loadingLocations || {};
             useGenerationStore.setState({
                 loadingLocations: { ...currentLoading, [charLocationId]: true },
+                // ONLY lock the global UI if this is a foreground generation
+                isLoading: isBackground ? useGenerationStore.getState().isLoading : true,
                 streamingCharacter: character,
                 streamingText: currentExistingText,
                 streamingMessageId: this.activeMessageId
@@ -272,10 +272,10 @@ class ChatSessionCoordinator {
         } else {
             this.activeMessageId = resumingMessageId;
             
-            // Lock the specific location for the UI on resume
             const currentLoading = useGenerationStore.getState().loadingLocations || {};
             useGenerationStore.setState({
                 loadingLocations: { ...currentLoading, [charLocationId]: true },
+                isLoading: isBackground ? useGenerationStore.getState().isLoading : true,
                 streamingCharacter: character,
                 streamingText: currentExistingText,
                 streamingMessageId: this.activeMessageId
@@ -362,7 +362,6 @@ class ChatSessionCoordinator {
 
                 useGenerationStore.setState({ streamingText: '' });
 
-                // Intercept Early Think Stop
                 if (this.isSkippingThinking && this.pendingSkipText) {
                     this.isSkippingThinking = false;
                     currentExistingText = this.pendingSkipText;
@@ -435,11 +434,12 @@ class ChatSessionCoordinator {
                 });
             }
         } finally {
-            // ALWAYS release the specific location lock when the turn ends or errors out
             const currentLoading = { ...(useGenerationStore.getState().loadingLocations || {}) };
             delete currentLoading[charLocationId];
             useGenerationStore.setState({ 
                 loadingLocations: currentLoading,
+                // ONLY unlock the global UI if this was a foreground generation
+                isLoading: isBackground ? useGenerationStore.getState().isLoading : false,
                 streamingText: '', 
                 streamingCharacter: null, 
                 streamingMessageId: null 
@@ -588,8 +588,6 @@ class ChatSessionCoordinator {
 
         return updatedData;
     }
-
-    // ─── Public Triggers (Bound to UI via Hook) ──────────────────────────────────
 
     public async sendMessage(text: string, files?: File[], frontCameraImageBase64?: string) {
         const state = useChatStore.getState();
@@ -860,7 +858,6 @@ class ChatSessionCoordinator {
             }
         }
 
-        // Clear the specific location lock if we know it, otherwise wipe all locks
         const currentLoading = { ...(genState.loadingLocations || {}) };
         if (this.activeMessageId && state.interactionData) {
              for (const [locId, msgs] of Object.entries(state.interactionData.interactionHistories || {})) {
@@ -871,8 +868,10 @@ class ChatSessionCoordinator {
              }
         }
         
+        // Hard stop clears the global UI lock and all relevant location locks
         useGenerationStore.setState({ 
             loadingLocations: Object.keys(currentLoading).length > 0 ? currentLoading : {},
+            isLoading: false,
             streamingText: '', 
             streamingCharacter: null, 
             streamingMessageId: null 
