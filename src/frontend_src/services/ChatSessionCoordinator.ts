@@ -358,7 +358,7 @@ class ChatSessionCoordinator {
                     isMultiplayerClient: this.deps.isMultiplayerClient,
                     borrowedModel,
                     toolContext: this.buildToolContext(),
-                    voiceTracker: this.voiceTracker,
+                    voiceTracker: this.voiceTracker ?? undefined,
                     resumingMessageId: resumingMessageId,
                 };
 

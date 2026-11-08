@@ -342,8 +342,9 @@ export function AIRecommendationModal({
         if (!parsedOutput) { setResultError('No parsed output to save.'); return; }
         setIsSaving(true); setResultError(null); const now = Date.now();
         
+        // FIX: Safely cast the filtered array to entityImageType[] without using a faulty type predicate
         const savedEntityImageTypes = imageInjectionPriority
-            .filter((item): item is entityImageType => item !== 'reference');
+            .filter(item => item !== 'reference') as entityImageType[];
 
         try {
             if (parsedOutput.characters) {
