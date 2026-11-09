@@ -21,7 +21,7 @@ export interface ModelTemplate {
 
 export const MODEL_TEMPLATES: ModelTemplate[] = [
     // ─── ChatML (OpenAI-style / Qwen / Hermes / Dolphin) ─────────────
-    // No native thinking tokens. Qwen3 uses <think>/</think> only in its
+    // No native thinking tokens. Qwen3 uses <think> only in its
     // dedicated reasoning template (see qwen-3.5-3.6 below).
     {
         key: 'chatml',
@@ -34,7 +34,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
     },
 
     // ─── Qwen 3.5 / 3.6 (Reasoning toggle) ─────────────────────────
-    // Uses <think>/</think>. Reasoning is OFF by default; enable with
+    // Uses <think>. Reasoning is OFF by default; enable with
     // <|reasoning|> in system/user message, disable with <|no_reasoning|>.
     {
         key: 'qwen-3.5-3.6',
@@ -73,7 +73,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
     },
 
     // ─── DeepSeek V4 / V3.1 / R1 (Unicode tokens) ───────────────────
-    // Uses <think>/</think>. Reasoning disabled by default; enable via
+    // Uses <think>. Reasoning disabled by default; enable via
     // chat_template_kwargs: {thinking: true}. Unicode full-width pipe ｜ (U+FF5C)
     // and separator ▁ (U+2581) are REQUIRED — ASCII | or _ will break parsing.
     {
@@ -114,7 +114,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
     },
 
     // ─── Gemma 4 (Channel-based thinking) ───────────────────────────
-    // Thinking uses <|channel>thought ... <channel|>, NOT <think>/</think>.
+    // Thinking uses <|channel>thought ... <channel|>, NOT <think>.
     // Activated via <|think|> in system prompt.
     {
         key: 'gemma4',
@@ -153,7 +153,7 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
     },
 
     // ─── Phi-4 Reasoning / Reasoning-Plus ───────────────────────────
-    // Uses <think>/</think>.
+    // Uses <think>.
     {
         key: 'phi4-reasoning',
         label: 'Phi-4 Reasoning / Reasoning-Plus',
@@ -289,6 +289,21 @@ export const MODEL_TEMPLATES: ModelTemplate[] = [
         supportsSystemRole: false,
         modelFamilies: ['Llama-2', 'CodeLlama'],
         stopPatterns: ['[/INST]'],
+    },
+
+    // ─── NVIDIA Nemotron (3 & 4 Families) ─────────────────────────
+    // Uses <extra_id_0> for System and <extra_id_1> for User/Assistant turns.
+    // Nemotron-3 reasoning models (Nano, Super, Ultra) use <think>.
+    {
+        key: 'nemotron',
+        label: 'NVIDIA Nemotron (3 & 4)',
+        instructionTemplate: '<extra_id_0>System\n{system}\n<extra_id_1>User\n{instruction}\n<extra_id_1>Assistant\n',
+        chatTemplate: '<extra_id_1>{role}\n{content}\n',
+        supportsSystemRole: true,
+        modelFamilies: ['Nemotron', 'Nemotron-3', 'Nemotron-4', 'Nemotron-Mini', 'Nemotron-Nano', 'Nemotron-Super', 'Nemotron-Ultra', 'nemotron'],
+        stopPatterns: ['<extra_id_1>', '<extra_id_2>'],
+        thinkStart: '<think>',
+        thinkEnd: '</think>',
     },
 ];
 
