@@ -142,15 +142,15 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
 /**
  * Single-System Message Strategy
  * 
- * Certain providers' OpenAI-compatible APIs only respect the LAST system
- * message and silently discard all previous ones. Since inputStrategy is
- * user-configurable and system message ordering is volatile, no single
- * system message can be reliably preserved as role:"system". All system
- * messages are converted to role:"user" to guarantee nothing is dropped.
+ * Certain providers' OpenAI-compatible APIs (like Google) are extremely strict:
+ * 1. They silently discard or error on prior system messages.
+ * 2. They require strictly alternating roles (User -> Assistant).
+ * 3. They reject requests where the final message is an 'assistant' turn (prefill).
  * 
- * Applies to: Google AI Platform, Cohere
- * 
- * Content is passed raw/as-is without wrapping or prefix markers.
+ * This strategy:
+ * - Converts all `system` roles to `user`.
+ * - Merges consecutive messages of the same role into a single message.
+ * - Employs a "Dummy User" trick for trailing assistant messages to satisfy API validation.
  */
 class SingleSystemStrategy implements ProviderCacheStrategy {
     private readonly backends: ReadonlySet<backend> = new Set(['Google', 'Cohere']);
@@ -162,12 +162,42 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
     apply(ctx: CacheContext): CacheStrategyResult {
         if (ctx.messages.length === 0) return {};
 
-        const patched = ctx.messages.map((msg) => {
-            if (msg.role === 'system') {
-                return { ...msg, role: 'user' };
+        const patched: OpenAIMessage[] = [];
+
+        // 1. Convert system to user & merge consecutive identical roles
+        for (const msg of ctx.messages) {
+            const role = msg.role === 'system' ? 'user' : msg.role;
+            
+            if (patched.length > 0 && patched[patched.length - 1].role === role) {
+                const prev = patched[patched.length - 1];
+                
+                if (typeof prev.content === 'string' && typeof msg.content === 'string') {
+                    prev.content = `${prev.content}\n\n${msg.content}`;
+                } else if (Array.isArray(prev.content) && Array.isArray(msg.content)) {
+                    prev.content = [...prev.content, ...msg.content];
+                } else {
+                    const pText = typeof prev.content === 'string' ? prev.content : JSON.stringify(prev.content);
+                    const cText = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                    prev.content = `${pText}\n\n${cText}`;
+                }
+            } else {
+                // Deep copy to prevent mutating the original reference
+                patched.push({ ...msg, role });
             }
-            return msg;
-        });
+        }
+
+        // 2. The "Dummy User" trick for strict APIs (Google Gemini)
+        if (ctx.backendName === 'Google' && patched.length > 0) {
+            const lastMsg = patched[patched.length - 1];
+            if (lastMsg.role === 'assistant') {
+                // Append a harmless dummy user message to satisfy the strict "must end with user turn" rule
+                // without corrupting the assistant's previous tool execution state.
+                patched.push({
+                    role: 'user',
+                    content: 'Continue.'
+                });
+            }
+        }
 
         return { messages: patched };
     }
