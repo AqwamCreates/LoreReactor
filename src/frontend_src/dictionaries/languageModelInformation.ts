@@ -7,7 +7,7 @@ export const localBackends: localBackend[] = [
 ];
 
 export const cloudBackends: cloudBackend[] = [
-    'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'Minimax', 'Google', 'OpenAI', 'Anthropic', 'Mistral', 'Grok', 'Groq', 'YandexGPT', 'OpenRouter', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
+    'DeepSeek', 'Qwen', 'Kimi', 'GLM', 'MiMo', 'Minimax', 'Google', 'OpenAI', 'Anthropic', 'Mistral', 'Grok', 'Groq', 'YandexGPT', 'OpenRouter', 'NVIDIA', 'Inworld', 'Cohere', 'AI21', 'Perplexity', 'NovelAI', 'Other'
 ];
 
 export const cloudEndpoints: Record<string, string> = {
@@ -25,6 +25,7 @@ export const cloudEndpoints: Record<string, string> = {
     'Groq': 'https://api.groq.com/openai/v1/chat/completions',
     'YandexGPT': 'https://ai.api.cloud.yandex.net/v1/chat/completions',
     'OpenRouter': 'https://openrouter.ai/api/v1/chat/completions',
+    'NVIDIA': 'https://integrate.api.nvidia.com/v1/chat/completions',
     'Inworld': 'https://api.inworld.ai/v1/chat/completions',
     'Cohere': 'https://api.cohere.com/compatibility/v1/chat/completions',
     'AI21': 'https://api.ai21.com/studio/v1/chat/completions',

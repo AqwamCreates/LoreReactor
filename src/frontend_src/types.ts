@@ -201,7 +201,7 @@ export type localBackend =
   | 'ExLlamaV2' | 'TensorRT-LLM' | 'Ollama'
   | 'vLLM' | 'SGLang' | 'LM Studio' | 'LocalAI' | 'mistral.rs' | 'stable-diffusion.cpp';
 
-export type cloudBackend = 'DeepSeek' | 'Qwen' | 'Kimi' | 'GLM' | 'MiMo' | 'Minimax' | 'Google' | 'OpenAI' | 'Anthropic' | 'Mistral' | 'Grok' | 'Groq' | 'YandexGPT' | 'OpenRouter' | 'Inworld' | 'Cohere' | 'AI21' | 'Perplexity' | 'NovelAI' | 'Other'
+export type cloudBackend = 'DeepSeek' | 'Qwen' | 'Kimi' | 'GLM' | 'MiMo' | 'Minimax' | 'Google' | 'OpenAI' | 'Anthropic' | 'Mistral' | 'Grok' | 'Groq' | 'YandexGPT' | 'OpenRouter' | 'NVIDIA' | 'Inworld' | 'Cohere' | 'AI21' | 'Perplexity' | 'NovelAI' | 'Other'
 
 export type backend = localBackend | cloudBackend
 
