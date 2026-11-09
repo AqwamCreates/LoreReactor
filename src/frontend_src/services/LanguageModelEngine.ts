@@ -141,8 +141,60 @@ interface NovelAITokenizeResponse {
     count?: number;
 }
 
-interface CloudErrorData {
-    error?: { message?: string };
+// ─── Error Handling Helper ──────────────────────────────────────────
+
+async function parseErrorResponse(response: Response, url: string, requestBody: string): Promise<string> {
+  let rawText = '';
+  try {
+    rawText = await response.text();
+  } catch {
+    rawText = '(Unable to read response body)';
+  }
+
+  let parsedPayload: unknown = requestBody;
+  try {
+    parsedPayload = JSON.parse(requestBody);
+  } catch {
+    /* keep as raw string if JSON parsing fails */
+  }
+
+  // Log full error details directly to DevTools console
+  console.error(`[LanguageModelEngine] Request failed: ${response.status} ${response.statusText}`, {
+    url,
+    requestPayload: parsedPayload,
+    rawResponseBody: rawText,
+  });
+
+  let extractedMessage = rawText;
+  try {
+    const json = JSON.parse(rawText);
+    if (typeof json === 'string') {
+      extractedMessage = json;
+    } else if (typeof json?.error === 'string') {
+      extractedMessage = json.error;
+    } else if (json?.error?.message && typeof json.error.message === 'string') {
+      extractedMessage = json.error.message;
+    } else if (typeof json?.detail === 'string') {
+      extractedMessage = json.detail;
+    } else if (Array.isArray(json?.detail)) {
+      extractedMessage = json.detail
+        .map((d: any) => (d && typeof d === 'object' && d.msg ? d.msg : JSON.stringify(d)))
+        .join('; ');
+    } else if (typeof json?.message === 'string') {
+      extractedMessage = json.message;
+    } else if (Array.isArray(json?.errors)) {
+      extractedMessage = json.errors
+        .map((e: any) => (typeof e === 'string' ? e : e?.message || JSON.stringify(e)))
+        .join('; ');
+    } else if (json && typeof json === 'object') {
+      extractedMessage = JSON.stringify(json);
+    }
+  } catch {
+    // rawText is already string/HTML
+  }
+
+  const statusText = response.statusText ? ` (${response.statusText})` : '';
+  return `API Error ${response.status}${statusText}: ${extractedMessage || 'Unknown error'}`;
 }
 
 export class LanguageModelEngine {
@@ -644,7 +696,11 @@ export class LanguageModelEngine {
       });
 
       const response = await fetch(url, { method: 'POST', headers, body });
-      if (!response.ok) return { text: '', isCompleted: false };
+      if (!response.ok) {
+        const errorMsg = await parseErrorResponse(response, url, body);
+        console.warn('[LanguageModelEngine] generateCompletion failed:', errorMsg);
+        return { text: '', isCompleted: false };
+      }
 
       const data = await response.json() as OpenAICompletionResponse;
       const text = this.extractContent(data) || '';
@@ -697,11 +753,7 @@ export class LanguageModelEngine {
 
     if (!response.ok) {
       if (abortController.signal.aborted) return { text: '', isCompleted: false };
-      let errorMsg = `API Error: ${response.status}`;
-      try {
-        const errData = await response.json() as CloudErrorData;
-        if (errData.error?.message) errorMsg = `API Error: ${errData.error.message}`;
-      } catch { /* ignore parse errors */ }
+      const errorMsg = await parseErrorResponse(response, url, body);
       throw new Error(errorMsg);
     }
 
