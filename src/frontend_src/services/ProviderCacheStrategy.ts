@@ -190,12 +190,8 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
         if (ctx.backendName === 'Google' && patched.length > 0) {
             const lastMsg = patched[patched.length - 1];
             if (lastMsg.role === 'assistant') {
-                // Append a harmless dummy user message to satisfy the strict "must end with user turn" rule
-                // without corrupting the assistant's previous tool execution state.
-                patched.push({
-                    role: 'user',
-                    content: 'Continue.'
-                });
+                // Append a harmless dummy user message to satisfy the strict "must end with user turn" rule without corrupting the assistant's previous tool execution state.
+                patched.push({role: 'user', content: 'Continue.'});
             }
         }
 
