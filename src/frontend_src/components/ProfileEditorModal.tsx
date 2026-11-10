@@ -768,7 +768,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
                                 <div style={{ fontSize: '0.6rem', opacity: 0.5, marginBottom: '12px' }}>Prompts are automatically removed from context after the character has sent this many messages. Set to 0 to disable immediately, or leave high to keep them active longer.</div>
                                 {promptDecayConfigs.map((cfg, i) => (
                                     <div key={i} style={{ marginTop: i > 0 ? '12px' : '0' }}>
-                                        <SliderInput label={cfg.label} value={cfg.value} minimumValue={-1} maximumValue={10} stepValue={1} decimals={0} onChange={(val) => cfg.onChange(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." />
+                                        <SliderInput label={cfg.label} value={cfg.value} minimumValue={-1} maximumValue={1000} stepValue={1} decimals={0} onChange={(val) => cfg.onChange(Math.round(val))} description="-1 = auto defer to character default. N = disable after N messages." />
                                     </div>
                                 ))}
                             </div>
