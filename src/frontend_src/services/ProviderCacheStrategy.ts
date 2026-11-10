@@ -191,7 +191,7 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
             const lastMsg = patched[patched.length - 1];
             if (lastMsg.role === 'assistant') {
                 // Append a harmless dummy user message to satisfy the strict "must end with user turn" rule without corrupting the assistant's previous tool execution state.
-                patched.push({role: 'user', content: 'Complete the rest of the response.'});
+                patched.push({role: 'user', content: 'Continue.'});
             }
         }
 
