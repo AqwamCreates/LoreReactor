@@ -146,7 +146,7 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
 Small models (≤10B) have weak attention discrimination between similar names. Uniform positional identifiers eliminate attribution failures entirely. The identity map provides progressive name learning without sacrificing prompt safety.
 
-## Image models, coming soon!
+## Image models, Coming Soon!
 
 ## If You Wonder Why This Has Been Discontinued, Have A Look Here
 
