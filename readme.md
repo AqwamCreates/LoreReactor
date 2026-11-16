@@ -96,6 +96,8 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
 * Helps controlling your costs by using both of your free tiers and premium tiers thorugh budget strategies.
 
+* Supports Multiple Cloud API Providers, including: Google AI Studio, DeepSeek, OpenRouter.
+
 ### Chats
 
 * Each chat session can have independent Characters, Contexts, Locations and Audio Tracks.
