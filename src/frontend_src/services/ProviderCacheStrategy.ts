@@ -27,6 +27,49 @@ export interface ProviderCacheStrategy {
     apply(context: CacheContext): CacheStrategyResult;
 }
 
+// ─── Content Helpers ────────────────────────────────────────────────
+
+function toContentParts(content: string | unknown[]): unknown[] {
+    if (Array.isArray(content)) {
+        return content;
+    }
+    if (typeof content === 'string') {
+        return content.length > 0 ? [{ type: 'text', text: content }] : [];
+    }
+    return content != null ? [{ type: 'text', text: String(content) }] : [];
+}
+
+function mergeContents(prevContent: string | unknown[], nextContent: string | unknown[]): string | unknown[] {
+    if (typeof prevContent === 'string' && typeof nextContent === 'string') {
+        return prevContent ? `${prevContent}\n\n${nextContent}` : nextContent;
+    }
+
+    const prevParts = toContentParts(prevContent);
+    const nextParts = toContentParts(nextContent);
+
+    if (prevParts.length === 0) return nextParts;
+    if (nextParts.length === 0) return prevParts;
+
+    const combined = [...prevParts];
+    const lastPrev = combined[combined.length - 1] as Record<string, unknown> | undefined;
+    const firstNext = nextParts[0] as Record<string, unknown> | undefined;
+
+    if (
+        lastPrev && typeof lastPrev === 'object' && lastPrev.type === 'text' && typeof lastPrev.text === 'string' &&
+        firstNext && typeof firstNext === 'object' && firstNext.type === 'text' && typeof firstNext.text === 'string'
+    ) {
+        combined[combined.length - 1] = {
+            ...lastPrev,
+            text: `${lastPrev.text}\n\n${firstNext.text}`,
+        };
+        combined.push(...nextParts.slice(1));
+    } else {
+        combined.push(...nextParts);
+    }
+
+    return combined;
+}
+
 // ─── Strategies ─────────────────────────────────────────────────────
 
 class SessionAffinityStrategy implements ProviderCacheStrategy {
@@ -142,15 +185,11 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
 /**
  * Single-System Message Strategy
  * 
- * Certain providers' OpenAI-compatible APIs (like Google) are extremely strict:
- * 1. They silently discard or error on prior system messages.
- * 2. They require strictly alternating roles (User -> Assistant).
- * 3. They reject requests where the final message is an 'assistant' turn (prefill).
- * 
- * This strategy:
- * - Converts all `system` roles to `user`.
- * - Merges consecutive messages of the same role into a single message.
- * - Employs a "Dummy User" trick for trailing assistant messages to satisfy API validation.
+ * Certain providers' OpenAI-compatible APIs (like Google) are strict regarding turn flow:
+ * 1. Merges consecutive messages of the same role into a single message.
+ * 2. Preserves multimodal array parts ({type: "image_url"}) without turning them into JSON strings.
+ * 3. Converts prior system roles into user turns while preserving all text and vision blocks.
+ * 4. Employs a "Dummy User" trick for trailing assistant messages to satisfy API validation.
  */
 class SingleSystemStrategy implements ProviderCacheStrategy {
     private readonly backends: ReadonlySet<backend> = new Set(['Google', 'Cohere']);
@@ -164,25 +203,20 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
 
         const patched: OpenAIMessage[] = [];
 
-        // 1. Convert system to user & merge consecutive identical roles
+        // 1. Convert system to user & merge consecutive identical roles without destroying arrays
         for (const msg of ctx.messages) {
             const role = msg.role === 'system' ? 'user' : msg.role;
             
             if (patched.length > 0 && patched[patched.length - 1].role === role) {
                 const prev = patched[patched.length - 1];
-                
-                if (typeof prev.content === 'string' && typeof msg.content === 'string') {
-                    prev.content = `${prev.content}\n\n${msg.content}`;
-                } else if (Array.isArray(prev.content) && Array.isArray(msg.content)) {
-                    prev.content = [...prev.content, ...msg.content];
-                } else {
-                    const pText = typeof prev.content === 'string' ? prev.content : JSON.stringify(prev.content);
-                    const cText = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
-                    prev.content = `${pText}\n\n${cText}`;
-                }
+                prev.content = mergeContents(prev.content, msg.content);
             } else {
                 // Deep copy to prevent mutating the original reference
-                patched.push({ ...msg, role });
+                patched.push({
+                    ...msg,
+                    role,
+                    content: Array.isArray(msg.content) ? [...msg.content] : msg.content,
+                });
             }
         }
 
@@ -191,7 +225,7 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
             const lastMsg = patched[patched.length - 1];
             if (lastMsg.role === 'assistant') {
                 // Append a harmless dummy user message to satisfy the strict "must end with user turn" rule without corrupting the assistant's previous tool execution state.
-                patched.push({role: 'user', content: 'Resume.'});
+                patched.push({ role: 'user', content: 'Resume.' });
             }
         }
 
