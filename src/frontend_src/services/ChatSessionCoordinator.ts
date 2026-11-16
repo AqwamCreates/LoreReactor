@@ -31,7 +31,7 @@ import { defaultInputStrategy } from '../dictionaries/defaults';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { findActiveThinkEndToken } from '../dictionaries/modelTemplates';
 
-import type { Character, InteractionData, PromptBlock, Context, Location, AudioTrack, World, LanguageModel, SpatiotemporalModel, TokenSampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder, ChatMessage, HistoryMessage, InterjectableAction, NarrationMessage, TextMessage, InteractionMessage } from '../types';
+import type { Character, InteractionData, PromptBlock, Context, Location, AudioTrack, World, LanguageModel, SpatiotemporalModel, TokenSampler, StopPattern, RetrievalConfiguration, BudgetStrategy, Profile, Memory, Account, MultiplayerData, RawInteractionData, EntityFolder, ChatMessage, WhisperMessage, ToolMessage, HistoryMessage, InterjectableAction, NarrationMessage, TextMessage, InteractionMessage } from '../types';
 
 export interface CoordinatorDependencies {
     isMultiplayerClient: boolean;
@@ -164,16 +164,39 @@ class ChatSessionCoordinator {
         const executor = async (d: InteractionData, c: Character, _signal: AbortSignal) => {
             useGenerationStore.setState({ streamingCharacter: c, streamingText: '', streamingMessageId: null });
             
-            const protagonistId = d.protagonistIds?.[0];
+            let turnData = d;
+            const protagonistId = useChatStore.getState().localProtagonist?.id || turnData.protagonistIds?.[0];
             if (protagonistId && this.deps.captureFrontCameraImage) {
-                const protagonist = d.participants.find(p => p.id === protagonistId);
-                if (protagonist && getEffectiveUseFrontCameraImage(protagonist, d.profile)) {
+                const protagonist = turnData.participants.find(p => p.id === protagonistId);
+                if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile)) {
                     try {
                         const freshImageBase64 = await this.deps.captureFrontCameraImage();
                         if (freshImageBase64) {
-                            const latestMsgInfo = findLatestMessage(d, protagonist);
-                            if (latestMsgInfo && latestMsgInfo.message.messageType === 'chat') {
-                                (latestMsgInfo.message as ChatMessage).frontCameraImage = freshImageBase64;
+                            const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
+                            if (
+                                latestMsgInfo &&
+                                (latestMsgInfo.message.messageType === 'chat' ||
+                                    latestMsgInfo.message.messageType === 'whisper' ||
+                                    latestMsgInfo.message.messageType === 'tool')
+                            ) {
+                                const locMessages = turnData.interactionHistories[latestMsgInfo.locationId];
+                                if (locMessages) {
+                                    const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
+                                    if (msgIdx !== -1) {
+                                        const updatedLocMessages = [...locMessages];
+                                        updatedLocMessages[msgIdx] = {
+                                            ...latestMsgInfo.message,
+                                            frontCameraImage: freshImageBase64,
+                                        } as ChatMessage | WhisperMessage | ToolMessage;
+                                        turnData = {
+                                            ...turnData,
+                                            interactionHistories: {
+                                                ...turnData.interactionHistories,
+                                                [latestMsgInfo.locationId]: updatedLocMessages,
+                                            },
+                                        };
+                                    }
+                                }
                             }
                         }
                     } catch (e) {
@@ -182,7 +205,7 @@ class ChatSessionCoordinator {
                 }
             }
 
-            let updatedData = await this.runSingleTurn(d, c);
+            let updatedData = await this.runSingleTurn(turnData, c);
 
             const preToolData = updatedData;
             updatedData = processPendingToolActions(updatedData, this.deps?.allCharacters || [], { onToast: this.deps?.addToast });
@@ -600,7 +623,7 @@ class ChatSessionCoordinator {
         if (isNarrationEnabled) textToSpeechEngine.load(); else textToSpeechEngine.unload();
 
         const slashInvocation = parseSlashCommand(text);
-        if (slashInvocation && !files?.length && !frontCameraImageBase64) {
+        if (slashInvocation && !files?.length) {
             if (this.deps.isMultiplayerClient && HOST_ONLY_TOOLS.includes(slashInvocation.toolType)) {
                 this.deps.addToast(`/${slashInvocation.toolType} requires administrator privileges.`, 'error');
                 return;
@@ -612,7 +635,11 @@ class ChatSessionCoordinator {
 
             if (!this.acquireLock()) { this.deps.addToast('Already processing...', 'info'); return; }
             try {
-                const slashMessage = createMessage(protagonist, { textContent: '', interactionData: currentData }) as ChatMessage;
+                const slashMessage = createMessage(protagonist, {
+                    textContent: '',
+                    frontCameraImage: frontCameraImageBase64,
+                    interactionData: currentData,
+                }) as ChatMessage;
                 const toolResult = await executeTool(slashInvocation, slashMessage, currentData, this.buildToolContext(), currentData.profile?.toolUsageDisplayMode);
 
                 const canonicalInvocation = `${toolCallStartString}${slashInvocation.toolType}(${slashInvocation.args || ''})${toolCallEndString}`;
@@ -714,8 +741,23 @@ class ChatSessionCoordinator {
         const protagonist = this.deps.isMultiplayerClient ? (this.deps.joinProtagonist || protagonistOverride) : protagonistOverride;
 
         try {
+            let frontCameraImageBase64: string | undefined;
+            if (getEffectiveUseFrontCameraImage(protagonist, currentData.profile) && this.deps.captureFrontCameraImage) {
+                try {
+                    const img = await this.deps.captureFrontCameraImage();
+                    if (img) frontCameraImageBase64 = img;
+                } catch (e) {
+                    console.warn('Directed action front camera capture failed:', e);
+                }
+            }
+
             const textMessages = getLocalMessageHistory(currentData, protagonist, ['chat', 'whisper']) as TextMessage[];
-            const chatMessage = createMessage(protagonist, { textContent: actionText, knownCharacterNames: detectName(protagonist, textMessages), interactionData: currentData }) as ChatMessage;
+            const chatMessage = createMessage(protagonist, {
+                textContent: actionText,
+                frontCameraImage: frontCameraImageBase64,
+                knownCharacterNames: detectName(protagonist, textMessages),
+                interactionData: currentData,
+            }) as ChatMessage;
 
             const currentLocId = getCurrentLocationId(currentData, protagonist) || 'global';
             const newHistories = { ...currentData.interactionHistories };

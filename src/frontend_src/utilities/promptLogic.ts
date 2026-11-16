@@ -5,6 +5,7 @@ import type {
   HistoryMessage,
   ChatMessage,
   WhisperMessage,
+  ToolMessage,
   TextMessage,
   Context,
   StopPattern,
@@ -1085,7 +1086,7 @@ function applyMessageFilterTriggers(
         segmentStart = i;
         poisoned = false;
         const exclusionActivated = matchesAnyRegex(exclusionActivationRegexes, text);
-        const exclusionDeactivated = matchesAnyRegex(exclusionDeactivationTriggers, text);
+        const exclusionDeactivated = matchesAnyRegex(exclusionDeactivationRegexes, text);
         if (exclusionActivated && !exclusionDeactivated) {
           poisoned = true;
         } else if (exclusionDeactivated) {
@@ -1106,10 +1107,10 @@ function applyMessageFilterTriggers(
       continue;
     }
     const exclusionActivated = matchesAnyRegex(exclusionActivationRegexes, text);
-    const exclusionDeactivated = matchesAnyRegex(exclusionDeactivationTriggers, text);
+    const exclusionDeactivated = matchesAnyRegex(exclusionDeactivationRegexes, text);
     if (exclusionActivated && !exclusionDeactivated) {
       poisoned = true;
-    } else if (exclusionDeactivation) {
+    } else if (exclusionDeactivated) {
       poisoned = false;
     }
     if (matchesAnyRegex(deactivationRegexes, text)) {
@@ -2697,18 +2698,20 @@ export async function buildPrompt(
   for (const imageType of allowedImageTypes) {
     if (imageType === 'character') {
       const colocatedParticipants = getCoLocatedParticipants(interactionData, character);
-      const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile);
       const charsToProcess = [character, ...colocatedParticipants.filter(p => p.id !== character.id)];
       for (const char of charsToProcess) {
         if (char.doNotInjectCharacterImage) continue;
+        const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(char, profile);
         const charMessage = findLatestMessage(interactionData, char);
-        const charExpression = charMessage?.message.characterExpression || 'neutral';
+        const frontCameraMessage = (charMessage?.message && 'frontCameraImage' in charMessage.message && charMessage.message.frontCameraImage)
+          ? charMessage
+          : findLatestMessage(interactionData, char, ['chat', 'whisper', 'tool']);
+        const charExpression = charMessage?.message.characterExpression || frontCameraMessage?.message.characterExpression || 'neutral';
         const filename = char.images?.[charExpression] || char.images?.neutral || Object.values(char.images || {})[0];
         let base64Data: string | null = null;
-        const textMsg = charMessage?.message as TextMessage | null;
-        if (effectiveUseFrontCameraImage && (textMsg as ChatMessage)?.frontCameraImage) {
-          const fcImg = (textMsg as ChatMessage).frontCameraImage!;
-          base64Data = fcImg.startsWith('data:') ? fcImg : `data:image/jpeg;base64,${fcImg}`;
+        const frontCameraImg = (frontCameraMessage?.message as ChatMessage | WhisperMessage | ToolMessage | undefined)?.frontCameraImage;
+        if (effectiveUseFrontCameraImage && frontCameraImg) {
+          base64Data = frontCameraImg.startsWith('data:') ? frontCameraImg : `data:image/jpeg;base64,${frontCameraImg}`;
         } else if (filename) {
           const imagePath = filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')
             ? filename
