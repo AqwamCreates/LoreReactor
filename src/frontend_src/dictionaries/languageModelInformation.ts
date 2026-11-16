@@ -3,7 +3,8 @@
 import type { cloudBackend, localBackend } from "../types";
 
 export const localBackends: localBackend[] = [
-    'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2', 'TensorRT-LLM', 'Ollama'
+    'Llama.cpp', 'Transformers', 'ExLlamaV3', 'ExLlamaV3 HF', 'ExLlamaV2', 'TensorRT-LLM', 'Ollama',
+    'vLLM', 'SGLang', 'LM Studio', 'LocalAI', 'mistral.rs'
 ];
 
 export const cloudBackends: cloudBackend[] = [
@@ -21,7 +22,7 @@ export const cloudEndpoints: Record<string, string> = {
     'OpenAI': 'https://api.openai.com/v1/chat/completions',
     'Anthropic': 'https://api.anthropic.com/v1/messages',
     'Mistral': 'https://api.mistral.ai/v1/chat/completions',
-    'Grok': 'https://api.x.ai/v1',
+    'Grok': 'https://api.x.ai/v1/chat/completions',
     'Groq': 'https://api.groq.com/openai/v1/chat/completions',
     'YandexGPT': 'https://ai.api.cloud.yandex.net/v1/chat/completions',
     'OpenRouter': 'https://openrouter.ai/api/v1/chat/completions',
@@ -36,7 +37,7 @@ export const cloudEndpoints: Record<string, string> = {
 // ✅ Token counting endpoints for cloud backends that expose a dedicated tokenizer API.
 // Providers not listed here fall back to char/4 estimation in LanguageModelEngine.countTokens().
 export const cloudTokenizeEndpoints: Record<string, string> = {
-    'Kimi': 'https://api.moonshot.cn/v1/tokenizers/estimate-token-count',
+    'Kimi': 'https://api.moonshot.ai/v1/tokenizers/estimate-token-count',
     'Minimax': 'https://api.minimax.io/v1/responses/input_tokens',
     'GLM': 'https://api.z.ai/api/paas/v4/tokenizer',
     'Google': 'https://generativelanguage.googleapis.com/v1beta/models/{model}:countTokens',

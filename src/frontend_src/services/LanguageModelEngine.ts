@@ -89,20 +89,32 @@ interface OpenAIUsage {
     prompt_tokens_details?: {
         cached_tokens?: number;
     };
+    input_tokens?: number;
+    output_tokens?: number;
     cache_creation_input_tokens?: number;
     cache_read_input_tokens?: number;
 }
 
 interface OpenAIStreamChunk {
+    type?: string;
     choices?: OpenAIChoice[];
-    content?: string;
+    content?: string | unknown[];
     text?: string;
     usage?: OpenAIUsage;
+    message?: {
+        usage?: OpenAIUsage;
+        content?: unknown[];
+    };
+    delta?: {
+        text?: string;
+        content?: string;
+        stop_reason?: string | null;
+    };
 }
 
 interface OpenAICompletionResponse {
     choices?: OpenAIChoice[];
-    content?: string;
+    content?: string | unknown[];
     usage?: OpenAIUsage;
 }
 
@@ -147,13 +159,26 @@ interface NovelAITokenizeResponse {
     count?: number;
 }
 
+export type PeerInferenceHandler = (
+  modelId: string,
+  prompt: any,
+  onToken: (token: string) => void,
+  signal?: AbortSignal
+) => Promise<boolean>;
+
 // ─── Multimodal Message Helper ──────────────────────────────────────
 
 function extractMessageText(content: string | unknown[]): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
     return content
-      .map((part) => (part && typeof part === 'object' && (part as Record<string, unknown>).type === 'text' ? String((part as Record<string, unknown>).text || '') : ''))
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (part && typeof part === 'object' && (part as Record<string, unknown>).type === 'text') {
+          return String((part as Record<string, unknown>).text || '');
+        }
+        return '';
+      })
       .filter(Boolean)
       .join('\n');
   }
@@ -267,6 +292,7 @@ export class LanguageModelEngine {
   private model: LanguageModel | null = null;
   private runtimePort: number | undefined = undefined;
   private runningLanguageModels: Record<string, { isRunning: boolean; port?: number }> = {};
+  private peerInferenceHandler?: PeerInferenceHandler;
 
   setContext(model: LanguageModel): void {
     this.model = model;
@@ -290,6 +316,10 @@ export class LanguageModelEngine {
       this.runtimePort = running?.port
         ?? (this.model.parameters as Record<string, unknown>)?._runtimePort as number | undefined;
     }
+  }
+
+  setPeerInferenceHandler(handler?: PeerInferenceHandler): void {
+    this.peerInferenceHandler = handler;
   }
 
   // ─── Token Count Cache ────────────────────────────────────────────
@@ -374,6 +404,8 @@ export class LanguageModelEngine {
     if (apiKey) {
       if (backendName === 'Inworld') {
         (headers as Record<string, string>).Authorization = `Basic ${apiKey}`;
+      } else if (backendName === 'Anthropic') {
+        (headers as Record<string, string>)['x-api-key'] = apiKey;
       } else {
         (headers as Record<string, string>).Authorization = `Bearer ${apiKey}`;
       }
@@ -388,15 +420,19 @@ export class LanguageModelEngine {
       stream,
       temperature: params.temperature,
       top_p: params.top_p,
-      max_tokens: params.maxTokens,
+      max_tokens: params.maxTokens || 4096,
       ...params.extraParams,
     };
 
-    if (localBackends.includes(backendName as localBackend)){
+    if (localBackends.includes(backendName as localBackend)) {
       bodyObj.cache_prompt = true;
     }
 
-    if (!STOP_UNSUPPORTED_BACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
+    if (backendName === 'Anthropic') {
+      if (params.stop && params.stop.length > 0) {
+        bodyObj.stop_sequences = params.stop;
+      }
+    } else if (!STOP_UNSUPPORTED_BACKENDS.has(backendName) && params.stop && params.stop.length > 0) {
       bodyObj.stop = params.stop;
     }
 
@@ -407,6 +443,7 @@ export class LanguageModelEngine {
       modelPath,
       sessionId,
       messages: messagesWithImages,
+      apiKey,
     });
 
     if (cacheResult.headers) Object.assign(headers, cacheResult.headers);
@@ -576,18 +613,23 @@ export class LanguageModelEngine {
       return content && content.length > 0 ? content : null;
     }
     if (data.content !== undefined) {
-      const content = data.content;
-      return content && content.length > 0 ? content : null;
+      if (typeof data.content === 'string') {
+        return data.content.length > 0 ? data.content : null;
+      }
+      if (Array.isArray(data.content)) {
+        const text = extractMessageText(data.content);
+        return text && text.length > 0 ? text : null;
+      }
     }
     return null;
   }
 
   private extractUsage(data: OpenAICompletionResponse | OpenAIStreamChunk): { promptTokens?: number; completionTokens?: number; cachedTokens?: number } {
-    const usage = data.usage;
+    const usage = data.usage || (data as any).message?.usage;
     if (!usage) return {};
 
-    const promptTokens = usage.prompt_tokens;
-    const completionTokens = usage.completion_tokens;
+    const promptTokens = usage.prompt_tokens ?? usage.input_tokens;
+    const completionTokens = usage.completion_tokens ?? usage.output_tokens;
     
     let cachedTokens = usage.prompt_tokens_details?.cached_tokens;
     if (cachedTokens === undefined) {
@@ -690,8 +732,9 @@ export class LanguageModelEngine {
             case 'Anthropic': {
               headers['x-api-key'] = apiKey;
               headers['anthropic-version'] = '2023-06-01';
+              headers['anthropic-dangerous-direct-browser-access'] = 'true';
               body = JSON.stringify({
-                model: modelPath || 'claude-sonnet-4-20250514',
+                model: modelPath || 'claude-3-5-sonnet-20241022',
                 messages: [{ role: 'user', content: text }],
               });
               break;
@@ -776,6 +819,14 @@ export class LanguageModelEngine {
   async generateCompletion(
     requestBody: Record<string, unknown>,
   ): Promise<StreamResult> {
+    if (this.model?.id?.startsWith('borrowed-') && this.peerInferenceHandler) {
+      let accumulated = '';
+      const ok = await this.peerInferenceHandler(this.model.id, requestBody, (tok) => {
+        accumulated += tok;
+      });
+      return { text: accumulated, isCompleted: ok };
+    }
+
     const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages, imageData } = this.extractFromRequestBody(requestBody);
 
     try {
@@ -823,6 +874,26 @@ export class LanguageModelEngine {
     maxParagraphs?: number,
     existingText?: string,
   ): Promise<StreamResult> {
+    if (this.model?.id?.startsWith('borrowed-') && this.peerInferenceHandler) {
+      let fullContent = '';
+      const ok = await this.peerInferenceHandler(
+        this.model.id,
+        requestBody,
+        (tok) => {
+          fullContent += tok;
+          callbacks?.onToken?.({
+            fullText: fullContent,
+            msPerToken: 0,
+            tokensPerSecond: 0,
+            timeToFirstToken: 0,
+          });
+        },
+        abortController.signal
+      );
+      if (callbacks?.onFinish) callbacks.onFinish({});
+      return { text: fullContent, isCompleted: ok };
+    }
+
     const isContinuation = !!(existingText && existingText.length > 0);
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
     const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages, imageData } = this.extractFromRequestBody(requestBody);
@@ -857,13 +928,11 @@ export class LanguageModelEngine {
     if (!reader) throw new Error('No response body');
 
     const decoder = new TextDecoder("utf-8");
-    // Streams always accumulate ONLY the new tokens of the current pass to prevent infinite loops
     let fullContent = "";
     let sseBuffer = "";
     let firstTokenTime = 0;
     let newNumberOfTokens = 0;
     let paragraphCount = 0;
-    // If continuing from existing text, do NOT strip leading whitespace
     let hasReceivedNonWhitespace = isContinuation;
     let ttftReported = false;
     let lastMsPerToken = 0;
@@ -902,8 +971,25 @@ export class LanguageModelEngine {
       try {
         const json = JSON.parse(jsonStr) as OpenAIStreamChunk;
 
+        // Anthropic native SSE parsing
+        if (json.type === 'message_start' && json.message?.usage) {
+          const u = json.message.usage;
+          finalUsage.promptTokens = u.input_tokens ?? u.prompt_tokens;
+          finalUsage.cachedTokens = u.cache_read_input_tokens;
+        } else if (json.type === 'message_delta') {
+          if (json.usage?.output_tokens !== undefined || json.usage?.completion_tokens !== undefined) {
+            finalUsage.completionTokens = json.usage.output_tokens ?? json.usage.completion_tokens;
+          }
+          if (json.delta?.stop_reason !== undefined) {
+            lastFinishReason = json.delta.stop_reason;
+          }
+        } else if (json.type === 'message_stop') {
+          return 'done';
+        }
+
         if (json.usage) {
-          finalUsage = this.extractUsage(json);
+          const extracted = this.extractUsage(json);
+          finalUsage = { ...finalUsage, ...extracted };
         }
 
         const finishReason = json.choices?.[0]?.finish_reason;
@@ -914,15 +1000,16 @@ export class LanguageModelEngine {
         let token = "";
         if (json.choices?.[0]?.delta?.content !== undefined) {
           token = json.choices[0].delta.content;
+        } else if (json.delta?.text !== undefined) {
+          token = json.delta.text;
         } else if (json.content !== undefined) {
-          token = json.content;
+          token = typeof json.content === 'string' ? json.content : extractMessageText(json.content);
         } else if (json.text !== undefined) {
           token = json.text;
         }
 
         if (!token) return 'continue';
 
-        // Only strip initial carriage returns/newlines at the start of a completely fresh response
         if (!hasReceivedNonWhitespace && !isContinuation && fullContent.length === 0) {
           const trimmed = token.replace(/^[\r\n\t]+/, '');
           if (trimmed.length === 0) return 'continue';

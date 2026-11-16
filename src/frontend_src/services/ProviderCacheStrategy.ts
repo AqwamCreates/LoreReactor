@@ -14,6 +14,7 @@ export interface CacheContext {
     modelPath?: string;
     sessionId?: string;
     messages: OpenAIMessage[];
+    apiKey?: string;
 }
 
 export interface CacheStrategyResult {
@@ -70,6 +71,54 @@ function mergeContents(prevContent: string | unknown[], nextContent: string | un
     return combined;
 }
 
+function toAnthropicContentBlock(part: unknown): Record<string, unknown> {
+    if (typeof part === 'string') {
+        return { type: 'text', text: part };
+    }
+    if (!part || typeof part !== 'object') {
+        return { type: 'text', text: String(part ?? '') };
+    }
+    const p = part as Record<string, unknown>;
+
+    // Convert OpenAI-style { type: 'image_url', image_url: { url } } to Anthropic source format
+    if (p.type === 'image_url' && p.image_url && typeof p.image_url === 'object') {
+        const imgObj = p.image_url as Record<string, unknown>;
+        const rawUrl = String(imgObj.url || '');
+
+        if (rawUrl.startsWith('data:')) {
+            const semicolonIdx = rawUrl.indexOf(';');
+            const commaIdx = rawUrl.indexOf(',');
+            const mediaType = semicolonIdx !== -1 ? rawUrl.slice(5, semicolonIdx) : 'image/jpeg';
+            const base64Data = commaIdx !== -1 ? rawUrl.slice(commaIdx + 1) : '';
+
+            return {
+                type: 'image',
+                source: {
+                    type: 'base64',
+                    media_type: mediaType,
+                    data: base64Data,
+                },
+            };
+        }
+
+        if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+            return {
+                type: 'image',
+                source: {
+                    type: 'url',
+                    url: rawUrl,
+                },
+            };
+        }
+    }
+
+    if (p.type === 'image' || p.type === 'text') {
+        return { ...p };
+    }
+
+    return { type: 'text', text: JSON.stringify(p) };
+}
+
 // ─── Strategies ─────────────────────────────────────────────────────
 
 class SessionAffinityStrategy implements ProviderCacheStrategy {
@@ -85,21 +134,109 @@ class SessionAffinityStrategy implements ProviderCacheStrategy {
     }
 }
 
+/**
+ * Anthropic Explicit Cache Strategy
+ * 
+ * Anthropic /v1/messages API requirements:
+ * 1. System instructions must be passed via the top-level "system" parameter, not inside "messages" [1].
+ * 2. Messages roles must alternate between "user" and "assistant" [3].
+ * 3. Images use { type: "image", source: { type: "base64", media_type, data } } instead of image_url [2].
+ * 4. Cache breakpoints are placed on content blocks:
+ *      - Last block of the system prompt [4]
+ *      - Last block of the final user message (conversation history boundary) [4]
+ * 5. Requires headers: anthropic-beta, anthropic-version, and direct browser access headers [5].
+ */
 class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
     supports(b: backend): boolean {
         return b === 'Anthropic';
     }
 
     apply(ctx: CacheContext): CacheStrategyResult {
-        const patched = ctx.messages.map((msg, i) => {
-            if (msg.role === 'system' || (msg.role === 'user' && i <= 1)) {
-                return { ...msg, cache_control: { type: 'ephemeral' } };
+        if (ctx.messages.length === 0) return {};
+
+        // 1. Separate system messages from chat turns
+        const systemBlocks: Record<string, unknown>[] = [];
+        const nonSystemMessages: OpenAIMessage[] = [];
+
+        for (const msg of ctx.messages) {
+            if (msg.role === 'system') {
+                const parts = toContentParts(msg.content);
+                for (const part of parts) {
+                    systemBlocks.push(toAnthropicContentBlock(part));
+                }
+            } else {
+                nonSystemMessages.push(msg);
             }
-            return msg;
-        });
+        }
+
+        // Attach cache_control to the final system prompt block
+        if (systemBlocks.length > 0) {
+            systemBlocks[systemBlocks.length - 1] = {
+                ...systemBlocks[systemBlocks.length - 1],
+                cache_control: { type: 'ephemeral' },
+            };
+        }
+
+        // 2. Ensure alternating user/assistant turns and convert content blocks
+        const alternatingMessages: OpenAIMessage[] = [];
+
+        for (const msg of nonSystemMessages) {
+            const role = msg.role === 'assistant' ? 'assistant' : 'user';
+            const rawParts = toContentParts(msg.content);
+            const anthropicParts = rawParts.map(toAnthropicContentBlock);
+
+            if (alternatingMessages.length > 0 && alternatingMessages[alternatingMessages.length - 1].role === role) {
+                const prev = alternatingMessages[alternatingMessages.length - 1];
+                prev.content = [...toContentParts(prev.content), ...anthropicParts];
+            } else {
+                alternatingMessages.push({
+                    role,
+                    content: anthropicParts,
+                });
+            }
+        }
+
+        // Ensure the conversation begins with a user turn
+        if (alternatingMessages.length === 0 || alternatingMessages[0].role !== 'user') {
+            alternatingMessages.unshift({
+                role: 'user',
+                content: [{ type: 'text', text: 'Begin.' }],
+            });
+        }
+
+        // 3. Attach cache_control to the last content block of the final user message
+        for (let i = alternatingMessages.length - 1; i >= 0; i--) {
+            if (alternatingMessages[i].role === 'user') {
+                const parts = [...toContentParts(alternatingMessages[i].content)] as Record<string, unknown>[];
+                if (parts.length > 0) {
+                    parts[parts.length - 1] = {
+                        ...parts[parts.length - 1],
+                        cache_control: { type: 'ephemeral' },
+                    };
+                    alternatingMessages[i].content = parts;
+                }
+                break;
+            }
+        }
+
+        const bodyPatch: Record<string, unknown> = {};
+        if (systemBlocks.length > 0) {
+            bodyPatch.system = systemBlocks;
+        }
+
+        const headers: Record<string, string> = {
+            'anthropic-beta': 'prompt-caching-2024-07-31',
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true',
+        };
+        if (ctx.apiKey) {
+            headers['x-api-key'] = ctx.apiKey;
+        }
+
         return {
-            headers: { 'anthropic-beta': 'prompt-caching-2024-07-31' },
-            messages: patched,
+            headers,
+            bodyPatch,
+            messages: alternatingMessages,
         };
     }
 }
@@ -116,7 +253,7 @@ class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
  * 
  * Markers are placed on:
  *   - First system message (static prompt prefix)
- *   - Last assistant/user message before generation trigger (conversation history boundary)
+ *   - Last message before generation trigger (conversation history boundary)
  */
 class QwenExplicitCacheStrategy implements ProviderCacheStrategy {
     supports(b: backend): boolean {
@@ -126,15 +263,19 @@ class QwenExplicitCacheStrategy implements ProviderCacheStrategy {
     apply(ctx: CacheContext): CacheStrategyResult {
         if (ctx.messages.length === 0) return {};
 
+        const lastMsg = ctx.messages[ctx.messages.length - 1];
+        const targetBoundaryIndex = (lastMsg.role === 'assistant' && ctx.messages.length > 1)
+            ? ctx.messages.length - 2
+            : ctx.messages.length - 1;
+
         const patched = ctx.messages.map((msg, i) => {
             // Marker 1: First system message (static prompt prefix)
             if (msg.role === 'system' && i === 0) {
                 return wrapContentWithCacheControl(msg);
             }
 
-            // Marker 2: Last non-trigger message before the final assistant generation trigger
-            // This caches the conversation history boundary so multi-turn prefixes are reused
-            if (i === ctx.messages.length - 2 && msg.role !== 'assistant') {
+            // Marker 2: Conversation history boundary before assistant reply
+            if (i === targetBoundaryIndex && i > 0) {
                 return wrapContentWithCacheControl(msg);
             }
 
@@ -168,7 +309,6 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
     // Content is already an array (multimodal or previously wrapped)
     if (Array.isArray(msg.content)) {
         const wrapped = [...msg.content];
-        // Attach cache_control to the first text block
         for (let i = 0; i < wrapped.length; i++) {
             const block = wrapped[i] as Record<string, unknown>;
             if (block && block.type === 'text') {
@@ -211,7 +351,6 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
                 const prev = patched[patched.length - 1];
                 prev.content = mergeContents(prev.content, msg.content);
             } else {
-                // Deep copy to prevent mutating the original reference
                 patched.push({
                     ...msg,
                     role,
@@ -224,7 +363,6 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
         if (ctx.backendName === 'Google' && patched.length > 0) {
             const lastMsg = patched[patched.length - 1];
             if (lastMsg.role === 'assistant') {
-                // Append a harmless dummy user message to satisfy the strict "must end with user turn" rule without corrupting the assistant's previous tool execution state.
                 patched.push({ role: 'user', content: 'Resume.' });
             }
         }
