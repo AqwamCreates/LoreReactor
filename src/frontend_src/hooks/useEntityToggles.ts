@@ -20,7 +20,7 @@ interface UseEntityTogglesOptions {
     setSelectedBudgetStrategyId: (id: string | null) => void;
     setSelectedCharacterId: (id: string | null) => void;
     setSelectedLanguageModelId?: (id: string | null) => void;
-    unloadAllRunningModels?: () => Promise<void>; // ✅ Wired to unloadAllRunningModels
+    unloadAllRunningLanguageModels?: () => Promise<void>; // ✅ Wired to unloadAllRunningLanguageModels
     loadFullCharacter: (id: string) => Promise<Character | null>;
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
@@ -34,7 +34,7 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
         selectedBudgetStrategyId,
         setSelectedBudgetStrategyId, setSelectedCharacterId,
         setSelectedLanguageModelId,
-        unloadAllRunningModels,
+        unloadAllRunningLanguageModels,
         loadFullCharacter, addToast,
     } = options;
 
@@ -319,13 +319,13 @@ export function useEntityToggles(options: UseEntityTogglesOptions) {
             saveRawSessionData({ selectedModelId: null });
 
             // ✅ CRITICAL FIX: Unload all currently running local models from VRAM
-            if (unloadAllRunningModels) {
-                await unloadAllRunningModels();
+            if (unloadAllRunningLanguageModels) {
+                await unloadAllRunningLanguageModels();
             }
 
             addToast(`Budget strategy "${strategy?.name || sid}" activated!`, 'success');
         }
-    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, setSelectedLanguageModelId, unloadAllRunningModels, addToast]);
+    }, [selectedBudgetStrategyId, allBudgetStrategies, setSelectedBudgetStrategyId, setActiveBudgetStrategy, setSelectedLanguageModelId, unloadAllRunningLanguageModels, addToast]);
 
     const handleActivateProfile = useCallback((pid: string) => {
         if (!interactionData) return;

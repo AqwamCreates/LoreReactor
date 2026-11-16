@@ -490,7 +490,7 @@ function App() {
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storeSetSelectedCharacterId,
         setSelectedLanguageModelId: languageModels.setSelectedLanguageModelId,
-        unloadAllRunningModels: languageModels.unloadAllRunningModels,
+        unloadAllRunningLanguageModels: languageModels.unloadAllRunningLanguageModels,
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 
