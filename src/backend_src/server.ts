@@ -1157,6 +1157,24 @@ function validateAuxPaths(args: string[]): void {
   }
 }
 
+function terminateChildProcess(proc: ChildProcess): void {
+  if (IS_WINDOWS && proc.pid) {
+    try {
+      execSync(`taskkill /PID ${proc.pid} /T /F`, { stdio: 'pipe' });
+      return;
+    } catch {}
+  }
+  try {
+    proc.kill('SIGTERM');
+    if (!IS_WINDOWS && proc.pid) {
+      const pid = proc.pid;
+      setTimeout(() => {
+        try { process.kill(pid, 'SIGKILL'); } catch {}
+      }, 2000);
+    }
+  } catch {}
+}
+
 // ─── Virtual Controller State (ViGEmBus / XInput) ────────────────────
 let ViGEmClient: any = null;
 let vigemBus: any = null;
@@ -1571,7 +1589,11 @@ function sanitizeHollowMessages(): number {
     try {
       const raw = fs.readFileSync(path.join(messagesDir, file), 'utf-8');
       const msg = JSON.parse(raw);
-      if (msg.messageType === 'chat' && (!msg.textContent || !String(msg.textContent))) {
+      const hasText = Boolean(msg.textContent && String(msg.textContent));
+      const hasFiles = Array.isArray(msg.files) && msg.files.length > 0;
+      const hasFrontCamera = Boolean(msg.frontCameraImage);
+      const hasToolResults = Array.isArray(msg.toolExecutionResults) && msg.toolExecutionResults.length > 0;
+      if (msg.messageType === 'chat' && !hasText && !hasFiles && !hasFrontCamera && !hasToolResults) {
         fs.unlinkSync(path.join(messagesDir, file));
         hollowCount++;
       }
@@ -1733,12 +1755,24 @@ app.get('/search', async (req, response) => {
 
 // --- /user_data routes with Automatic Folder Auto-Scaffolding ---
 app.use('/user_data', (req, response) => {
-  const relativePath = req.url?.startsWith('/') ? req.url?.slice(1) : req.url;
-  if (!relativePath || relativePath.includes('..')) {
+  const rawPath = req.path?.startsWith('/') ? req.path.slice(1) : req.path;
+  let relativePath: string;
+  try {
+    relativePath = rawPath ? decodeURIComponent(rawPath) : '';
+  } catch {
+    return response.status(400).json({ error: 'Malformed path encoding' });
+  }
+
+  const userDataRoot = path.resolve(ROOT_DIR, 'user_data');
+  const filePath = path.resolve(userDataRoot, relativePath);
+  if (
+    !relativePath ||
+    relativePath.includes('..') ||
+    (filePath !== userDataRoot && !filePath.startsWith(userDataRoot + path.sep))
+  ) {
     return response.status(403).json({ error: 'Invalid path structure' });
   }
 
-  const filePath  = path.join(ROOT_DIR, 'user_data', relativePath);
   const directory = path.dirname(filePath);
 
   if (req.method === 'HEAD') {
@@ -2094,7 +2128,7 @@ const handleLoad = async (req: express.Request, response: express.Response) => {
   } else {
     instance.status = 'error';
     log.error(`${backendName} model "${id}" failed to start within timeout. Killing process.`);
-    proc.kill();
+    terminateChildProcess(proc);
     activeModels.delete(id);
     response.status(504).json({ error: 'Model failed to initialize within timeout' });
   }
@@ -2107,14 +2141,7 @@ const handleUnload = (req: express.Request, response: express.Response) => {
   if (!instance) return response.status(404).json({ error: `Model ${id} not found` });
 
   log.info(`Unloading ${instance.backend} model "${id}" ...`);
-  if (IS_WINDOWS) {
-    try { execSync(`taskkill /PID ${instance.process.pid} /T /F`, { stdio: 'pipe' }); } catch {}
-  } else {
-    instance.process.kill('SIGTERM');
-    setTimeout(() => {
-      if (instance.process.pid) { try { process.kill(instance.process.pid, 'SIGKILL'); } catch {} }
-    }, 2000);
-  }
+  terminateChildProcess(instance.process);
   activeModels.delete(id);
   log.success(`${instance.backend} model "${id}" unloaded`);
   response.json({ success: true, message: 'Model unloaded' });
@@ -2133,20 +2160,27 @@ app.post(SPATIOTEMPORAL_MODEL_UNLOAD_ROUTE, handleUnload);
 
 app.all('/proxy/:modelId/{*path}', async (req, response) => {
   const modelId       = req.params.modelId;
-  const remainingPath = (req.params as { path?: string }).path || '';
+  const rawPath       = (req.params as { path?: string | string[] }).path;
+  const remainingPath = Array.isArray(rawPath) ? rawPath.join('/') : (rawPath || '');
   const instance      = activeModels.get(modelId);
 
   if (!instance || instance.status !== 'ready') {
     return response.status(503).json({ error: `Model ${modelId} is not loaded or ready` });
   }
 
-  const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath}`;
+  const queryIdx = req.originalUrl.indexOf('?');
+  const queryStr = queryIdx !== -1 ? req.originalUrl.slice(queryIdx) : '';
+  const targetUrl = `http://127.0.0.1:${instance.port}/${remainingPath}${queryStr}`;
+  const skippedRequestHeaders = new Set(['host', 'content-length', 'connection']);
+
   try {
     const proxyRes = await fetch(targetUrl, {
       method: req.method,
       headers: Object.fromEntries(
         Object.entries(req.headers).flatMap(([key, value]) =>
-          value === undefined ? [] : [[key, Array.isArray(value) ? value.join(', ') : value]],
+          value === undefined || skippedRequestHeaders.has(key.toLowerCase())
+            ? []
+            : [[key, Array.isArray(value) ? value.join(', ') : value]],
         ),
       ),
       body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
@@ -2833,7 +2867,7 @@ app.post('/tool/virtual-controller', (req, res) => {
       const targetTrigger = isLeft ? controller.axis.leftTrigger : controller.axis.rightTrigger;
       targetTrigger.setValue(clampedVal);
       if (durationMs > 0) {
-        setTimeout(() => { try { targetTrigger.setValue(0.0); targetTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(10000, durationMs)));
+        setTimeout(() => { try { targetTrigger.setValue(0.0); } catch {} }, Math.max(30, Math.min(10000, durationMs)));
       }
       return res.json({ success: true, message: `${isLeft ? 'Left' : 'Right'} trigger set to ${clampedVal}` });
     }
