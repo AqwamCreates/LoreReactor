@@ -307,9 +307,17 @@ function App() {
     useEntitySync({
         activeChatRestored,
         allCharacters: characters.characters,
+        loadFullCharacter: characters.loadFullCharacter,
         allContexts: contexts.contexts,
+        allLocations: locations.locations,
+        allAudioTracks: audioTracks.audioTracks,
+        allTokenSamplers: tokenSamplers.tokenSamplers,
+        allStopPatterns: stopPatterns.stopPatterns,
+        allRetrievalConfigurations: retrievalConfigurations.retrievalConfigurations,
         allProfiles: profiles.profiles,
-        currentCharacter, setInteractionData, setSelectedCharacter,
+        currentCharacter,
+        setInteractionData,
+        setSelectedCharacter,
     });
 
     // ─── Session Persistence Effects ─────────────────────────────────
@@ -906,7 +914,7 @@ function App() {
         await interactionDataOperations.handleSwitchInteractionData(parentInteractionDataId);
     }, [parentInteractionDataId, interactionDataOperations]);
 
-    const handleLoadWorlds = useCallback((activeWorlds: World[]) => {
+    const handleLoadWorlds = useCallback(async (activeWorlds: World[]) => {
         if (!interactionData) return;
         const prevWorldIds: string[] = interactionData?.worldIds || [];
         const prevWorlds = worlds.worlds.filter((w: World) => prevWorldIds.includes(w.id));
@@ -926,10 +934,15 @@ function App() {
             return true;
         });
         const existingParticipantIds = new Set(retainedParticipants.map(p => p.id));
-        const newCharsToAdd = Array.from(nextWorldCharIds)
-            .filter(id => !existingParticipantIds.has(id))
-            .map(id => characters.characters.find(c => c.id === id))
-            .filter((c): c is Character => !!c);
+        const missingWorldCharIds = Array.from(nextWorldCharIds)
+            .filter(id => !existingParticipantIds.has(id));
+        const newCharsToAdd = (await Promise.all(
+            missingWorldCharIds.map(async id => {
+                const shell = characters.characters.find(c => c.id === id);
+                if (!shell) return null;
+                return (await characters.loadFullCharacter(id)) || shell;
+            })
+        )).filter((c): c is Character => !!c);
         const mergedParticipants = [...retainedParticipants, ...newCharsToAdd];
 
         const retainedContexts = (interactionData.contexts || []).filter(c => {
@@ -1006,7 +1019,7 @@ function App() {
             });
         }
     }, [
-        interactionData, worlds.worlds, characters.characters, contexts.contexts,
+        interactionData, worlds.worlds, characters.characters, characters.loadFullCharacter, contexts.contexts,
         locations.locations, audioTracks.audioTracks, profiles.profiles,
         setInteractionData, canBroadcastState, mp.multiplayerSync
     ]);

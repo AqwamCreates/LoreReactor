@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useInteractionDataOperations.ts
 import { useState, useCallback, useRef } from 'react';
-import type { Character, InteractionData, RawInteractionData, TextMessage } from '../types';
+import type { Character, InteractionData, RawInteractionData, HistoryMessage, TextMessage } from '../types';
 import { saveRawInteractionData, loadRawInteractionData, saveRawSessionData } from '../storages/serverStorage';
 import { clearFetchCache } from '../utilities/linkFetcher';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -48,6 +48,18 @@ export function useInteractionDataOperations(options: UseChatOperationsOptions) 
         }
     }, []);
 
+    const hydrateCharacter = useCallback(async (char: Character | null): Promise<Character | null> => {
+        if (!char) return null;
+        if (!loadFullCharacter) return char;
+        try {
+            const full = await loadFullCharacter(char.id);
+            return full || char;
+        } catch (e) {
+            console.warn(`[useInteractionDataOperations] Failed to hydrate character ${char.id}:`, e);
+            return char;
+        }
+    }, [loadFullCharacter]);
+
     const handleSwitchInteractionData = useCallback(async (id: string) => {
         if (interactionData?.id === id) return;
 
@@ -70,20 +82,33 @@ export function useInteractionDataOperations(options: UseChatOperationsOptions) 
         if (chat) {
             let fullChat = chat;
 
-            // Hydrate protagonists with full data (system prompts, tokenSamplers) if available.
-            // Since protagonists are now just IDs, we hydrate the matching participants.
-            if (loadFullCharacter && fullChat.protagonistIds?.length) {
-                const protagIdSet = new Set(fullChat.protagonistIds);
+            // Hydrate all participants with full data (samplers, stopPatterns, retrieval configs)
+            if (loadFullCharacter && fullChat.participants.length > 0) {
                 const hydratedParticipants = await Promise.all(
                     fullChat.participants.map(async (p) => {
-                        if (protagIdSet.has(p.id)) {
-                            const full = await loadFullCharacter(p.id);
-                            return full || p;
-                        }
-                        return p;
+                        const full = await loadFullCharacter(p.id);
+                        return full || p;
                     })
                 );
-                fullChat = { ...fullChat, participants: hydratedParticipants };
+
+                if (currentSeq !== switchSeqRef.current) return;
+
+                const participantMap = new Map<string, Character>();
+                for (const p of hydratedParticipants) participantMap.set(p.id, p);
+
+                const remappedHistories: Record<string, HistoryMessage[]> = {};
+                for (const [locId, msgs] of Object.entries(fullChat.interactionHistories || {})) {
+                    remappedHistories[locId] = msgs.map(m => {
+                        const hydratedChar = m.character?.id ? participantMap.get(m.character.id) : undefined;
+                        return hydratedChar ? { ...m, character: hydratedChar } : m;
+                    });
+                }
+
+                fullChat = {
+                    ...fullChat,
+                    participants: hydratedParticipants,
+                    interactionHistories: remappedHistories,
+                };
             }
 
             if (currentSeq !== switchSeqRef.current) return;
@@ -125,23 +150,29 @@ export function useInteractionDataOperations(options: UseChatOperationsOptions) 
     }, [allCharacters, interactionData, loadFullCharacter, setInteractionData, setSelectedCharacter, addToast, safeAutoSave]);
 
     const handleNewInteractionData = useCallback(async () => {
+        const currentSeq = ++switchSeqRef.current;
+
+        tokenEngine.clearTokenCache();
         await safeAutoSave(interactionData);
         clearFetchCache();
         
         // Clear active chat in server session so restoration starts fresh
         await saveRawSessionData({ activeChatId: null });
 
-        const targetChar = currentCharacter
+        const fallbackChar = currentCharacter
             || (selectedCharacterId ? allCharacters.find(x => x.id === selectedCharacterId) : null)
             || allCharacters[0]
             || null;
+
+        const targetChar = await hydrateCharacter(fallbackChar);
+        if (currentSeq !== switchSeqRef.current) return;
 
         if (targetChar) {
             startNewChat(targetChar);
         } else {
             addToast('No characters available to start a chat.', 'error');
         }
-    }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, startNewChat, safeAutoSave, addToast]);
+    }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, hydrateCharacter, startNewChat, safeAutoSave, addToast]);
 
     const handleDeleteInteractionData = useCallback(async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -152,17 +183,20 @@ export function useInteractionDataOperations(options: UseChatOperationsOptions) 
             addToast('Chat session deleted.', 'info');
 
             if (interactionData?.id === id) {
+                const currentSeq = ++switchSeqRef.current;
                 await saveRawSessionData({ activeChatId: null });
-                const nextChar = currentCharacter
+                const fallbackChar = currentCharacter
                     || (selectedCharacterId ? allCharacters.find(x => x.id === selectedCharacterId) : null)
                     || allCharacters[0]
                     || null;
+                const nextChar = await hydrateCharacter(fallbackChar);
+                if (currentSeq !== switchSeqRef.current) return;
                 if (nextChar) startNewChat(nextChar);
             }
         } else {
             addToast('Failed to delete chat.', 'error');
         }
-    }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, deleteChatFromList, startNewChat, addToast, safeAutoSave]);
+    }, [interactionData, currentCharacter, selectedCharacterId, allCharacters, hydrateCharacter, deleteChatFromList, startNewChat, addToast, safeAutoSave]);
 
     const handleStartEditTitle = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();

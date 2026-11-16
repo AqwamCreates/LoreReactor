@@ -142,9 +142,11 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
     const portraitUrlCache = useMemo(() => {
         const cache = new Map<string, string | null>();
+        const participantMap = new Map<string, Character>();
 
         if (interactionData) {
             for (const participant of interactionData.participants) {
+                participantMap.set(participant.id, participant);
                 const url = resolvePortrait(participant.id, participant.images, 'neutral', isMultiplayerChat);
                 cache.set(`${participant.id}`, url);
             }
@@ -152,19 +154,24 @@ export function useViewAssets(options: UseViewAssetsOptions) {
 
         for (const msg of chatMessages) {
             if (!msg.character) continue;
-            const url = resolvePortrait(msg.character.id, msg.character.images, msg.characterExpression, isMultiplayerChat);
-            cache.set(`${msg.character.id}`, url);
+            const liveChar = participantMap.get(msg.character.id) || msg.character;
+            const url = resolvePortrait(liveChar.id, liveChar.images, msg.characterExpression, isMultiplayerChat);
+            if (!cache.has(`${liveChar.id}`)) {
+                cache.set(`${liveChar.id}`, url);
+            }
             cache.set(msg.id, url);
         }
 
         if (centerAvatar) {
-            const url = resolvePortrait(centerAvatar.id, centerAvatar.images, 'neutral', isMultiplayerChat);
-            cache.set(`${centerAvatar.id}`, url);
+            const liveCenter = participantMap.get(centerAvatar.id) || centerAvatar;
+            const url = resolvePortrait(liveCenter.id, liveCenter.images, 'neutral', isMultiplayerChat);
+            cache.set(`${liveCenter.id}`, url);
         }
 
         if (streamingCharacter) {
-            const url = resolvePortrait(streamingCharacter.id, streamingCharacter.images, currentCharacterExpression, isMultiplayerChat);
-            cache.set(`${streamingCharacter.id}`, url);
+            const liveStreaming = participantMap.get(streamingCharacter.id) || streamingCharacter;
+            const url = resolvePortrait(liveStreaming.id, liveStreaming.images, currentCharacterExpression, isMultiplayerChat);
+            cache.set(`${liveStreaming.id}`, url);
         }
 
         return cache;
@@ -185,6 +192,9 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             setCenterAvatar(null);
             return;
         }
+
+        const resolveParticipant = (char: Character) =>
+            interactionData.participants.find(p => p.id === char.id) || char;
 
         const updateAvatarFromScroll = () => {
             const containerRect = chatHistoryElement.getBoundingClientRect();
@@ -219,7 +229,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
             if (msg.character.id === currentCharacter?.id || msg.messageType === 'narration') {
                 setCenterAvatar(null);
             } else {
-                setCenterAvatar(msg.character);
+                setCenterAvatar(resolveParticipant(msg.character));
             }
         };
 
@@ -230,7 +240,7 @@ export function useViewAssets(options: UseViewAssetsOptions) {
                 for (let i = chatMessages.length - 1; i >= 0; i--) {
                     const m = chatMessages[i] as HistoryMessage;
                     if (m.character && m.character.id !== currentCharacter?.id && m.messageType !== 'narration') {
-                        setCenterAvatar(m.character);
+                        setCenterAvatar(resolveParticipant(m.character));
                         break;
                     }
                 }

@@ -1,8 +1,9 @@
 // src/frontend_src/hooks/useSessionEffects.ts
 import { useEffect, useRef } from 'react';
 import type { BudgetData, BudgetStrategy, Character, LanguageModel } from '../types';
-import { saveRawSessionData } from '../storages/serverStorage';
+import { loadRawCharacter, saveRawSessionData } from '../storages/serverStorage';
 import { getBudgetStrategyEngine, initializeBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
+import { useChatStore } from './useChatStore';
 
 interface UseSessionEffectsOptions {
     interactionDataId: string | null | undefined;
@@ -97,15 +98,43 @@ export function useSessionEffects(options: UseSessionEffectsOptions) {
         }
     }, [selectedModelId, allLanguageModels, runningLanguageModels, setSelectedLanguageModelId]);
 
-    // Apply default character
+    // Apply default character (without overwriting an already-hydrated character with a shell)
     useEffect(() => {
         if (isMultiplayerClient) return;
-        if (selectedCharacterId && allCharacters.length > 0) {
-            const defaultChar = allCharacters.find(c => c.id === selectedCharacterId);
-            if (defaultChar) {
-                setSelectedCharacter(defaultChar);
+        if (!selectedCharacterId || allCharacters.length === 0) return;
+
+        const defaultChar = allCharacters.find(c => c.id === selectedCharacterId);
+        if (!defaultChar) return;
+
+        const store = useChatStore.getState();
+        const existingProtagonist = store.localProtagonist;
+        const activeParticipant = store.interactionData?.participants.find(p => p.id === selectedCharacterId);
+
+        // If the active chat already owns this participant, useEntitySync / restoration handles hydrating & syncing it
+        if (activeParticipant) {
+            if (existingProtagonist?.id !== selectedCharacterId) {
+                setSelectedCharacter(activeParticipant);
             }
+            return;
         }
+
+        // If localProtagonist is already hydrated at the same timestamp, do not overwrite with a shell
+        if (
+            existingProtagonist?.id === selectedCharacterId &&
+            existingProtagonist.lastUpdatedTimestamp === defaultChar.lastUpdatedTimestamp
+        ) {
+            return;
+        }
+
+        let cancelled = false;
+        (async () => {
+            const fullChar = await loadRawCharacter(selectedCharacterId);
+            if (!cancelled) {
+                setSelectedCharacter(fullChar || defaultChar);
+            }
+        })();
+
+        return () => { cancelled = true; };
     }, [selectedCharacterId, allCharacters, setSelectedCharacter, isMultiplayerClient]);
 
     // Sync selected model to global model

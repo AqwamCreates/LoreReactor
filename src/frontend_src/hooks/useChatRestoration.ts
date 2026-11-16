@@ -1,6 +1,6 @@
 // src/frontend_src/hooks/useChatRestoration.ts
 import { useState, useRef, useEffect } from 'react';
-import type { Character, InteractionData, RawInteractionData, TextMessage } from '../types';
+import type { Character, InteractionData, RawInteractionData, HistoryMessage, TextMessage } from '../types';
 import { loadRawInteractionData, loadRawSessionData, saveRawSessionData } from '../storages/serverStorage';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { v4 as uuidv4 } from 'uuid';
@@ -67,15 +67,26 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                         console.warn(`Participant ${p.id} not found in character list after load. Keeping shell.`);
                         return p;
                     }
-                    if (p.systemPrompt) return p;
                     const fullChar = await loadFullCharacter(p.id);
                     return fullChar || p;
                 })
             );
 
+            const participantMap = new Map<string, Character>();
+            for (const p of hydratedParticipants) participantMap.set(p.id, p);
+
+            const remappedHistories: Record<string, HistoryMessage[]> = {};
+            for (const [locId, msgs] of Object.entries(chat.interactionHistories || {})) {
+                remappedHistories[locId] = msgs.map(m => {
+                    const hydratedChar = m.character?.id ? participantMap.get(m.character.id) : undefined;
+                    return hydratedChar ? { ...m, character: hydratedChar } : m;
+                });
+            }
+
             const hydratedChat: InteractionData = {
                 ...chat,
                 participants: hydratedParticipants,
+                interactionHistories: remappedHistories,
             };
 
             setInteractionData(hydratedChat);
@@ -127,7 +138,8 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 }
             }
             if (allCharacters.length > 0) {
-                startNewChat(allCharacters[0]);
+                const fullFirstChar = (await loadFullCharacter(allCharacters[0].id)) || allCharacters[0];
+                startNewChat(fullFirstChar);
             } else {
                 setSelectedCharacter(null);
                 setInteractionData(createEmptyChat());
@@ -155,7 +167,8 @@ export function useChatRestoration(options: UseChatRestorationOptions) {
                 // If user explicitly initiated a new chat (activeChatId === null), start fresh
                 if (session.activeChatId === null) {
                     if (allCharacters.length > 0) {
-                        startNewChat(allCharacters[0]);
+                        const fullFirstChar = (await loadFullCharacter(allCharacters[0].id)) || allCharacters[0];
+                        startNewChat(fullFirstChar);
                     } else {
                         setSelectedCharacter(null);
                         setInteractionData(createEmptyChat());
