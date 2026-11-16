@@ -1242,7 +1242,7 @@ function App() {
                 setIsOverlayOpen(true);
             } else if (e.data?.type === 'SEND_MESSAGE' && e.data?.text !== undefined) {
                 const convertedFiles = Array.isArray(e.data.files)
-                    ? e.data.files.map(dataUrlPayloadToFile).filter((f): f is File => f !== null)
+                    ? e.data.files.map(dataUrlPayloadToFile).filter((f: File | null): f is File => f !== null)
                     : [];
                 let frontCam: string | undefined;
                 if (currentCharacter && getEffectiveUseFrontCameraImage(currentCharacter, interactionData?.profile)) {
