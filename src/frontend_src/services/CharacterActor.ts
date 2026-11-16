@@ -12,7 +12,7 @@ import type {
 import { saveRawBudgetData } from '../storages/serverStorage';
 import { buildRequestBody, addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { detectName } from '../utilities/nameDetection';
-import { getFilteredTextMessages } from '../utilities/promptLogic';
+import { getFilteredTextMessages, detectUnsummarizedLocationDepartures } from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { getEffectiveTools, initializeClothingWearingStatuses } from '../utilities/characterLogic';
@@ -93,6 +93,42 @@ export interface DisplayContext {
     placementMode: toolUsageDisplayPlacementMode;
     participants: Character[];
     character: Character;
+}
+
+// ─── Helpers ────────────────────────────────────────────────────────
+
+function hasModelSpecificSummaries(data: InteractionData, modelId: string): boolean {
+    if (!modelId) return false;
+    for (const msgs of Object.values(data.interactionHistories || {})) {
+        for (const msg of msgs) {
+            if (msg.messageType === 'chat' || msg.messageType === 'whisper') {
+                if (msg.modelTextContentSummaries?.[modelId] || msg.modelInteractionTextContentSummaries?.[modelId]) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+function extractPromptTextFromBody(body: Record<string, unknown>): string {
+    if (typeof body.prompt === 'string') return body.prompt;
+    if (Array.isArray(body.messages)) {
+        return body.messages
+            .map((m: any) => {
+                if (typeof m?.content === 'string') return m.content;
+                if (Array.isArray(m?.content)) {
+                    return m.content
+                        .map((part: any) => (part && typeof part === 'object' && part.type === 'text' ? String(part.text || '') : ''))
+                        .filter(Boolean)
+                        .join('\n');
+                }
+                return '';
+            })
+            .filter(Boolean)
+            .join('\n');
+    }
+    return '';
 }
 
 // ─── Dual-Text Tool Processing ──────────────────────────────────────
@@ -365,21 +401,8 @@ export class CharacterActor {
         let accumulatedLockedLocations: Record<string, boolean> = latestMsg?.characterLockedLocations ? { ...latestMsg.characterLockedLocations } : {};
         let accumulatedInventory: Inventory = latestMsg?.inventory ? { ...latestMsg.inventory } : {};
 
-        // Probe clothing wearing statuses on fresh generation passes
         const isFreshTurn = !existingCharacterText || existingCharacterText.length === 0;
-        if (isFreshTurn) {
-            const probeModelId = borrowedModel
-                ? borrowedModel.id
-                : strat
-                    ? ((await getBudgetStrategyEngine().selectModelForRequest({ prompt: '' }, metadata))?.modelId || '')
-                    : (selectedLanguageModel?.id || '');
-            if (probeModelId) {
-                try {
-                    const probeResult = await buildRequestBody(dataForPrompt, character, knownCharacterNames, '', allPromptBlocks, probeModelId, isToolMessage, toolContext.allRawInteractionDataShells);
-                    resolvedClothingStatuses = probeResult.characterClothingWearingStatuses;
-                } catch { /* non-critical */ }
-            }
-        }
+        let hasResolvedClothing = false;
 
         try {
             let currentExistingText = seedText;
@@ -534,9 +557,15 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    const reqResult = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    if (!hasResolvedClothing) {
+                        if (isFreshTurn) resolvedClothingStatuses = reqResult.characterClothingWearingStatuses;
+                        hasResolvedClothing = true;
+                    }
+                    const { body } = reqResult;
                     body.session_id = data.id;
                     await runSingleStreamPass(body, false);
+                    if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
@@ -592,28 +621,41 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body: probeBody } = await buildRequestBody(
-                        dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, '', isToolMessage, toolContext.allRawInteractionDataShells
+
+                    const initialSelection = await bse.selectModelForRequest({ prompt: '' }, metadata);
+                    const initialModelId = initialSelection?.modelId || '';
+
+                    const initialResult = await buildRequestBody(
+                        dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, initialModelId, isToolMessage, toolContext.allRawInteractionDataShells
                     );
-                    let promptText = '';
-                    if (typeof probeBody.prompt === 'string') {
-                        promptText = probeBody.prompt;
-                    } else if (Array.isArray(probeBody.messages)) {
-                        promptText = probeBody.messages
-                            .map((m: any) => (typeof m.content === 'string' ? m.content : ''))
-                            .join('\n');
+                    if (!hasResolvedClothing) {
+                        if (isFreshTurn) resolvedClothingStatuses = initialResult.characterClothingWearingStatuses;
+                        hasResolvedClothing = true;
                     }
+
+                    const promptText = extractPromptTextFromBody(initialResult.body);
                     lastPromptText = promptText;
 
                     const selection = await bse.selectModelForRequest({ prompt: promptText }, metadata);
                     const activeModelId = selection?.modelId || '';
 
-                    const { body } = await buildRequestBody(
-                        dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage, toolContext.allRawInteractionDataShells
-                    );
+                    const needsRebuild =
+                        activeModelId !== initialModelId &&
+                        (
+                            hasModelSpecificSummaries(dataForPrompt, activeModelId) ||
+                            detectUnsummarizedLocationDepartures(dataForPrompt, character, activeModelId).length > 0
+                        );
+
+                    const { body } = needsRebuild
+                        ? await buildRequestBody(
+                              dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage, toolContext.allRawInteractionDataShells
+                          )
+                        : initialResult;
+
                     body.session_id = data.id;
 
                     await runSingleStreamPass(body, true);
+                    if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     finalBudgetData = bse.getBudgetData();
                     if (!finalBudgetData) {
@@ -679,9 +721,15 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const { body } = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    const reqResult = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
+                    if (!hasResolvedClothing) {
+                        if (isFreshTurn) resolvedClothingStatuses = reqResult.characterClothingWearingStatuses;
+                        hasResolvedClothing = true;
+                    }
+                    const { body } = reqResult;
                     body.session_id = data.id;
                     await runSingleStreamPass(body, false);
+                    if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
@@ -719,6 +767,10 @@ export class CharacterActor {
                     accState.clearPending();
                     currentExistingText = accState.getRaw();
                 }
+            }
+
+            if (signal.aborted) {
+                return { error: { message: 'Aborted', type: 'aborted' } };
             }
 
             const rawText = accState.getRaw();
