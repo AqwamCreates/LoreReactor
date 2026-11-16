@@ -27,6 +27,7 @@ import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumption
 import { generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, getEffectiveUseFrontCameraImage } from '../utilities/characterLogic';
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { learnFromUserMessage } from './ActionFormatEngine';
+import { defaultInputStrategy } from '../dictionaries/defaults';
 import { toolCallStartString, toolCallEndString, toolResultStartString, toolResultEndString } from '../dictionaries/stringList';
 import { findActiveThinkEndToken } from '../dictionaries/modelTemplates';
 
@@ -150,10 +151,8 @@ class ChatSessionCoordinator {
     }
 
     private getActivePromptBlocks(data: InteractionData): PromptBlock[] {
-        const profile = data.profile;
-        return profile?.inputStrategy 
-            ? this.deps.allPromptBlocks.filter(pb => profile.inputStrategy.includes(pb.id))
-            : this.deps.allPromptBlocks;
+        const strategy = data.profile?.inputStrategy ?? defaultInputStrategy;
+        return this.deps.allPromptBlocks.filter(pb => strategy.includes(pb.id));
     }
 
     public startAutonomousMode(): void {
@@ -753,7 +752,7 @@ class ChatSessionCoordinator {
         this.activeMessageId = messageId;
         
         try {
-            const char = this.deps.allCharacters.find(c => c.id === msg.character.id) || msg.character;
+            const char = currentData.participants.find(p => p.id === msg.character.id) || msg.character || this.deps.allCharacters.find(c => c.id === msg.character.id);
             await this.runSingleTurn(currentData, char, messageId, msg.textContent);
         } catch (e) {
             console.error('Resume failed:', e);
@@ -799,7 +798,7 @@ class ChatSessionCoordinator {
             if (isProtagonist) {
                 await this.runSequence(updatedData);
             } else {
-                const char = this.deps.allCharacters.find(c => c.id === targetMsg.character.id) || targetMsg.character;
+                const char = currentData.participants.find(p => p.id === targetMsg.character.id) || targetMsg.character || this.deps.allCharacters.find(c => c.id === targetMsg.character.id);
 
                 let lastProtagonistIdx = -1;
                 for (let i = targetIdx - 1; i >= 0; i--) {
