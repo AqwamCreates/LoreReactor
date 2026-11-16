@@ -104,6 +104,25 @@ function deriveCurrentProtagonistId(
     return interactionData.protagonistIds[0] ?? null;
 }
 
+function dataUrlPayloadToFile(item: File | { name?: string; base64?: string }): File | null {
+    if (item instanceof File) return item;
+    if (!item || typeof item.base64 !== 'string') return null;
+    try {
+        const parts = item.base64.split(',');
+        if (parts.length < 2) return null;
+        const mimeMatch = parts[0].match(/:(.*?);/);
+        const mimeType = mimeMatch?.[1] || 'application/octet-stream';
+        const byteString = atob(parts[1]);
+        const bytes = new Uint8Array(byteString.length);
+        for (let i = 0; i < byteString.length; i++) {
+            bytes[i] = byteString.charCodeAt(i);
+        }
+        return new File([bytes], item.name || 'attachment', { type: mimeType });
+    } catch {
+        return null;
+    }
+}
+
 // ─── App Component ───────────────────────────────────────────────────
 function App() {
     const { addToast } = useToast();
@@ -471,7 +490,7 @@ function App() {
         setSelectedBudgetStrategyId: storeSetSelectedBudgetStrategyId,
         setSelectedCharacterId: storeSetSelectedCharacterId,
         setSelectedLanguageModelId: languageModels.setSelectedLanguageModelId,
-        unloadAllRunningModels: languageModels.unloadAllRunningLanguageModels,
+        unloadAllRunningModels: languageModels.unloadAllRunningModels,
         loadFullCharacter: characters.loadFullCharacter, addToast,
     });
 
@@ -688,7 +707,7 @@ function App() {
         setFocusedMessageId(null);
 
         let frontCam: string | undefined;
-        if (getEffectiveUseFrontCameraImage(currentCharacter, interactionData?.profile)) {
+        if (currentCharacter && getEffectiveUseFrontCameraImage(currentCharacter, interactionData?.profile)) {
             const img = await captureFrontCameraImage();
             if (img) frontCam = img;
         }
@@ -1053,10 +1072,17 @@ function App() {
             return;
         }
 
-        // 3. Close the modal and execute the move tool
+        // 3. Close the modal, capture front camera if enabled, and execute the move tool
         modals.locationList.close();
-        await sendMessage(`/move location_id="${location.id}"`);
-    }, [interactionData, localProtagonist, addToast, modals.locationList, sendMessage]);
+
+        let frontCam: string | undefined;
+        if (getEffectiveUseFrontCameraImage(localProtagonist, interactionData?.profile)) {
+            const img = await captureFrontCameraImage();
+            if (img) frontCam = img;
+        }
+
+        await sendMessage(`/move location_id="${location.id}"`, undefined, frontCam);
+    }, [interactionData, localProtagonist, addToast, modals.locationList, captureFrontCameraImage, sendMessage]);
 
     const baseViewProps: ViewModeProps = {
         displayMessages: committedMessages as TextMessage[],
@@ -1204,7 +1230,7 @@ function App() {
         const channel = new BroadcastChannel('lorereactor-companion-sync');
         companionChannelRef.current = channel;
 
-        const handleChannelMessage = (e: MessageEvent) => {
+        const handleChannelMessage = async (e: MessageEvent) => {
             if (e.data?.type === 'REQUEST_STATE') {
                 channel.postMessage({
                     type: 'STATE_UPDATE',
@@ -1215,7 +1241,15 @@ function App() {
             } else if (e.data?.type === 'OVERLAY_OPENED') {
                 setIsOverlayOpen(true);
             } else if (e.data?.type === 'SEND_MESSAGE' && e.data?.text !== undefined) {
-                sendMessage(e.data.text, e.data.files || [], undefined);
+                const convertedFiles = Array.isArray(e.data.files)
+                    ? e.data.files.map(dataUrlPayloadToFile).filter((f): f is File => f !== null)
+                    : [];
+                let frontCam: string | undefined;
+                if (currentCharacter && getEffectiveUseFrontCameraImage(currentCharacter, interactionData?.profile)) {
+                    const img = await captureFrontCameraImage();
+                    if (img) frontCam = img;
+                }
+                sendMessage(e.data.text, convertedFiles, frontCam);
             } else if (e.data?.type === 'INTERJECT_ACTION' && e.data?.label) {
                 const protagonistId = localProtagonist?.id ?? interactionData?.protagonistIds?.[0];
                 const companionChar = interactionData?.participants?.find((p: Character) => p.id !== protagonistId) 
@@ -1278,7 +1312,7 @@ function App() {
             companionChannelRef.current = null;
         };
     }, [
-        sendMessage, actionMenu, actions, localProtagonist, 
+        sendMessage, captureFrontCameraImage, actionMenu, actions, localProtagonist, 
         interactionData, currentCharacter, setGlobalModelId, toggleLanguageModelLoad, 
         handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, 
         profiles.profiles, resumeGeneration, regenerateFromMessage, stopGeneration, 
@@ -1488,7 +1522,7 @@ function App() {
                 onMoveProtagonist={handleMoveProtagonist}
                 onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} 
                 onToggleAudioTrack={mpBroadcast.handleToggleAudioTrackAndBroadcast} 
-                onSaveAudioTrack={audioTracks.audioTrack}
+                onSaveAudioTrack={audioTracks.saveAudioTrack}
                 onSaveWorld={worlds.saveWorld} 
                 onToggleWorlds={handleLoadWorlds} 
                 onDeleteWorld={entityModals.getModalProperties('world').delete}
