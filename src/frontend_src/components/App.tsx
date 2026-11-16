@@ -12,7 +12,7 @@ import {
     isCharacterLockedFromLocation 
 } from '../utilities/locationLogic';
 import { useDisplayNameCache } from '../utilities/immersionLogic';
-import { getCharacterStarterMessage } from '../utilities/characterLogic';
+import { getCharacterStarterMessage, getEffectiveUseFrontCameraImage } from '../utilities/characterLogic';
 import { sentimentEngine } from '../services/SentimentAnalysisEngine';
 import { embeddingEngine } from '../services/EmbeddingEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
@@ -688,9 +688,10 @@ function App() {
         setFocusedMessageId(null);
 
         let frontCam: string | undefined;
-        const profileCam = interactionData?.profile?.useFrontCameraImage;
-        if (profileCam === 1) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
-        else if (profileCam === 0 && currentCharacter?.useFrontCameraImage) { const img = await captureFrontCameraImage(); if (img) frontCam = img; }
+        if (getEffectiveUseFrontCameraImage(currentCharacter, interactionData?.profile)) {
+            const img = await captureFrontCameraImage();
+            if (img) frontCam = img;
+        }
 
         sendMessage(textToSend, pendingFiles, frontCam);
         setInputText(''); setPendingFiles([]);
@@ -1487,7 +1488,7 @@ function App() {
                 onMoveProtagonist={handleMoveProtagonist}
                 onDeleteAudioTrack={entityModals.getModalProperties('audioTrack').delete} 
                 onToggleAudioTrack={mpBroadcast.handleToggleAudioTrackAndBroadcast} 
-                onSaveAudioTrack={audioTracks.saveAudioTrack}
+                onSaveAudioTrack={audioTracks.audioTrack}
                 onSaveWorld={worlds.saveWorld} 
                 onToggleWorlds={handleLoadWorlds} 
                 onDeleteWorld={entityModals.getModalProperties('world').delete}
