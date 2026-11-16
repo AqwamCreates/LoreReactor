@@ -2318,7 +2318,6 @@ function buildStructuredMessages(
 interface BuilderContext {
   ctx: PromptBuildContext;
   activeContextIDs: Set<string>;
-  allTextSearchSpace: string;
   characterClothingWearingStatuses: Record<string, boolean>;
   contextLines: string[];
   hasBeenSummarized: boolean;
@@ -2401,30 +2400,11 @@ async function buildPromptBlocks(
     } else {
       const block = builderCtx.promptBlockById.get(blockType);
       if (block) {
-        if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
-        if (block.contextBindings?.length && !block.contextBindings.some(ctxId => builderCtx.activeContextIDs.has(ctxId))) continue;
-        if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
-        if (!isEntityActiveWithCache(
-          block.regularExpressionActivationTriggers,
-          block.regularExpressionDeactivationTriggers,
-          block.regularExpressionExclusionActivationTriggers,
-          block.regularExpressionExclusionDeactivationTriggers,
-          ctx.characterIdArray,
-          ctx.textContentArray,
-          ctx.characterId,
-          [...ctx.protagonistIds],
-          builderCtx.allTextSearchSpace,
-          ctx.combinationCache
-        )) {
-          continue;
-        }
         let text = block.textContent;
-        if (text.length > 0) {
-          if (!text.includes('{{systemBlockStart}}') && !text.includes('{{systemBlockEnd}}')) {
-            text = `{{systemBlockStart}}${text}{{systemBlockEnd}}`;
-          }
-          resolvedContent = resolveTemplate(text, templateContext, delimiters);
+        if (!text.includes('{{systemBlockStart}}') && !text.includes('{{systemBlockEnd}}')) {
+          text = `{{systemBlockStart}}${text}{{systemBlockEnd}}`;
         }
+        resolvedContent = resolveTemplate(text, templateContext, delimiters);
       }
     }
     if (resolvedContent.length > 0) blockMap[blockType] = [resolvedContent];
@@ -2705,7 +2685,6 @@ export async function buildPrompt(
       }
     } else if (imageType === 'promptBlock') {
       const activeBlocks = allPromptBlocks.filter(block => {
-        if (!inputStrategy.includes(block.id)) return false;
         if (!isPromptBlockCharacterBound(block, ctx.characterId)) return false;
         if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIDs.has(ctxId))) return false;
         if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) return false;
@@ -2851,7 +2830,6 @@ export async function buildPrompt(
   const builderCtx: BuilderContext = {
     ctx,
     activeContextIDs,
-    allTextSearchSpace,
     characterClothingWearingStatuses,
     contextLines,
     hasBeenSummarized,
@@ -2862,6 +2840,35 @@ export async function buildPrompt(
     promptBlockById
   };
   const blockMap = await buildPromptBlocks(builderCtx, inputStrategy, templateContext, delimiters);
+  const regexActivatedBlocks: string[] = [];
+  for (const block of allPromptBlocks) {
+    if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
+    if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIDs.has(ctxId))) continue;
+    if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
+    if (!isEntityActiveWithCache(
+      block.regularExpressionActivationTriggers,
+      block.regularExpressionDeactivationTriggers,
+      block.regularExpressionExclusionActivationTriggers,
+      block.regularExpressionExclusionDeactivationTriggers,
+      ctx.characterIdArray,
+      ctx.textContentArray,
+      ctx.characterId,
+      [...ctx.protagonistIds],
+      allTextSearchSpace,
+      ctx.combinationCache
+    )) {
+      continue;
+    }
+    let text = block.textContent;
+    if (!text.includes('{{systemBlockStart}}') && !text.includes('{{systemBlockEnd}}')) {
+      text = `{{systemBlockStart}}${text}{{systemBlockEnd}}`;
+    }
+    const resolvedText = resolveTemplate(text, templateContext, delimiters);
+    if (resolvedText.length > 0) {
+      if (!blockMap[block.id]) blockMap[block.id] = [resolvedText];
+      if (!inputStrategy.includes(block.id)) regexActivatedBlocks.push(block.id);
+    }
+  }
   
   const promptFormatMode = profile?.promptFormatMode ?? 'none';
   let messages: OpenAIMessage[];
@@ -2875,6 +2882,11 @@ export async function buildPrompt(
       ) continue;
       
       const lines = blockMap[entry];
+      if (lines?.length) contentLines.push(...lines);
+    }
+    
+    for (const blockId of regexActivatedBlocks) {
+      const lines = blockMap[blockId];
       if (lines?.length) contentLines.push(...lines);
     }
     const assembledContent = contentLines.join('\n');
@@ -2952,6 +2964,21 @@ export async function buildPrompt(
     messages = [{ role: 'user', content: promptLines.join('\n') }];
   } else {
     messages = buildStructuredMessages(blockMap, inputStrategy, ctx.minimalVolatileCacheMode);
+    if (regexActivatedBlocks.length > 0) {
+      const extraLines: string[] = [];
+      for (const blockId of regexActivatedBlocks) {
+        const lines = blockMap[blockId];
+        if (lines?.length) extraLines.push(...lines);
+      }
+      if (extraLines.length > 0) {
+        const lastSystemMsg = [...messages].reverse().find(m => m.role === 'system');
+        if (lastSystemMsg && typeof lastSystemMsg.content === 'string') {
+          lastSystemMsg.content += `\n${extraLines.join('\n')}`;
+        } else {
+          messages.push({ role: 'system', content: extraLines.join('\n') });
+        }
+      }
+    }
   }
   const defaultStops = !profile?.doNotInjectDefaultStopTokens
     ? resolveEffectiveStopTokens()
