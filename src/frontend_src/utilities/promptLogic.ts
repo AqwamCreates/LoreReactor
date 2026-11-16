@@ -47,7 +47,7 @@ import { findLatestMessage } from './messageLogic';
 import { getLocalMessageHistory, getLatestLocalLocationMessageHistory } from './timelineLogic';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './dialoguePromptLogic';
 import { STOP_STEMS, getStemmedContentWords } from './stemmerHelper';
-import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
+import { getCharacterImageUrl, getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
 import { embeddingEngine } from '../services/EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from '../services/RetrievalEngine';
 import { retrieveEligibleMemories } from './memoryLogic';
@@ -95,14 +95,38 @@ interface TrackedImage {
 }
 
 async function fetchImageAsBase64(url: string): Promise<string | null> {
+  if (!url) return null;
+  if (url.startsWith('data:')) return url;
+
   try {
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) return null;
-    const data = await response.json();
-    if (data && typeof data.base64 === 'string') {
-      return data.base64.includes(',') ? data.base64.split(',')[1] : data.base64;
+
+    let contentType = response.headers.get('content-type') || '';
+    if (contentType.includes(';')) contentType = contentType.split(';')[0].trim();
+
+    if (contentType.includes('application/json')) {
+      const data = await response.json();
+      if (data && typeof data.base64 === 'string') {
+        const b64 = data.base64.trim();
+        if (b64.startsWith('data:')) return b64;
+        const ext = url.split('.').pop()?.toLowerCase() || 'png';
+        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
+        return `data:${mime};base64,${b64}`;
+      }
+      return null;
     }
-    return null;
+
+    const blob = await response.blob();
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        resolve(result || null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(blob);
+    });
   } catch {
     return null;
   }
@@ -1523,7 +1547,7 @@ function buildPromptContext(
 
 function getParticipantsForScopeAndInsertion(
   ctx: PromptBuildContext, 
-  scope: participantScopeMode,
+  scope: participantScopeMode, 
   insertion: participantInsertionMode
 ): Character[] {
   let candidates: Character[];
@@ -2326,6 +2350,7 @@ interface BuilderContext {
   timeData: TimeData | null;
   isToolMessage: boolean | undefined;
   promptBlockById: Map<string, PromptBlock>;
+  allTextSearchSpace: string;
 }
 
 async function buildPromptBlocks(
@@ -2400,6 +2425,24 @@ async function buildPromptBlocks(
     } else {
       const block = builderCtx.promptBlockById.get(blockType);
       if (block) {
+        if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
+        if (block.contextBindings?.length && !block.contextBindings.some(ctxId => builderCtx.activeContextIDs.has(ctxId))) continue;
+        if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
+        if (!isEntityActiveWithCache(
+          block.regularExpressionActivationTriggers,
+          block.regularExpressionDeactivationTriggers,
+          block.regularExpressionExclusionActivationTriggers,
+          block.regularExpressionExclusionDeactivationTriggers,
+          ctx.characterIdArray,
+          ctx.textContentArray,
+          ctx.characterId,
+          [...ctx.protagonistIds],
+          builderCtx.allTextSearchSpace,
+          ctx.combinationCache
+        )) {
+          continue;
+        }
+
         let text = block.textContent;
         if (!text.includes('{{systemBlockStart}}') && !text.includes('{{systemBlockEnd}}')) {
           text = `{{systemBlockStart}}${text}{{systemBlockEnd}}`;
@@ -2661,15 +2704,21 @@ export async function buildPrompt(
       for (const char of charsToProcess) {
         if (char.doNotInjectCharacterImage) continue;
         const charMessage = findLatestMessage(interactionData, char);
-        const charExpression = charMessage?.message.characterExpression;
+        const charExpression = charMessage?.message.characterExpression || 'neutral';
+        const filename = char.images?.[charExpression] || char.images?.neutral || Object.values(char.images || {})[0];
         let base64Data: string | null = null;
         const textMsg = charMessage?.message as TextMessage | null;
         if (protagonistIds.has(char.id) && effectiveUseFrontCameraImage && (textMsg as ChatMessage)?.frontCameraImage) {
           const fcImg = (textMsg as ChatMessage).frontCameraImage!;
-          base64Data = fcImg.includes(',') ? fcImg.split(',')[1] : fcImg;
-        } else {
-          const imagePath = await getCharacterImageUrlWithFallBack(char.id, charExpression);
+          base64Data = fcImg.startsWith('data:') ? fcImg : `data:image/jpeg;base64,${fcImg}`;
+        } else if (filename) {
+          const imagePath = filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')
+            ? filename
+            : getCharacterImageUrl(char.id, filename);
           if (imagePath) base64Data = await fetchImageAsBase64(imagePath);
+        } else {
+          const fallbackPath = await getCharacterImageUrlWithFallBack(char.id, charExpression);
+          if (fallbackPath) base64Data = await fetchImageAsBase64(fallbackPath);
         }
         if (!base64Data) continue;
         const id = nextGlobalId();
@@ -2685,6 +2734,7 @@ export async function buildPrompt(
       }
     } else if (imageType === 'promptBlock') {
       const activeBlocks = allPromptBlocks.filter(block => {
+        if (!inputStrategy.includes(block.id)) return false;
         if (!isPromptBlockCharacterBound(block, ctx.characterId)) return false;
         if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIDs.has(ctxId))) return false;
         if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) return false;
@@ -2718,12 +2768,13 @@ export async function buildPrompt(
             ctx.characterId
           ) || 'Protagonist';
           const cleanBase64 = res.base64.includes(',') ? res.base64.split(',')[1] : res.base64;
+          const dataUrl = `data:${res.contentType || 'image/jpeg'};base64,${cleanBase64}`;
           trackedImages.push({
             globalId: id,
             entityType: 'screenshot',
             entityName: `${protagonistDisplay}'s Screen`,
             localIndex: 1,
-            base64Data: cleanBase64,
+            base64Data: dataUrl,
           });
           screenshotImgInst.push(`Image ${id} - ${protagonistDisplay}'s Screen`);
         }
@@ -2837,38 +2888,10 @@ export async function buildPrompt(
     longitude,
     timeData,
     isToolMessage,
-    promptBlockById
+    promptBlockById,
+    allTextSearchSpace
   };
   const blockMap = await buildPromptBlocks(builderCtx, inputStrategy, templateContext, delimiters);
-  const regexActivatedBlocks: string[] = [];
-  for (const block of allPromptBlocks) {
-    if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
-    if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIDs.has(ctxId))) continue;
-    if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
-    if (!isEntityActiveWithCache(
-      block.regularExpressionActivationTriggers,
-      block.regularExpressionDeactivationTriggers,
-      block.regularExpressionExclusionActivationTriggers,
-      block.regularExpressionExclusionDeactivationTriggers,
-      ctx.characterIdArray,
-      ctx.textContentArray,
-      ctx.characterId,
-      [...ctx.protagonistIds],
-      allTextSearchSpace,
-      ctx.combinationCache
-    )) {
-      continue;
-    }
-    let text = block.textContent;
-    if (!text.includes('{{systemBlockStart}}') && !text.includes('{{systemBlockEnd}}')) {
-      text = `{{systemBlockStart}}${text}{{systemBlockEnd}}`;
-    }
-    const resolvedText = resolveTemplate(text, templateContext, delimiters);
-    if (resolvedText.length > 0) {
-      if (!blockMap[block.id]) blockMap[block.id] = [resolvedText];
-      if (!inputStrategy.includes(block.id)) regexActivatedBlocks.push(block.id);
-    }
-  }
   
   const promptFormatMode = profile?.promptFormatMode ?? 'none';
   let messages: OpenAIMessage[];
@@ -2885,10 +2908,6 @@ export async function buildPrompt(
       if (lines?.length) contentLines.push(...lines);
     }
     
-    for (const blockId of regexActivatedBlocks) {
-      const lines = blockMap[blockId];
-      if (lines?.length) contentLines.push(...lines);
-    }
     const assembledContent = contentLines.join('\n');
     const promptLines: string[] = [];
     const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
@@ -2964,21 +2983,6 @@ export async function buildPrompt(
     messages = [{ role: 'user', content: promptLines.join('\n') }];
   } else {
     messages = buildStructuredMessages(blockMap, inputStrategy, ctx.minimalVolatileCacheMode);
-    if (regexActivatedBlocks.length > 0) {
-      const extraLines: string[] = [];
-      for (const blockId of regexActivatedBlocks) {
-        const lines = blockMap[blockId];
-        if (lines?.length) extraLines.push(...lines);
-      }
-      if (extraLines.length > 0) {
-        const lastSystemMsg = [...messages].reverse().find(m => m.role === 'system');
-        if (lastSystemMsg && typeof lastSystemMsg.content === 'string') {
-          lastSystemMsg.content += `\n${extraLines.join('\n')}`;
-        } else {
-          messages.push({ role: 'system', content: extraLines.join('\n') });
-        }
-      }
-    }
   }
   const defaultStops = !profile?.doNotInjectDefaultStopTokens
     ? resolveEffectiveStopTokens()
