@@ -149,6 +149,17 @@ interface NovelAITokenizeResponse {
 
 // ─── Multimodal Message Helper ──────────────────────────────────────
 
+function extractMessageText(content: string | unknown[]): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => (part && typeof part === 'object' && (part as Record<string, unknown>).type === 'text' ? String((part as Record<string, unknown>).text || '') : ''))
+      .filter(Boolean)
+      .join('\n');
+  }
+  return '';
+}
+
 function attachImagesToMessages(
   incomingMessages: CacheOpenAIMessage[] | undefined,
   prompt: string,
@@ -419,8 +430,18 @@ export class LanguageModelEngine {
       ? `${localAddress}:${port}/completion`
       : '/api/completion';
 
+    let localPrompt = prompt;
+    if (params.imageData && params.imageData.length > 0) {
+      const missingMarkers = params.imageData
+        .map((img) => `[img-${img.id}]`)
+        .filter((marker) => !localPrompt.includes(marker));
+      if (missingMarkers.length > 0) {
+        localPrompt = `${missingMarkers.join('')}\n${localPrompt}`;
+      }
+    }
+
     const bodyObj: Record<string, unknown> = {
-      prompt,
+      prompt: localPrompt,
       n_predict: params.maxTokens,
       temperature: params.temperature,
       top_p: params.top_p,
@@ -481,9 +502,13 @@ export class LanguageModelEngine {
     params: ResolvedParams,
     existingText?: string,
   ): ResolvedRequest {
-    const finalPrompt = existingText && existingText.length > 0
-      ? `${prompt}${existingText}`
-      : prompt;
+    let finalPrompt = prompt;
+    if (existingText && existingText.length > 0) {
+      const alreadyEmbedded = prompt.endsWith(existingText) || prompt.endsWith(`${existingText} `);
+      if (!alreadyEmbedded) {
+        finalPrompt = `${prompt}${existingText}`;
+      }
+    }
 
     const apiKey = this.model?.apiKey;
     const backendName = this.model?.backend;
@@ -522,13 +547,10 @@ export class LanguageModelEngine {
 
     if (requestBody.messages && Array.isArray(requestBody.messages)) {
       messages = requestBody.messages as CacheOpenAIMessage[];
-      const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
-      if (typeof lastUserMsg?.content === 'string') {
-        prompt = lastUserMsg.content;
-      } else if (Array.isArray(lastUserMsg?.content)) {
-        prompt = lastUserMsg.content
-          .map((part) => (part && typeof part === 'object' && (part as Record<string, unknown>).type === 'text' ? String((part as Record<string, unknown>).text || '') : ''))
-          .filter(Boolean)
+      if (!prompt) {
+        prompt = messages
+          .map((m) => extractMessageText(m.content))
+          .filter((text) => text.length > 0)
           .join('\n');
       }
     }
@@ -837,6 +859,7 @@ export class LanguageModelEngine {
     const decoder = new TextDecoder("utf-8");
     // Streams always accumulate ONLY the new tokens of the current pass to prevent infinite loops
     let fullContent = "";
+    let sseBuffer = "";
     let firstTokenTime = 0;
     let newNumberOfTokens = 0;
     let paragraphCount = 0;
@@ -845,216 +868,144 @@ export class LanguageModelEngine {
     let ttftReported = false;
     let lastMsPerToken = 0;
     let lastTimeToFirstToken = 0;
+    let lastFinishReason: string | null | undefined = undefined;
     let finalUsage: { promptTokens?: number; completionTokens?: number; cachedTokens?: number } = {};
+
+    const buildFinishResult = (isCompleted: boolean): StreamResult => {
+      if (callbacks?.onFinish) {
+        callbacks.onFinish({
+          promptTokens: finalUsage.promptTokens,
+          completionTokens: finalUsage.completionTokens,
+          cachedTokens: finalUsage.cachedTokens,
+        });
+      }
+      return {
+        text: fullContent,
+        isCompleted,
+        msPerToken: lastMsPerToken || undefined,
+        timeToFirstToken: lastTimeToFirstToken || undefined,
+        completionTokens: finalUsage.completionTokens !== undefined
+          ? finalUsage.completionTokens
+          : (newNumberOfTokens || undefined),
+        promptTokens: finalUsage.promptTokens,
+        cachedTokens: finalUsage.cachedTokens,
+      };
+    };
+
+    const processLine = (line: string): 'done' | 'paragraph_limit' | 'continue' => {
+      if (!line.startsWith('data:')) return 'continue';
+
+      const jsonStr = line.slice(5).trim();
+      if (!jsonStr) return 'continue';
+      if (jsonStr === '[DONE]') return 'done';
+
+      try {
+        const json = JSON.parse(jsonStr) as OpenAIStreamChunk;
+
+        if (json.usage) {
+          finalUsage = this.extractUsage(json);
+        }
+
+        const finishReason = json.choices?.[0]?.finish_reason;
+        if (finishReason !== undefined && finishReason !== null) {
+          lastFinishReason = finishReason;
+        }
+
+        let token = "";
+        if (json.choices?.[0]?.delta?.content !== undefined) {
+          token = json.choices[0].delta.content;
+        } else if (json.content !== undefined) {
+          token = json.content;
+        } else if (json.text !== undefined) {
+          token = json.text;
+        }
+
+        if (!token) return 'continue';
+
+        // Only strip initial carriage returns/newlines at the start of a completely fresh response
+        if (!hasReceivedNonWhitespace && !isContinuation && fullContent.length === 0) {
+          const trimmed = token.replace(/^[\r\n\t]+/, '');
+          if (trimmed.length === 0) return 'continue';
+          token = trimmed;
+        }
+        hasReceivedNonWhitespace = true;
+
+        const now = performance.now();
+        if (newNumberOfTokens === 0) firstTokenTime = now;
+        newNumberOfTokens++;
+        fullContent += token;
+
+        if (paragraphLimit > 0) {
+          const prevLength = fullContent.length - token.length;
+          const prevContent = fullContent.substring(0, prevLength);
+          const prevParagraphs = (prevContent.match(/\n\n/g) || []).length;
+          const currentParagraphs = (fullContent.match(/\n\n/g) || []).length;
+
+          if (currentParagraphs > prevParagraphs) {
+            paragraphCount = currentParagraphs;
+          }
+
+          if (paragraphCount >= paragraphLimit) {
+            abortController.abort();
+            return 'paragraph_limit';
+          }
+        }
+
+        const totalTime = now - firstTokenTime;
+        const msPerToken = newNumberOfTokens > 0 ? totalTime / newNumberOfTokens : 0;
+        const tokensPerSecond = totalTime > 0 ? (newNumberOfTokens / totalTime) * 1000 : 0;
+
+        const timeToFirstToken = !ttftReported ? now - requestStartTime : 0;
+        if (!ttftReported) ttftReported = true;
+
+        lastMsPerToken = msPerToken;
+        lastTimeToFirstToken = timeToFirstToken;
+
+        if (callbacks?.onToken) {
+          callbacks.onToken({
+            fullText: fullContent,
+            msPerToken,
+            tokensPerSecond,
+            timeToFirstToken,
+            promptTokens: finalUsage.promptTokens,
+            completionTokens: finalUsage.completionTokens,
+            cachedTokens: finalUsage.cachedTokens,
+          });
+        }
+      } catch { /* Ignore individual SSE parse errors */ }
+
+      return 'continue';
+    };
 
     try {
       while (true) {
         const { value, done } = await reader.read();
 
         if (done) {
-          if (callbacks?.onFinish) {
-            callbacks.onFinish({
-              promptTokens: finalUsage.promptTokens,
-              completionTokens: finalUsage.completionTokens,
-              cachedTokens: finalUsage.cachedTokens,
-            });
+          sseBuffer += decoder.decode();
+          if (sseBuffer) {
+            for (const line of sseBuffer.split(/\r?\n/)) {
+              const status = processLine(line);
+              if (status === 'paragraph_limit') return buildFinishResult(true);
+              if (status === 'done') return buildFinishResult(lastFinishReason !== 'length');
+            }
           }
-          return {
-            text: fullContent,
-            isCompleted: true,
-            msPerToken: lastMsPerToken || undefined,
-            timeToFirstToken: lastTimeToFirstToken || undefined,
-            completionTokens: finalUsage.completionTokens !== undefined 
-              ? finalUsage.completionTokens 
-              : (newNumberOfTokens || undefined),
-            promptTokens: finalUsage.promptTokens,
-            cachedTokens: finalUsage.cachedTokens,
-          };
+          return buildFinishResult(lastFinishReason !== 'length');
         }
 
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n');
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split(/\r?\n/);
+        sseBuffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          if (!line.startsWith('data: ')) continue;
-
-          const jsonStr = line.slice(6);
-
-          if (jsonStr === '[DONE]') {
-            if (callbacks?.onFinish) {
-              callbacks.onFinish({
-                promptTokens: finalUsage.promptTokens,
-                completionTokens: finalUsage.completionTokens,
-                cachedTokens: finalUsage.cachedTokens,
-              });
-            }
-            return {
-              text: fullContent,
-              isCompleted: true,
-              msPerToken: lastMsPerToken || undefined,
-              timeToFirstToken: lastTimeToFirstToken || undefined,
-              completionTokens: finalUsage.completionTokens !== undefined 
-                ? finalUsage.completionTokens 
-                : (newNumberOfTokens || undefined),
-              promptTokens: finalUsage.promptTokens,
-              cachedTokens: finalUsage.cachedTokens,
-            };
-          }
-
-          try {
-            const json = JSON.parse(jsonStr) as OpenAIStreamChunk;
-            
-            if (json.usage) {
-              finalUsage = this.extractUsage(json);
-            }
-            
-            let token = "";
-
-            const finishReason = json.choices?.[0]?.finish_reason;
-            
-            if (finishReason) {
-                if (json.choices?.[0]?.delta?.content) {
-                    token = json.choices[0].delta.content;
-                    if (!hasReceivedNonWhitespace && !isContinuation && fullContent.length === 0) {
-                        const trimmed = token.replace(/^[\r\n\t]+/, '');
-                        if (trimmed.length > 0) {
-                            token = trimmed;
-                            hasReceivedNonWhitespace = true;
-                            if (newNumberOfTokens === 0) firstTokenTime = performance.now();
-                            newNumberOfTokens++;
-                            fullContent += token;
-                        }
-                    } else {
-                        hasReceivedNonWhitespace = true;
-                        newNumberOfTokens++;
-                        fullContent += token;
-                    }
-                }
-
-                const isTruncated = finishReason === 'length';
-                const isCompleted = !isTruncated;
-
-                if (callbacks?.onFinish) {
-                    callbacks.onFinish({
-                        promptTokens: finalUsage.promptTokens,
-                        completionTokens: finalUsage.completionTokens,
-                        cachedTokens: finalUsage.cachedTokens,
-                    });
-                }
-                
-                return {
-                    text: fullContent,
-                    isCompleted,
-                    msPerToken: lastMsPerToken || undefined,
-                    timeToFirstToken: lastTimeToFirstToken || undefined,
-                    completionTokens: finalUsage.completionTokens !== undefined 
-                        ? finalUsage.completionTokens 
-                        : (newNumberOfTokens || undefined),
-                    promptTokens: finalUsage.promptTokens,
-                    cachedTokens: finalUsage.cachedTokens,
-                };
-            }
-
-            if (json.choices?.[0]?.delta?.content !== undefined) {
-              token = json.choices[0].delta.content;
-            } else if (json.content !== undefined) {
-              token = json.content;
-            } else if (json.text !== undefined) {
-              token = json.text;
-            }
-
-            if (!token) continue;
-
-            // Only strip initial carriage returns/newlines at the start of a completely fresh response
-            if (!hasReceivedNonWhitespace && !isContinuation && fullContent.length === 0) {
-              const trimmed = token.replace(/^[\r\n\t]+/, '');
-              if (trimmed.length === 0) continue;
-              token = trimmed;
-            }
-            hasReceivedNonWhitespace = true;
-
-            const now = performance.now();
-            if (newNumberOfTokens === 0) firstTokenTime = now;
-            newNumberOfTokens++;
-            fullContent += token;
-
-            if (paragraphLimit > 0) {
-              const prevLength = fullContent.length - token.length;
-              const prevContent = fullContent.substring(0, prevLength);
-              const prevParagraphs = (prevContent.match(/\n\n/g) || []).length;
-              const currentParagraphs = (fullContent.match(/\n\n/g) || []).length;
-
-              if (currentParagraphs > prevParagraphs) {
-                paragraphCount = currentParagraphs;
-              }
-
-              if (paragraphCount >= paragraphLimit) {
-                abortController.abort();
-                if (callbacks?.onFinish) {
-                  callbacks.onFinish({
-                    promptTokens: finalUsage.promptTokens,
-                    completionTokens: finalUsage.completionTokens,
-                    cachedTokens: finalUsage.cachedTokens,
-                  });
-                }
-                return {
-                  text: fullContent,
-                  isCompleted: true,
-                  msPerToken: lastMsPerToken || undefined,
-                  timeToFirstToken: lastTimeToFirstToken || undefined,
-                  completionTokens: finalUsage.completionTokens !== undefined 
-                    ? finalUsage.completionTokens 
-                    : (newNumberOfTokens || undefined),
-                  promptTokens: finalUsage.promptTokens,
-                  cachedTokens: finalUsage.cachedTokens,
-                };
-              }
-            }
-
-            const totalTime = now - firstTokenTime;
-            const msPerToken = newNumberOfTokens > 0 ? totalTime / newNumberOfTokens : 0;
-            const tokensPerSecond = totalTime > 0 ? (newNumberOfTokens / totalTime) * 1000 : 0;
-
-            const timeToFirstToken = !ttftReported ? now - requestStartTime : 0;
-            if (!ttftReported) ttftReported = true;
-
-            lastMsPerToken = msPerToken;
-            lastTimeToFirstToken = timeToFirstToken;
-
-            if (callbacks?.onToken) {
-              callbacks.onToken({ 
-                fullText: fullContent, 
-                msPerToken, 
-                tokensPerSecond, 
-                timeToFirstToken,
-                promptTokens: finalUsage.promptTokens,
-                completionTokens: finalUsage.completionTokens,
-                cachedTokens: finalUsage.cachedTokens,
-              });
-            }
-          } catch { /* Ignore individual SSE parse errors */ }
+          const status = processLine(line);
+          if (status === 'paragraph_limit') return buildFinishResult(true);
+          if (status === 'done') return buildFinishResult(lastFinishReason !== 'length');
         }
       }
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
-        if (callbacks?.onFinish) {
-          callbacks.onFinish({
-            promptTokens: finalUsage.promptTokens,
-            completionTokens: finalUsage.completionTokens,
-            cachedTokens: finalUsage.cachedTokens,
-          });
-        }
-        return {
-          text: fullContent,
-          isCompleted: false,
-          msPerToken: lastMsPerToken || undefined,
-          timeToFirstToken: lastTimeToFirstToken || undefined,
-          completionTokens: finalUsage.completionTokens !== undefined 
-            ? finalUsage.completionTokens 
-            : (newNumberOfTokens || undefined),
-          promptTokens: finalUsage.promptTokens,
-          cachedTokens: finalUsage.cachedTokens,
-        };
+        return buildFinishResult(false);
       }
       throw error;
     }
