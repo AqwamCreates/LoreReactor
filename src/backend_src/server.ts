@@ -1473,7 +1473,7 @@ function getMimeType(ext: string): string {
     '.webp': 'image/webp', '.ogg': 'audio/ogg', '.mp3': 'audio/mpeg',
     '.wav': 'audio/wav', '.flac': 'audio/flac', '.bin': 'application/octet-stream',
   };
-  return mimeMap[ext] || 'application/octet-stream';
+  return mimeMap[ext] || 'image/png';
 }
 
 // ─── Startup Data Sanitizer & Auto Manifest-Rebuild ───────────────────
@@ -1755,7 +1755,7 @@ app.use('/user_data', (req, response) => {
       if (error) return response.status(500).end();
       response.setHeader('Content-Length', stats.size);
       const ext = path.extname(filePath).toLowerCase();
-      if (ALL_MEDIA_EXTENSIONS.includes(ext)) response.setHeader('Content-Type', getMimeType(ext));
+      if (ALL_MEDIA_EXTENSIONS.includes(ext) || isMediaUploadPath(relativePath)) response.setHeader('Content-Type', getMimeType(ext));
       response.status(200).end();
     });
     return;
@@ -1786,7 +1786,7 @@ app.use('/user_data', (req, response) => {
         fs.readdir(filePath, (err, files) => err ? response.status(500).json({ error: 'Read Error' }) : response.json(files));
       } else {
         const ext = path.extname(filePath).toLowerCase();
-        if (ALL_MEDIA_EXTENSIONS.includes(ext)) {
+        if (ALL_MEDIA_EXTENSIONS.includes(ext) || isMediaUploadPath(relativePath)) {
           response.setHeader('Content-Type', getMimeType(ext));
           fs.readFile(filePath, (ie, buf) => ie ? response.status(500).send('Media Read Error') : response.send(buf));
         } else {
