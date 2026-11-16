@@ -67,6 +67,7 @@ const AMBIENT_SYSTEM_PROMPT = "You are an ambient narration engine for a rolepla
 
 class ChatSessionCoordinator {
     private isGenerating = false;
+    private currentLockEpoch = 0;
     private abortController: AbortController | null = null;
     private voiceTracker: StreamingVoiceTracker | null = null;
     private wasStopped = false;
@@ -105,6 +106,7 @@ class ChatSessionCoordinator {
 
     private acquireLock(): boolean {
         if (this.isGenerating) return false;
+        this.currentLockEpoch++;
         this.isGenerating = true;
         this.wasStopped = false;
         this.isSkippingThinking = false;
@@ -121,6 +123,12 @@ class ChatSessionCoordinator {
         useGenerationStore.setState({ streamingText: '', streamingCharacter: null, streamingMessageId: null });
         if (this.abortController) {
             this.abortController = null;
+        }
+    }
+
+    private releaseLockIfCurrent(epoch: number): void {
+        if (this.currentLockEpoch === epoch) {
+            this.releaseLock();
         }
     }
 
@@ -438,6 +446,9 @@ class ChatSessionCoordinator {
                     continue;
                 }
 
+                this.activeMessageId = null;
+                useGenerationStore.setState({ streamingMessageId: null });
+
                 if (this.voiceTracker && narratorBehaviour === 'wait' && !this.wasStopped) {
                     await this.voiceTracker.waitForPlaybackCompletion().catch(() => {});
                 }
@@ -445,6 +456,9 @@ class ChatSessionCoordinator {
                 currentExistingText = result.rawText;
                 break; 
             }
+
+            this.activeMessageId = null;
+            useGenerationStore.setState({ streamingMessageId: null });
 
             const history = getGlobalMessageHistory(activeData);
             const isAtTip = !resumingMessageId || (history.length > 0 && history[history.length - 1].id === resumingMessageId);
@@ -454,11 +468,16 @@ class ChatSessionCoordinator {
                     data: activeData,
                     character,
                     promptBlocks,
-                    setInteractionData: (d) => { activeData = d; useChatStore.setState({ interactionData: d }); },
+                    setInteractionData: (d) => {
+                        if (this.wasStopped) return;
+                        activeData = d;
+                        useChatStore.setState({ interactionData: d });
+                    },
                     addToast: this.deps.addToast
                 });
             }
         } finally {
+            this.activeMessageId = null;
             const currentLoading = { ...(useGenerationStore.getState().loadingLocations || {}) };
             delete currentLoading[charLocationId];
             useGenerationStore.setState({ 
@@ -634,6 +653,7 @@ class ChatSessionCoordinator {
             }
 
             if (!this.acquireLock()) { this.deps.addToast('Already processing...', 'info'); return; }
+            const lockEpoch = this.currentLockEpoch;
             try {
                 const slashMessage = createMessage(protagonist, {
                     textContent: '',
@@ -659,17 +679,18 @@ class ChatSessionCoordinator {
                 useChatStore.setState({ interactionData: updatedData });
                 this.deps.onMessageBroadcast?.(slashMessage);
 
-                if (this.deps.isMultiplayerClient) { this.releaseLock(); return; }
+                if (this.deps.isMultiplayerClient) { this.releaseLockIfCurrent(lockEpoch); return; }
                 await this.runSequence(updatedData);
             } catch (e) {
                 this.deps.addToast(`Command failed: ${(e as Error).message}`, 'error');
             } finally {
-                this.releaseLock();
+                this.releaseLockIfCurrent(lockEpoch);
             }
             return;
         }
 
         if (!this.acquireLock()) { this.deps.addToast('Already generating...', 'info'); return; }
+        const lockEpoch = this.currentLockEpoch;
         
         try {
             let updatedData = { ...currentData };
@@ -722,13 +743,13 @@ class ChatSessionCoordinator {
             useChatStore.setState({ interactionData: updatedData });
             saveRawInteractionData(updatedData).catch(console.warn);
 
-            if (this.deps.isMultiplayerClient) { this.releaseLock(); return; }
+            if (this.deps.isMultiplayerClient) { this.releaseLockIfCurrent(lockEpoch); return; }
             await this.runSequence(updatedData);
 
         } catch (e) {
             console.error('Send Error:', e);
         } finally {
-            this.releaseLock();
+            this.releaseLockIfCurrent(lockEpoch);
         }
     }
 
@@ -737,6 +758,7 @@ class ChatSessionCoordinator {
         const currentData = state.interactionData;
         if (!currentData) return;
         if (!this.acquireLock()) { this.deps.addToast('Already generating...', 'info'); return; }
+        const lockEpoch = this.currentLockEpoch;
 
         const protagonist = this.deps.isMultiplayerClient ? (this.deps.joinProtagonist || protagonistOverride) : protagonistOverride;
 
@@ -768,12 +790,12 @@ class ChatSessionCoordinator {
             this.deps.onMessageBroadcast?.(chatMessage);
             saveRawInteractionData(updatedData).catch(console.warn);
 
-            if (this.deps.isMultiplayerClient) { this.releaseLock(); return; }
+            if (this.deps.isMultiplayerClient) { this.releaseLockIfCurrent(lockEpoch); return; }
 
             updatedData = await this.runSingleTurn(updatedData, targetChar);
             await this.runSequence(updatedData, new Set([targetChar.id]));
         } finally {
-            this.releaseLock();
+            this.releaseLockIfCurrent(lockEpoch);
         }
     }
 
@@ -790,6 +812,7 @@ class ChatSessionCoordinator {
         if (!hasTextContent(msg)) { this.deps.addToast('Message not found.', 'error'); return; }
 
         if (!this.acquireLock()) { this.deps.addToast('Already generating...', 'info'); return; }
+        const lockEpoch = this.currentLockEpoch;
         
         this.activeMessageId = messageId;
         
@@ -801,7 +824,7 @@ class ChatSessionCoordinator {
             this.deps.addToast(`Resume error: ${(e as Error).message}`, 'error');
         } finally {
             this.activeMessageId = null;
-            this.releaseLock();
+            this.releaseLockIfCurrent(lockEpoch);
         }
     }
 
@@ -812,6 +835,7 @@ class ChatSessionCoordinator {
         if (!currentData) return;
 
         if (!this.acquireLock()) { this.deps.addToast('Already generating...', 'info'); return; }
+        const lockEpoch = this.currentLockEpoch;
         try {
             const protagonistIdSet = new Set([
                 ...(protagonistIds || []),
@@ -865,7 +889,7 @@ class ChatSessionCoordinator {
                 await this.runSequence(updatedData, excludedFromSequence);
             }
         } finally {
-            this.releaseLock();
+            this.releaseLockIfCurrent(lockEpoch);
         }
     }
 
@@ -886,11 +910,20 @@ class ChatSessionCoordinator {
         const genState = useGenerationStore.getState();
         
         if (this.activeMessageId && state.interactionData) {
-            if (genState.streamingText) {
-                const updated = finalizeMessageById(state.interactionData, this.activeMessageId, true, genState.streamingText);
+            const targetInfo = getMessageById(state.interactionData, this.activeMessageId);
+            const targetMsg = targetInfo?.message;
+            const existingMsgText = (targetMsg && hasTextContent(targetMsg)) ? targetMsg.textContent : '';
+            const hasAttachedMedia = Boolean(
+                targetMsg &&
+                ((targetMsg as ChatMessage).files?.length || (targetMsg as ChatMessage).frontCameraImage)
+            );
+            const textToKeep = genState.streamingText || existingMsgText;
+
+            if (textToKeep) {
+                const updated = finalizeMessageById(state.interactionData, this.activeMessageId, true, textToKeep);
                 useChatStore.setState({ interactionData: updated });
                 saveRawInteractionData(updated).catch(console.warn);
-            } else {
+            } else if (!hasAttachedMedia) {
                 const cleanedHistories = { ...state.interactionData.interactionHistories };
                 for (const [locId, msgs] of Object.entries(cleanedHistories)) {
                     cleanedHistories[locId] = msgs.filter(m => m.id !== this.activeMessageId);
@@ -919,6 +952,7 @@ class ChatSessionCoordinator {
             streamingMessageId: null 
         });
 
+        this.currentLockEpoch++;
         this.activeMessageId = null;
         this.releaseLock();
     }
@@ -945,8 +979,9 @@ class ChatSessionCoordinator {
         if (this.isGenerating) return; 
         const state = useChatStore.getState();
         if (state.interactionData) {
-            this.acquireLock();
-            this.runSequence(state.interactionData).finally(() => this.releaseLock());
+            if (!this.acquireLock()) return;
+            const lockEpoch = this.currentLockEpoch;
+            this.runSequence(state.interactionData).finally(() => this.releaseLockIfCurrent(lockEpoch));
         }
     }
 }
