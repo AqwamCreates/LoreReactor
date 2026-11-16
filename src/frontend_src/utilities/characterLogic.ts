@@ -1,3 +1,5 @@
+// src/frontend_src/utilities/characterLogic.ts
+
 import type { Character, InteractionData, HistoryMessage, Profile, tool, ChatMessage } from "../types";
 import { findLatestMessage } from "./messageLogic";
 import { getLocalMessageHistory } from "./timelineLogic";
