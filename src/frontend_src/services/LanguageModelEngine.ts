@@ -37,6 +37,11 @@ export interface StreamResult {
   promptTokens?: number;
 }
 
+interface ImagePayload {
+  data: string;
+  id: number;
+}
+
 interface ResolvedParams {
   temperature?: number;
   top_p?: number;
@@ -45,6 +50,7 @@ interface ResolvedParams {
   extraParams?: Record<string, unknown>;
   sessionId?: string;
   messages?: CacheOpenAIMessage[];
+  imageData?: ImagePayload[];
 }
 
 interface ResolvedRequest {
@@ -141,10 +147,56 @@ interface NovelAITokenizeResponse {
     count?: number;
 }
 
+// ─── Multimodal Message Helper ──────────────────────────────────────
+
+function attachImagesToMessages(
+  incomingMessages: CacheOpenAIMessage[] | undefined,
+  prompt: string,
+  imageData?: ImagePayload[],
+): CacheOpenAIMessage[] {
+  const finalMessages: CacheOpenAIMessage[] = incomingMessages && incomingMessages.length > 0
+    ? incomingMessages.map((m) => ({
+        ...m,
+        content: Array.isArray(m.content) ? [...m.content] : m.content,
+      }))
+    : [{ role: 'user', content: prompt }];
+
+  if (!imageData || imageData.length === 0) {
+    return finalMessages;
+  }
+
+  let targetUserMsg = [...finalMessages].reverse().find((m) => m.role === 'user');
+  if (!targetUserMsg) {
+    targetUserMsg = { role: 'user', content: '' };
+    finalMessages.push(targetUserMsg);
+  }
+
+  const imageParts = imageData.map((img) => {
+    const raw = img.data;
+    const url = raw.startsWith('data:') || raw.startsWith('http://') || raw.startsWith('https://')
+      ? raw
+      : `data:image/png;base64,${raw}`;
+    return {
+      type: 'image_url',
+      image_url: { url },
+    };
+  });
+
+  if (typeof targetUserMsg.content === 'string') {
+    targetUserMsg.content = targetUserMsg.content
+      ? [{ type: 'text', text: targetUserMsg.content }, ...imageParts]
+      : imageParts;
+  } else if (Array.isArray(targetUserMsg.content)) {
+    targetUserMsg.content = [...targetUserMsg.content, ...imageParts];
+  }
+
+  return finalMessages;
+}
+
 // ─── Error Handling Helper ──────────────────────────────────────────
 
 async function parseErrorResponse(response: Response, url: string, requestBody: string): Promise<string> {
-  let rawText = '';
+  let rawText: string;
   try {
     rawText = await response.text();
   } catch {
@@ -317,12 +369,11 @@ export class LanguageModelEngine {
     }
 
     const payloadModelName = modelPath || 'default-model';
+    const messagesWithImages = attachImagesToMessages(incomingMessages, prompt, params.imageData);
 
     const bodyObj: Record<string, unknown> = {
       model: payloadModelName,
-      ...(incomingMessages
-        ? { messages: incomingMessages }
-        : { messages: [{ role: "user", content: prompt }] }),
+      messages: messagesWithImages,
       stream,
       temperature: params.temperature,
       top_p: params.top_p,
@@ -344,7 +395,7 @@ export class LanguageModelEngine {
       backendName,
       modelPath,
       sessionId,
-      messages: (bodyObj.messages as CacheOpenAIMessage[]) ?? [{ role: 'user', content: prompt }],
+      messages: messagesWithImages,
     });
 
     if (cacheResult.headers) Object.assign(headers, cacheResult.headers);
@@ -368,14 +419,23 @@ export class LanguageModelEngine {
       ? `${localAddress}:${port}/completion`
       : '/api/completion';
 
-    const body = JSON.stringify({
+    const bodyObj: Record<string, unknown> = {
       prompt,
       n_predict: params.maxTokens,
       temperature: params.temperature,
       top_p: params.top_p,
       stop: params.stop,
       stream,
-    });
+    };
+
+    if (params.imageData && params.imageData.length > 0) {
+      bodyObj.image_data = params.imageData.map((img) => ({
+        id: img.id,
+        data: img.data.replace(/^data:[^;]+;base64,/, ''),
+      }));
+    }
+
+    const body = JSON.stringify(bodyObj);
 
     return { url, headers, body };
   }
@@ -394,10 +454,11 @@ export class LanguageModelEngine {
       : `${localAddress}:8000`;
 
     const url = `${baseUrl}/v1/chat/completions`;
+    const messagesWithImages = attachImagesToMessages(params.messages, prompt, params.imageData);
 
     const bodyObj: Record<string, unknown> = {
       model: modelPath || 'default',
-      messages: [{ role: "user", content: prompt }],
+      messages: messagesWithImages,
       stream,
       temperature: params.temperature,
       top_p: params.top_p,
@@ -454,6 +515,7 @@ export class LanguageModelEngine {
     extraParams?: Record<string, unknown>;
     sessionId?: string;
     messages?: CacheOpenAIMessage[];
+    imageData?: ImagePayload[];
   } {
     let prompt = (requestBody.prompt as string) || '';
     let messages: CacheOpenAIMessage[] | undefined;
@@ -461,7 +523,14 @@ export class LanguageModelEngine {
     if (requestBody.messages && Array.isArray(requestBody.messages)) {
       messages = requestBody.messages as CacheOpenAIMessage[];
       const lastUserMsg = [...messages].reverse().find((m) => m.role === 'user');
-      prompt = (typeof lastUserMsg?.content === 'string' ? lastUserMsg.content : '') || '';
+      if (typeof lastUserMsg?.content === 'string') {
+        prompt = lastUserMsg.content;
+      } else if (Array.isArray(lastUserMsg?.content)) {
+        prompt = lastUserMsg.content
+          .map((part) => (part && typeof part === 'object' && (part as Record<string, unknown>).type === 'text' ? String((part as Record<string, unknown>).text || '') : ''))
+          .filter(Boolean)
+          .join('\n');
+      }
     }
 
     return {
@@ -473,6 +542,9 @@ export class LanguageModelEngine {
       extraParams: requestBody.extra_cloud_params as Record<string, unknown> | undefined,
       sessionId: requestBody.session_id as string | undefined,
       messages,
+      imageData: Array.isArray(requestBody.image_data)
+        ? (requestBody.image_data as ImagePayload[])
+        : undefined,
     };
   }
 
@@ -682,7 +754,7 @@ export class LanguageModelEngine {
   async generateCompletion(
     requestBody: Record<string, unknown>,
   ): Promise<StreamResult> {
-    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody);
+    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages, imageData } = this.extractFromRequestBody(requestBody);
 
     try {
       const { url, headers, body } = this.resolveRequest(prompt, false, {
@@ -693,6 +765,7 @@ export class LanguageModelEngine {
         extraParams,
         sessionId,
         messages,
+        imageData,
       });
 
       const response = await fetch(url, { method: 'POST', headers, body });
@@ -730,7 +803,7 @@ export class LanguageModelEngine {
   ): Promise<StreamResult> {
     const isContinuation = !!(existingText && existingText.length > 0);
     const paragraphLimit = (maxParagraphs && maxParagraphs > 0) ? maxParagraphs : 0;
-    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages } = this.extractFromRequestBody(requestBody);
+    const { prompt, temperature, top_p, maxTokens, stop, extraParams, sessionId, messages, imageData } = this.extractFromRequestBody(requestBody);
 
     const { url, headers, body } = this.resolveRequest(prompt, true, {
       temperature,
@@ -740,6 +813,7 @@ export class LanguageModelEngine {
       extraParams,
       sessionId,
       messages,
+      imageData,
     }, existingText);
 
     const requestStartTime = performance.now();
