@@ -65,6 +65,32 @@ export interface CoordinatorDependencies {
 
 const AMBIENT_SYSTEM_PROMPT = "You are an ambient narration engine for a roleplay chat. Your ONLY job is to write a single short sentence (1-2 sentences max) describing the environment, atmosphere, or sensory details of the current moment. You must NOT write dialogue, character actions, thoughts, or advance the plot. You describe only the physical space, sounds, light, temperature, weather, and mood of the setting. Write in third person, present tense. Output ONLY the narration text with no preamble, no quotes, no markdown.";
 
+function encodeFileToDataUrl(file: File): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = () => {
+            const dataUrl = reader.result as string;
+            const commaIdx = dataUrl.indexOf(',');
+            if (commaIdx !== -1 && file.name) {
+                const header = dataUrl.slice(0, commaIdx);
+                const base64Part = dataUrl.slice(commaIdx);
+                if (!header.includes(';name=')) {
+                    const encodedName = encodeURIComponent(file.name);
+                    const base64Idx = header.indexOf(';base64');
+                    const newHeader = base64Idx !== -1
+                        ? `${header.slice(0, base64Idx)};name=${encodedName}${header.slice(base64Idx)}`
+                        : `${header};name=${encodedName}`;
+                    resolve(`${newHeader}${base64Part}`);
+                    return;
+                }
+            }
+            resolve(dataUrl);
+        };
+        reader.onerror = reject;
+    });
+}
+
 class ChatSessionCoordinator {
     private isGenerating = false;
     private currentLockEpoch = 0;
@@ -698,7 +724,7 @@ class ChatSessionCoordinator {
             if (chatRegen > 0) generateChatStaminaForInteractionData(updatedData, chatRegen, protagonist);
             if (actionRegen > 0) generateActionStaminaForInteractionData(updatedData, actionRegen, protagonist);
 
-            const encodedFiles = files?.length ? await Promise.all(files.map(f => new Promise<string>((res, rej) => { const r = new FileReader(); r.readAsDataURL(f); r.onload = () => res(r.result as string); r.onerror = rej; }))) : undefined;
+            const encodedFiles = files?.length ? await Promise.all(files.map(encodeFileToDataUrl)) : undefined;
             const textMessages = getLocalMessageHistory(updatedData, protagonist, ['chat', 'whisper']) as TextMessage[];
             const knownNames = detectName(protagonist, textMessages, text);
 
@@ -753,7 +779,7 @@ class ChatSessionCoordinator {
         }
     }
 
-    public async sendDirectedAction(actionText: string, targetChar: Character, protagonistOverride: Character) {
+    public async sendDirectedAction(actionText: string, targetChar: Character, protagonistOverride: Character, files?: File[]) {
         const state = useChatStore.getState();
         const currentData = state.interactionData;
         if (!currentData) return;
@@ -773,9 +799,11 @@ class ChatSessionCoordinator {
                 }
             }
 
+            const encodedFiles = files?.length ? await Promise.all(files.map(encodeFileToDataUrl)) : undefined;
             const textMessages = getLocalMessageHistory(currentData, protagonist, ['chat', 'whisper']) as TextMessage[];
             const chatMessage = createMessage(protagonist, {
                 textContent: actionText,
+                files: encodedFiles,
                 frontCameraImage: frontCameraImageBase64,
                 knownCharacterNames: detectName(protagonist, textMessages),
                 interactionData: currentData,

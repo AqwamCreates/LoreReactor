@@ -88,10 +88,165 @@ export interface ResolvedImage {
 
 interface TrackedImage {
   globalId: number;
-  entityType: entityImageType;
+  entityType: entityImageType | 'attachedFile';
   entityName: string;
   localIndex: number;
   base64Data: string;
+}
+
+// ─── Universal Attached File Handling ───────────────────────────────
+
+interface ParsedDataUrl {
+  mimeType: string;
+  fileName?: string;
+  base64Data: string;
+  isBase64: boolean;
+}
+
+function parseDataUrl(url: string): ParsedDataUrl | null {
+  if (!url || !url.startsWith('data:')) return null;
+  const commaIdx = url.indexOf(',');
+  if (commaIdx === -1) return null;
+
+  const meta = url.slice(5, commaIdx);
+  const base64Data = url.slice(commaIdx + 1);
+  const isBase64 = meta.includes(';base64');
+
+  let mimeType = 'application/octet-stream';
+  let fileName: string | undefined;
+
+  const parts = meta.split(';');
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith('name=')) {
+      try {
+        fileName = decodeURIComponent(trimmed.slice(5));
+      } catch {
+        fileName = trimmed.slice(5);
+      }
+    } else if (trimmed.startsWith('filename=')) {
+      try {
+        fileName = decodeURIComponent(trimmed.slice(9));
+      } catch {
+        fileName = trimmed.slice(9);
+      }
+    } else if (trimmed && trimmed !== 'base64' && trimmed.includes('/')) {
+      mimeType = trimmed.toLowerCase();
+    }
+  }
+
+  return { mimeType, fileName, base64Data, isBase64 };
+}
+
+const TEXT_MIME_PREFIXES = [
+  'text/', 'application/json', 'application/javascript', 'application/typescript',
+  'application/xml', 'application/x-sh', 'application/x-yaml', 'application/csv'
+];
+
+const TEXT_EXTENSIONS = new Set([
+  'txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'py', 'js', 'ts', 'jsx', 'tsx',
+  'html', 'htm', 'css', 'scss', 'c', 'h', 'cpp', 'hpp', 'rs', 'go', 'java', 'kt',
+  'rb', 'php', 'sh', 'bash', 'zsh', 'yaml', 'yml', 'xml', 'sql', 'log', 'ini', 'env',
+  'toml', 'conf', 'config', 'bat', 'cmd', 'ps1', 'diff', 'patch', 'r', 'swift', 'lua',
+]);
+
+function isTextBasedFile(mimeType: string, fileName?: string): boolean {
+  const lowerMime = mimeType.toLowerCase();
+  if (TEXT_MIME_PREFIXES.some(p => lowerMime.startsWith(p) || lowerMime === p)) return true;
+  if (lowerMime.includes('json') || lowerMime.includes('xml') || lowerMime.includes('yaml') || lowerMime.includes('csv')) return true;
+
+  if (fileName) {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (ext && TEXT_EXTENSIONS.has(ext)) return true;
+  }
+  return false;
+}
+
+function decodeBase64ToUtf8(base64: string): string | null {
+  try {
+    const binaryStr = atob(base64);
+    const bytes = new Uint8Array(binaryStr.length);
+    for (let i = 0; i < binaryStr.length; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+function getCodeFenceLanguage(fileName?: string, mimeType?: string): string {
+  if (fileName) {
+    const ext = fileName.split('.').pop()?.toLowerCase();
+    if (ext) {
+      if (ext === 'py') return 'python';
+      if (ext === 'js' || ext === 'jsx') return 'javascript';
+      if (ext === 'ts' || ext === 'tsx') return 'typescript';
+      if (ext === 'md') return 'markdown';
+      if (ext === 'yml') return 'yaml';
+      if (ext === 'sh' || ext === 'bash') return 'bash';
+      if (ext === 'rb') return 'ruby';
+      return ext;
+    }
+  }
+  if (mimeType?.includes('json')) return 'json';
+  if (mimeType?.includes('csv')) return 'csv';
+  if (mimeType?.includes('html')) return 'html';
+  if (mimeType?.includes('css')) return 'css';
+  if (mimeType?.includes('xml')) return 'xml';
+  return '';
+}
+
+function formatAttachedFile(
+  fileDataUrl: string, 
+  index: number,
+  onImageFound?: (base64Data: string, fileName: string) => number
+): string {
+  const parsed = parseDataUrl(fileDataUrl);
+  if (!parsed) return `[Attached File ${index + 1}]`;
+
+  const { mimeType, fileName, base64Data } = parsed;
+  const displayName = fileName || `file_${index + 1}`;
+
+  // 1. Image Files -> register with vision imagePayloads and annotate ID
+  if (mimeType.startsWith('image/')) {
+    let imageId: number | undefined;
+    if (onImageFound) {
+      const fullData = fileDataUrl.startsWith('data:') ? fileDataUrl : `data:${mimeType};base64,${base64Data}`;
+      imageId = onImageFound(fullData, displayName);
+    }
+    const idSuffix = imageId !== undefined ? ` (Image ${imageId})` : '';
+    return `[Attached Image: ${displayName}${idSuffix}]`;
+  }
+
+  // 2. Text, Code, JSON, CSV & Markdown Files -> decode directly into code fence
+  if (isTextBasedFile(mimeType, fileName)) {
+    const decoded = decodeBase64ToUtf8(base64Data);
+    if (decoded !== null) {
+      const lang = getCodeFenceLanguage(fileName, mimeType);
+      return `[Attached File: ${displayName}]\n\`\`\`${lang}\n${decoded}\n\`\`\``;
+    }
+  }
+
+  // 3. PDF Documents
+  if (mimeType === 'application/pdf' || fileName?.toLowerCase().endsWith('.pdf')) {
+    return `[Attached Document: ${displayName} (PDF)]`;
+  }
+
+  // 4. Audio Files
+  if (mimeType.startsWith('audio/')) {
+    return `[Attached Audio: ${displayName} (${mimeType})]`;
+  }
+
+  // 5. Video Files
+  if (mimeType.startsWith('video/')) {
+    return `[Attached Video: ${displayName} (${mimeType})]`;
+  }
+
+  // 6. Generic / Binary Files
+  const approxKb = Math.round((base64Data.length * 3) / 4 / 1024);
+  const sizeStr = approxKb > 0 ? `, ~${approxKb} KB` : '';
+  return `[Attached File: ${displayName} (${mimeType}${sizeStr})]`;
 }
 
 async function fetchImageAsBase64(url: string): Promise<string | null> {
@@ -295,7 +450,7 @@ const DEFAULT_TEMPLATES: Record<string, string> = {
   'Chat History': "{{systemBlockStart}}Start Of The Memory.{{systemBlockEnd}}\n{{chatHistory}}\n{{systemBlockStart}}End Of The Memory.{{systemBlockEnd}} ",
   'Appearance Prompt': "{{systemBlockStart}}Start Of The Characters' Appearances List.{{systemBlockEnd}}\n{{appearancePrompt}}\n{{systemBlockStart}}End Of The Characters' Appearances List.{{systemBlockEnd}} ",
   'Context': "{{systemBlockStart}}Start Of The Context.{{systemBlockEnd}}\n{{context}}\n{{systemBlockStart}}End Of The Context.{{systemBlockEnd}} ",
-  'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{location}}\\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}} ",
+  'Current Location': "{{systemBlockStart}}Start Of Current Location.{{systemBlockEnd}}\n{{location}}\n{{systemBlockStart}}End Of Current Location.{{systemBlockEnd}} ",
   'Current Location With Description': "{{systemBlockStart}}Start Of Current Location With Description.{{systemBlockEnd}}\n{{locationWithDescription}}\n{{systemBlockStart}}End Of Current Location With Description.{{systemBlockEnd}} ",
   'Reachable Locations': "{{systemBlockStart}}Reachable Locations:\n{{locations-}}{{systemBlockEnd}} ",
   'Reachable Locations With Descriptions': "{{systemBlockStart}}Reachable Locations With Descriptions:\n{{locationsWithDescriptions-}}{{systemBlockEnd}} ",
@@ -2081,6 +2236,7 @@ function buildTextInjectionText(ctx: PromptBuildContext, hasBeenSummarized: bool
 
 export async function createChatHistoryArray(
   ctx: PromptBuildContext,
+  onAttachImage?: (base64Data: string, fileName: string, senderName: string) => number
 ): Promise<{ chatHistoryArray: string[]; hasBeenSummarized: boolean }> {
   const participants = ctx.participants;
   const profile = ctx.profile;
@@ -2243,6 +2399,22 @@ export async function createChatHistoryArray(
         false
       );
     }
+
+    const msgFiles = (p.msg as TextMessage).files;
+    if (msgFiles && msgFiles.length > 0) {
+      const fileBlocks = msgFiles.map((fileUrl, fIdx) => {
+        return formatAttachedFile(fileUrl, fIdx, (b64, name) => {
+          if (onAttachImage) {
+            return onAttachImage(b64, name, p.msg.character.name);
+          }
+          return 0;
+        });
+      });
+      if (fileBlocks.length > 0) {
+        historyText = historyText ? `${historyText}\n${fileBlocks.join('\n')}` : fileBlocks.join('\n');
+      }
+    }
+
     const replacedText = resolveInnerText(historyText, ctx, ctx.delimiters);
     chatHistoryText = `${chatHistoryText}${replacedText}${ctx.delimiters.turnEnd}`;
     chatHistoryArray.push(chatHistoryText);
@@ -2287,7 +2459,7 @@ function buildStructuredMessages(
   const volatileEntries: string[] = [];
   for (const entry of inputStrategy) {
     if (
-      entry === 'Model InstructionTemplate' ||
+      entry === 'Model Instruction Template' ||
       entry === 'Model Chat Template' ||
       entry === 'Model Chat-Instruction Template'
     ) {
@@ -2637,7 +2809,6 @@ export async function buildPrompt(
   }
   const timeData = getTimeDataFromCoordinates(latitude, longitude);
   const locationResult = buildLocationText(ctx);
-  const chatHistoryResult = await createChatHistoryArray(ctx);
   const reachableLocationsResult = buildReachableLocationsText(ctx);
   
   const defaultCharScope = profile?.participantScopeModes?.['Character Name'] ?? 'coLocated';
@@ -2683,8 +2854,7 @@ export async function buildPrompt(
   const totalStaminaRatio = (maximumTotalStamina === Number.POSITIVE_INFINITY || maximumTotalStamina === 0) ? 1 : currentTotalStamina / maximumTotalStamina;
   const formatStamina = (val: number) => val === Number.POSITIVE_INFINITY ? 'Infinity' : String(Math.round(val));
   const formatRatio = (val: number) => String(Math.round(val * 100) / 100);
-  const hasBeenSummarized = chatHistoryResult.hasBeenSummarized;
-  const textInjectionText = buildTextInjectionText(ctx, hasBeenSummarized, contextLines);
+
   const allowedImageTypes = profile?.entityImageTypes ?? ['promptBlock', 'context', 'location', 'character', 'screenshot'];
   let globalIdCounter = 1;
   const nextGlobalId = () => globalIdCounter++;
@@ -2694,6 +2864,22 @@ export async function buildPrompt(
   const ctxImgInst: string[] = [];
   const locImgInst: string[] = [];
   const screenshotImgInst: string[] = [];
+
+  // Register image attachments from message history into trackedImages
+  const chatHistoryResult = await createChatHistoryArray(ctx, (base64Data, fileName, senderName) => {
+    const id = nextGlobalId();
+    trackedImages.push({
+      globalId: id,
+      entityType: 'attachedFile',
+      entityName: `${fileName} (from ${senderName})`,
+      localIndex: 1,
+      base64Data,
+    });
+    return id;
+  });
+
+  const hasBeenSummarized = chatHistoryResult.hasBeenSummarized;
+  const textInjectionText = buildTextInjectionText(ctx, hasBeenSummarized, contextLines);
 
   for (const imageType of allowedImageTypes) {
     if (imageType === 'character') {
@@ -2806,6 +2992,12 @@ export async function buildPrompt(
   const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const charactersPossessiveList = ctx.participants.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
+    if (p.id === ctx.characterId) {
+      const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
+      const resolvedNames = variants.slice(0, 1);
+      if (resolvedNames.length > 0) return `${joinInlineList(resolvedNames)}'s`;
+      return `${tag}'s`;
+    }
     const knownName = getKnownDisplayName(p, ctx.knownNames);
     return `${knownName ?? tag}'s`;
   });
@@ -2935,6 +3127,13 @@ export async function buildPrompt(
           content = sanitizeThinkingSyntax(content);
           content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
         }
+        const msgFiles = (msg as TextMessage).files;
+        if (msgFiles && msgFiles.length > 0) {
+          const fileBlocks = msgFiles.map((fileUrl, fIdx) => formatAttachedFile(fileUrl, fIdx));
+          if (fileBlocks.length > 0) {
+            content = content ? `${content}\n${fileBlocks.join('\n')}` : fileBlocks.join('\n');
+          }
+        }
         content = resolveInnerText(content, ctx, ctx.delimiters);
         promptLines.push(
           resolvedChatTemplate.chatTemplate
@@ -2965,6 +3164,13 @@ export async function buildPrompt(
         if (msg.character.id !== ctx.characterId) {
           content = sanitizeThinkingSyntax(content);
           content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
+        }
+        const msgFiles = (msg as TextMessage).files;
+        if (msgFiles && msgFiles.length > 0) {
+          const fileBlocks = msgFiles.map((fileUrl, fIdx) => formatAttachedFile(fileUrl, fIdx));
+          if (fileBlocks.length > 0) {
+            content = content ? `${content}\n${fileBlocks.join('\n')}` : fileBlocks.join('\n');
+          }
         }
         content = resolveInnerText(content, ctx, ctx.delimiters);
         promptLines.push(
