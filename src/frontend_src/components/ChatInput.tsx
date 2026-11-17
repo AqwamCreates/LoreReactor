@@ -229,8 +229,7 @@ export function ChatInput({
                     onChange={e => setInputText(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder={isModelReady ? `Chat as ${localProtagonist?.name || 'User'}. Type / for commands.` : isModelLoading ? 'Warming up... please wait' : 'Load a model to start chatting...'}
-                    className={`chat-input ${!isModelReady ? 'chat-input-disabled' : ''}`}
-                    disabled={isLoading || !isModelReady || !localProtagonist}
+                    className={"chat-input"}
                 />
                 <button
                     type="button"
