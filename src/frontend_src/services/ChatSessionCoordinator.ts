@@ -420,13 +420,12 @@ class ChatSessionCoordinator {
 
                 const outcome = await this.characterActor.executeTurn(params);
 
-                useGenerationStore.setState({ streamingText: '' });
-
                 if (this.isSkippingThinking && this.pendingSkipText) {
                     this.isSkippingThinking = false;
                     currentExistingText = this.pendingSkipText;
                     this.pendingSkipText = null;
 
+                    useGenerationStore.setState({ streamingText: currentExistingText });
                     activeData = updatePartialMessageInInteractionData(
                         useChatStore.getState().interactionData!,
                         character,
@@ -473,7 +472,12 @@ class ChatSessionCoordinator {
                 }
 
                 this.activeMessageId = null;
-                useGenerationStore.setState({ streamingMessageId: null });
+                if (!useGenerationStore.getState().streamingText && (result.displayText || result.rawText)) {
+                    useGenerationStore.setState({
+                        streamingText: result.displayText || result.rawText,
+                        streamingMessageId: resumingMessageId,
+                    });
+                }
 
                 if (this.voiceTracker && narratorBehaviour === 'wait' && !this.wasStopped) {
                     await this.voiceTracker.waitForPlaybackCompletion().catch(() => {});
@@ -484,7 +488,6 @@ class ChatSessionCoordinator {
             }
 
             this.activeMessageId = null;
-            useGenerationStore.setState({ streamingMessageId: null });
 
             const history = getGlobalMessageHistory(activeData);
             const isAtTip = !resumingMessageId || (history.length > 0 && history[history.length - 1].id === resumingMessageId);
