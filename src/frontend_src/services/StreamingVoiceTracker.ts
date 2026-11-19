@@ -108,6 +108,10 @@ export class StreamingVoiceTracker {
         this.sentenceAccumulator = '';
         this.pendingSegmentType = 'normal';
         this.isFirstChunkSent = false;
+        this.nextSequenceId = 0;
+        this.nextPlaySequenceId = 0;
+        this.completedAudioBuffers.clear();
+        this.pendingSentences = [];
     }
 
     seed(text: string): void {

@@ -185,6 +185,7 @@ class SpeechToTextEngine {
     private silenceThresholdMs = 1400;
     private activationRmsThreshold = sliderToRms(18);
     private silenceRmsThreshold = sliderToRms(8);
+    private lastAudioTime = 0;
     
     // Layer 2: ML VAD State
     private useVad = false;
@@ -245,6 +246,7 @@ class SpeechToTextEngine {
                 this.vadRemainder = new Float32Array(0);
             } else {
                 voiceActivityDetectionEngine.resetState?.();
+                this.lastAudioTime = Date.now();
                 // Reactivate any voice engines or audio contexts that deactivated/suspended while paused or idle
                 if (this.isStreamActive) {
                     if (this.audioContext?.state === 'suspended') {
@@ -674,6 +676,18 @@ class SpeechToTextEngine {
 
         const peakRms = getMaxWindowRms(vadInput, 512);
 
+        // Reset saturated VAD state when quiet exceeds silenceThresholdMs during auto-listening
+        if (!this.hasDetectedSpeech && this.isAutoListening) {
+            if (peakRms < this.silenceRmsThreshold) {
+                if (Date.now() - this.lastAudioTime >= this.silenceThresholdMs) {
+                    voiceActivityDetectionEngine.resetState?.();
+                    this.lastAudioTime = Date.now();
+                }
+            } else {
+                this.lastAudioTime = Date.now();
+            }
+        }
+
         if (this.useVad && !voiceActivityDetectionEngine.isReady()) {
             this.ensureVadInitialized();
         }
@@ -786,6 +800,7 @@ class SpeechToTextEngine {
             this.preRollChunks = [];
             this.preRollSampleCount = 0;
             this.vadRemainder = new Float32Array(0);
+            this.lastAudioTime = Date.now();
             this.clearIdleTimer();
             this.setStatus(initialStatus);
 
@@ -813,6 +828,7 @@ class SpeechToTextEngine {
         this.preRollSampleCount = 0;
         this.vadRemainder = new Float32Array(0);
         voiceActivityDetectionEngine.resetState?.();
+        this.lastAudioTime = Date.now();
 
         const totalSamples = chunksToProcess.reduce((sum, chunk) => sum + chunk.length, 0);
         if (chunksToProcess.length === 0 || totalSamples < captureRate * 0.1) {
@@ -850,6 +866,7 @@ class SpeechToTextEngine {
         this.clearSilenceCountdown();
         
         voiceActivityDetectionEngine.resetState?.();
+        this.lastAudioTime = Date.now();
 
         const captureRate = this.sourceSampleRate;
         const chunksToProcess = this.audioChunks;
@@ -892,6 +909,7 @@ class SpeechToTextEngine {
         this.clearSilenceCountdown();
 
         voiceActivityDetectionEngine.resetState?.();
+        this.lastAudioTime = Date.now();
 
         this.cleanupAudio();
         this.onPartialTranscription = null;
