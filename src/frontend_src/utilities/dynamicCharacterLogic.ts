@@ -20,7 +20,7 @@ function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
 }
 
 export function countParagraphs(text: string): number {
-    if (!text || !text) return 0;
+    if (!text) return 0;
     return (text.match(/\n\n/g) || []).length + 1;
 }
 
@@ -130,7 +130,7 @@ export function computeGlobalScore(character: Character, data: InteractionData):
 
     if (staminaRatio <= 0) return 0;
 
-    const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
+    const baseInitiative = getEffectiveInitiativeWeight(character, profile);
     const localRank = getLocalInitiativeRank(character, data);
     const momentum = getParticipationMomentum(getLocalMessageHistory(data, character, ['chat']), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
@@ -172,11 +172,11 @@ export function computeChatScore(character: Character, data: InteractionData): n
     // Turn 2 (rambling):             factor ≈ 0.28
     const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
     const consecutiveTurns = getConsecutiveTurnsByCharacter(thread, character.id);
-    const impatience = Math.max(0.1, getEffectiveChatImpatienceSensitivity(character, profile));
+    const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
     const monologueResistance = 0.8 + (impatience * 0.4);
     const monologueFatigue = 1 / (1 + (consecutiveTurns * 1.5) / monologueResistance);
 
-    const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
+    const baseInitiative = getEffectiveInitiativeWeight(character, profile);
     const localRank = getLocalInitiativeRank(character, data);
     const momentum = getParticipationMomentum(getLocalMessageHistory(data, character, ['chat']), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
@@ -227,7 +227,7 @@ export function computeActionScore(character: Character, data: InteractionData, 
         ? 1.0
         : remainingAction / maxAction;
 
-    const baseInitiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
+    const baseInitiative = getEffectiveInitiativeWeight(character, profile);
     const localRank = getLocalInitiativeRank(character, data);
     const momentum = getParticipationMomentum(getLocalMessageHistory(data, character, ['chat']), character.id);
     const effectiveInitiative = baseInitiative * localRank * (1 + momentum);
@@ -334,7 +334,12 @@ export function computeEffectiveSkip(
     }
     const escapeModifier = Math.min(0.2, Math.log1p(weightedEscapeValue) * 0.05);
 
-    return Math.min(0.85, Math.max(0, baseSkip + depletion + monologuePause + escapeModifier));
+    // 0-1 (Patience) actively increases the urge to stay silent (higher skip).
+    // >1 (Impatience) actively suppresses skip urges to cut in and speak.
+    const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
+    const patienceModifier = (1 - impatience) * 0.25;
+
+    return Math.min(0.85, Math.max(0, baseSkip + depletion + monologuePause + escapeModifier + patienceModifier));
 }
 
 export function computeChatStaminaConsumptionCost(
@@ -367,13 +372,6 @@ export function computeMovementCost(fromId: string, toId: string, locations: Loc
     return distance; 
 }
 
-/**
- * Organic Pacing:
- * Couples exhaustion directly to pacing:
- * - Fresh (responding to another person): fast tempo (baseInterval).
- * - Follow-up thought: natural hesitation pause (1.5x - 2.0x baseInterval).
- * - Trailing off (monologue): long pause before continuing (3.0x+ baseInterval).
- */
 export function computeAutonomousTickDelay(character: Character, data: InteractionData): number {
     const profile = data.profile;
     
@@ -381,24 +379,30 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
         ? profile.autonomousInteractionIntervalMs
         : 1000;
 
-    const initiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
-    const targetDelay = baseInterval / initiative;
+    const initiative = getEffectiveInitiativeWeight(character, profile);
+    const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
 
-    const impatience = Math.max(0.1, getEffectiveChatImpatienceSensitivity(character, profile));
-    const impatienceFactor = 1 / (0.5 + 0.5 * impatience);
+    // 1. Clean, human-like power scaling
+    const impatienceFactor = impatience ** -0.4;
 
     const mentionCount = getNameMentionCount(character, data);
     const nameSensitivity = getEffectiveNameSensitivity(character, profile);
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity * 2);
     const nameFactor = 1 / nameMentionBoost;
 
-    // Pacing hesitation scales with consecutive monologue turns
+    // 2. Hesitation when monologuing
     const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
     const consecutiveTurns = getConsecutiveTurnsByCharacter(thread, character.id);
-    const cadenceHesitation = 1 + (consecutiveTurns * 1.5);
+    const cadenceHesitation = 1 + (consecutiveTurns * 0.4);
 
-    const dynamicDelay = targetDelay * impatienceFactor * nameFactor * cadenceHesitation;
+    // 3. Human Micro-Jitter (±15% variance so ticks don't feel like a metronome)
+    const humanJitter = 0.85 + Math.random() * 0.3;
 
-    // Base interval is the strict floor
-    return Math.max(baseInterval, Math.min(baseInterval * 8, dynamicDelay));
+    const dynamicDelay = (baseInterval / initiative) * impatienceFactor * nameFactor * cadenceHesitation * humanJitter;
+
+    // 4. Realistic human floor and ceiling
+    const minFloor = Math.max(400, baseInterval * 0.3);
+    const maxCeiling = baseInterval * 4;
+
+    return Math.max(minFloor, Math.min(maxCeiling, dynamicDelay));
 }

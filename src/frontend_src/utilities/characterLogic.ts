@@ -10,8 +10,7 @@ function getEffectiveTriStateBoolean<K extends keyof Character>(key: K, characte
     const characterValue = character[key] as boolean;
     const profileValue = profile?.[key as keyof Profile] as number | undefined;
     if (profileValue === undefined || profileValue === 0) return characterValue;
-    if (profileValue < 0) return false;
-    return true;
+    return (profileValue > 0);
 }
 
 export function getEffectiveUseFrontCameraImage(character: Character, profile?: Profile): boolean {
