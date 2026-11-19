@@ -120,6 +120,8 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
  * Card: Character-less view with dungeon master focus.  
 
+* Companion overlay window can be also activated using the binary versions of the LoreReactor app, enabling even more personal interaction whenever you are, including playing games, browsing the web, writing an essay and so on.
+
 ### Immersion
 
 * Branch-to-new-window with position labeling: Branching clones conversation history into an independent session. Original chat remains untouched.
