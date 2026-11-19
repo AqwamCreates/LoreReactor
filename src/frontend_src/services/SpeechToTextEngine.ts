@@ -5,6 +5,8 @@ import { voiceActivityDetectionEngine } from './VoiceActivityDetectionEngine';
 const HF_MODEL_ID = 'Xenova/whisper-tiny'; 
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 
+export type SttStatus = 'idle' | 'loading' | 'recording' | 'transcribing';
+
 type AutomaticSpeechRecognitionPipeline = (audio: Float32Array | Float32Array[], options?: any) => Promise<{ text: string }>;
 
 async function isWebGpuAvailable(): Promise<boolean> {
@@ -15,6 +17,20 @@ async function isWebGpuAvailable(): Promise<boolean> {
     } catch {
         return false;
     }
+}
+
+/**
+ * Yields back to the browser so React can commit DOM updates and paint
+ * loading/transcribing icons before synchronous WASM/ONNX inference locks the thread.
+ */
+function yieldToPaint(): Promise<void> {
+    return new Promise((resolve) => {
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => setTimeout(resolve, 16));
+        } else {
+            setTimeout(resolve, 16);
+        }
+    });
 }
 
 function sliderToRms(sliderValue: number): number {
@@ -49,6 +65,10 @@ class SpeechToTextEngine {
     
     private currentDevicePreference: deviceType = 'auto';
 
+    // Status subscription
+    private status: SttStatus = 'idle';
+    private statusListeners = new Set<(status: SttStatus) => void>();
+
     // Audio capture state
     private audioContext: AudioContext | null = null;
     private mediaStream: MediaStream | null = null;
@@ -72,6 +92,31 @@ class SpeechToTextEngine {
     private useVad = false;
     private vadProbabilityThreshold = 0.4;
     private isVadBusy = false;
+
+    private setStatus(status: SttStatus): void {
+        if (this.status !== status) {
+            this.status = status;
+            for (const listener of this.statusListeners) {
+                try {
+                    listener(status);
+                } catch {
+                    // ignore subscriber errors
+                }
+            }
+        }
+    }
+
+    onStatusChange(listener: (status: SttStatus) => void): () => void {
+        this.statusListeners.add(listener);
+        listener(this.status);
+        return () => {
+            this.statusListeners.delete(listener);
+        };
+    }
+
+    getStatus(): SttStatus {
+        return this.status;
+    }
 
     setDevicePreference(preference: deviceType): void {
         if (this.currentDevicePreference !== preference) {
@@ -156,7 +201,7 @@ class SpeechToTextEngine {
     private resetIdleTimer(): void {
         if (this.idleTimer) clearTimeout(this.idleTimer);
         this.idleTimer = setTimeout(() => {
-            if (!this.isRecording && !this.isAutoListening) {
+            if (!this.isRecording && !this.isAutoListening && this.status === 'idle') {
                 console.log('[STTEngine] Idle for 3 minutes, unloading.');
                 this.unload();
             }
@@ -184,11 +229,12 @@ class SpeechToTextEngine {
         this.usingWebGpu = false;
         
         await voiceActivityDetectionEngine.unload();
+        this.setStatus('idle');
         console.log('[STTEngine] Unloaded.');
     }
 
     async unloadIfInactive(): Promise<void> {
-        if (this.isRecording || this.isAutoListening) return;
+        if (this.isRecording || this.isAutoListening || this.status !== 'idle') return;
         await this.unload();
     }
 
@@ -249,56 +295,88 @@ class SpeechToTextEngine {
             vadDevicePreference?: deviceType;
         }
     ): Promise<boolean> {
-        const loaded = await this.load();
-        if (!loaded) return false;
+        if (this.status === 'loading' || this.status === 'transcribing') return false;
 
-        if (this.isRecording) {
-            this.stopRecordingSync();
-        }
+        this.setStatus('loading');
+        await yieldToPaint();
 
-        const actPct = options?.volumeActivationThresholdPercent ?? 12;
-        const silPct = options?.silenceVolumeActivationThresholdPercent ?? 6;
-
-        this.activationRmsThreshold = sliderToRms(actPct);
-        const targetSilRms = sliderToRms(silPct);
-        this.silenceRmsThreshold = Math.min(targetSilRms, this.activationRmsThreshold * 0.75);
-        this.silenceThresholdMs = options?.silenceThresholdMs ?? 1400;
-        
-        this.vadProbabilityThreshold = options?.voiceActivityProbabilityThreshold ?? 0.4;
-        this.useVad = true;
-        this.isVadBusy = false;
-        
-        if (options?.vadDevicePreference) {
-            voiceActivityDetectionEngine.setDevicePreference(options.vadDevicePreference);
-        }
-        
         try {
-            const vadInit = voiceActivityDetectionEngine.initialize();
-            const timeout = new Promise<boolean>(res => setTimeout(() => res(false), 2000));
-            this.useVad = (await Promise.race([vadInit, timeout])) === true;
-        } catch {
-            this.useVad = false;
+            const loaded = await this.load();
+            if (!loaded) {
+                this.setStatus('idle');
+                return false;
+            }
+
+            if (this.isRecording) {
+                this.stopRecordingSync();
+            }
+
+            const actPct = options?.volumeActivationThresholdPercent ?? 12;
+            const silPct = options?.silenceVolumeActivationThresholdPercent ?? 6;
+
+            this.activationRmsThreshold = sliderToRms(actPct);
+            const targetSilRms = sliderToRms(silPct);
+            this.silenceRmsThreshold = Math.min(targetSilRms, this.activationRmsThreshold * 0.75);
+            this.silenceThresholdMs = options?.silenceThresholdMs ?? 1400;
+            
+            this.vadProbabilityThreshold = options?.voiceActivityProbabilityThreshold ?? 0.4;
+            this.useVad = true;
+            this.isVadBusy = false;
+            
+            if (options?.vadDevicePreference) {
+                voiceActivityDetectionEngine.setDevicePreference(options.vadDevicePreference);
+            }
+            
+            try {
+                const vadInit = voiceActivityDetectionEngine.initialize();
+                const timeout = new Promise<boolean>(res => setTimeout(() => res(false), 2000));
+                this.useVad = (await Promise.race([vadInit, timeout])) === true;
+            } catch {
+                this.useVad = false;
+            }
+
+            this.isAutoListening = true;
+            this.hasDetectedSpeech = false;
+            this.onAutoSend = onAutoSend;
+
+            const ok = await this.initAudioStream(onPartial);
+            if (!ok) this.setStatus('idle');
+            return ok;
+        } catch (e) {
+            console.error('[STTEngine] Failed to start auto listening:', e);
+            this.setStatus('idle');
+            return false;
         }
-
-        this.isAutoListening = true;
-        this.hasDetectedSpeech = false;
-        this.onAutoSend = onAutoSend;
-
-        return this.initAudioStream(onPartial);
     }
 
     async startRecording(
         onPartialTranscription: (text: string) => void
     ): Promise<boolean> {
-        const loaded = await this.load();
-        if (!loaded) return false;
-
+        if (this.status === 'loading' || this.status === 'transcribing') return false;
         if (this.isRecording) return true;
 
-        this.isAutoListening = false;
-        this.useVad = false;
-        this.onAutoSend = null;
-        return this.initAudioStream(onPartialTranscription);
+        this.setStatus('loading');
+        await yieldToPaint();
+
+        try {
+            const loaded = await this.load();
+            if (!loaded) {
+                this.setStatus('idle');
+                return false;
+            }
+
+            this.isAutoListening = false;
+            this.useVad = false;
+            this.onAutoSend = null;
+
+            const ok = await this.initAudioStream(onPartialTranscription);
+            if (!ok) this.setStatus('idle');
+            return ok;
+        } catch (e) {
+            console.error('[STTEngine] Failed to start recording:', e);
+            this.setStatus('idle');
+            return false;
+        }
     }
 
     private async initAudioStream(onPartial: (text: string) => void): Promise<boolean> {
@@ -395,12 +473,14 @@ class SpeechToTextEngine {
             this.onPartialTranscription = onPartial;
             this.audioChunks = [];
             this.clearIdleTimer();
+            this.setStatus('recording');
 
             console.log(`[STTEngine] Audio capture active (ContextState=${this.audioContext.state}, Rate=${sourceRate}Hz, AutoVAD=${this.isAutoListening}).`);
             return true;
         } catch (e) {
             console.error('[STTEngine] Failed to start audio capture:', e);
             this.cleanupAudio();
+            this.setStatus('idle');
             return false;
         }
     }
@@ -408,6 +488,8 @@ class SpeechToTextEngine {
     private async triggerAutoSend(): Promise<void> {
         if (!this.isAutoListening) return;
 
+        // Avoid flashing partial text into input right before auto-sending
+        this.onPartialTranscription = null;
         const text = await this.stopRecording();
         if (text && text.trim().length > 0 && this.onAutoSend) {
             console.log('[STTEngine] Turn completed. Auto-sending:', text);
@@ -435,16 +517,29 @@ class SpeechToTextEngine {
         const chunksToProcess = this.audioChunks;
         const partialCallback = this.onPartialTranscription;
 
-        // 2. Immediately stop the microphone tracks and AudioContext (instant hardware stop)
+        // 2. Immediately stop the microphone tracks and AudioContext
         this.onPartialTranscription = null;
         this.cleanupAudio();
 
-        // 3. Now transcribe the extracted chunks without holding the mic open
-        const finalText = await this.transcribeChunks(chunksToProcess, partialCallback);
-        this.resetIdleTimer();
+        const totalLength = chunksToProcess.reduce((sum, chunk) => sum + chunk.length, 0);
+        if (chunksToProcess.length === 0 || totalLength < 1600) {
+            this.setStatus('idle');
+            this.resetIdleTimer();
+            return null;
+        }
 
-        console.log('[STTEngine] Recording stopped.');
-        return finalText;
+        // 3. Switch UI to transcribing and yield a frame so the browser paints it BEFORE Whisper runs
+        this.setStatus('transcribing');
+        await yieldToPaint();
+
+        try {
+            const finalText = await this.transcribeChunks(chunksToProcess, totalLength, partialCallback);
+            console.log('[STTEngine] Recording stopped.');
+            return finalText;
+        } finally {
+            this.setStatus('idle');
+            this.resetIdleTimer();
+        }
     }
 
     private stopRecordingSync(): void {
@@ -466,21 +561,18 @@ class SpeechToTextEngine {
         this.cleanupAudio();
         this.onPartialTranscription = null;
         this.audioChunks = [];
+        this.setStatus('idle');
     }
 
     private async transcribeChunks(
         chunks: Float32Array[],
+        totalLength: number,
         onText: ((text: string) => void) | null
     ): Promise<string | null> {
-        if (chunks.length === 0) return null;
-
         if (this.loading) await this.loading;
         if (!this.pipeline) return null;
 
         try {
-            const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
-            if (totalLength < 1600) return null; // Ignore clicks under 100ms
-
             const combined = new Float32Array(totalLength);
             let offset = 0;
             for (const chunk of chunks) {

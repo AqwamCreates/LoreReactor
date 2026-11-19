@@ -12,6 +12,8 @@ interface ChatInputProps {
     pendingFiles: File[];
     setPendingFiles: React.Dispatch<React.SetStateAction<File[]>>;
     isRecording: boolean;
+    isMicLoading?: boolean;
+    isTranscribing?: boolean;
     isLoading: boolean;
     isModelReady: boolean | undefined;
     isModelLoading: boolean;
@@ -46,7 +48,8 @@ interface ChatInputProps {
 
 export function ChatInput({
     inputText, setInputText, pendingFiles, setPendingFiles,
-    isRecording, isLoading, isModelReady, isModelLoading, modelStatusMessage,
+    isRecording, isMicLoading = false, isTranscribing = false,
+    isLoading, isModelReady, isModelLoading, modelStatusMessage,
     localProtagonist, activeStrategy, selectedModelId,
     interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allProfiles,
     allPromptBlocks, allLanguageModels, allSpatiotemporalModels, allTokenSamplers, allStopPatterns, allBudgetStrategies, allMemories, allAccounts, allMultiplayerData,
@@ -146,6 +149,16 @@ export function ChatInput({
         }
     };
 
+    const micIcon = isMicLoading ? '⏳' : isTranscribing ? '📝' : isRecording ? '⏹' : '🎙️';
+    const micTitle = isMicLoading
+        ? 'Loading speech recognition...'
+        : isTranscribing
+            ? 'Transcribing audio...'
+            : isRecording
+                ? 'Stop recording'
+                : 'Start voice input';
+    const isMicDisabled = (!isRecording && (isLoading || !isModelReady)) || isMicLoading || isTranscribing;
+
     return (
         <FileDropArea
             disabled={isLoading || !isModelReady}
@@ -222,7 +235,15 @@ export function ChatInput({
             <div className="input-area">
                 <button type="button" onClick={() => fileInputRef.current?.click()} disabled={isLoading || !isModelReady} className="attach-button toolbar-button">📎</button>
                 <input ref={fileInputRef} type="file" multiple hidden onChange={onFileSelected} />
-                <button type="button" onClick={onToggleMicrophone} disabled={isLoading || !isModelReady} className={`attach-button toolbar-button ${isRecording ? 'stt-mic-active' : ''}`} title={isRecording ? 'Stop recording' : 'Start voice input'}>{isRecording ? '⏹' : '🎙️'}</button>
+                <button
+                    type="button"
+                    onClick={onToggleMicrophone}
+                    disabled={isMicDisabled}
+                    className={`attach-button toolbar-button ${isRecording ? 'stt-mic-active' : ''}`}
+                    title={micTitle}
+                >
+                    {micIcon}
+                </button>
                 <textarea
                     ref={textareaRef}
                     value={inputText}

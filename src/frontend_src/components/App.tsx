@@ -536,10 +536,20 @@ function App() {
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
     const [isRecording, setIsRecording] = useState(false);
+    const [isMicLoading, setIsMicLoading] = useState(false);
+    const [isTranscribing, setIsTranscribing] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
     const suppressAutoScrollRef = useRef(false);
+
+    useEffect(() => {
+        return speechToTextEngine.onStatusChange((status) => {
+            setIsMicLoading(status === 'loading');
+            setIsRecording(status === 'recording');
+            setIsTranscribing(status === 'transcribing');
+        });
+    }, []);
 
     const viewAssets = useViewAssets({
         viewMode,
@@ -724,9 +734,9 @@ function App() {
     }, [inputText, pendingFiles, sendMessage, captureFrontCameraImage, interactionData, currentCharacter, scrollToBottom]);
 
     const handleToggleMic = useCallback(async () => {
+        if (isMicLoading || isTranscribing) return;
         if (isRecording) { 
             await speechToTextEngine.stopRecording(); 
-            setIsRecording(false); 
         } else {
             const profile = interactionData?.profile;
             const isAuto = profile?.enableAutoSpeechDetection ?? false;
@@ -745,7 +755,6 @@ function App() {
                         setInputText(prev => prev + (prev ? ' ' : '') + partialText);
                     },
                     (finalText: string) => {
-                        setIsRecording(false);
                         setInputText('');
                         if (finalText && finalText.length > 0) {
                             handleSend(finalText);
@@ -763,7 +772,6 @@ function App() {
                     addToast('Failed to start voice activity detection.', 'error'); 
                     return; 
                 }
-                setIsRecording(true);
                 addToast('🎙️ Hands-free listening active...', 'info');
             } else {
                 const started = await speechToTextEngine.startRecording(
@@ -773,10 +781,9 @@ function App() {
                     addToast('Failed to start voice input.', 'error'); 
                     return; 
                 }
-                setIsRecording(true);
             }
         }
-    }, [isRecording, interactionData?.profile, handleSend, addToast]);
+    }, [isRecording, isMicLoading, isTranscribing, interactionData?.profile, handleSend, addToast]);
 
     const isRunningInTauri = typeof window !== 'undefined' && Boolean(
         (window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__
@@ -1471,7 +1478,8 @@ function App() {
                         <ChatInput
                             inputText={inputText} setInputText={setInputText}
                             pendingFiles={pendingFiles} setPendingFiles={setPendingFiles}
-                            isRecording={isRecording} isLoading={isLoading} isModelReady={isModelReady}
+                            isRecording={isRecording} isMicLoading={isMicLoading} isTranscribing={isTranscribing}
+                            isLoading={isLoading} isModelReady={isModelReady}
                             isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage}
                             localProtagonist={localProtagonist} activeStrategy={activeStrategy ?? undefined}
                             selectedModelId={languageModels.selectedLanguageModelId} interactionData={interactionData}
