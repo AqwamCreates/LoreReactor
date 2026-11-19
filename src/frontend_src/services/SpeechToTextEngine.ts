@@ -4,12 +4,46 @@ import { voiceActivityDetectionEngine } from './VoiceActivityDetectionEngine';
 
 const HF_MODEL_ID = 'Xenova/whisper-tiny';
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
-const PRE_ROLL_TARGET_SAMPLES = 8000; // 500ms pre-roll at 16kHz
-const MAX_VAD_QUEUE_SAMPLES = 4096;   // Cap VAD backlog to ~256ms max
+const PRE_ROLL_DURATION_SECONDS = 1.5; // 1.5s pre-roll to preserve soft sentence starters
+const MAX_VAD_QUEUE_SAMPLES = 4096;    // Cap VAD backlog to ~256ms max at 16kHz
 
 export type SttStatus = 'idle' | 'loading' | 'listening' | 'recording' | 'transcribing';
 
 type AutomaticSpeechRecognitionPipeline = (audio: Float32Array | Float32Array[], options?: any) => Promise<{ text: string }>;
+
+const WORKLET_PROCESSOR_NAME = 'stt-capture-processor';
+const WORKLET_PROCESSOR_CODE = `
+class SttCaptureProcessor extends AudioWorkletProcessor {
+    constructor() {
+        super();
+        this.bufferSize = 2048;
+        this.buffer = new Float32Array(this.bufferSize);
+        this.offset = 0;
+    }
+    process(inputs) {
+        const input = inputs[0];
+        if (input && input[0] && input[0].length > 0) {
+            const channel = input[0];
+            let readOffset = 0;
+            while (readOffset < channel.length) {
+                const space = this.bufferSize - this.offset;
+                const toCopy = Math.min(space, channel.length - readOffset);
+                this.buffer.set(channel.subarray(readOffset, readOffset + toCopy), this.offset);
+                this.offset += toCopy;
+                readOffset += toCopy;
+                if (this.offset >= this.bufferSize) {
+                    const out = this.buffer;
+                    this.port.postMessage(out, [out.buffer]);
+                    this.buffer = new Float32Array(this.bufferSize);
+                    this.offset = 0;
+                }
+            }
+        }
+        return true;
+    }
+}
+registerProcessor('${WORKLET_PROCESSOR_NAME}', SttCaptureProcessor);
+`;
 
 async function isWebGpuAvailable(): Promise<boolean> {
     if (typeof navigator === 'undefined' || !('gpu' in navigator)) return false;
@@ -43,10 +77,10 @@ function sliderToRms(sliderValue: number): number {
     return 10 ** (db / 20);
 }
 
-function resampleBuffer(buffer: Float32Array, fromSampleRate: number, toSampleRate = 16000): Float32Array {
+function resampleLinear(buffer: Float32Array, fromSampleRate: number, toSampleRate = 16000): Float32Array {
     if (fromSampleRate === toSampleRate) return buffer;
     const ratio = fromSampleRate / toSampleRate;
-    const newLength = Math.round(buffer.length / ratio);
+    const newLength = Math.max(1, Math.round(buffer.length / ratio));
     const result = new Float32Array(newLength);
     for (let i = 0; i < newLength; i++) {
         const pos = i * ratio;
@@ -56,6 +90,28 @@ function resampleBuffer(buffer: Float32Array, fromSampleRate: number, toSampleRa
         result[i] = buffer[idx] * (1 - frac) + buffer[next] * frac;
     }
     return result;
+}
+
+/**
+ * Uses the browser's native C++ polyphase sinc filter to anti-alias and resample
+ * the full utterance cleanly in a single pass with zero chunk-boundary artifacts.
+ */
+async function resampleOfflineTo16k(audioData: Float32Array, sourceRate: number): Promise<Float32Array> {
+    if (sourceRate === 16000) return audioData;
+    try {
+        const targetLength = Math.max(1, Math.round((audioData.length * 16000) / sourceRate));
+        const offlineCtx = new OfflineAudioContext(1, targetLength, 16000);
+        const audioBuffer = offlineCtx.createBuffer(1, audioData.length, sourceRate);
+        audioBuffer.getChannelData(0).set(audioData);
+        const source = offlineCtx.createBufferSource();
+        source.buffer = audioBuffer;
+        source.connect(offlineCtx.destination);
+        source.start(0);
+        const rendered = await offlineCtx.startRendering();
+        return rendered.getChannelData(0);
+    } catch {
+        return resampleLinear(audioData, sourceRate, 16000);
+    }
 }
 
 /**
@@ -104,8 +160,10 @@ class SpeechToTextEngine {
 
     // Audio capture state
     private audioContext: AudioContext | null = null;
+    private sourceSampleRate = 16000;
     private mediaStream: MediaStream | null = null;
     private sourceNode: MediaStreamAudioSourceNode | null = null;
+    private workletNode: AudioWorkletNode | null = null;
     private processorNode: ScriptProcessorNode | null = null;
     private muteGainNode: GainNode | null = null;
     private resumeGestureHandler: (() => void) | null = null;
@@ -124,7 +182,7 @@ class SpeechToTextEngine {
     private silenceTimer: ReturnType<typeof setTimeout> | null = null;
     private hasDetectedSpeech = false;
     private onAutoSend: ((text: string) => void) | null = null;
-    private silenceThresholdMs = 2000;
+    private silenceThresholdMs = 1400;
     private activationRmsThreshold = sliderToRms(18);
     private silenceRmsThreshold = sliderToRms(8);
     
@@ -177,7 +235,7 @@ class SpeechToTextEngine {
         this.activationRmsThreshold = sliderToRms(actPct);
         const targetSilRms = sliderToRms(silPct);
         this.silenceRmsThreshold = Math.min(targetSilRms, this.activationRmsThreshold * 0.75);
-        this.silenceThresholdMs = options.silenceThresholdMs ?? 2000;
+        this.silenceThresholdMs = options.silenceThresholdMs ?? 1400;
         this.vadProbabilityThreshold = options.voiceActivityProbabilityThreshold ?? 0.5;
         if (options.vadDevicePreference) {
             voiceActivityDetectionEngine.setDevicePreference(options.vadDevicePreference);
@@ -310,7 +368,7 @@ class SpeechToTextEngine {
 
         try {
             this.resetIdleTimer();
-            const result = await this.pipeline(buffer);
+            const result = await this.pipeline(buffer, { chunk_length_s: 30, stride_length_s: 5 });
             const text = result.text?.trim() ?? '';
             return text || null;
         } catch (e) {
@@ -338,7 +396,7 @@ class SpeechToTextEngine {
                 float32Array = mixed;
             }
             
-            const options: any = {};
+            const options: any = { chunk_length_s: 30, stride_length_s: 5 };
             if (language) options.language = language;
             
             const result = await this.pipeline(float32Array, options);
@@ -382,7 +440,6 @@ class SpeechToTextEngine {
             this.useVad = true;
             this.isVadBusy = false;
 
-            // Start VAD initialization without permanently disabling it if initial download takes >2.5s
             const vadInit = voiceActivityDetectionEngine.initialize().then((ok) => {
                 if (!ok && voiceActivityDetectionEngine.getError()) {
                     this.useVad = false;
@@ -448,9 +505,10 @@ class SpeechToTextEngine {
     }
 
     private pushPreRoll(chunk: Float32Array): void {
+        const targetSamples = Math.round(this.sourceSampleRate * PRE_ROLL_DURATION_SECONDS);
         this.preRollChunks.push(chunk);
         this.preRollSampleCount += chunk.length;
-        while (this.preRollChunks.length > 1 && this.preRollSampleCount - this.preRollChunks[0].length >= PRE_ROLL_TARGET_SAMPLES) {
+        while (this.preRollChunks.length > 1 && this.preRollSampleCount - this.preRollChunks[0].length >= targetSamples) {
             const removed = this.preRollChunks.shift()!;
             this.preRollSampleCount -= removed.length;
         }
@@ -460,7 +518,6 @@ class SpeechToTextEngine {
         const combined = new Float32Array(this.vadRemainder.length + chunk.length);
         combined.set(this.vadRemainder, 0);
         combined.set(chunk, this.vadRemainder.length);
-        // Keep queue bounded if CPU lags so we don't fall behind real time
         if (combined.length > MAX_VAD_QUEUE_SAMPLES) {
             this.vadRemainder = combined.slice(combined.length - MAX_VAD_QUEUE_SAMPLES);
         } else {
@@ -468,14 +525,11 @@ class SpeechToTextEngine {
         }
     }
 
-    private beginSpeechCapture(triggerChunk: Float32Array, peakRms: number, vadProb: number): void {
+    private beginSpeechCapture(peakRms: number, vadProb: number): void {
         if (this.hasDetectedSpeech) return;
         this.hasDetectedSpeech = true;
-        // preRollChunks already ends with recent chunks including triggerChunk if pushed
+        // All recent frames were already pushed chronologically into preRollChunks
         this.audioChunks = [...this.preRollChunks];
-        if (this.audioChunks.length === 0 || this.audioChunks[this.audioChunks.length - 1] !== triggerChunk) {
-            this.audioChunks.push(triggerChunk);
-        }
         this.preRollChunks = [];
         this.preRollSampleCount = 0;
         this.clearSilenceCountdown();
@@ -498,7 +552,7 @@ class SpeechToTextEngine {
         }
     }
 
-    private handleDetectionResult(peakRms: number, vadProb: number, latestChunk: Float32Array): void {
+    private handleDetectionResult(peakRms: number, vadProb: number): void {
         if (!this.isStreamActive || !this.isAutoListening || this.isTranscribingNow) return;
 
         const vadValid = vadProb >= 0;
@@ -507,28 +561,24 @@ class SpeechToTextEngine {
             if (this.isPaused) return;
 
             if (vadValid) {
-                // Trigger on: (1) RMS >= activation + VAD confirms, OR (2) very high VAD confidence above silence floor
                 const normalTrigger = peakRms >= this.activationRmsThreshold && vadProb >= this.vadProbabilityThreshold;
                 const softSpeechTrigger = peakRms >= this.silenceRmsThreshold && vadProb >= Math.min(0.85, this.vadProbabilityThreshold + 0.15);
                 if (normalTrigger || softSpeechTrigger) {
-                    this.beginSpeechCapture(latestChunk, peakRms, vadProb);
+                    this.beginSpeechCapture(peakRms, vadProb);
                 }
             } else if (peakRms >= this.activationRmsThreshold) {
-                this.beginSpeechCapture(latestChunk, peakRms, -1);
+                this.beginSpeechCapture(peakRms, -1);
             }
             return;
         }
 
-        // Currently actively recording speech: check whether speech is continuing or silent
         if (vadValid) {
-            // Trust Silero VAD to distinguish speech from fan/ambient noise
             if (vadProb >= this.vadProbabilityThreshold) {
                 this.clearSilenceCountdown();
             } else {
                 this.scheduleSilenceCountdown();
             }
         } else {
-            // Fallback to RMS hysteresis when VAD is unavailable
             if (peakRms >= this.silenceRmsThreshold) {
                 this.clearSilenceCountdown();
             } else {
@@ -537,7 +587,7 @@ class SpeechToTextEngine {
         }
     }
 
-    private async processVadQueue(peakRms: number, latestChunk: Float32Array): Promise<void> {
+    private async processVadQueue(peakRms: number): Promise<void> {
         this.isVadBusy = true;
         try {
             let maxProb = -1;
@@ -547,11 +597,51 @@ class SpeechToTextEngine {
                 const prob = await voiceActivityDetectionEngine.processChunk(frame);
                 if (prob > maxProb) maxProb = prob;
             }
-            this.handleDetectionResult(peakRms, maxProb, latestChunk);
+            this.handleDetectionResult(peakRms, maxProb);
         } catch {
-            this.handleDetectionResult(peakRms, -1, latestChunk);
+            this.handleDetectionResult(peakRms, -1);
         } finally {
             this.isVadBusy = false;
+        }
+    }
+
+    private handleIncomingAudio(nativeChunk: Float32Array): void {
+        if (!this.isStreamActive || this.isTranscribingNow) return;
+
+        // Manual recording mode: store raw native-rate PCM directly
+        if (!this.isAutoListening) {
+            this.audioChunks.push(nativeChunk);
+            return;
+        }
+
+        if (this.isPaused && !this.hasDetectedSpeech) {
+            this.preRollChunks = [];
+            this.preRollSampleCount = 0;
+            this.vadRemainder = new Float32Array(0);
+            return;
+        }
+
+        if (!this.hasDetectedSpeech) {
+            this.pushPreRoll(nativeChunk);
+        } else {
+            this.audioChunks.push(nativeChunk);
+        }
+
+        // Convert only a lightweight copy to 16kHz for real-time RMS & Silero VAD evaluation
+        const vadInput = this.sourceSampleRate !== 16000
+            ? resampleLinear(nativeChunk, this.sourceSampleRate, 16000)
+            : nativeChunk;
+
+        const peakRms = getMaxWindowRms(vadInput, 512);
+        const vadReady = this.useVad && voiceActivityDetectionEngine.isReady();
+
+        if (vadReady) {
+            this.appendVadSamples(vadInput);
+            if (!this.isVadBusy && this.vadRemainder.length >= 512) {
+                void this.processVadQueue(peakRms);
+            }
+        } else {
+            this.handleDetectionResult(peakRms, -1);
         }
     }
 
@@ -563,9 +653,9 @@ class SpeechToTextEngine {
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    // Keep gain stable so dBFS activation/silence thresholds don't get defeated by AGC boosting room noise
+                    // Disable WebRTC call-processing DSP so quiet consonants and trailing words aren't gated out
+                    echoCancellation: false,
+                    noiseSuppression: false,
                     autoGainControl: false,
                 },
             });
@@ -598,61 +688,51 @@ class SpeechToTextEngine {
                 }
             }
 
+            this.sourceSampleRate = this.audioContext.sampleRate;
             this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
-            this.processorNode = this.audioContext.createScriptProcessor(2048, 1, 1);
-
             this.muteGainNode = this.audioContext.createGain();
             this.muteGainNode.gain.value = 0;
 
-            const sourceRate = this.audioContext.sampleRate;
-
-            this.processorNode.onaudioprocess = (event) => {
-                if (!this.isStreamActive || this.isTranscribingNow) return;
-                const rawInput = event.inputBuffer.getChannelData(0);
-
-                const inputData = sourceRate !== 16000
-                    ? resampleBuffer(rawInput, sourceRate, 16000)
-                    : new Float32Array(rawInput);
-
-                // Manual recording mode: capture everything directly
-                if (!this.isAutoListening) {
-                    this.audioChunks.push(inputData);
-                    return;
-                }
-
-                // Auto-listening paused (e.g., AI is generating or speaking TTS)
-                if (this.isPaused && !this.hasDetectedSpeech) {
-                    this.preRollChunks = [];
-                    this.preRollSampleCount = 0;
-                    this.vadRemainder = new Float32Array(0);
-                    return;
-                }
-
-                const peakRms = getMaxWindowRms(inputData, 512);
-
-                if (!this.hasDetectedSpeech) {
-                    this.pushPreRoll(inputData);
-                } else {
-                    this.audioChunks.push(inputData);
-                }
-
-                const vadReady = this.useVad && voiceActivityDetectionEngine.isReady();
-
-                if (vadReady) {
-                    // Feed contiguous 512-sample frames so Silero's LSTM hidden state remains coherent
-                    this.appendVadSamples(inputData);
-                    if (!this.isVadBusy && this.vadRemainder.length >= 512) {
-                        void this.processVadQueue(peakRms, inputData);
+            let usingWorklet = false;
+            if (typeof AudioWorkletNode !== 'undefined' && this.audioContext.audioWorklet) {
+                let blobUrl: string | null = null;
+                try {
+                    const blob = new Blob([WORKLET_PROCESSOR_CODE], { type: 'application/javascript' });
+                    blobUrl = URL.createObjectURL(blob);
+                    await this.audioContext.audioWorklet.addModule(blobUrl);
+                    this.workletNode = new AudioWorkletNode(this.audioContext, WORKLET_PROCESSOR_NAME);
+                    this.workletNode.port.onmessage = (event) => {
+                        const chunk = event.data as Float32Array;
+                        if (chunk && chunk.length > 0) {
+                            this.handleIncomingAudio(chunk);
+                        }
+                    };
+                    this.sourceNode.connect(this.workletNode);
+                    this.workletNode.connect(this.muteGainNode);
+                    this.muteGainNode.connect(this.audioContext.destination);
+                    usingWorklet = true;
+                } catch (workletErr) {
+                    console.warn('[STTEngine] AudioWorklet unavailable, falling back to ScriptProcessor:', workletErr);
+                    if (this.workletNode) {
+                        this.workletNode.port.onmessage = null;
+                        this.workletNode.disconnect();
+                        this.workletNode = null;
                     }
-                } else {
-                    // Pure RMS fallback if VAD is still downloading or disabled
-                    this.handleDetectionResult(peakRms, -1, inputData);
+                } finally {
+                    if (blobUrl) URL.revokeObjectURL(blobUrl);
                 }
-            };
+            }
 
-            this.sourceNode.connect(this.processorNode);
-            this.processorNode.connect(this.muteGainNode);
-            this.muteGainNode.connect(this.audioContext.destination);
+            if (!usingWorklet) {
+                this.processorNode = this.audioContext.createScriptProcessor(2048, 1, 1);
+                this.processorNode.onaudioprocess = (event) => {
+                    const rawInput = event.inputBuffer.getChannelData(0);
+                    this.handleIncomingAudio(new Float32Array(rawInput));
+                };
+                this.sourceNode.connect(this.processorNode);
+                this.processorNode.connect(this.muteGainNode);
+                this.muteGainNode.connect(this.audioContext.destination);
+            }
 
             this.isStreamActive = true;
             this.isTranscribingNow = false;
@@ -664,7 +744,7 @@ class SpeechToTextEngine {
             this.clearIdleTimer();
             this.setStatus(initialStatus);
 
-            console.log(`[STTEngine] Audio capture active (ContextState=${this.audioContext.state}, Rate=${sourceRate}Hz, AutoVAD=${this.isAutoListening}, VadReady=${voiceActivityDetectionEngine.isReady()}).`);
+            console.log(`[STTEngine] Audio capture active (Thread=${usingWorklet ? 'AudioWorklet' : 'ScriptProcessor'}, ContextState=${this.audioContext.state}, Rate=${this.sourceSampleRate}Hz, AutoVAD=${this.isAutoListening}, VadReady=${voiceActivityDetectionEngine.isReady()}).`);
             return true;
         } catch (e) {
             console.error('[STTEngine] Failed to start audio capture:', e);
@@ -681,6 +761,7 @@ class SpeechToTextEngine {
         this.hasDetectedSpeech = false;
         this.isTranscribingNow = true;
 
+        const captureRate = this.sourceSampleRate;
         const chunksToProcess = this.audioChunks;
         this.audioChunks = [];
         this.preRollChunks = [];
@@ -688,8 +769,8 @@ class SpeechToTextEngine {
         this.vadRemainder = new Float32Array(0);
         voiceActivityDetectionEngine.resetState?.();
 
-        const totalLength = chunksToProcess.reduce((sum, chunk) => sum + chunk.length, 0);
-        if (chunksToProcess.length === 0 || totalLength < 1600) {
+        const totalSamples = chunksToProcess.reduce((sum, chunk) => sum + chunk.length, 0);
+        if (chunksToProcess.length === 0 || totalSamples < captureRate * 0.1) {
             this.isTranscribingNow = false;
             if (this.isAutoListening && this.isStreamActive) {
                 this.setStatus('listening');
@@ -701,7 +782,7 @@ class SpeechToTextEngine {
         await yieldToPaint();
 
         try {
-            const text = await this.transcribeChunks(chunksToProcess, totalLength, null);
+            const text = await this.transcribeChunks(chunksToProcess, totalSamples, captureRate, null);
             if (text && text.length > 0 && this.onAutoSend) {
                 console.log('[STTEngine] Turn completed. Auto-sending:', text);
                 this.onAutoSend(text);
@@ -728,6 +809,7 @@ class SpeechToTextEngine {
         
         voiceActivityDetectionEngine.resetState?.();
 
+        const captureRate = this.sourceSampleRate;
         const chunksToProcess = this.audioChunks;
         const partialCallback = this.onPartialTranscription;
 
@@ -735,8 +817,8 @@ class SpeechToTextEngine {
         this.onAutoSend = null;
         this.cleanupAudio();
 
-        const totalLength = chunksToProcess.reduce((sum, chunk) => sum + chunk.length, 0);
-        if (chunksToProcess.length === 0 || totalLength < 1600) {
+        const totalSamples = chunksToProcess.reduce((sum, chunk) => sum + chunk.length, 0);
+        if (chunksToProcess.length === 0 || totalSamples < captureRate * 0.1) {
             this.setStatus('idle');
             this.resetIdleTimer();
             return null;
@@ -747,7 +829,7 @@ class SpeechToTextEngine {
         await yieldToPaint();
 
         try {
-            const finalText = await this.transcribeChunks(chunksToProcess, totalLength, partialCallback);
+            const finalText = await this.transcribeChunks(chunksToProcess, totalSamples, captureRate, partialCallback);
             console.log('[STTEngine] Recording stopped.');
             return finalText;
         } finally {
@@ -780,21 +862,30 @@ class SpeechToTextEngine {
 
     private async transcribeChunks(
         chunks: Float32Array[],
-        totalLength: number,
+        totalNativeSamples: number,
+        captureSampleRate: number,
         onText: ((text: string) => void) | null
     ): Promise<string | null> {
         if (this.loading) await this.loading;
         if (!this.pipeline) return null;
 
         try {
-            const combined = new Float32Array(totalLength);
+            const combinedNative = new Float32Array(totalNativeSamples);
             let offset = 0;
             for (const chunk of chunks) {
-                combined.set(chunk, offset);
+                combinedNative.set(chunk, offset);
                 offset += chunk.length;
             }
 
-            const result = await this.pipeline(combined);
+            // Single-pass anti-aliased resample to 16kHz right before inference
+            const combined16k = captureSampleRate !== 16000
+                ? await resampleOfflineTo16k(combinedNative, captureSampleRate)
+                : combinedNative;
+
+            const result = await this.pipeline(combined16k, {
+                chunk_length_s: 30,
+                stride_length_s: 5,
+            });
             const text = result.text?.trim() ?? '';
 
             if (text.length > 0 && onText) {
@@ -814,7 +905,13 @@ class SpeechToTextEngine {
             window.removeEventListener('keydown', this.resumeGestureHandler);
             this.resumeGestureHandler = null;
         }
+        if (this.workletNode) {
+            this.workletNode.port.onmessage = null;
+            this.workletNode.disconnect();
+            this.workletNode = null;
+        }
         if (this.processorNode) {
+            this.processorNode.onaudioprocess = null;
             this.processorNode.disconnect();
             this.processorNode = null;
         }
