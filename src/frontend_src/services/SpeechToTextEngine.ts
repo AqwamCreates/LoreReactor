@@ -190,6 +190,7 @@ class SpeechToTextEngine {
     private useVad = false;
     private vadProbabilityThreshold = 0.5;
     private isVadBusy = false;
+    private isVadInitializing = false;
 
     private setStatus(status: SttStatus): void {
         if (this.status !== status) {
@@ -216,6 +217,25 @@ class SpeechToTextEngine {
         return this.status;
     }
 
+    private ensureVadInitialized(): void {
+        if (!this.useVad || voiceActivityDetectionEngine.isReady() || this.isVadInitializing || voiceActivityDetectionEngine.getError()) {
+            return;
+        }
+        this.isVadInitializing = true;
+        voiceActivityDetectionEngine.initialize()
+            .then((ok) => {
+                if (!ok && voiceActivityDetectionEngine.getError()) {
+                    this.useVad = false;
+                }
+            })
+            .catch(() => {
+                this.useVad = false;
+            })
+            .finally(() => {
+                this.isVadInitializing = false;
+            });
+    }
+
     setPaused(paused: boolean): void {
         if (this.isPaused !== paused) {
             this.isPaused = paused;
@@ -225,6 +245,16 @@ class SpeechToTextEngine {
                 this.vadRemainder = new Float32Array(0);
             } else {
                 voiceActivityDetectionEngine.resetState?.();
+                // Reactivate any voice engines or audio contexts that deactivated/suspended while paused or idle
+                if (this.isStreamActive) {
+                    if (this.audioContext?.state === 'suspended') {
+                        this.audioContext.resume().catch(() => {});
+                    }
+                    if (!this.pipeline && !this.loading) {
+                        this.load().catch(() => {});
+                    }
+                    this.ensureVadInitialized();
+                }
             }
         }
     }
@@ -239,6 +269,9 @@ class SpeechToTextEngine {
         this.vadProbabilityThreshold = options.voiceActivityProbabilityThreshold ?? 0.5;
         if (options.vadDevicePreference) {
             voiceActivityDetectionEngine.setDevicePreference(options.vadDevicePreference);
+            if (this.isStreamActive && this.isAutoListening) {
+                this.ensureVadInitialized();
+            }
         }
     }
 
@@ -268,7 +301,9 @@ class SpeechToTextEngine {
 
     private async load(): Promise<boolean> {
         if (this.pipeline) {
-            this.resetIdleTimer();
+            if (!this.isStreamActive && !this.isAutoListening) {
+                this.resetIdleTimer();
+            }
             return true;
         }
         if (this.loading) {
@@ -367,7 +402,9 @@ class SpeechToTextEngine {
         if (!loaded || !this.pipeline) return null;
 
         try {
-            this.resetIdleTimer();
+            if (!this.isStreamActive && !this.isAutoListening) {
+                this.resetIdleTimer();
+            }
             const result = await this.pipeline(buffer, { chunk_length_s: 30, stride_length_s: 5 });
             const text = result.text?.trim() ?? '';
             return text || null;
@@ -440,6 +477,7 @@ class SpeechToTextEngine {
             this.useVad = true;
             this.isVadBusy = false;
 
+            this.isVadInitializing = true;
             const vadInit = voiceActivityDetectionEngine.initialize().then((ok) => {
                 if (!ok && voiceActivityDetectionEngine.getError()) {
                     this.useVad = false;
@@ -448,6 +486,8 @@ class SpeechToTextEngine {
             }).catch(() => {
                 this.useVad = false;
                 return false;
+            }).finally(() => {
+                this.isVadInitializing = false;
             });
             await Promise.race([vadInit, new Promise<boolean>(res => setTimeout(() => res(false), 2500))]);
 
@@ -633,6 +673,11 @@ class SpeechToTextEngine {
             : nativeChunk;
 
         const peakRms = getMaxWindowRms(vadInput, 512);
+
+        if (this.useVad && !voiceActivityDetectionEngine.isReady()) {
+            this.ensureVadInitialized();
+        }
+
         const vadReady = this.useVad && voiceActivityDetectionEngine.isReady();
 
         if (vadReady) {
@@ -778,9 +823,6 @@ class SpeechToTextEngine {
             return;
         }
 
-        this.setStatus('transcribing');
-        await yieldToPaint();
-
         try {
             const text = await this.transcribeChunks(chunksToProcess, totalSamples, captureRate, null);
             if (text && text.length > 0 && this.onAutoSend) {
@@ -825,8 +867,6 @@ class SpeechToTextEngine {
         }
 
         this.isTranscribingNow = true;
-        this.setStatus('transcribing');
-        await yieldToPaint();
 
         try {
             const finalText = await this.transcribeChunks(chunksToProcess, totalSamples, captureRate, partialCallback);
@@ -866,8 +906,23 @@ class SpeechToTextEngine {
         captureSampleRate: number,
         onText: ((text: string) => void) | null
     ): Promise<string | null> {
-        if (this.loading) await this.loading;
+        // Show 'loading' (⏳) if Whisper was deactivated or is still hot-swapping
+        if (!this.pipeline || this.loading) {
+            this.setStatus('loading');
+            await yieldToPaint();
+            if (!this.pipeline && !this.loading) {
+                await this.load();
+            } else if (this.loading) {
+                await this.loading;
+            }
+            if (this.isStreamActive) {
+                this.clearIdleTimer();
+            }
+        }
         if (!this.pipeline) return null;
+
+        this.setStatus('transcribing');
+        await yieldToPaint();
 
         try {
             const combinedNative = new Float32Array(totalNativeSamples);
