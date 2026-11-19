@@ -13,7 +13,7 @@ export class StreamingVoicePlayer {
             this.context = new AudioContext();
         }
         if (this.context.state === 'suspended') {
-            await this.context.resume();
+            await this.context.resume().catch(() => {});
         }
         this.nextStartTime = this.context.currentTime + 0.1;
         this.isPlaying = true;
@@ -30,36 +30,54 @@ export class StreamingVoicePlayer {
         if (this.isProcessingQueue) return;
         this.isProcessingQueue = true;
 
-        while (this.playbackQueue.length > 0 && this.isPlaying && this.context) {
-            const wavBuffer = this.playbackQueue.shift()!;
-            
-            try {
-                const voiceBuffer = await this.context.decodeAudioData(wavBuffer.slice(0));
-                if (!this.isPlaying) break; 
+        try {
+            while (this.playbackQueue.length > 0 && this.isPlaying && this.context) {
+                const wavBuffer = this.playbackQueue.shift()!;
+                
+                try {
+                    const voiceBuffer = await this.context.decodeAudioData(wavBuffer.slice(0));
+                    if (!this.isPlaying || !this.context) break;
 
-                const source = this.context.createBufferSource();
-                source.buffer = voiceBuffer;
-                source.connect(this.context.destination);
+                    const source = this.context.createBufferSource();
+                    source.buffer = voiceBuffer;
+                    source.connect(this.context.destination);
 
-                if (this.nextStartTime < this.context.currentTime) {
-                    this.nextStartTime = this.context.currentTime;
+                    if (this.nextStartTime < this.context.currentTime) {
+                        this.nextStartTime = this.context.currentTime;
+                    }
+
+                    source.start(this.nextStartTime);
+                    this.nextStartTime += voiceBuffer.duration;
+                } catch (e) {
+                    console.warn("[StreamingVoicePlayer] Decode failed:", e);
                 }
-
-                source.start(this.nextStartTime);
-                this.nextStartTime += voiceBuffer.duration;
-            } catch (e) {
-                console.warn("[StreamingVoicePlayer] Decode failed:", e);
             }
+        } finally {
+            this.isProcessingQueue = false;
         }
-
-        this.isProcessingQueue = false;
     }
 
     async waitUntilFinished(): Promise<void> {
         if (!this.context || !this.isPlaying) return;
 
-        while (this.playbackQueue.length > 0 || (this.context && this.context.currentTime < this.nextStartTime)) {
-            if (!this.isPlaying || !this.context) break;
+        // Prevent infinite loop if browser autoplay policy left AudioContext suspended (currentTime stuck at 0)
+        if (this.context.state === 'suspended') {
+            try {
+                await this.context.resume();
+            } catch {
+                // ignore
+            }
+            if ((this.context.state as string) !== 'running') {
+                return;
+            }
+        }
+
+        while (
+            this.isPlaying &&
+            this.context &&
+            (this.isProcessingQueue || this.playbackQueue.length > 0 || this.context.currentTime < this.nextStartTime)
+        ) {
+            if (this.context.state !== 'running') break;
             const remainingMs = Math.max(50, (this.nextStartTime - this.context.currentTime) * 1000);
             await new Promise(resolve => setTimeout(resolve, Math.min(remainingMs, 200)));
         }
@@ -67,6 +85,7 @@ export class StreamingVoicePlayer {
 
     stop() {
         this.isPlaying = false;
+        this.isProcessingQueue = false;
         this.playbackQueue = [];
         if (this.context) {
             this.context.close().catch(() => {});

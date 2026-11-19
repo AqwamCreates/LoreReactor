@@ -82,6 +82,10 @@ export class StreamingVoiceTracker {
                 }
 
                 await this.player.init();
+                if (this.isKilled) {
+                    this.player.stop();
+                    return false;
+                }
                 this.isActive = true;
                 useGenerationStore.setState({ isNarrating: true });
                 this.processPendingQueue();
@@ -90,6 +94,7 @@ export class StreamingVoiceTracker {
                 console.error('[StreamingVoiceTracker] Voice start failed:', e);
                 this.isActive = false;
                 this.hasVoiceConfigured = false;
+                useGenerationStore.setState({ isNarrating: false });
                 return false;
             }
         })();
@@ -294,75 +299,85 @@ export class StreamingVoiceTracker {
     async flushAndStop(): Promise<void> {
         this.isFlushing = true;
 
-        if (this.startPromise) {
-            await this.startPromise;
-        }
+        try {
+            if (this.startPromise) {
+                await this.startPromise;
+            }
 
-        if (!this.hasVoiceConfigured || !this.isActive) {
-            this.pendingSentences = [];
-            this.buffer = '';
-            this.sentenceAccumulator = '';
+            if (!this.hasVoiceConfigured || !this.isActive) {
+                this.pendingSentences = [];
+                this.buffer = '';
+                this.sentenceAccumulator = '';
+                this.isActive = false;
+                this.isFirstChunkSent = false;
+                return;
+            }
+
+            let remaining = this.sentenceAccumulator;
+            if (this.buffer.length > 0) {
+                remaining = (remaining ? remaining + ' ' : '') + this.buffer;
+            }
+
+            if (remaining.length > 0) {
+                this.queueSentence(remaining, this.pendingSegmentType);
+                this.sentenceAccumulator = '';
+                this.buffer = '';
+            }
+
+            this.processPendingQueue();
+
+            while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
+                if (this.isKilled) break;
+                if (this.inFlightPromises.length > 0) {
+                    await Promise.allSettled([...this.inFlightPromises]);
+                } else {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+            }
+            
+            this.processPlaybackQueue();
             this.isActive = false;
             this.isFirstChunkSent = false;
-            return;
+        } finally {
+            if (!this.isKilled) useGenerationStore.setState({ isNarrating: false });
         }
-
-        let remaining = this.sentenceAccumulator;
-        if (this.buffer.length > 0) {
-            remaining = (remaining ? remaining + ' ' : '') + this.buffer;
-        }
-
-        if (remaining.length > 0) {
-            this.queueSentence(remaining, this.pendingSegmentType);
-            this.sentenceAccumulator = '';
-            this.buffer = '';
-        }
-
-        this.processPendingQueue();
-
-        while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
-            if (this.isKilled) break;
-            if (this.inFlightPromises.length > 0) {
-                await Promise.allSettled([...this.inFlightPromises]);
-            } else {
-                await new Promise(resolve => setTimeout(resolve, 50));
-            }
-        }
-        
-        this.processPlaybackQueue();
-        this.isActive = false;
-        this.isFirstChunkSent = false;
-        if (!this.isKilled) useGenerationStore.setState({ isNarrating: false });
     }
 
     async waitForPlaybackCompletion(): Promise<void> {
-        if (!this.hasVoiceConfigured || !this.isActive) return;
-
-        let remaining = this.sentenceAccumulator;
-        if (this.buffer.length > 0) {
-            remaining = (remaining ? `${remaining} ` : '') + this.buffer;
-        }
-
-        if (remaining.length > 0) {
-            this.queueSentence(remaining, this.pendingSegmentType);
-            this.sentenceAccumulator = '';
-            this.buffer = '';
-        }
-
-        this.processPendingQueue();
-
-        while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
-            if (this.isKilled) break;
-            if (this.inFlightPromises.length > 0) {
-                await Promise.allSettled([...this.inFlightPromises]);
-            } else {
-                await new Promise(resolve => setTimeout(resolve, 50));
+        try {
+            if (this.startPromise) {
+                await this.startPromise;
             }
+
+            if (!this.hasVoiceConfigured || !this.isActive) return;
+
+            let remaining = this.sentenceAccumulator;
+            if (this.buffer.length > 0) {
+                remaining = (remaining ? `${remaining} ` : '') + this.buffer;
+            }
+
+            if (remaining.length > 0) {
+                this.queueSentence(remaining, this.pendingSegmentType);
+                this.sentenceAccumulator = '';
+                this.buffer = '';
+            }
+
+            this.processPendingQueue();
+
+            while (this.pendingSentences.length > 0 || this.activeRequests > 0) {
+                if (this.isKilled) break;
+                if (this.inFlightPromises.length > 0) {
+                    await Promise.allSettled([...this.inFlightPromises]);
+                } else {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+            }
+            
+            this.processPlaybackQueue();
+            await this.player.waitUntilFinished();
+        } finally {
+            if (!this.isKilled) useGenerationStore.setState({ isNarrating: false });
         }
-        
-        this.processPlaybackQueue();
-        await this.player.waitUntilFinished();
-        if (!this.isKilled) useGenerationStore.setState({ isNarrating: false });
     }
 
     stopImmediate(): void {
