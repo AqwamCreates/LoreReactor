@@ -5,7 +5,7 @@ import { voiceActivityDetectionEngine } from './VoiceActivityDetectionEngine';
 const HF_MODEL_ID = 'Xenova/whisper-tiny';
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 const PRE_ROLL_DURATION_SECONDS = 1.5; // 1.5s pre-roll to preserve soft sentence starters
-const MAX_VAD_QUEUE_SAMPLES = 4096;    // Cap VAD backlog to ~256ms max at 16kHz
+const MAX_VAD_QUEUE_SAMPLES = 16000 * PRE_ROLL_DURATION_SECONDS; // Match pre-roll buffer (24,000 samples / 1.5s at 16kHz) so streaming activity never drops audio
 
 export type SttStatus = 'idle' | 'loading' | 'listening' | 'recording' | 'transcribing';
 
@@ -595,7 +595,6 @@ class SpeechToTextEngine {
 
             if (vadValid) {
                 const normalTrigger = peakRms >= this.activationRmsThreshold && vadProb >= this.vadProbabilityThreshold;
-                // Soft speech check: if above silence threshold, allow activation at standard VAD probability
                 const softSpeechTrigger = peakRms >= this.silenceRmsThreshold && vadProb >= this.vadProbabilityThreshold;
                 if (normalTrigger || softSpeechTrigger) {
                     this.beginSpeechCapture(peakRms, vadProb);
@@ -714,8 +713,6 @@ class SpeechToTextEngine {
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
-                    // Keep echo cancellation and noise suppression off to avoid consonant clipping,
-                    // but allow autoGainControl so distant/desk speech is pre-amplified to normal levels.
                     echoCancellation: false,
                     noiseSuppression: false,
                     autoGainControl: true,
@@ -732,7 +729,7 @@ class SpeechToTextEngine {
                 try {
                     await this.audioContext.resume();
                 } catch {
-                    // Handled by pointer/key resume handlers below if needed
+                    // Gesture handler fallback
                 }
                 if (this.audioContext.state === 'suspended') {
                     this.resumeGestureHandler = () => {
