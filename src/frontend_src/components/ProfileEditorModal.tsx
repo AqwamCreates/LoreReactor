@@ -274,7 +274,7 @@ export function ProfileEditorModal({ existingProfile, onClose, onSave, allPrompt
     const [enableAutoSpeechDetection, setEnableAutoSpeechDetection] = useState<boolean>(ep?.enableAutoSpeechDetection ?? false);
     const [speechVolumeActivationThreshold, setSpeechVolumeActivationThreshold] = useState<number>(ep?.speechVolumeActivationThreshold ?? 18);
     const [speechSilenceVolumeActivationThreshold, setSpeechSilenceVolumeActivationThreshold] = useState<number>(ep?.speechSilenceVolumeActivationThreshold ?? 8);
-    const [speechSilenceThresholdMs, setSpeechSilenceThresholdMs] = useState<number>(ep?.speechSilenceThresholdMs ?? 1400);
+    const [speechSilenceThresholdMs, setSpeechSilenceThresholdMs] = useState<number>(ep?.speechSilenceThresholdMs ?? 2000);
     const [voiceActivityProbabilityThreshold, setVoiceActivityProbabilityThreshold] = useState<number>(ep?.voiceActivityProbabilityThreshold ?? 0.5);
     const [forceNameReveal, setForceNameReveal] = useState(ep?.forceNameReveal ?? false);
     const [enableAmbientNarration, setEnableAmbientNarration] = useState(ep?.enableAmbientNarration ?? false);

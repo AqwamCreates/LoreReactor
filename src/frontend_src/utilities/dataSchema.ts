@@ -260,7 +260,7 @@ ${characterToolsSchema}
     "enableAutoSpeechDetection": "boolean (default false)",
     "speechVolumeActivationThreshold": "number (1-100, default 18)",
     "speechSilenceVolumeActivationThreshold": "number (1-100, default 8)",
-    "speechSilenceThresholdMs": "number (default 1400)",
+    "speechSilenceThresholdMs": "number (default 2000)",
     "voiceActivityProbabilityThreshold": "number (0.1-0.9, default 0.5)",
     "volume": "number (-1 to 1, default -1 means per-track default)",
     "forceNameReveal": "boolean (default false)",

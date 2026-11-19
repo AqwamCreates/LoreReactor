@@ -208,7 +208,7 @@ export function createDemoData(): DemoDataBundle {
     enableAutoSpeechDetection: false,
     speechVolumeActivationThreshold: 18,
     speechSilenceVolumeActivationThreshold: 8,
-    speechSilenceThresholdMs: 1400,
+    speechSilenceThresholdMs: 2000,
     voiceActivityProbabilityThreshold: 0.5,
     randomizeTextCharacterInjection: false,
     randomizeTextCharacterInjectionOnRetry: true,

@@ -124,7 +124,7 @@ class SpeechToTextEngine {
     private silenceTimer: ReturnType<typeof setTimeout> | null = null;
     private hasDetectedSpeech = false;
     private onAutoSend: ((text: string) => void) | null = null;
-    private silenceThresholdMs = 1400;
+    private silenceThresholdMs = 2000;
     private activationRmsThreshold = sliderToRms(18);
     private silenceRmsThreshold = sliderToRms(8);
     
@@ -177,7 +177,7 @@ class SpeechToTextEngine {
         this.activationRmsThreshold = sliderToRms(actPct);
         const targetSilRms = sliderToRms(silPct);
         this.silenceRmsThreshold = Math.min(targetSilRms, this.activationRmsThreshold * 0.75);
-        this.silenceThresholdMs = options.silenceThresholdMs ?? 1400;
+        this.silenceThresholdMs = options.silenceThresholdMs ?? 2000;
         this.vadProbabilityThreshold = options.voiceActivityProbabilityThreshold ?? 0.5;
         if (options.vadDevicePreference) {
             voiceActivityDetectionEngine.setDevicePreference(options.vadDevicePreference);
