@@ -46,8 +46,9 @@ class VoiceActivityDetectionEngine {
                 const devicePreference = this.currentDevicePreference;
                 const eps: string[] = [];
                 
-                if (devicePreference !== 'cpu') {
-                    // Attempt WebGPU if available and not forced to CPU
+                // Silero VAD's stateful RNN [2,1,128] is much faster and avoids WebGPU queue stalls on WASM.
+                // Only use WebGPU when explicitly forced to 'gpu'.
+                if (devicePreference === 'gpu') {
                     const hasWebGpu = typeof navigator !== 'undefined' && 'gpu' in navigator;
                     if (hasWebGpu) eps.push('webgpu');
                 }

@@ -178,6 +178,7 @@ function App() {
     const selectedCharacterId = useChatStore((s: any) => s.selectedCharacterId);
     const selectedBudgetStrategyId = useChatStore((s: any) => s.selectedBudgetStrategyId);
     const streamingText = useGenerationStore((s: any) => s.streamingText);
+    const isNarrating = useGenerationStore((s: any) => s.isNarrating);
 
     const storeSetCurrentAccountId = useChatStore((s: any) => s.setCurrentAccountId);
     const storeSetSelectedCharacterId = useChatStore((s: any) => s.setSelectedCharacterId);
@@ -535,9 +536,11 @@ function App() {
     const [inputText, setInputText] = useState('');
     const [pendingFiles, setPendingFiles] = useState<File[]>([]);
     const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null);
+    const [isListening, setIsListening] = useState(false);
     const [isRecording, setIsRecording] = useState(false);
     const [isMicLoading, setIsMicLoading] = useState(false);
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const manuallyStoppedAutoRef = useRef(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const editTextAreaRef = useRef<HTMLTextAreaElement>(null);
@@ -546,6 +549,7 @@ function App() {
     useEffect(() => {
         return speechToTextEngine.onStatusChange((status) => {
             setIsMicLoading(status === 'loading');
+            setIsListening(status === 'listening');
             setIsRecording(status === 'recording');
             setIsTranscribing(status === 'transcribing');
         });
@@ -733,57 +737,123 @@ function App() {
         });
     }, [inputText, pendingFiles, sendMessage, captureFrontCameraImage, interactionData, currentCharacter, scrollToBottom]);
 
+    const handleSendRef = useRef(handleSend);
+    useEffect(() => {
+        handleSendRef.current = handleSend;
+    }, [handleSend]);
+
+    // Pause hands-free voice activation while the AI is generating or playing TTS audio
+    useEffect(() => {
+        speechToTextEngine.setPaused(isLoading || Boolean(isNarrating));
+    }, [isLoading, isNarrating]);
+
+    const isAutoSpeechEnabled = Boolean(interactionData?.profile?.enableAutoSpeechDetection);
+
+    useEffect(() => {
+        manuallyStoppedAutoRef.current = false;
+    }, [isAutoSpeechEnabled, interactionData?.profile?.id]);
+
+    const startAutoSpeech = useCallback(async () => {
+        const profile = interactionData?.profile;
+        if (!profile?.enableAutoSpeechDetection) return false;
+
+        const sttDevice = profile.speechToTextDeviceType ?? 'auto';
+        speechToTextEngine.setDevicePreference(sttDevice);
+
+        const actThreshold = profile.speechVolumeActivationThreshold ?? 15;
+        const silThreshold = profile.speechSilenceVolumeActivationThreshold ?? 8;
+        const silenceMs = profile.speechSilenceThresholdMs ?? 1500;
+        const vadProbThreshold = profile.voiceActivityProbabilityThreshold ?? 0.5;
+        const vadDevice = profile.voiceActivityDetectionDeviceType ?? 'auto';
+
+        return speechToTextEngine.startAutoListening(
+            (partialText: string) => {
+                setInputText(prev => prev + (prev ? ' ' : '') + partialText);
+            },
+            (finalText: string) => {
+                setInputText('');
+                if (finalText && finalText.length > 0) {
+                    handleSendRef.current(finalText);
+                }
+            },
+            {
+                volumeActivationThresholdPercent: actThreshold,
+                silenceVolumeActivationThresholdPercent: silThreshold,
+                silenceThresholdMs: silenceMs,
+                voiceActivityProbabilityThreshold: vadProbThreshold,
+                vadDevicePreference: vadDevice
+            }
+        );
+    }, [interactionData?.profile]);
+
+    // Sync live threshold edits when already in hands-free mode, and auto-arm when enabled
+    useEffect(() => {
+        if (isInitializing || !activeChatRestored) return;
+        const profile = interactionData?.profile;
+
+        if (isAutoSpeechEnabled && profile) {
+            if (speechToTextEngine.getIsAutoListening()) {
+                speechToTextEngine.updateAutoOptions({
+                    volumeActivationThresholdPercent: profile.speechVolumeActivationThreshold ?? 15,
+                    silenceVolumeActivationThresholdPercent: profile.speechSilenceVolumeActivationThreshold ?? 8,
+                    silenceThresholdMs: profile.speechSilenceThresholdMs ?? 1500,
+                    voiceActivityProbabilityThreshold: profile.voiceActivityProbabilityThreshold ?? 0.5,
+                    vadDevicePreference: profile.voiceActivityDetectionDeviceType ?? 'auto',
+                });
+                return;
+            }
+            if (!manuallyStoppedAutoRef.current && speechToTextEngine.getStatus() === 'idle') {
+                startAutoSpeech().then((started) => {
+                    if (!started) {
+                        manuallyStoppedAutoRef.current = true;
+                    }
+                });
+            }
+        } else if (speechToTextEngine.getIsAutoListening()) {
+            speechToTextEngine.cancelRecording();
+        }
+    }, [isInitializing, activeChatRestored, isAutoSpeechEnabled, interactionData?.profile, startAutoSpeech]);
+
     const handleToggleMic = useCallback(async () => {
         if (isMicLoading || isTranscribing) return;
-        if (isRecording) { 
-            await speechToTextEngine.stopRecording(); 
+
+        if (isListening) {
+            manuallyStoppedAutoRef.current = true;
+            speechToTextEngine.cancelRecording();
+            return;
+        }
+
+        if (isRecording) {
+            if (speechToTextEngine.getIsAutoListening()) {
+                manuallyStoppedAutoRef.current = true;
+            }
+            await speechToTextEngine.stopRecording();
+            return;
+        }
+
+        const profile = interactionData?.profile;
+        const isAuto = profile?.enableAutoSpeechDetection ?? false;
+        const sttDevice = profile?.speechToTextDeviceType ?? 'auto';
+        speechToTextEngine.setDevicePreference(sttDevice);
+
+        if (isAuto) {
+            manuallyStoppedAutoRef.current = false;
+            const started = await startAutoSpeech();
+            if (!started) {
+                addToast('Failed to start voice activity detection.', 'error');
+                return;
+            }
+            addToast('🎙️ Hands-free listening active...', 'info');
         } else {
-            const profile = interactionData?.profile;
-            const isAuto = profile?.enableAutoSpeechDetection ?? false;
-            const sttDevice = profile?.speechToTextDeviceType ?? 'auto';
-            speechToTextEngine.setDevicePreference(sttDevice);
-
-            if (isAuto) {
-                const actThreshold = profile?.speechVolumeActivationThreshold ?? 15;
-                const silThreshold = profile?.speechSilenceVolumeActivationThreshold ?? 8;
-                const silenceMs = profile?.speechSilenceThresholdMs ?? 1500;
-                const vadProbThreshold = profile?.voiceActivityProbabilityThreshold ?? 0.5;
-                const vadDevice = profile?.voiceActivityDetectionDeviceType ?? 'auto';
-
-                const started = await speechToTextEngine.startAutoListening(
-                    (partialText: string) => {
-                        setInputText(prev => prev + (prev ? ' ' : '') + partialText);
-                    },
-                    (finalText: string) => {
-                        setInputText('');
-                        if (finalText && finalText.length > 0) {
-                            handleSend(finalText);
-                        }
-                    },
-                    { 
-                        volumeActivationThresholdPercent: actThreshold,
-                        silenceVolumeActivationThresholdPercent: silThreshold,
-                        silenceThresholdMs: silenceMs,
-                        voiceActivityProbabilityThreshold: vadProbThreshold,
-                        vadDevicePreference: vadDevice
-                    }
-                );
-                if (!started) { 
-                    addToast('Failed to start voice activity detection.', 'error'); 
-                    return; 
-                }
-                addToast('🎙️ Hands-free listening active...', 'info');
-            } else {
-                const started = await speechToTextEngine.startRecording(
-                    (text: string) => setInputText(prev => prev + (prev ? ' ' : '') + text)
-                );
-                if (!started) { 
-                    addToast('Failed to start voice input.', 'error'); 
-                    return; 
-                }
+            const started = await speechToTextEngine.startRecording(
+                (text: string) => setInputText(prev => prev + (prev ? ' ' : '') + text)
+            );
+            if (!started) {
+                addToast('Failed to start voice input.', 'error');
+                return;
             }
         }
-    }, [isRecording, isMicLoading, isTranscribing, interactionData?.profile, handleSend, addToast]);
+    }, [isListening, isRecording, isMicLoading, isTranscribing, interactionData?.profile, startAutoSpeech, addToast]);
 
     const isRunningInTauri = typeof window !== 'undefined' && Boolean(
         (window as any).__TAURI_INTERNALS__ || (window as any).__TAURI__
@@ -1478,7 +1548,7 @@ function App() {
                         <ChatInput
                             inputText={inputText} setInputText={setInputText}
                             pendingFiles={pendingFiles} setPendingFiles={setPendingFiles}
-                            isRecording={isRecording} isMicLoading={isMicLoading} isTranscribing={isTranscribing}
+                            isRecording={isRecording} isListening={isListening} isMicLoading={isMicLoading} isTranscribing={isTranscribing}
                             isLoading={isLoading} isModelReady={isModelReady}
                             isModelLoading={isModelLoading} modelStatusMessage={modelStatusMessage}
                             localProtagonist={localProtagonist} activeStrategy={activeStrategy ?? undefined}

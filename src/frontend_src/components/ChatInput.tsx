@@ -12,6 +12,7 @@ interface ChatInputProps {
     pendingFiles: File[];
     setPendingFiles: React.Dispatch<React.SetStateAction<File[]>>;
     isRecording: boolean;
+    isListening?: boolean;
     isMicLoading?: boolean;
     isTranscribing?: boolean;
     isLoading: boolean;
@@ -48,7 +49,7 @@ interface ChatInputProps {
 
 export function ChatInput({
     inputText, setInputText, pendingFiles, setPendingFiles,
-    isRecording, isMicLoading = false, isTranscribing = false,
+    isRecording, isListening = false, isMicLoading = false, isTranscribing = false,
     isLoading, isModelReady, isModelLoading, modelStatusMessage,
     localProtagonist, activeStrategy, selectedModelId,
     interactionData, allCharacters, allLocations, allContexts, allAudioTracks, allWorlds, allProfiles,
@@ -149,15 +150,17 @@ export function ChatInput({
         }
     };
 
-    const micIcon = isMicLoading ? '⏳' : isTranscribing ? '📝' : isRecording ? '⏹' : '🎙️';
+    const micIcon = isMicLoading ? '⏳' : isTranscribing ? '📝' : isRecording ? '⏹' : isListening ? '👂' : '🎙️';
     const micTitle = isMicLoading
         ? 'Loading speech recognition...'
         : isTranscribing
             ? 'Transcribing audio...'
             : isRecording
                 ? 'Stop recording'
-                : 'Start voice input';
-    const isMicDisabled = (!isRecording && (isLoading || !isModelReady)) || isMicLoading || isTranscribing;
+                : isListening
+                    ? 'Hands-free listening (speak to record, click to pause)'
+                    : 'Start voice input';
+    const isMicDisabled = (!isRecording && !isListening && (isLoading || !isModelReady)) || isMicLoading || isTranscribing;
 
     return (
         <FileDropArea
