@@ -108,6 +108,18 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
 * Save the chat session as a template through the World objects for future roleplays.
 
+### User Interface
+
+* Four UI modes:
+
+ * Ladder: Basic message chat app layout.
+
+ * Cinematic: Single character focus.
+
+ * Visual Novel: Moveable characters.
+
+ * Card: Character-less view with dungeon master focus.  
+
 ### Immersion
 
 * Branch-to-new-window with position labeling: Branching clones conversation history into an independent session. Original chat remains untouched.
