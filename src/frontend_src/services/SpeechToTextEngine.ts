@@ -5,7 +5,7 @@ import { voiceActivityDetectionEngine } from './VoiceActivityDetectionEngine';
 const HF_MODEL_ID = 'Xenova/whisper-tiny';
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 const PRE_ROLL_DURATION_SECONDS = 1.5; // 1.5s pre-roll to preserve soft sentence starters
-const MAX_VAD_QUEUE_SAMPLES = 16000 * PRE_ROLL_DURATION_SECONDS; // Match pre-roll buffer (24,000 samples / 1.5s at 16kHz) so streaming activity never drops audio
+const MAX_VAD_QUEUE_SAMPLES = 16000 * PRE_ROLL_DURATION_SECONDS; // 24,000 samples / 1.5s at 16kHz
 
 export type SttStatus = 'idle' | 'loading' | 'listening' | 'recording' | 'transcribing';
 
@@ -183,7 +183,7 @@ class SpeechToTextEngine {
     private silenceThresholdMs = 1400;
     private activationRmsThreshold = sliderToRms(18);
     private silenceRmsThreshold = sliderToRms(8);
-    private lastAudioTime = 0;
+    private lastVadResetTime = 0;
     
     // Layer 2: ML VAD State
     private useVad = false;
@@ -244,7 +244,7 @@ class SpeechToTextEngine {
                 this.vadRemainder = new Float32Array(0);
             } else {
                 voiceActivityDetectionEngine.resetState?.();
-                this.lastAudioTime = Date.now();
+                this.lastVadResetTime = Date.now();
                 if (this.isStreamActive) {
                     if (this.audioContext?.state === 'suspended') {
                         this.audioContext.resume().catch(() => {});
@@ -590,12 +590,13 @@ class SpeechToTextEngine {
 
         const vadValid = vadProb >= 0;
 
+        // ─── STATE 1: WAITING TO ACTIVATE ───
         if (!this.hasDetectedSpeech) {
             if (this.isPaused) return;
 
             if (vadValid) {
                 const normalTrigger = peakRms >= this.activationRmsThreshold && vadProb >= this.vadProbabilityThreshold;
-                const softSpeechTrigger = peakRms >= this.silenceRmsThreshold && vadProb >= this.vadProbabilityThreshold;
+                const softSpeechTrigger = peakRms >= this.silenceRmsThreshold && vadProb >= Math.min(0.85, this.vadProbabilityThreshold + 0.15);
                 if (normalTrigger || softSpeechTrigger) {
                     this.beginSpeechCapture(peakRms, vadProb);
                 }
@@ -605,6 +606,7 @@ class SpeechToTextEngine {
             return;
         }
 
+        // ─── STATE 2: RECORDING (CLEAN COUNTDOWN TO STOP) ───
         if (vadValid) {
             if (vadProb >= this.vadProbabilityThreshold) {
                 this.clearSilenceCountdown();
@@ -623,6 +625,10 @@ class SpeechToTextEngine {
     private async processVadQueue(): Promise<void> {
         this.isVadBusy = true;
         try {
+            let maxProb = -1;
+            let maxRms = 0;
+
+            // Drain all available frames completely without breaking prematurely
             while (this.vadRemainder.length >= 512 && this.isStreamActive && this.isAutoListening && !this.isTranscribingNow) {
                 const frame = this.vadRemainder.slice(0, 512);
                 this.vadRemainder = this.vadRemainder.slice(512);
@@ -632,22 +638,18 @@ class SpeechToTextEngine {
                     sum += frame[i] * frame[i];
                 }
                 const frameRms = Math.sqrt(sum / 512);
+                if (frameRms > maxRms) maxRms = frameRms;
 
                 const prob = await voiceActivityDetectionEngine.processChunk(frame);
-
-                this.handleDetectionResult(frameRms, prob);
-
-                if (this.hasDetectedSpeech) {
-                    break;
-                }
+                if (prob > maxProb) maxProb = prob;
             }
+
+            // Evaluate detection on the true peak RMS and max VAD probability across the drained batch
+            this.handleDetectionResult(maxRms, maxProb);
         } catch {
             this.handleDetectionResult(0, -1);
         } finally {
             this.isVadBusy = false;
-            if (!this.hasDetectedSpeech && this.vadRemainder.length >= 512 && this.isStreamActive && this.isAutoListening && !this.isTranscribingNow) {
-                void this.processVadQueue();
-            }
         }
     }
 
@@ -672,22 +674,17 @@ class SpeechToTextEngine {
             this.audioChunks.push(nativeChunk);
         }
 
+        // Flush VAD hidden state periodically during non-speech so ambient room noise can never bloat the RNN
+        if (!this.hasDetectedSpeech && this.isAutoListening) {
+            if (Date.now() - this.lastVadResetTime >= this.silenceThresholdMs) {
+                voiceActivityDetectionEngine.resetState?.();
+                this.lastVadResetTime = Date.now();
+            }
+        }
+
         const vadInput = this.sourceSampleRate !== 16000
             ? resampleLinear(nativeChunk, this.sourceSampleRate, 16000)
             : nativeChunk;
-
-        const peakRms = getMaxWindowRms(vadInput, 512);
-
-        if (!this.hasDetectedSpeech && this.isAutoListening) {
-            if (peakRms < this.silenceRmsThreshold) {
-                if (Date.now() - this.lastAudioTime >= this.silenceThresholdMs) {
-                    voiceActivityDetectionEngine.resetState?.();
-                    this.lastAudioTime = Date.now();
-                }
-            } else {
-                this.lastAudioTime = Date.now();
-            }
-        }
 
         if (this.useVad && !voiceActivityDetectionEngine.isReady()) {
             this.ensureVadInitialized();
@@ -701,6 +698,7 @@ class SpeechToTextEngine {
                 void this.processVadQueue();
             }
         } else {
+            const peakRms = getMaxWindowRms(vadInput, 512);
             this.handleDetectionResult(peakRms, -1);
         }
     }
@@ -715,7 +713,7 @@ class SpeechToTextEngine {
                     channelCount: 1,
                     echoCancellation: false,
                     noiseSuppression: false,
-                    autoGainControl: true,
+                    autoGainControl: false,
                 },
             });
 
@@ -800,7 +798,7 @@ class SpeechToTextEngine {
             this.preRollChunks = [];
             this.preRollSampleCount = 0;
             this.vadRemainder = new Float32Array(0);
-            this.lastAudioTime = Date.now();
+            this.lastVadResetTime = Date.now();
             this.clearIdleTimer();
             this.setStatus(initialStatus);
 
@@ -828,7 +826,7 @@ class SpeechToTextEngine {
         this.preRollSampleCount = 0;
         this.vadRemainder = new Float32Array(0);
         voiceActivityDetectionEngine.resetState?.();
-        this.lastAudioTime = Date.now();
+        this.lastVadResetTime = Date.now();
 
         const totalSamples = chunksToProcess.reduce((sum, chunk) => sum + chunk.length, 0);
         if (chunksToProcess.length === 0 || totalSamples < captureRate * 0.1) {
@@ -866,7 +864,7 @@ class SpeechToTextEngine {
         this.clearSilenceCountdown();
         
         voiceActivityDetectionEngine.resetState?.();
-        this.lastAudioTime = Date.now();
+        this.lastVadResetTime = Date.now();
 
         const captureRate = this.sourceSampleRate;
         const chunksToProcess = this.audioChunks;
@@ -906,7 +904,7 @@ class SpeechToTextEngine {
         this.clearSilenceCountdown();
 
         voiceActivityDetectionEngine.resetState?.();
-        this.lastAudioTime = Date.now();
+        this.lastVadResetTime = Date.now();
 
         this.cleanupAudio();
         this.onPartialTranscription = null;
