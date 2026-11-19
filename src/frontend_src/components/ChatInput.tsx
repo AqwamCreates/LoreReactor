@@ -124,7 +124,7 @@ export function ChatInput({
                 e.preventDefault();
                 if (options.length > 0 && options[selectedIndex]) {
                     handleApplySelection(options[selectedIndex]);
-                } else if (localProtagonist) {
+                } else if (localProtagonist && !isTranscribing && !isMicLoading) {
                     onSend();
                 }
                 return;
@@ -144,7 +144,7 @@ export function ChatInput({
             return;
         }
 
-        if (e.key === 'Enter' && !e.shiftKey && localProtagonist) {
+        if (e.key === 'Enter' && !e.shiftKey && localProtagonist && !isTranscribing && !isMicLoading) {
             e.preventDefault();
             onSend();
         }
@@ -161,6 +161,9 @@ export function ChatInput({
                     ? 'Hands-free listening (speak to record, click to pause)'
                     : 'Start voice input';
     const isMicDisabled = (!isRecording && !isListening && (isLoading || !isModelReady)) || isMicLoading || isTranscribing;
+
+    const isSendDisabled = !showStopButton && (!inputText && !pendingFiles.length || !isModelReady || !localProtagonist || isTranscribing || isMicLoading);
+    const sendButtonIcon = showStopButton ? '⏹' : (isTranscribing || isMicLoading) ? '⏳' : !isModelReady ? '⏳' : '↑';
 
     return (
         <FileDropArea
@@ -258,9 +261,9 @@ export function ChatInput({
                 <button
                     type="button"
                     onClick={showStopButton ? onStopGeneration : onSend}
-                    disabled={!showStopButton && (!inputText && !pendingFiles.length || !isModelReady || !localProtagonist)}
-                    className={`send-button ${!showStopButton && !isModelReady ? 'send-button-disabled' : ''}`}
-                >{showStopButton ? '⏹' : !isModelReady ? '⏳' : '↑'}</button>
+                    disabled={isSendDisabled}
+                    className={`send-button ${isSendDisabled && !showStopButton ? 'send-button-disabled' : ''}`}
+                >{sendButtonIcon}</button>
             </div>
         </FileDropArea>
     );
