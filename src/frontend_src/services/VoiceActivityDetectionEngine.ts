@@ -85,6 +85,12 @@ class VoiceActivityDetectionEngine {
         if (this.loading) {
             try { await this.loading; } catch {}
         }
+        if (this.state) {
+            try { this.state.dispose(); } catch {}
+        }
+        if (this.sampleRateTensor) {
+            try { this.sampleRateTensor.dispose(); } catch {}
+        }
         if (this.session) {
             try { await this.session.release(); } catch {}
         }
@@ -99,11 +105,13 @@ class VoiceActivityDetectionEngine {
 
     /**
      * Resets the RNN hidden state tensors to zero.
-     * Must be called between recording sessions to prevent temporal context bleed 
-     * from the previous audio stream into the new one.
+     * Disposes previous state tensor to prevent memory leakage.
      */
     resetState(): void {
         if (this.session) {
+            if (this.state) {
+                try { this.state.dispose(); } catch {}
+            }
             this.state = new ort.Tensor('float32', new Float32Array(2 * 1 * 128), [2, 1, 128]);
         }
     }
@@ -131,12 +139,17 @@ class VoiceActivityDetectionEngine {
 
             const results = await this.session.run(feeds);
             
-            // Update state for the next chunk
+            // Dispose old state and input tensors to avoid GC memory pressure
+            const oldState = this.state;
             this.state = results.stateN as ort.Tensor;
+            oldState?.dispose();
+            inputTensor.dispose();
             
             // Output probability
             const output = results.output as ort.Tensor;
-            return output.data[0] as number;
+            const prob = output.data[0] as number;
+            output.dispose();
+            return prob;
         } catch (e) {
             console.warn('[VADEngine] Inference failed:', e);
             return -1;
