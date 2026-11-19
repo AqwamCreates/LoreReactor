@@ -115,8 +115,7 @@ async function resampleOfflineTo16k(audioData: Float32Array, sourceRate: number)
 }
 
 /**
- * Computes the peak RMS across 512-sample (32ms) sub-windows so short words
- * aren't diluted by trailing silence in the audio buffer.
+ * Computes the peak RMS across 512-sample (32ms) sub-windows including any trailing remainder samples.
  */
 function getMaxWindowRms(buffer: Float32Array, windowSize = 512): number {
     if (buffer.length === 0) return 0;
@@ -126,12 +125,22 @@ function getMaxWindowRms(buffer: Float32Array, windowSize = 512): number {
         return Math.sqrt(sum / buffer.length);
     }
     let maxRms = 0;
-    for (let i = 0; i + windowSize <= buffer.length; i += windowSize) {
+    let i = 0;
+    for (; i + windowSize <= buffer.length; i += windowSize) {
         let sum = 0;
         for (let j = i; j < i + windowSize; j++) {
             sum += buffer[j] * buffer[j];
         }
         const rms = Math.sqrt(sum / windowSize);
+        if (rms > maxRms) maxRms = rms;
+    }
+    if (i < buffer.length) {
+        let sum = 0;
+        const remaining = buffer.length - i;
+        for (let j = i; j < buffer.length; j++) {
+            sum += buffer[j] * buffer[j];
+        }
+        const rms = Math.sqrt(sum / remaining);
         if (rms > maxRms) maxRms = rms;
     }
     return maxRms;
@@ -247,7 +256,6 @@ class SpeechToTextEngine {
             } else {
                 voiceActivityDetectionEngine.resetState?.();
                 this.lastAudioTime = Date.now();
-                // Reactivate any voice engines or audio contexts that deactivated/suspended while paused or idle
                 if (this.isStreamActive) {
                     if (this.audioContext?.state === 'suspended') {
                         this.audioContext.resume().catch(() => {});
@@ -449,11 +457,6 @@ class SpeechToTextEngine {
         }
     }
 
-    /**
-     * Enters continuous hands-free 'listening' mode.
-     * Waits silently until voice activation triggers 'recording', then transcribes,
-     * calls onAutoSend, and returns to 'listening'.
-     */
     async startAutoListening(
         onPartial: (text: string) => void,
         onAutoSend: (text: string) => void,
@@ -570,7 +573,6 @@ class SpeechToTextEngine {
     private beginSpeechCapture(peakRms: number, vadProb: number): void {
         if (this.hasDetectedSpeech) return;
         this.hasDetectedSpeech = true;
-        // All recent frames were already pushed chronologically into preRollChunks
         this.audioChunks = [...this.preRollChunks];
         this.preRollChunks = [];
         this.preRollSampleCount = 0;
@@ -629,21 +631,38 @@ class SpeechToTextEngine {
         }
     }
 
-    private async processVadQueue(peakRms: number): Promise<void> {
+    private async processVadQueue(): Promise<void> {
         this.isVadBusy = true;
         try {
-            let maxProb = -1;
             while (this.vadRemainder.length >= 512 && this.isStreamActive && this.isAutoListening && !this.isTranscribingNow) {
                 const frame = this.vadRemainder.slice(0, 512);
                 this.vadRemainder = this.vadRemainder.slice(512);
+
+                // Measure RMS on this exact 512-sample frame
+                let sum = 0;
+                for (let i = 0; i < 512; i++) {
+                    sum += frame[i] * frame[i];
+                }
+                const frameRms = Math.sqrt(sum / 512);
+
                 const prob = await voiceActivityDetectionEngine.processChunk(frame);
-                if (prob > maxProb) maxProb = prob;
+
+                // Directly evaluate this frame's actual volume alongside its ML probability
+                this.handleDetectionResult(frameRms, prob);
+
+                // If speech onset triggered, exit queue loop so chunks buffer cleanly
+                if (this.hasDetectedSpeech) {
+                    break;
+                }
             }
-            this.handleDetectionResult(peakRms, maxProb);
         } catch {
-            this.handleDetectionResult(peakRms, -1);
+            this.handleDetectionResult(0, -1);
         } finally {
             this.isVadBusy = false;
+            // Catch any frames that accumulated during async inference
+            if (!this.hasDetectedSpeech && this.vadRemainder.length >= 512 && this.isStreamActive && this.isAutoListening && !this.isTranscribingNow) {
+                void this.processVadQueue();
+            }
         }
     }
 
@@ -669,7 +688,7 @@ class SpeechToTextEngine {
             this.audioChunks.push(nativeChunk);
         }
 
-        // Convert only a lightweight copy to 16kHz for real-time RMS & Silero VAD evaluation
+        // Convert lightweight copy to 16kHz for real-time evaluation
         const vadInput = this.sourceSampleRate !== 16000
             ? resampleLinear(nativeChunk, this.sourceSampleRate, 16000)
             : nativeChunk;
@@ -697,7 +716,7 @@ class SpeechToTextEngine {
         if (vadReady) {
             this.appendVadSamples(vadInput);
             if (!this.isVadBusy && this.vadRemainder.length >= 512) {
-                void this.processVadQueue(peakRms);
+                void this.processVadQueue();
             }
         } else {
             this.handleDetectionResult(peakRms, -1);
@@ -712,7 +731,6 @@ class SpeechToTextEngine {
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
-                    // Disable WebRTC call-processing DSP so quiet consonants and trailing words aren't gated out
                     echoCancellation: false,
                     noiseSuppression: false,
                     autoGainControl: false,
@@ -729,7 +747,7 @@ class SpeechToTextEngine {
                 try {
                     await this.audioContext.resume();
                 } catch {
-                    // May require a direct user interaction if auto-started on page load
+                    // Handled by pointer/key resume handlers below if needed
                 }
                 if (this.audioContext.state === 'suspended') {
                     this.resumeGestureHandler = () => {
@@ -896,9 +914,6 @@ class SpeechToTextEngine {
         }
     }
 
-    /**
-     * Immediately stops listening/recording and discards buffered audio without transcribing.
-     */
     cancelRecording(): void {
         this.isStreamActive = false;
         this.isAutoListening = false;
@@ -924,7 +939,6 @@ class SpeechToTextEngine {
         captureSampleRate: number,
         onText: ((text: string) => void) | null
     ): Promise<string | null> {
-        // Show 'loading' (⏳) if Whisper was deactivated or is still hot-swapping
         if (!this.pipeline || this.loading) {
             this.setStatus('loading');
             await yieldToPaint();
@@ -950,7 +964,6 @@ class SpeechToTextEngine {
                 offset += chunk.length;
             }
 
-            // Single-pass anti-aliased resample to 16kHz right before inference
             const combined16k = captureSampleRate !== 16000
                 ? await resampleOfflineTo16k(combinedNative, captureSampleRate)
                 : combinedNative;
