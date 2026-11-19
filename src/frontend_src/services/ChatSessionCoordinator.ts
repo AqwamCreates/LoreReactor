@@ -189,6 +189,14 @@ class ChatSessionCoordinator {
         return this.deps.allPromptBlocks.filter(pb => strategy.includes(pb.id));
     }
 
+    public resetAutonomousPacing(): void {
+        const state = useChatStore.getState();
+        if (state.interactionData?.profile?.autonomousMode && !this.deps?.isMultiplayerClient) {
+            this.stopAutonomousMode();
+            this.startAutonomousMode();
+        }
+    }
+
     public startAutonomousMode(): void {
         if (this.deps?.isMultiplayerClient) {
             this.stopAutonomousMode();
@@ -710,6 +718,7 @@ class ChatSessionCoordinator {
 
                 if (this.deps.isMultiplayerClient) { this.releaseLockIfCurrent(lockEpoch); return; }
                 await this.runSequence(updatedData);
+                this.resetAutonomousPacing();
             } catch (e) {
                 this.deps.addToast(`Command failed: ${(e as Error).message}`, 'error');
             } finally {
@@ -774,6 +783,7 @@ class ChatSessionCoordinator {
 
             if (this.deps.isMultiplayerClient) { this.releaseLockIfCurrent(lockEpoch); return; }
             await this.runSequence(updatedData);
+            this.resetAutonomousPacing();
 
         } catch (e) {
             console.error('Send Error:', e);
@@ -825,6 +835,7 @@ class ChatSessionCoordinator {
 
             updatedData = await this.runSingleTurn(updatedData, targetChar);
             await this.runSequence(updatedData, new Set([targetChar.id]));
+            this.resetAutonomousPacing();
         } finally {
             this.releaseLockIfCurrent(lockEpoch);
         }
@@ -850,6 +861,7 @@ class ChatSessionCoordinator {
         try {
             const char = currentData.participants.find(p => p.id === msg.character.id) || msg.character || this.deps.allCharacters.find(c => c.id === msg.character.id);
             await this.runSingleTurn(currentData, char, messageId, msg.textContent);
+            this.resetAutonomousPacing();
         } catch (e) {
             console.error('Resume failed:', e);
             this.deps.addToast(`Resume error: ${(e as Error).message}`, 'error');
@@ -919,6 +931,7 @@ class ChatSessionCoordinator {
                 updatedData = await this.runSingleTurn(updatedData, char);
                 await this.runSequence(updatedData, excludedFromSequence);
             }
+            this.resetAutonomousPacing();
         } finally {
             this.releaseLockIfCurrent(lockEpoch);
         }
@@ -986,6 +999,7 @@ class ChatSessionCoordinator {
         this.currentLockEpoch++;
         this.activeMessageId = null;
         this.releaseLock();
+        this.resetAutonomousPacing();
     }
 
     public skipThinking() {
@@ -1012,7 +1026,9 @@ class ChatSessionCoordinator {
         if (state.interactionData) {
             if (!this.acquireLock()) return;
             const lockEpoch = this.currentLockEpoch;
-            this.runSequence(state.interactionData).finally(() => this.releaseLockIfCurrent(lockEpoch));
+            this.runSequence(state.interactionData)
+                .then(() => this.resetAutonomousPacing())
+                .finally(() => this.releaseLockIfCurrent(lockEpoch));
         }
     }
 }
