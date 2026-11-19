@@ -2,7 +2,6 @@
 import type { deviceType } from '../types';
 import { voiceActivityDetectionEngine } from './VoiceActivityDetectionEngine';
 
-// ✅ CHANGED: Use the multilingual whisper-tiny model instead of .en
 const HF_MODEL_ID = 'Xenova/whisper-tiny'; 
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 
@@ -18,17 +17,27 @@ async function isWebGpuAvailable(): Promise<boolean> {
     }
 }
 
-/**
- * Converts a 1-100 sensitivity slider value to a linear RMS energy threshold.
- * Uses logarithmic dBFS mapping (-60 dBFS quiet floor to -10 dBFS loud speech)
- * matching human auditory perception and digital mic response curves.
- */
 function sliderToRms(sliderValue: number): number {
     const clamped = Math.max(1, Math.min(100, sliderValue));
-    const minDb = -60; // Quiet room noise floor
-    const maxDb = -10; // Loud vocal ceiling
+    const minDb = -60;
+    const maxDb = -10;
     const db = minDb + (clamped / 100) * (maxDb - minDb);
     return 10 ** (db / 20);
+}
+
+function resampleBuffer(buffer: Float32Array, fromSampleRate: number, toSampleRate = 16000): Float32Array {
+    if (fromSampleRate === toSampleRate) return buffer;
+    const ratio = fromSampleRate / toSampleRate;
+    const newLength = Math.round(buffer.length / ratio);
+    const result = new Float32Array(newLength);
+    for (let i = 0; i < newLength; i++) {
+        const pos = i * ratio;
+        const idx = Math.floor(pos);
+        const frac = pos - idx;
+        const next = idx + 1 < buffer.length ? idx + 1 : idx;
+        result[i] = buffer[idx] * (1 - frac) + buffer[next] * frac;
+    }
+    return result;
 }
 
 class SpeechToTextEngine {
@@ -38,7 +47,6 @@ class SpeechToTextEngine {
     private usingWebGpu = false;
     private idleTimer: ReturnType<typeof setTimeout> | null = null;
     
-    // Internal state tracker for hardware execution preference
     private currentDevicePreference: deviceType = 'auto';
 
     // Audio capture state
@@ -46,10 +54,10 @@ class SpeechToTextEngine {
     private mediaStream: MediaStream | null = null;
     private sourceNode: MediaStreamAudioSourceNode | null = null;
     private processorNode: ScriptProcessorNode | null = null;
+    private muteGainNode: GainNode | null = null;
     private audioChunks: Float32Array[] = [];
     private isRecording = false;
     private onPartialTranscription: ((text: string) => void) | null = null;
-    private transcriptionInterval: ReturnType<typeof setInterval> | null = null;
 
     // Dual-Threshold Hysteresis & VAD State
     private isAutoListening = false;
@@ -57,20 +65,14 @@ class SpeechToTextEngine {
     private hasDetectedSpeech = false;
     private onAutoSend: ((text: string) => void) | null = null;
     private silenceThresholdMs = 1400;
-    private activationRmsThreshold = sliderToRms(18); // ~ -51 dBFS (Conversational entry)
-    private silenceRmsThreshold = sliderToRms(8);     // ~ -56 dBFS (Silence floor cutoff)
+    private activationRmsThreshold = sliderToRms(12);
+    private silenceRmsThreshold = sliderToRms(6);
     
     // Layer 2: ML VAD State
     private useVad = false;
-    private vadProbabilityThreshold = 0.5;
+    private vadProbabilityThreshold = 0.4;
+    private isVadBusy = false; // Lock to prevent event-loop starvation
 
-    /**
-     * Updates the target execution device for the Whisper STT pipeline.
-     * Implements immediate hot-swapping: nukes the ML pipeline to free VRAM/RAM,
-     * but leaves the Web Audio API hardware stream completely untouched so the 
-     * microphone doesn't drop or desync. The audio buffer acts as a shock absorber
-     * while the new pipeline loads in the background.
-     */
     setDevicePreference(preference: deviceType): void {
         if (this.currentDevicePreference !== preference) {
             this.currentDevicePreference = preference;
@@ -83,14 +85,10 @@ class SpeechToTextEngine {
                 const needsReload = (wantsCpu && isGpu) || (wantsGpu && !isGpu);
                 
                 if (needsReload) {
-                    console.log(`[STTEngine] Device preference changed to ${preference}. Hot-swapping pipeline without dropping audio stream.`);
-                    
-                    // Nuke the ML Inference Layer
                     this.pipeline = null;
                     this.loading = null;
                     this.usingWebGpu = false;
                     
-                    // Immediately rebuild the pipeline on the new device
                     this.load().catch(err => {
                         console.error('[STTEngine] Hot-swap reload failed:', err);
                     });
@@ -177,7 +175,7 @@ class SpeechToTextEngine {
         this.stopRecordingSync();
 
         if (this.loading) {
-            try { await this.loading; } catch { /* ignore */ }
+            try { await this.loading; } catch {}
         }
 
         this.pipeline = null;
@@ -185,21 +183,15 @@ class SpeechToTextEngine {
         this.loadError = null;
         this.usingWebGpu = false;
         
-        // Also unload VAD engine to free memory
         await voiceActivityDetectionEngine.unload();
-        
         console.log('[STTEngine] Unloaded.');
     }
 
-    async unloadIfInactive(){
-        if (this.isRecording || this.isAutoListening) return
-        await this.unload()
+    async unloadIfInactive(): Promise<void> {
+        if (this.isRecording || this.isAutoListening) return;
+        await this.unload();
     }
 
-    /**
-     * Shared transcription entry point so other engines (like AudioPerceptionEngine)
-     * can transcribe buffers directly using the single shared Whisper pipeline in memory.
-     */
     async transcribeBuffer(buffer: Float32Array): Promise<string | null> {
         const loaded = await this.load();
         if (!loaded || !this.pipeline) return null;
@@ -214,10 +206,6 @@ class SpeechToTextEngine {
         }
     }
 
-    /**
-     * Transcribes an uploaded audio file directly in the browser.
-     * Uses the Web Audio API to decode and resample to 16kHz mono Float32Array.
-     */
     async transcribeFile(file: File, language?: string): Promise<string | null> {
         const loaded = await this.load();
         if (!loaded || !this.pipeline) return null;
@@ -227,7 +215,6 @@ class SpeechToTextEngine {
             const audioContext = new AudioContext({ sampleRate: 16000 });
             const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
             
-            // Mix down to mono if stereo
             let float32Array = audioBuffer.getChannelData(0);
             if (audioBuffer.numberOfChannels > 1) {
                 const ch1 = audioBuffer.getChannelData(1);
@@ -241,7 +228,6 @@ class SpeechToTextEngine {
             const options: any = {};
             if (language) options.language = language;
             
-            // Run Whisper
             const result = await this.pipeline(float32Array, options);
             await audioContext.close();
             
@@ -252,11 +238,6 @@ class SpeechToTextEngine {
         }
     }
 
-    /**
-     * Start continuous auto-listening mode with Dual-Layer Gating:
-     * Layer 1: RMS Volume Pre-Filter (Compute Saver)
-     * Layer 2: Silero VAD ML Model (Speech Confirmation)
-     */
     async startAutoListening(
         onPartial: (text: string) => void,
         onAutoSend: (text: string) => void,
@@ -275,24 +256,30 @@ class SpeechToTextEngine {
             this.stopRecordingSync();
         }
 
-        // Acoustic defaults
-        const actPct = options?.volumeActivationThresholdPercent ?? 18;
-        const silPct = options?.silenceVolumeActivationThresholdPercent ?? 8;
+        const actPct = options?.volumeActivationThresholdPercent ?? 12;
+        const silPct = options?.silenceVolumeActivationThresholdPercent ?? 6;
 
         this.activationRmsThreshold = sliderToRms(actPct);
         const targetSilRms = sliderToRms(silPct);
-        this.silenceRmsThreshold = Math.min(targetSilRms, this.activationRmsThreshold * 0.7);
+        this.silenceRmsThreshold = Math.min(targetSilRms, this.activationRmsThreshold * 0.75);
         this.silenceThresholdMs = options?.silenceThresholdMs ?? 1400;
         
-        // VAD Configuration
-        this.vadProbabilityThreshold = options?.voiceActivityProbabilityThreshold ?? 0.5;
+        this.vadProbabilityThreshold = options?.voiceActivityProbabilityThreshold ?? 0.4;
         this.useVad = true;
+        this.isVadBusy = false;
         
-        // Initialize VAD Engine
         if (options?.vadDevicePreference) {
             voiceActivityDetectionEngine.setDevicePreference(options.vadDevicePreference);
         }
-        await voiceActivityDetectionEngine.initialize();
+        
+        // Timeout safeguard: If VAD fails to initialize, gracefully fall back to pure RMS
+        try {
+            const vadInit = voiceActivityDetectionEngine.initialize();
+            const timeout = new Promise<boolean>(res => setTimeout(() => res(false), 2000));
+            this.useVad = (await Promise.race([vadInit, timeout])) === true;
+        } catch {
+            this.useVad = false;
+        }
 
         this.isAutoListening = true;
         this.hasDetectedSpeech = false;
@@ -302,8 +289,7 @@ class SpeechToTextEngine {
     }
 
     async startRecording(
-        onPartialTranscription: (text: string) => void,
-        transcriptionIntervalMs = 2000,
+        onPartialTranscription: (text: string) => void
     ): Promise<boolean> {
         const loaded = await this.load();
         if (!loaded) return false;
@@ -313,34 +299,51 @@ class SpeechToTextEngine {
         this.isAutoListening = false;
         this.useVad = false;
         this.onAutoSend = null;
-        return this.initAudioStream(onPartialTranscription, transcriptionIntervalMs);
+        return this.initAudioStream(onPartialTranscription);
     }
 
-    private async initAudioStream(
-        onPartial: (text: string) => void,
-        transcriptionIntervalMs = 2000
-    ): Promise<boolean> {
+    private async initAudioStream(onPartial: (text: string) => void): Promise<boolean> {
         try {
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
-                    sampleRate: 16000,
                     channelCount: 1,
                     echoCancellation: true,
                     noiseSuppression: true,
+                    autoGainControl: true,
                 },
             });
 
-            this.audioContext = new AudioContext({ sampleRate: 16000 });
+            try {
+                this.audioContext = new AudioContext({ sampleRate: 16000 });
+            } catch {
+                this.audioContext = new AudioContext();
+            }
+
+            if (this.audioContext.state === 'suspended') {
+                await this.audioContext.resume();
+            }
+
             this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
             this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-            this.processorNode.onaudioprocess = async (event) => {
+            // MUTE NODE: Prevents microphone from looping back into laptop speakers
+            this.muteGainNode = this.audioContext.createGain();
+            this.muteGainNode.gain.value = 0;
+
+            const sourceRate = this.audioContext.sampleRate;
+
+            this.processorNode.onaudioprocess = (event) => {
                 if (!this.isRecording) return;
-                const inputData = event.inputBuffer.getChannelData(0);
-                this.audioChunks.push(new Float32Array(inputData));
+                const rawInput = event.inputBuffer.getChannelData(0);
+
+                const inputData = sourceRate !== 16000 
+                    ? resampleBuffer(rawInput, sourceRate, 16000)
+                    : new Float32Array(rawInput);
+
+                this.audioChunks.push(inputData);
 
                 if (this.isAutoListening) {
-                    // Layer 1: RMS Pre-Filter
+                    // Instant RMS calculation (0% CPU, completely non-blocking)
                     let sumSquares = 0;
                     for (let i = 0; i < inputData.length; i++) {
                         sumSquares += inputData[i] * inputData[i];
@@ -348,82 +351,64 @@ class SpeechToTextEngine {
                     const rms = Math.sqrt(sumSquares / inputData.length);
 
                     if (rms < this.silenceRmsThreshold) {
-                        // Below silence floor. If we were speaking, start the countdown.
                         if (this.hasDetectedSpeech && !this.silenceTimer) {
                             this.silenceTimer = setTimeout(() => {
                                 this.triggerAutoSend();
                             }, this.silenceThresholdMs);
                         }
-                        return; // Skip ML inference to save compute
+                        return;
                     }
 
                     if (rms >= this.activationRmsThreshold) {
-                        let confirmedSpeech = false;
-                        
-                        // Layer 2: ML VAD (Silero)
-                        if (this.useVad && voiceActivityDetectionEngine.isReady()) {
-                            let maxProb = 0;
-                            // Silero VAD strictly requires 512-sample chunks at 16kHz
-                            for (let i = 0; i < inputData.length; i += 512) {
-                                const chunk = inputData.slice(i, i + 512);
-                                if (chunk.length === 512) {
-                                    const prob = await voiceActivityDetectionEngine.processChunk(chunk);
-                                    if (prob > maxProb) maxProb = prob;
-                                }
-                            }
-                            if (maxProb >= this.vadProbabilityThreshold) {
-                                confirmedSpeech = true;
-                            }
-                        } else {
-                            // Fallback if VAD is not ready/used: rely purely on RMS activation gate
-                            confirmedSpeech = true;
+                        // Confirmed speech immediately via energy gate
+                        this.hasDetectedSpeech = true;
+                        if (this.silenceTimer) {
+                            clearTimeout(this.silenceTimer);
+                            this.silenceTimer = null;
                         }
 
-                        if (confirmedSpeech) {
-                            this.hasDetectedSpeech = true;
-                            if (this.silenceTimer) {
-                                clearTimeout(this.silenceTimer);
-                                this.silenceTimer = null;
-                            }
-                        } else {
-                            // Loud noise, but ML says it's not speech (e.g. door slam). Treat as silence.
-                            if (this.hasDetectedSpeech && !this.silenceTimer) {
-                                this.silenceTimer = setTimeout(() => {
-                                    this.triggerAutoSend();
-                                }, this.silenceThresholdMs);
-                            }
+                        // Asynchronous non-blocking VAD verification
+                        if (this.useVad && !this.isVadBusy && voiceActivityDetectionEngine.isReady()) {
+                            this.isVadBusy = true;
+                            // Check only the first 512-sample chunk to prevent loop stalls
+                            const chunk = inputData.slice(0, 512);
+                            voiceActivityDetectionEngine.processChunk(chunk).then((prob) => {
+                                if (prob >= 0 && prob < this.vadProbabilityThreshold && rms < this.activationRmsThreshold * 2) {
+                                    // Non-speech background noise: start silence countdown
+                                    if (this.hasDetectedSpeech && !this.silenceTimer) {
+                                        this.silenceTimer = setTimeout(() => {
+                                            this.triggerAutoSend();
+                                        }, this.silenceThresholdMs);
+                                    }
+                                }
+                            }).catch(() => {}).finally(() => {
+                                this.isVadBusy = false;
+                            });
                         }
                     } else {
-                        // Deadband: RMS between silence and activation.
-                        // If we already detected speech, keep the turn active (cancel timer).
-                        if (this.hasDetectedSpeech) {
-                            if (this.silenceTimer) {
-                                clearTimeout(this.silenceTimer);
-                                this.silenceTimer = null;
-                            }
+                        // Deadband: keep turn active if already speaking
+                        if (this.hasDetectedSpeech && this.silenceTimer) {
+                            clearTimeout(this.silenceTimer);
+                            this.silenceTimer = null;
                         }
                     }
                 }
             };
 
+            // Connect nodes through the mute gain node to prevent speaker feedback
             this.sourceNode.connect(this.processorNode);
-            this.processorNode.connect(this.audioContext.destination);
+            this.processorNode.connect(this.muteGainNode);
+            this.muteGainNode.connect(this.audioContext.destination);
 
             this.isRecording = true;
             this.onPartialTranscription = onPartial;
             this.audioChunks = [];
             this.clearIdleTimer();
 
-            if (!this.isAutoListening) {
-                this.transcriptionInterval = setInterval(() => {
-                    this.transcribeAccumulated();
-                }, transcriptionIntervalMs);
-            }
-
-            console.log(`[STTEngine] Audio capture started (AutoVAD=${this.isAutoListening}).`);
+            console.log(`[STTEngine] Audio capture active (ContextState=${this.audioContext.state}, Rate=${sourceRate}Hz, AutoVAD=${this.isAutoListening}).`);
             return true;
         } catch (e) {
-            console.error('[STTEngine] Failed to start audio:', e);
+            console.error('[STTEngine] Failed to start audio capture:', e);
             this.cleanupAudio();
             return false;
         }
@@ -432,11 +417,10 @@ class SpeechToTextEngine {
     private async triggerAutoSend(): Promise<void> {
         if (!this.isAutoListening) return;
 
-        // User paused below silence threshold for silenceThresholdMs -> Finalize and send
         const text = await this.stopRecording();
-        if (text && text.length > 0 && this.onAutoSend) {
+        if (text && text.trim().length > 0 && this.onAutoSend) {
             console.log('[STTEngine] Turn completed. Auto-sending:', text);
-            this.onAutoSend(text);
+            this.onAutoSend(text.trim());
         }
     }
 
@@ -447,18 +431,13 @@ class SpeechToTextEngine {
         this.isAutoListening = false;
         this.hasDetectedSpeech = false;
         this.useVad = false;
+        this.isVadBusy = false;
 
         if (this.silenceTimer) {
             clearTimeout(this.silenceTimer);
             this.silenceTimer = null;
         }
-
-        if (this.transcriptionInterval) {
-            clearInterval(this.transcriptionInterval);
-            this.transcriptionInterval = null;
-        }
         
-        // Reset VAD RNN state tensors for the next session
         voiceActivityDetectionEngine.resetState?.();
 
         const finalText = await this.transcribeAccumulated();
@@ -477,17 +456,13 @@ class SpeechToTextEngine {
         this.isAutoListening = false;
         this.hasDetectedSpeech = false;
         this.useVad = false;
+        this.isVadBusy = false;
 
         if (this.silenceTimer) {
             clearTimeout(this.silenceTimer);
             this.silenceTimer = null;
         }
 
-        if (this.transcriptionInterval) {
-            clearInterval(this.transcriptionInterval);
-            this.transcriptionInterval = null;
-        }
-        
         voiceActivityDetectionEngine.resetState?.();
 
         this.cleanupAudio();
@@ -498,14 +473,12 @@ class SpeechToTextEngine {
     private async transcribeAccumulated(): Promise<string | null> {
         if (this.audioChunks.length === 0) return null;
 
-        // Shock Absorber: If a hot-swap is mid-flight, wait for the new pipeline to finish loading
         if (this.loading) await this.loading;
-        
         if (!this.pipeline) return null;
 
         try {
             const totalLength = this.audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
-            if (totalLength < 1600) return null;
+            if (totalLength < 1600) return null; // Ignore clicks under 100ms
 
             const combined = new Float32Array(totalLength);
             let offset = 0;
@@ -534,6 +507,10 @@ class SpeechToTextEngine {
         if (this.processorNode) {
             this.processorNode.disconnect();
             this.processorNode = null;
+        }
+        if (this.muteGainNode) {
+            this.muteGainNode.disconnect();
+            this.muteGainNode = null;
         }
         if (this.sourceNode) {
             this.sourceNode.disconnect();
