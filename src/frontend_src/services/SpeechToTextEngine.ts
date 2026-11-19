@@ -55,10 +55,6 @@ async function isWebGpuAvailable(): Promise<boolean> {
     }
 }
 
-/**
- * Yields back to the browser so React can commit DOM updates and paint
- * loading/transcribing icons before synchronous WASM/ONNX inference locks the thread.
- */
 function yieldToPaint(): Promise<void> {
     return new Promise((resolve) => {
         if (typeof requestAnimationFrame === 'function') {
@@ -92,10 +88,6 @@ function resampleLinear(buffer: Float32Array, fromSampleRate: number, toSampleRa
     return result;
 }
 
-/**
- * Uses the browser's native C++ polyphase sinc filter to anti-alias and resample
- * the full utterance cleanly in a single pass with zero chunk-boundary artifacts.
- */
 async function resampleOfflineTo16k(audioData: Float32Array, sourceRate: number): Promise<Float32Array> {
     if (sourceRate === 16000) return audioData;
     try {
@@ -114,9 +106,6 @@ async function resampleOfflineTo16k(audioData: Float32Array, sourceRate: number)
     }
 }
 
-/**
- * Computes the peak RMS across 512-sample (32ms) sub-windows including any trailing remainder samples.
- */
 function getMaxWindowRms(buffer: Float32Array, windowSize = 512): number {
     if (buffer.length === 0) return 0;
     if (buffer.length <= windowSize) {
@@ -606,7 +595,8 @@ class SpeechToTextEngine {
 
             if (vadValid) {
                 const normalTrigger = peakRms >= this.activationRmsThreshold && vadProb >= this.vadProbabilityThreshold;
-                const softSpeechTrigger = peakRms >= this.silenceRmsThreshold && vadProb >= Math.min(0.85, this.vadProbabilityThreshold + 0.15);
+                // Soft speech check: if above silence threshold, allow activation at standard VAD probability
+                const softSpeechTrigger = peakRms >= this.silenceRmsThreshold && vadProb >= this.vadProbabilityThreshold;
                 if (normalTrigger || softSpeechTrigger) {
                     this.beginSpeechCapture(peakRms, vadProb);
                 }
@@ -638,7 +628,6 @@ class SpeechToTextEngine {
                 const frame = this.vadRemainder.slice(0, 512);
                 this.vadRemainder = this.vadRemainder.slice(512);
 
-                // Measure RMS on this exact 512-sample frame
                 let sum = 0;
                 for (let i = 0; i < 512; i++) {
                     sum += frame[i] * frame[i];
@@ -647,10 +636,8 @@ class SpeechToTextEngine {
 
                 const prob = await voiceActivityDetectionEngine.processChunk(frame);
 
-                // Directly evaluate this frame's actual volume alongside its ML probability
                 this.handleDetectionResult(frameRms, prob);
 
-                // If speech onset triggered, exit queue loop so chunks buffer cleanly
                 if (this.hasDetectedSpeech) {
                     break;
                 }
@@ -659,7 +646,6 @@ class SpeechToTextEngine {
             this.handleDetectionResult(0, -1);
         } finally {
             this.isVadBusy = false;
-            // Catch any frames that accumulated during async inference
             if (!this.hasDetectedSpeech && this.vadRemainder.length >= 512 && this.isStreamActive && this.isAutoListening && !this.isTranscribingNow) {
                 void this.processVadQueue();
             }
@@ -669,7 +655,6 @@ class SpeechToTextEngine {
     private handleIncomingAudio(nativeChunk: Float32Array): void {
         if (!this.isStreamActive || this.isTranscribingNow) return;
 
-        // Manual recording mode: store raw native-rate PCM directly
         if (!this.isAutoListening) {
             this.audioChunks.push(nativeChunk);
             return;
@@ -688,14 +673,12 @@ class SpeechToTextEngine {
             this.audioChunks.push(nativeChunk);
         }
 
-        // Convert lightweight copy to 16kHz for real-time evaluation
         const vadInput = this.sourceSampleRate !== 16000
             ? resampleLinear(nativeChunk, this.sourceSampleRate, 16000)
             : nativeChunk;
 
         const peakRms = getMaxWindowRms(vadInput, 512);
 
-        // Reset saturated VAD state when quiet exceeds silenceThresholdMs during auto-listening
         if (!this.hasDetectedSpeech && this.isAutoListening) {
             if (peakRms < this.silenceRmsThreshold) {
                 if (Date.now() - this.lastAudioTime >= this.silenceThresholdMs) {
@@ -731,9 +714,11 @@ class SpeechToTextEngine {
             this.mediaStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     channelCount: 1,
+                    // Keep echo cancellation and noise suppression off to avoid consonant clipping,
+                    // but allow autoGainControl so distant/desk speech is pre-amplified to normal levels.
                     echoCancellation: false,
                     noiseSuppression: false,
-                    autoGainControl: false,
+                    autoGainControl: true,
                 },
             });
 
