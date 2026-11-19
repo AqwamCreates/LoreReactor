@@ -71,7 +71,7 @@ class SpeechToTextEngine {
     // Layer 2: ML VAD State
     private useVad = false;
     private vadProbabilityThreshold = 0.4;
-    private isVadBusy = false; // Lock to prevent event-loop starvation
+    private isVadBusy = false;
 
     setDevicePreference(preference: deviceType): void {
         if (this.currentDevicePreference !== preference) {
@@ -272,7 +272,6 @@ class SpeechToTextEngine {
             voiceActivityDetectionEngine.setDevicePreference(options.vadDevicePreference);
         }
         
-        // Timeout safeguard: If VAD fails to initialize, gracefully fall back to pure RMS
         try {
             const vadInit = voiceActivityDetectionEngine.initialize();
             const timeout = new Promise<boolean>(res => setTimeout(() => res(false), 2000));
@@ -326,7 +325,6 @@ class SpeechToTextEngine {
             this.sourceNode = this.audioContext.createMediaStreamSource(this.mediaStream);
             this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
 
-            // MUTE NODE: Prevents microphone from looping back into laptop speakers
             this.muteGainNode = this.audioContext.createGain();
             this.muteGainNode.gain.value = 0;
 
@@ -343,7 +341,6 @@ class SpeechToTextEngine {
                 this.audioChunks.push(inputData);
 
                 if (this.isAutoListening) {
-                    // Instant RMS calculation (0% CPU, completely non-blocking)
                     let sumSquares = 0;
                     for (let i = 0; i < inputData.length; i++) {
                         sumSquares += inputData[i] * inputData[i];
@@ -360,21 +357,17 @@ class SpeechToTextEngine {
                     }
 
                     if (rms >= this.activationRmsThreshold) {
-                        // Confirmed speech immediately via energy gate
                         this.hasDetectedSpeech = true;
                         if (this.silenceTimer) {
                             clearTimeout(this.silenceTimer);
                             this.silenceTimer = null;
                         }
 
-                        // Asynchronous non-blocking VAD verification
                         if (this.useVad && !this.isVadBusy && voiceActivityDetectionEngine.isReady()) {
                             this.isVadBusy = true;
-                            // Check only the first 512-sample chunk to prevent loop stalls
                             const chunk = inputData.slice(0, 512);
                             voiceActivityDetectionEngine.processChunk(chunk).then((prob) => {
                                 if (prob >= 0 && prob < this.vadProbabilityThreshold && rms < this.activationRmsThreshold * 2) {
-                                    // Non-speech background noise: start silence countdown
                                     if (this.hasDetectedSpeech && !this.silenceTimer) {
                                         this.silenceTimer = setTimeout(() => {
                                             this.triggerAutoSend();
@@ -386,7 +379,6 @@ class SpeechToTextEngine {
                             });
                         }
                     } else {
-                        // Deadband: keep turn active if already speaking
                         if (this.hasDetectedSpeech && this.silenceTimer) {
                             clearTimeout(this.silenceTimer);
                             this.silenceTimer = null;
@@ -395,7 +387,6 @@ class SpeechToTextEngine {
                 }
             };
 
-            // Connect nodes through the mute gain node to prevent speaker feedback
             this.sourceNode.connect(this.processorNode);
             this.processorNode.connect(this.muteGainNode);
             this.muteGainNode.connect(this.audioContext.destination);
@@ -440,9 +431,16 @@ class SpeechToTextEngine {
         
         voiceActivityDetectionEngine.resetState?.();
 
-        const finalText = await this.transcribeAccumulated();
-        this.cleanupAudio();
+        // 1. Snapshot audio chunks and callback BEFORE tearing down the hardware stream
+        const chunksToProcess = this.audioChunks;
+        const partialCallback = this.onPartialTranscription;
+
+        // 2. Immediately stop the microphone tracks and AudioContext (instant hardware stop)
         this.onPartialTranscription = null;
+        this.cleanupAudio();
+
+        // 3. Now transcribe the extracted chunks without holding the mic open
+        const finalText = await this.transcribeChunks(chunksToProcess, partialCallback);
         this.resetIdleTimer();
 
         console.log('[STTEngine] Recording stopped.');
@@ -470,30 +468,31 @@ class SpeechToTextEngine {
         this.audioChunks = [];
     }
 
-    private async transcribeAccumulated(): Promise<string | null> {
-        if (this.audioChunks.length === 0) return null;
+    private async transcribeChunks(
+        chunks: Float32Array[],
+        onText: ((text: string) => void) | null
+    ): Promise<string | null> {
+        if (chunks.length === 0) return null;
 
         if (this.loading) await this.loading;
         if (!this.pipeline) return null;
 
         try {
-            const totalLength = this.audioChunks.reduce((sum, chunk) => sum + chunk.length, 0);
+            const totalLength = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
             if (totalLength < 1600) return null; // Ignore clicks under 100ms
 
             const combined = new Float32Array(totalLength);
             let offset = 0;
-            for (const chunk of this.audioChunks) {
+            for (const chunk of chunks) {
                 combined.set(chunk, offset);
                 offset += chunk.length;
             }
 
-            this.audioChunks = [];
-
             const result = await this.pipeline(combined);
             const text = result.text;
 
-            if (text && text.length > 0 && this.onPartialTranscription) {
-                this.onPartialTranscription(text);
+            if (text && text.length > 0 && onText) {
+                onText(text);
             }
 
             return text || null;
