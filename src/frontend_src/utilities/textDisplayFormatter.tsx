@@ -8,9 +8,9 @@ import { getModelThinkTokenPairs } from '../dictionaries/modelTemplates';
 
 const LEFT_DOUBLE_QUOTE = '\u201C';
 const RIGHT_DOUBLE_QUOTE = '\u201D';
-const MAX_BLOCKQUOTE_DEPTH = 10;
+const MAX_BLOCK_QUOTE_DEPTH = 10;
 
-type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item' | 'blockquote' | 'heading';
+type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item' | 'block_quote' | 'header';
 
 interface MatchCandidate {
     type: FormatterMatchType;
@@ -19,7 +19,7 @@ interface MatchCandidate {
     innerContent?: string;
     bullet?: string;
     indent?: number;
-    headingLevel?: number;
+    headerLevel?: number;
     language?: string;
     blockKey?: string;
     isUnclosed?: boolean;
@@ -298,38 +298,38 @@ function parseFormattedText(
              });
         }
 
-        // 1.0 Markdown Blockquote (> / >>) - groups consecutive quote lines
-        if (quoteDepth < MAX_BLOCKQUOTE_DEPTH) {
-            const blockquoteMatch = remaining.match(
+        // 1.0 Markdown Block Quote (> / >>) - groups consecutive quote lines
+        if (quoteDepth < MAX_BLOCK_QUOTE_DEPTH) {
+            const blockQuoteMatch = remaining.match(
                 /(?:^|\r?\n)([ \t]*>(?:[ \t]*>)*(?:[ \t][^\r\n]*|(?=\r?\n|$))(?:\r?\n[ \t]*>(?:[ \t]*>)*(?:[ \t][^\r\n]*|(?=\r?\n|$)))*)(?:\r?\n)?/
             );
-            if (blockquoteMatch && blockquoteMatch.index !== undefined) {
-                const strippedContent = blockquoteMatch[1]
+            if (blockQuoteMatch && blockQuoteMatch.index !== undefined) {
+                const strippedContent = blockQuoteMatch[1]
                     .split(/\r?\n/)
                     .map(line => line.replace(/^[ \t]*>[ \t]?/, ''))
                     .join('\n');
 
                 candidates.push({
-                    type: 'blockquote',
-                    index: blockquoteMatch.index,
-                    length: blockquoteMatch[0].length,
+                    type: 'block_quote',
+                    index: blockQuoteMatch.index,
+                    length: blockQuoteMatch[0].length,
                     innerContent: strippedContent,
                 });
             }
         }
 
-        // 1.1 Markdown ATX Heading (# through ######)
-        const headingMatch = remaining.match(/(?:^|\r?\n)[ \t]*(#{1,6})[ \t]+([^\r\n\t ][^\r\n]*)(?:\r?\n)?/);
-        if (headingMatch && headingMatch.index !== undefined) {
-            const cleanedHeading = headingMatch[2]
+        // 1.1 Markdown ATX Header (# through ######)
+        const headerMatch = remaining.match(/(?:^|\r?\n)[ \t]*(#{1,6})[ \t]+([^\r\n\t ][^\r\n]*)(?:\r?\n)?/);
+        if (headerMatch && headerMatch.index !== undefined) {
+            const cleanedHeader = headerMatch[2]
                 .replace(/[ \t]+#+[ \t]*$/, '')
                 .replace(/[ \t]+$/, '');
             candidates.push({
-                type: 'heading',
-                index: headingMatch.index,
-                length: headingMatch[0].length,
-                headingLevel: headingMatch[1].length,
-                innerContent: cleanedHeading,
+                type: 'header',
+                index: headerMatch.index,
+                length: headerMatch[0].length,
+                headerLevel: headerMatch[1].length,
+                innerContent: cleanedHeader,
             });
         }
 
@@ -426,15 +426,15 @@ function parseFormattedText(
             case 'inline_code':
                 nodes.push(<code key={keyGen.next()} className="fmt-inline-code">{match.innerContent}</code>);
                 break;
-            case 'blockquote':
+            case 'block_quote':
                 nodes.push(
                     <blockquote key={keyGen.next()} className="fmt-blockquote">
                         {parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen, quoteDepth + 1)}
                     </blockquote>
                 );
                 break;
-            case 'heading': {
-                const level = match.headingLevel ?? 1;
+            case 'header': {
+                const level = match.headerLevel ?? 1;
                 nodes.push(
                     <div
                         key={keyGen.next()}

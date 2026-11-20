@@ -104,4 +104,6 @@ export const narrateTextLabels: Record<textType, string> = {
     inline_code: 'Inline Code Text',
     code_block: 'Code Block Text',
     think_block: 'Think Block Text',
+    block_quote: 'Block Quote Text',
+    header: 'Header Text'
 };

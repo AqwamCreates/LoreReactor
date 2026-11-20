@@ -36,6 +36,8 @@ export const CATEGORY_LABELS: Record<textType, string> = {
     inline_code: 'Inline Code',
     code_block: 'Code Block',
     think_block: 'Thinking',
+    block_quote: 'Block Quote',
+    header: 'Header',
 };
 
 export const TARGET_OPTIONS: { value: textType; label: string }[] = [
@@ -51,6 +53,8 @@ export const TARGET_OPTIONS: { value: textType; label: string }[] = [
     { value: 'inline_code', label: 'Inline Code' },
     { value: 'code_block', label: 'Code Block' },
     { value: 'think_block', label: 'Thinking' },
+    { value: 'block_quote', label: 'Block Quote' },
+    { value: 'header', label: 'Header' },
 ];
 
 export const DEFAULT_CONVERSIONS: Record<textType, textType> = {
@@ -66,6 +70,8 @@ export const DEFAULT_CONVERSIONS: Record<textType, textType> = {
     inline_code: 'inline_code',
     code_block: 'code_block',
     think_block: 'think_block',
+    block_quote: 'block_quote',
+    header: 'header',
 };
 
 interface RawMatch {
@@ -88,7 +94,18 @@ const PATTERNS: { regex: RegExp; category: textType; innerGroup: number }[] = [
     // 2. Code blocks & inline code
     { regex: /```(?:[a-zA-Z0-9_+-]+\r?\n)?([\s\S]*?)```/g, category: 'code_block', innerGroup: 1 },
     { regex: /(?<!`)`([^`]+)`(?!`)/g, category: 'inline_code', innerGroup: 1 },
-    // 3. Text markdown
+    // 3. Block quotes & ATX headers
+    {
+        regex: /^[ \t]*>(?:[ \t]*>)*(?:[ \t][^\r\n]*|(?=\r?\n|$))(?:\r?\n[ \t]*>(?:[ \t]*>)*(?:[ \t][^\r\n]*|(?=\r?\n|$)))*/gm,
+        category: 'block_quote',
+        innerGroup: 0,
+    },
+    {
+        regex: /^[ \t]*#{1,6}[ \t]+([^\r\n\t ][^\r\n]*)/gm,
+        category: 'header',
+        innerGroup: 1,
+    },
+    // 4. Text markdown
     { regex: new RegExp(`(?<!\\*)\\*\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*\\*(?!\\*)`, 'g'), category: 'bold', innerGroup: 1 },
     { regex: new RegExp(`(?<!\\*)\\*\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*\\*(?!\\*)`, 'g'), category: 'bold', innerGroup: 1 },
     { regex: new RegExp(`(?<!\\*)\\*(?!\\s|\\*)(${NO_PARAGRAPH_BREAK})(?<!\\s|\\*)\\*(?!\\*)`, 'g'), category: 'italic', innerGroup: 1 },
@@ -150,11 +167,21 @@ export function detectFormatSegments(text: string): DetectedSegment[] {
             }
 
             if (!overlapsWithTool) {
+                let innerText = match[innerGroup] || '';
+                if (category === 'block_quote') {
+                    innerText = match[0]
+                        .split(/\r?\n/)
+                        .map(line => line.replace(/^[ \t]*>[ \t]?/, ''))
+                        .join('\n');
+                } else if (category === 'header') {
+                    innerText = innerText.replace(/[ \t]+#+[ \t]*$/, '').replace(/[ \t]+$/, '');
+                }
+
                 allMatches.push({
                     start: match.index,
                     end: match.index + match[0].length,
                     category,
-                    innerText: match[innerGroup] || '',
+                    innerText,
                     rawMatch: match[0],
                 });
             }
@@ -284,6 +311,16 @@ export function wrapCoreText(core: string, target: textType): string {
         case 'inline_code': return `\`${core}\``;
         case 'code_block': return `\`\`\`\n${core}\n\`\`\``;
         case 'think_block': return `<think>\n${core}\n</think>`;
+        case 'block_quote':
+            return core
+                .split(/\r?\n/)
+                .map(line => (line.length > 0 ? `> ${line}` : '>'))
+                .join('\n');
+        case 'header':
+            return core
+                .split(/\r?\n/)
+                .map(line => (line.trim().length > 0 ? `# ${line}` : line))
+                .join('\n');
         default: return core;
     }
 }
@@ -362,6 +399,7 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
         normal: 0, italic: 0, bold: 0, underline: 0,
         strikethrough: 0, quote: 0, parenthesis: 0, bracket: 0, brace: 0,
         inline_code: 0, code_block: 0, think_block: 0,
+        block_quote: 0, header: 0,
     };
 
     for (const seg of segments) counts[seg.category]++;
@@ -369,7 +407,8 @@ export function buildCategoryConversions(segments: DetectedSegment[]): CategoryC
     const order: textType[] = [
         'normal', 'italic', 'bold', 'underline', 'strikethrough', 
         'quote', 'parenthesis', 'bracket', 'brace',
-        'inline_code', 'code_block', 'think_block'
+        'inline_code', 'code_block', 'think_block',
+        'block_quote', 'header',
     ];
 
     return order

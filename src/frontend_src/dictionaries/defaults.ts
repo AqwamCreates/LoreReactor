@@ -247,6 +247,7 @@ export const defaultNarrateTexts: Record<textType, boolean> = {
     normal: false, quote: false, bold: false, italic: false, underline: false,
     parenthesis: false, bracket: false, brace: false, strikethrough: false,
     inline_code: false, code_block: false, think_block: false,
+    block_quote: false, header: false,
 };
 
 export function createDefaultMultiplayerData(): MultiplayerData {

@@ -22,7 +22,10 @@ export function extractNarratableText(
         'g'
     );
     let cleanText = text.replace(toolRegex, '');
-    cleanText = cleanText.replace(/(?:^|\r?\n)[ \t]*[-*+•][ \t]+/g, '\n');
+    cleanText = cleanText.replace(/\r\n?/g, '\n');
+    cleanText = cleanText.replace(/(?:^|\n)[ \t]*[-*+•][ \t]+/g, '\n');
+    // Prevent incomplete trailing line-start prefixes (# or >) from leaking into TTS mid-stream
+    cleanText = cleanText.replace(/(?:^|\n)[ \t]*(?:#{1,6}|>(?:[ \t]*>)*)[ \t]*$/, '');
 
     const segments: NarratableSegment[] = [];
     let currentSegmentText = '';
@@ -33,6 +36,8 @@ export function extractNarratableText(
     let insideStrikethrough = false;
     let insideUnderline = false;
     let insideQuote = false;
+    let insideBlockQuote = false;
+    let insideHeader = false;
 
     let parenthesisDepth = 0;
     let bracketDepth = 0;
@@ -55,6 +60,20 @@ export function extractNarratableText(
         }
     };
 
+    const resetInlineFormats = () => {
+        insideItalic = false;
+        insideBold = false;
+        insideStrikethrough = false;
+        insideUnderline = false;
+        insideQuote = false;
+        parenthesisDepth = 0;
+        bracketDepth = 0;
+        braceDepth = 0;
+        activeFormats.length = 0;
+        if (insideBlockQuote) activeFormats.push('block_quote');
+        if (insideHeader) activeFormats.push('header');
+    };
+
     const getCurrentType = (): textType => {
         if (activeFormats.length > 0) {
             return activeFormats[0]; // Locks strictly to the outermost format
@@ -70,7 +89,7 @@ export function extractNarratableText(
 
     const pushSegment = () => {
         const trimmed = currentSegmentText.replace(/\s+/g, ' ');
-        if (trimmed.length > 0) {
+        if (trimmed.trim().length > 0) {
             segments.push({ text: trimmed, textType: lastType });
         }
         currentSegmentText = '';
@@ -87,6 +106,8 @@ export function extractNarratableText(
             else if (lastType === 'parenthesis' && narrateTexts.parenthesis) fixTrailingPunctuation();
             else if (lastType === 'bracket' && narrateTexts.bracket) fixTrailingPunctuation();
             else if (lastType === 'brace' && narrateTexts.brace) fixTrailingPunctuation();
+            else if (lastType === 'block_quote' && narrateTexts.block_quote) fixTrailingPunctuation();
+            else if (lastType === 'header' && narrateTexts.header) fixTrailingPunctuation();
             
             pushSegment();
             lastType = newType;
@@ -94,12 +115,93 @@ export function extractNarratableText(
     };
 
     while (i < cleanText.length) {
+        const isAtLineStart = i === 0 || cleanText[i - 1] === '\n';
+
+        if (isAtLineStart) {
+            const restOfText = cleanText.slice(i);
+            const blockQuotePrefixMatch = restOfText.match(/^[ \t]*>(?:[ \t]*>)*(?:[ \t]+|(?=\n|$))/);
+
+            if (blockQuotePrefixMatch) {
+                if (!insideBlockQuote) {
+                    insideBlockQuote = true;
+                    pushFormat('block_quote');
+                    checkTypeChange();
+                }
+                i += blockQuotePrefixMatch[0].length;
+
+                const innerBulletMatch = cleanText.slice(i).match(/^[-*+•][ \t]+/);
+                if (innerBulletMatch) {
+                    i += innerBulletMatch[0].length;
+                }
+
+                const innerHeaderMatch = cleanText.slice(i).match(/^#{1,6}[ \t]+(?=[^\n\t ])/);
+                if (innerHeaderMatch) {
+                    insideHeader = true;
+                    pushFormat('header');
+                    checkTypeChange();
+                    i += innerHeaderMatch[0].length;
+                }
+                continue;
+            } else {
+                if (insideBlockQuote) {
+                    insideBlockQuote = false;
+                    popFormat('block_quote');
+                    resetInlineFormats();
+                    checkTypeChange();
+                }
+
+                const headerPrefixMatch = restOfText.match(/^[ \t]*#{1,6}[ \t]+(?=[^\n\t ])/);
+                if (headerPrefixMatch) {
+                    insideHeader = true;
+                    pushFormat('header');
+                    checkTypeChange();
+                    i += headerPrefixMatch[0].length;
+                    continue;
+                }
+            }
+        }
+
+        if (insideHeader) {
+            const trailingHashMatch = cleanText.slice(i).match(/^[ \t]+#+[ \t]*(?=\n)/);
+            if (trailingHashMatch) {
+                i += trailingHashMatch[0].length;
+                continue;
+            }
+        }
+
         const currentCharacter = cleanText[i];
         const nextCharacter = cleanText[i + 1];
         const nextNextCharacter = cleanText[i + 2];
         const previousCharacter = cleanText[i - 1];
 
         if (currentCharacter === '\n') {
+            if (insideHeader) {
+                insideHeader = false;
+                popFormat('header');
+                checkTypeChange();
+                if (!insideBlockQuote) {
+                    i += 1;
+                    continue;
+                }
+            }
+
+            if (insideBlockQuote) {
+                const afterNewline = cleanText.slice(i + 1);
+                const nextIsBlockQuote = /^[ \t]*>(?:[ \t]*>)*(?:[ \t]+|\n|$)/.test(afterNewline);
+                if (!nextIsBlockQuote) {
+                    insideBlockQuote = false;
+                    popFormat('block_quote');
+                    resetInlineFormats();
+                    checkTypeChange();
+                    i += 1;
+                    continue;
+                }
+                // Reset inline states if the next line is a blank ">" continuation line
+                if (/^[ \t]*>(?:[ \t]*>)*[ \t]*(?:\n|$)/.test(afterNewline)) {
+                    resetInlineFormats();
+                }
+            }
+
             let lookAheadIdx = i + 1;
             while (
                 lookAheadIdx < cleanText.length && 
@@ -108,15 +210,7 @@ export function extractNarratableText(
                 lookAheadIdx++;
             }
             if (lookAheadIdx < cleanText.length && cleanText[lookAheadIdx] === '\n') {
-                insideItalic = false;
-                insideBold = false;
-                insideStrikethrough = false;
-                insideUnderline = false;
-                insideQuote = false;
-                parenthesisDepth = 0;
-                bracketDepth = 0;
-                braceDepth = 0;
-                activeFormats.length = 0;
+                resetInlineFormats();
                 checkTypeChange();
             }
         }
@@ -325,6 +419,8 @@ export function extractNarratableText(
         else if (currentType === 'parenthesis' && narrateTexts.parenthesis) shouldIncludeCharacter = true;
         else if (currentType === 'bracket' && narrateTexts.bracket) shouldIncludeCharacter = true;
         else if (currentType === 'brace' && narrateTexts.brace) shouldIncludeCharacter = true;
+        else if (currentType === 'block_quote' && narrateTexts.block_quote) shouldIncludeCharacter = true;
+        else if (currentType === 'header' && narrateTexts.header) shouldIncludeCharacter = true;
         else if (currentType === 'normal' && narrateTexts.normal) shouldIncludeCharacter = true;
 
         if (shouldIncludeCharacter) {
