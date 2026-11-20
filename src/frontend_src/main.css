@@ -1215,13 +1215,14 @@ right: auto;
     }
     .mode-ladder .message-row.message-left .character-avatar,
     .mode-ladder .message-row.message-left .character-avatar.placeholder {
-    width: 90px;
-    height: 120px;
-    min-width: 90px;
-    aspect-ratio: 9 / 16;
-    border-radius: 12px;
-    border-width: 3px;
-    object-position: top center;
+        width: 90px;
+        height: auto;             /* 1. Let aspect-ratio dictate the height (or height: 160px) */
+        min-width: 90px;
+        aspect-ratio: 9 / 16;     /* 2. Now resolves to exactly 90px x 160px */
+        border-radius: 12px;
+        border-width: 3px;
+        object-fit: cover;        /* Keeps clean edge-to-edge fill for 9:16 artwork */
+        object-position: center;
     }
     .mode-ladder .message-row.message-left .avatar-name {
     font-size: 0.8rem;
