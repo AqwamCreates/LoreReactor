@@ -413,8 +413,10 @@ export interface TemplateContext {
   time: string;
   timeElapsed: string;
   currentChatStamina: string;
+  remainingCurrentChatStamina: string;
   maximumChatStamina: string;
   chatStaminaRatio: string;
+  remainingChatStaminaRatio: string;
   currentActionStamina: string;
   maximumActionStamina: string;
   actionStaminaRatio: string;
@@ -1119,8 +1121,10 @@ export function resolveInnerText(
     time: '',
     timeElapsed: '',
     currentChatStamina: '',
+    remainingCurrentChatStamina: '',
     maximumChatStamina: '',
     chatStaminaRatio: '',
+    remainingChatStaminaRatio: '',
     currentActionStamina: '',
     maximumActionStamina: '',
     actionStaminaRatio: '',
@@ -2131,13 +2135,48 @@ function buildFatigueText(
   return getFatigueContext(chatStaminaRatio, actionStaminaRatio, totalStaminaRatio);
 }
 
+function countPrefillParagraphs(prefillText: string): number {
+  if (!prefillText) return 0;
+  const cleanedThink = sanitizeThinkingSyntax(prefillText);
+  if (!cleanedThink) return 0;
+
+  const escapeRegex = (str: string) => str.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
+  const obsStart = escapeRegex(toolResultStartString);
+  const obsEnd = escapeRegex(toolResultEndString);
+  const callStart = escapeRegex(toolCallStartString);
+  const callEnd = escapeRegex(toolCallEndString);
+
+  const cleaned = cleanedThink
+    .replace(new RegExp(`${obsStart}[\\s\\S]*?${obsEnd}`, 'g'), '')
+    .replace(new RegExp(`${callStart}[\\s\\S]*?${callEnd}`, 'g'), '');
+
+  const normalized = cleaned.replace(/\r\n?/g, '\n').trim();
+  if (!normalized) return 0;
+
+  const withoutSplitCode = normalized.replace(/```[\s\S]*?(?:```|$)/g, '[CODE_BLOCK]');
+
+  return withoutSplitCode
+    .split(/\n\s*\n+/)
+    .filter(p => p.trim().length > 0)
+    .length;
+}
+
 function buildParagraphCountInstructionsText(
-  currentChatStamina: number,
+  remainingCurrentChatStamina: number,
   effectiveMaxChatStamina: number
 ): string {
-  if (currentChatStamina === undefined || effectiveMaxChatStamina === Number.POSITIVE_INFINITY) return '';
-  const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
-  return `I understand that I can create a minimum of 1 paragraph and a maximum of {{currentChatStamina}} ${paragraphText}. If I exceed this, I will immediately and naturally stop creating new paragraphs.`;
+  if (
+    remainingCurrentChatStamina === undefined ||
+    effectiveMaxChatStamina === Number.POSITIVE_INFINITY ||
+    remainingCurrentChatStamina === Number.POSITIVE_INFINITY
+  ) {
+    return '';
+  }
+  if (remainingCurrentChatStamina <= 0) {
+    return `I understand that I have {{remainingCurrentChatStamina}} paragraphs remaining, so I will naturally finish any incomplete current paragraph and immediately stop without creating any new paragraphs.`;
+  }
+  const paragraphText = (remainingCurrentChatStamina > 1) ? "paragraphs" : "paragraph";
+  return `I understand that I can create a minimum of 1 paragraph and a maximum of {{remainingCurrentChatStamina}} ${paragraphText}. If I exceed this, I will immediately and naturally stop creating new paragraphs.`;
 }
 
 function buildTimeElapsedText(msDifference: number): string {
@@ -2846,10 +2885,16 @@ export async function buildPrompt(
   const effectiveMaxActionStamina = getEffectiveMaximumActionStamina(ctx.character, ctx.profile);
   const previousMessage = findLatestMessage(ctx.interactionData, ctx.character);
   const currentChatStamina = previousMessage?.message.remainingChatStamina ?? effectiveMaxChatStamina;
+  const prefillParagraphCount = countPrefillParagraphs(existingCharacterText);
+  const remainingCurrentChatStamina =
+    currentChatStamina === Number.POSITIVE_INFINITY || effectiveMaxChatStamina === Number.POSITIVE_INFINITY
+      ? Number.POSITIVE_INFINITY
+      : Math.max(0, currentChatStamina - prefillParagraphCount);
   const currentActionStamina = previousMessage?.message.remainingActionStamina ?? effectiveMaxActionStamina;
   const currentTotalStamina = currentChatStamina + currentActionStamina;
   const maximumTotalStamina = effectiveMaxChatStamina + effectiveMaxActionStamina;
   const chatStaminaRatio = (effectiveMaxChatStamina === Number.POSITIVE_INFINITY || effectiveMaxChatStamina === 0) ? 1 : currentChatStamina / effectiveMaxChatStamina;
+  const remainingChatStaminaRatio = (effectiveMaxChatStamina === Number.POSITIVE_INFINITY || effectiveMaxChatStamina === 0 || remainingCurrentChatStamina === Number.POSITIVE_INFINITY) ? 1 : remainingCurrentChatStamina / effectiveMaxChatStamina;
   const actionStaminaRatio = (effectiveMaxActionStamina === Number.POSITIVE_INFINITY || effectiveMaxActionStamina === 0) ? 1 : currentActionStamina / effectiveMaxActionStamina;
   const totalStaminaRatio = (maximumTotalStamina === Number.POSITIVE_INFINITY || maximumTotalStamina === 0) ? 1 : currentTotalStamina / maximumTotalStamina;
   const formatStamina = (val: number) => val === Number.POSITIVE_INFINITY ? 'Infinity' : String(Math.round(val));
@@ -3035,8 +3080,10 @@ export async function buildPrompt(
     time: timeText,
     timeElapsed: timeElapsedText,
     currentChatStamina: formatStamina(currentChatStamina),
+    remainingCurrentChatStamina: formatStamina(remainingCurrentChatStamina),
     maximumChatStamina: formatStamina(effectiveMaxChatStamina),
     chatStaminaRatio: formatRatio(chatStaminaRatio),
+    remainingChatStaminaRatio: formatRatio(remainingChatStaminaRatio),
     currentActionStamina: formatStamina(currentActionStamina),
     maximumActionStamina: formatStamina(effectiveMaxActionStamina),
     actionStaminaRatio: formatRatio(actionStaminaRatio),
@@ -3044,7 +3091,7 @@ export async function buildPrompt(
     maximumTotalStamina: formatStamina(maximumTotalStamina),
     totalStaminaRatio: formatRatio(totalStaminaRatio),
     fatigueInformation: !isToolMessage ? buildFatigueText(chatStaminaRatio, actionStaminaRatio, totalStaminaRatio) : '',
-    paragraphCountInstructions: !isToolMessage ? buildParagraphCountInstructionsText(currentChatStamina, effectiveMaxChatStamina) : '',
+    paragraphCountInstructions: !isToolMessage ? buildParagraphCountInstructionsText(remainingCurrentChatStamina, effectiveMaxChatStamina) : '',
     tools: ctx.tools,
     toolInstructions: buildToolInstructionText(ctx.tools),
     toolMessageInstructions: isToolMessage ? buildToolMessageInstructionText() : '',
