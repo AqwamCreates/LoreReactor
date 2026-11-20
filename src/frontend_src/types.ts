@@ -955,9 +955,9 @@ export type textType =
   | "strikethrough"
   | "inline_code"
   | "code_block"
-  | "think_block"
   | "block_quote"
-  | "header";
+  | "header"
+  | "think_block"
 
 export type toolUsageDisplayMode = "none" | "icon" | "simple" | "detailed" | "full" | "raw" // Default is none.
 
