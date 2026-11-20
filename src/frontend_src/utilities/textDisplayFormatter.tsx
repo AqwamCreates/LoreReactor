@@ -8,8 +8,9 @@ import { getModelThinkTokenPairs } from '../dictionaries/modelTemplates';
 
 const LEFT_DOUBLE_QUOTE = '\u201C';
 const RIGHT_DOUBLE_QUOTE = '\u201D';
+const MAX_BLOCKQUOTE_DEPTH = 10;
 
-type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item';
+type FormatterMatchType = textType | 'bold_italic' | 'curly_quote' | 'newline' | 'list_item' | 'blockquote' | 'heading';
 
 interface MatchCandidate {
     type: FormatterMatchType;
@@ -18,6 +19,7 @@ interface MatchCandidate {
     innerContent?: string;
     bullet?: string;
     indent?: number;
+    headingLevel?: number;
     language?: string;
     blockKey?: string;
     isUnclosed?: boolean;
@@ -244,7 +246,8 @@ function findDistinctPairedFormat(text: string, openChar: string, closeChar: str
 function parseFormattedText(
     text: string,
     isTopLevel: boolean,
-    keyGen: { next: () => number }
+    keyGen: { next: () => number },
+    quoteDepth = 0
 ): React.ReactNode[] {
     if (!text) return [];
 
@@ -295,7 +298,42 @@ function parseFormattedText(
              });
         }
 
-        // 1. List Item
+        // 1.0 Markdown Blockquote (> / >>) - groups consecutive quote lines
+        if (quoteDepth < MAX_BLOCKQUOTE_DEPTH) {
+            const blockquoteMatch = remaining.match(
+                /(?:^|\r?\n)([ \t]*>(?:[ \t]*>)*(?:[ \t][^\r\n]*|(?=\r?\n|$))(?:\r?\n[ \t]*>(?:[ \t]*>)*(?:[ \t][^\r\n]*|(?=\r?\n|$)))*)(?:\r?\n)?/
+            );
+            if (blockquoteMatch && blockquoteMatch.index !== undefined) {
+                const strippedContent = blockquoteMatch[1]
+                    .split(/\r?\n/)
+                    .map(line => line.replace(/^[ \t]*>[ \t]?/, ''))
+                    .join('\n');
+
+                candidates.push({
+                    type: 'blockquote',
+                    index: blockquoteMatch.index,
+                    length: blockquoteMatch[0].length,
+                    innerContent: strippedContent,
+                });
+            }
+        }
+
+        // 1.1 Markdown ATX Heading (# through ######)
+        const headingMatch = remaining.match(/(?:^|\r?\n)[ \t]*(#{1,6})[ \t]+([^\r\n\t ][^\r\n]*)(?:\r?\n)?/);
+        if (headingMatch && headingMatch.index !== undefined) {
+            const cleanedHeading = headingMatch[2]
+                .replace(/[ \t]+#+[ \t]*$/, '')
+                .replace(/[ \t]+$/, '');
+            candidates.push({
+                type: 'heading',
+                index: headingMatch.index,
+                length: headingMatch[0].length,
+                headingLevel: headingMatch[1].length,
+                innerContent: cleanedHeading,
+            });
+        }
+
+        // 1.2 List Item
         const listMatch = remaining.match(/(?:^|\r?\n)([ \t]*)([-*+•]|\d{1,3}[.)])[ \t]+([^\r\n]*)/);
         if (listMatch && listMatch.index !== undefined) {
             const indentStr = listMatch[1] ?? '';
@@ -371,7 +409,7 @@ function parseFormattedText(
                         rawContent={match.innerContent ?? ''}
                         isUnclosed={match.isUnclosed}
                     >
-                        {parseFormattedText(match.innerContent ?? '', false, keyGen)}
+                        {parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}
                     </CollapsibleThinkBlock>
                 );
                 break;
@@ -388,13 +426,34 @@ function parseFormattedText(
             case 'inline_code':
                 nodes.push(<code key={keyGen.next()} className="fmt-inline-code">{match.innerContent}</code>);
                 break;
+            case 'blockquote':
+                nodes.push(
+                    <blockquote key={keyGen.next()} className="fmt-blockquote">
+                        {parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen, quoteDepth + 1)}
+                    </blockquote>
+                );
+                break;
+            case 'heading': {
+                const level = match.headingLevel ?? 1;
+                nodes.push(
+                    <div
+                        key={keyGen.next()}
+                        className={`fmt-heading fmt-heading-${level}`}
+                        role="heading"
+                        aria-level={level}
+                    >
+                        {parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}
+                    </div>
+                );
+                break;
+            }
             case 'list_item': {
                 const isBullet = /^[-*+•]$/.test(match.bullet ?? '');
                 const displayBullet = isBullet ? '•' : match.bullet;
                 nodes.push(
                     <span key={keyGen.next()} className="fmt-list-row" style={match.indent && match.indent > 0 ? { paddingLeft: `${match.indent * 16}px` } : undefined}>
                         <span className="fmt-list-bullet">{displayBullet}</span>
-                        <span className="fmt-list-content">{parseFormattedText(match.innerContent ?? '', false, keyGen)}</span>
+                        <span className="fmt-list-content">{parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}</span>
                     </span>
                 );
                 break;
@@ -403,34 +462,34 @@ function parseFormattedText(
                 nodes.push(<br key={keyGen.next()} />);
                 break;
             case 'bold_italic':
-                nodes.push(<span key={keyGen.next()} className="fmt-bold fmt-italic">{parseFormattedText(match.innerContent ?? '', false, keyGen)}</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-bold fmt-italic">{parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}</span>);
                 break;
             case 'bold':
-                nodes.push(<span key={keyGen.next()} className="fmt-bold">{parseFormattedText(match.innerContent ?? '', false, keyGen)}</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-bold">{parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}</span>);
                 break;
             case 'italic':
-                nodes.push(<span key={keyGen.next()} className="fmt-italic">{parseFormattedText(match.innerContent ?? '', false, keyGen)}</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-italic">{parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}</span>);
                 break;
             case 'underline':
-                nodes.push(<span key={keyGen.next()} className="fmt-underline" style={{ textDecoration: 'underline', textDecorationColor: 'inherit', color: 'inherit' }}>{parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen)}</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-underline" style={{ textDecoration: 'underline', textDecorationColor: 'inherit', color: 'inherit' }}>{parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen, quoteDepth)}</span>);
                 break;
             case 'strikethrough':
-                nodes.push(<span key={keyGen.next()} className="fmt-strikethrough" style={{ textDecoration: 'line-through', textDecorationColor: 'inherit', color: 'inherit' }}>{parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen)}</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-strikethrough" style={{ textDecoration: 'line-through', textDecorationColor: 'inherit', color: 'inherit' }}>{parseFormattedText(match.innerContent ?? '', isTopLevel, keyGen, quoteDepth)}</span>);
                 break;
             case 'quote':
-                nodes.push(<span key={keyGen.next()} className="fmt-quote">"{parseFormattedText(match.innerContent ?? '', false, keyGen)}"</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-quote">"{parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}"</span>);
                 break;
             case 'curly_quote':
-                nodes.push(<span key={keyGen.next()} className="fmt-quote">{LEFT_DOUBLE_QUOTE}{parseFormattedText(match.innerContent ?? '', false, keyGen)}{RIGHT_DOUBLE_QUOTE}</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-quote">{LEFT_DOUBLE_QUOTE}{parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}{RIGHT_DOUBLE_QUOTE}</span>);
                 break;
             case 'parenthesis':
-                nodes.push(<span key={keyGen.next()} className="fmt-parenthesis">({parseFormattedText(match.innerContent ?? '', false, keyGen)})</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-parenthesis">({parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)})</span>);
                 break;
             case 'bracket':
-                nodes.push(<span key={keyGen.next()} className="fmt-bracket">[{parseFormattedText(match.innerContent ?? '', false, keyGen)}]</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-bracket">[{parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}]</span>);
                 break;
             case 'brace':
-                nodes.push(<span key={keyGen.next()} className="fmt-brace">{'{'}{parseFormattedText(match.innerContent ?? '', false, keyGen)}{'}'}</span>);
+                nodes.push(<span key={keyGen.next()} className="fmt-brace">{'{'}{parseFormattedText(match.innerContent ?? '', false, keyGen, quoteDepth)}{'}'}</span>);
                 break;
         }
 
