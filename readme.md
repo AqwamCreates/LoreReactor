@@ -116,13 +116,15 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
  * Ladder: Basic message chat app layout.
 
- * Cinematic: Single character focus.
+  * Cinematic: Single character focus.
 
- * Visual Novel: Moveable characters.
+  * Visual Novel: Moveable characters.
 
- * Card: Character-less view with dungeon master focus.  
+  * Card: Character-less view with dungeon master focus.  
 
 * Companion overlay window can be also activated using the binary versions of the LoreReactor app, enabling even more personal interaction whenever you are, including playing games, browsing the web, writing an essay and so on.
+
+* Click on the character images to perform quick actions to that particular character in any format you want.
 
 ### Immersion
 
