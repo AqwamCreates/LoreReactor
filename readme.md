@@ -126,6 +126,8 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
 * Companion overlay window can be also activated using the binary versions of the LoreReactor app, enabling even more personal interaction whenever you are, including playing games, browsing the web, writing an essay and so on.
 
+* Uses 9:16 aspect ratio for character images and can show different character expressions.
+
 ### Immersion
 
 * Character names appear beneath their profile picture starting from the message after they first say their name. This preserves the surprise of reading the revelation in-dialogue before seeing it reflected in the UI.
