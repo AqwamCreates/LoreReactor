@@ -102,6 +102,8 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
 * Each chat session can have independent Characters, Contexts, Locations and Audio Tracks.
 
+* Can use front image camera for real-time character face capture and reaction in the standalone application and desktop-based websites.
+
 * A chat session can use multiple instructions that can be triggered using regular expressions and binding to entities like Characters, Contexts and Locations. These instructions can also include images as well.
 
 * Messages can also be filtered based on regular expression and co-located Characters criteria.
