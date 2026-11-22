@@ -4157,6 +4157,27 @@ export function processPendingToolActions(
                     options?.onToast?.(`✨ ${realCharacter.name} joined.`, 'info');
                     break;
                 }
+                case 'unsummon': {
+                    const charId = action.payload.characterId;
+                    const sessionParticipants = updatedData.participants || [];
+                    const existingChar = sessionParticipants.find(p => p.id === charId);
+                    if (!existingChar) {
+                        options?.onToast?.(`⚠️ Cannot unsummon "${action.payload.characterName}": not in session.`, 'error');
+                        break;
+                    }
+                    if (updatedData.protagonistIds?.includes(charId)) {
+                        options?.onToast?.(`⚠️ Cannot unsummon session protagonist "${existingChar.name}".`, 'error');
+                        break;
+                    }
+                    updatedData = {
+                        ...updatedData,
+                        participants: sessionParticipants.filter(p => p.id !== charId),
+                        lastUpdatedTimestamp: sequenceTime
+                    };
+                    changed = true;
+                    options?.onToast?.(`💨 ${existingChar.name} was unsummoned.`, 'info');
+                    break;
+                }
                 case 'lock_location': {
                     const charId = action.payload.characterId;
                     const locId = action.payload.locationId;
