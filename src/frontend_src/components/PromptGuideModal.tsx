@@ -290,7 +290,6 @@ const mockTemplateContext: TemplateContext = {
     promptBlockImageInstructions: '',
     contextImageInstructions: '',
     currentLocationImageInstructions: '',
-    screenshotImageInstructions: '',
     text: '',
     promptBuildContext: mockPromptBuildContext,
     wearingStatus: {}
