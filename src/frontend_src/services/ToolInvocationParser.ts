@@ -10,6 +10,7 @@ export interface ToolInvocation {
     toolType: string;
     args: string;
     rawMatch: string;
+    parseError?: string; // FIXED: Added this missing interface property
 }
 
 export interface ParsedChunkResult {
@@ -21,18 +22,10 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/**
- * Extracts toolType and args from the inner text of a tool token:
- *   - JSON no args:    {"name": "move"} -> toolType: "move", args: ""
- *   - JSON with args:  {"name": "move", "arguments": {...}} -> toolType: "move", args: "{...}"
- *   - Function style:  "dice(sides: 6, count: 5)" -> toolType: "dice", args: "sides: 6, count: 5"
- *   - CLI style:       "inventory add \"Iron Sword\" 3" -> toolType: "inventory", args: "add \"Iron Sword\" 3"
- *   - Simple:          "coin" -> toolType: "coin", args: ""
- */
-function parseInnerToolCall(inner: string): { toolType: string; args: string } {
+function parseInnerToolCall(inner: string): { toolType: string; args: string; parseError?: string } {
     const trimmed = inner;
 
-    // 1. JSON format: {"name": "...", "arguments"?: {...}}
+    // 1. JSON format
     if (/^\s*\{/.test(trimmed)) {
         try {
             const parsed: unknown = JSON.parse(trimmed);
@@ -44,12 +37,13 @@ function parseInnerToolCall(inner: string): { toolType: string; args: string } {
                     args: hasArgs ? JSON.stringify(parsed.arguments) : '',
                 };
             }
-        } catch {
+            return { toolType: '', args: '', parseError: 'JSON must contain a "name" property.' };
+        } catch (e) {
             const nameMatch = trimmed.match(/"name"\s*:\s*"([^"]+)"/);
-            const extractedName = nameMatch ? nameMatch[1].toLowerCase() : '';
             return {
-                toolType: extractedName,
-                args: '',
+                toolType: nameMatch ? nameMatch[1].toLowerCase() : 'unknown',
+                args: trimmed,
+                parseError: `Invalid JSON: ${(e as Error).message}`,
             };
         }
     }
@@ -78,59 +72,33 @@ function parseInnerToolCall(inner: string): { toolType: string; args: string } {
     };
 }
 
-/**
- * Parses slash commands typed by the user in chat.
- */
 export function parseSlashCommand(input: string): ToolInvocation | null {
     let trimmed = input;
     if (!trimmed.startsWith('/')) return null;
-
     trimmed = trimmed.slice(1);
     if (!trimmed) return null;
 
-    // Strip explicit ⟪ and ⟫ if present in the command
     if (trimmed.startsWith(toolCallStartString) && trimmed.endsWith(toolCallEndString)) {
         trimmed = trimmed.slice(toolCallStartString.length, trimmed.length - toolCallEndString.length);
     }
 
-    const { toolType, args } = parseInnerToolCall(trimmed);
-    return {
-        toolType,
-        args,
-        rawMatch: input,
-    };
+    const { toolType, args, parseError } = parseInnerToolCall(trimmed);
+    return { toolType, args, rawMatch: input, parseError };
 }
 
-/**
- * Streaming parser that buffers incoming token deltas:
- *   - Detects tool calls enclosed within ⟪ and ⟫.
- *   - Silently drops tool results enclosed within ⟦ and ⟧ so observations never leak into displayText.
- *   - Absorbs orphan boundary brackets echoed by the inference backend after prompt injection.
- */
 export class ToolInvocationParser {
     private buffer = '';
 
-    reset(): void {
-        this.buffer = '';
-    }
-
-    getBuffer(): string {
-        return this.buffer;
-    }
+    reset(): void { this.buffer = ''; }
+    getBuffer(): string { return this.buffer; }
 
     processChunk(chunk: string): ParsedChunkResult {
         this.buffer += chunk;
-
-        // Absorb orphan closing brackets echoed by the model at prompt boundaries
         while (this.buffer.length > 0) {
             const buffer = this.buffer;
-            if (buffer.startsWith(toolResultEndString)) {
-                this.buffer = buffer.slice(toolResultEndString.length);
-            } else if (buffer.startsWith(toolCallEndString)) {
-                this.buffer = buffer.slice(toolCallEndString.length);
-            } else {
-                break;
-            }
+            if (buffer.startsWith(toolResultEndString)) this.buffer = buffer.slice(toolResultEndString.length);
+            else if (buffer.startsWith(toolCallEndString)) this.buffer = buffer.slice(toolCallEndString.length);
+            else break;
         }
 
         let displayText = '';
@@ -140,14 +108,11 @@ export class ToolInvocationParser {
             const callIdx = this.buffer.indexOf(toolCallStartString);
             const resIdx = this.buffer.indexOf(toolResultStartString);
 
-            // 1. Neither tag encountered in current buffer
             if (callIdx === -1 && resIdx === -1) {
                 let safeLen = this.buffer.length;
                 for (const startToken of [toolCallStartString, toolResultStartString]) {
                     for (let len = 1; len < startToken.length; len++) {
-                        if (this.buffer.endsWith(startToken.slice(0, len))) {
-                            safeLen = Math.min(safeLen, this.buffer.length - len);
-                        }
+                        if (this.buffer.endsWith(startToken.slice(0, len))) safeLen = Math.min(safeLen, this.buffer.length - len);
                     }
                 }
                 displayText += this.buffer.slice(0, safeLen);
@@ -155,68 +120,40 @@ export class ToolInvocationParser {
                 break;
             }
 
-            // 2. Identify whichever delimiter appears first
-            const nextIdx = (callIdx !== -1 && resIdx !== -1)
-                ? Math.min(callIdx, resIdx)
-                : (callIdx !== -1 ? callIdx : resIdx);
-
+            const nextIdx = (callIdx !== -1 && resIdx !== -1) ? Math.min(callIdx, resIdx) : (callIdx !== -1 ? callIdx : resIdx);
             const isCall = nextIdx === callIdx;
 
-            // Emit any plain dialogue preceding the delimiter
             if (nextIdx > 0) {
                 displayText += this.buffer.slice(0, nextIdx);
                 this.buffer = this.buffer.slice(nextIdx);
             }
 
-            // 3. Process Tool Call: ⟪...⟫
             if (isCall) {
                 const endIdx = this.buffer.indexOf(toolCallEndString, toolCallStartString.length);
-                if (endIdx === -1) {
-                    // Tool call is still streaming; hold buffer and await next chunk
-                    break;
-                }
+                if (endIdx === -1) break;
 
                 const fullEndIdx = endIdx + toolCallEndString.length;
                 const rawMatch = this.buffer.slice(0, fullEndIdx);
                 const innerContent = this.buffer.slice(toolCallStartString.length, endIdx);
 
-                const { toolType, args } = parseInnerToolCall(innerContent);
-                toolInvocations.push({ toolType, args, rawMatch });
-
+                const parsed = parseInnerToolCall(innerContent);
+                toolInvocations.push({ ...parsed, rawMatch });
                 this.buffer = this.buffer.slice(fullEndIdx);
-            } 
-            // 4. Process Tool Result: ⟦...⟧ (Suppressed completely from displayText)
-            else {
+            } else {
                 const endIdx = this.buffer.indexOf(toolResultEndString, toolResultStartString.length);
-                if (endIdx === -1) {
-                    // In-progress observation; hold buffer to prevent leaking into displayText
-                    break;
-                }
-
+                if (endIdx === -1) break;
                 const fullEndIdx = endIdx + toolResultEndString.length;
-
-                // Absorb any optional trailing boundary space that was appended with the result
                 let nextSliceIdx = fullEndIdx;
-                if (this.buffer[nextSliceIdx] === ' ') {
-                    nextSliceIdx++;
-                }
-
+                if (this.buffer[nextSliceIdx] === ' ') nextSliceIdx++;
                 this.buffer = this.buffer.slice(nextSliceIdx);
             }
         }
-
-        return {
-            displayText,
-            toolInvocations,
-        };
+        return { displayText, toolInvocations };
     }
 
     static parseAll(text: string): { displayText: string; toolInvocations: ToolInvocation[] } {
         const parser = new ToolInvocationParser();
         const result = parser.processChunk(text);
-        return {
-            displayText: result.displayText + parser.getBuffer(),
-            toolInvocations: result.toolInvocations,
-        };
+        return { displayText: result.displayText + parser.getBuffer(), toolInvocations: result.toolInvocations };
     }
 }

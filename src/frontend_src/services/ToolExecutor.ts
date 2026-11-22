@@ -1851,7 +1851,6 @@ function executeRandom(args: string): ToolResult {
 }
 
 // ─── RNG Table ──────────────────────────────────────────────────────
-// ─── RNG Table ──────────────────────────────────────────────────────
 function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(-1, 'action')?.toLowerCase();
@@ -1864,19 +1863,13 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
         return { toolType: 'rng', args, textContent: JSON.stringify({ tables }), displayReplacement: `[🎲 ${tables.length} RNG table(s)]` };
     }
 
-    const tableId = pArgs.get(0, 'table_context_id', 'table', 'context_id', 'name') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
+    const tableId = pArgs.get(0, 'table_context_id', 'table', 'context_id') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!tableId) {
         return helpResult('rng', 'table_context_id="..."', 'roll on a named RNG table defined in contexts');
     }
 
     const q = tableId.toLowerCase();
-    const tableContext = contexts.find(c => 
-        c.id.toLowerCase() === q || 
-        c.id.toLowerCase().startsWith(q) || 
-        c.name?.toLowerCase() === q ||
-        c.name?.toLowerCase().includes(q)
-    );
-
+    const tableContext = contexts.find(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q));
     if (!tableContext || !tableContext.text) {
         return { toolType: 'rng', args, textContent: `[Error: RNG table "${tableId}" not found in contexts]`, displayReplacement: '[Error: Table not found]' };
     }
