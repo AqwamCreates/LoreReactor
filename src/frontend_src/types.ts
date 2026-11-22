@@ -304,7 +304,7 @@ export interface RawMemory extends RawData {
   embedding?: number[],
 }
 
-export type tool = "whisper" | "think" | "pick" | "sky_view" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "mind_reader" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "narrate" | "substrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'restart' | 'clipboard' | 'front_camera' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_hearing' | 'virtual_vision' | 'virtual_input' | 'virtual_controller' | 'hardware_control'
+export type tool = "whisper" | "think" | "pick" | "sky_view" | "clock" | "calendar" | "coin" | "dice" | "random" | "rng" | "move" | "timer" | "stopwatch" | "schedule" | "calculator" | "web" | "lookup" | "map" | "audio" | "note" | "inventory" | "trade" | "invite" | "kick" | "mind_reader" | "oracle" | "teleport" | "key" | "dialogue" | "knowledge" | "memory" | "clothing" | "summon" | "unsummon" | "narrate" | "substrate" | "inspect" | "administrator" | "creator" | "destroyer" | 'schedule_response' | 'text_to_speech' | 'gpu' | 'system_info' | 'notify' | 'volume_control' | 'lock_screen' | 'sleep' | 'shutdown' | 'restart' | 'clipboard' | 'front_camera' | 'screenshot' | 'network_scanner' | 'file_watcher' | 'window_monitor' | 'process_monitor' | 'trash' | 'browser' | 'read_file' | 'write_file' | 'shell' | 'virtual_hearing' | 'virtual_vision' | 'virtual_input' | 'virtual_controller' | 'hardware_control'
 
 export interface DialoguePrompt extends ObjectData {
   textContent: string;
@@ -510,8 +510,8 @@ export interface ActiveToolActions {
     tradeOffers?: TradeOffer[];
 }
 
-export type PendingToolActionType =
-  'whisper'| 'move' | 'teleport' | 'kick' | 'invite' | 'summon'| 'creator' | 'destroyer'
+export type pendingToolActionType =
+  'whisper'| 'move' | 'teleport' | 'kick' | 'invite' | 'summon' | 'unsummon' | 'creator' | 'destroyer'
   | 'administrator_switch_model' | 'administrator_toggle_account' 
   | 'administrator_join_session' | 'administrator_leave_session' 
   | 'administrator_accept_join' | 'administrator_reject_join'
@@ -520,7 +520,7 @@ export type PendingToolActionType =
   | 'lock_location' | 'unlock_location';
 
 export interface PendingToolAction {
-  type: PendingToolActionType;
+  type: pendingToolActionType;
   payload: Record<string, string>;
 }
 

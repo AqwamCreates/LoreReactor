@@ -10,7 +10,7 @@ import type {
     PromptBlock, StopPattern, TokenSampler, BudgetStrategy, World, Memory,
     Extension, Account, MultiplayerData, toolUsageDisplayMode, ToolMessage,
     tool, EntityFolder, RawInteractionData, RetrievalConfiguration, LanguageModel, SpatiotemporalModel,
-    entityType, ActiveToolActions, PendingToolAction, PendingToolActionType,
+    entityType, ActiveToolActions, PendingToolAction, pendingToolActionType,
     TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry, TradeOffer
 } from '../types';
 import { findLatestMessage, createMessage } from '../utilities/messageLogic';
@@ -32,7 +32,7 @@ import { computeMovementCost } from '../utilities/dynamicCharacterLogic';
 
 // Re-export so consumers importing from ToolExecutor remain compatible
 export type {
-    PendingToolAction, PendingToolActionType, ActiveToolActions,
+    PendingToolAction, pendingToolActionType, ActiveToolActions,
     TradeOffer, TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry
 };
 
@@ -561,6 +561,18 @@ export const TOOL_DEFINITIONS: Record<tool, ToolDefinition> = {
             additionalProperties: false,
         },
         actionRequired: { summon: ['character_id'], list: [] },
+        examples: [{ action: 'list' }, { character_id: EX_CHAR }],
+    },
+    unsummon: {
+        name: 'unsummon',
+        description: 'Remove a participant character UUID from current session, or list unsummonable participant UUIDs.',
+        defaultAction: 'unsummon',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['unsummon', 'list'], default: 'unsummon' }, character_id: { type: 'string', description: 'Character UUID.' } },
+            additionalProperties: false,
+        },
+        actionRequired: { unsummon: ['character_id'], list: [] },
         examples: [{ action: 'list' }, { character_id: EX_CHAR }],
     },
     narrate: {
@@ -1327,7 +1339,7 @@ export const TOOL_EMOJI_MAP: Record<tool, string> = {
     lookup: '🔍', map: '🗺️', audio: '🔊', note: '📝',
     inventory: '📦', trade: '🤝', invite: '📨', kick: '👢', mind_reader: '🧠',
     oracle: '🔮', teleport: '⚡', key: '🔒', clothing: '👕',
-    summon: '✨', narrate: '🎙️', substrate: '🎨', inspect: '🔍', administrator: '🔧',
+    summon: '✨', unsummon: '💨', narrate: '🎙️', substrate: '🎨', inspect: '🔍', administrator: '🔧',
     creator: '🛠️', destroyer: '💀', schedule_response: '⏰',
     text_to_speech: '🔊', gpu: '📟', system_info: '🖥️', notify: '🔔', volume_control: '🔊',
     lock_screen: '🔒', sleep: '⚡', shutdown: '⚡', restart: '⚡',
@@ -1339,7 +1351,7 @@ export const TOOL_EMOJI_MAP: Record<tool, string> = {
 };
 
 const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
-    whisper: executeWhisper, think: executeThink, pick: executeRandomPick, sky_view: executeSkyView, clock: executeClock, calendar: executeCalendar, coin: executeCoinFlip, dice: executeDiceRoll, random: executeRandom, rng: executeRng, move: executeMove, timer: executeTimer, stopwatch: executeStopwatch, schedule: executeSchedule, calculator: executeCalculator, web: executeWeb, dialogue: executeDialogue, knowledge: executeKnowledge, memory: executeMemory, lookup: executeLookup, map: executeMap, audio: executeAudio, note: executeNote, inventory: executeInventory, trade: executeTrade, invite: executeInvite, kick: executeKick, mind_reader: executeMindReader, oracle: executeOracle, teleport: executeTeleport, key: executeKey, clothing: executeClothing, summon: executeSummon, narrate: executeNarrate, substrate: executeSubstrate, inspect: executeInspect, administrator: executeAdministrator, creator: executeCreator, destroyer: executeDestroyer, schedule_response: executeScheduleResponse, text_to_speech: executeTextToSpeech, gpu: executeGpu, system_info: executeSystemInfo, notify: executeNotify, volume_control: executeVolumeControl, lock_screen: executeLockScreen, sleep: executePower('sleep'), shutdown: executePower('shutdown'), restart: executePower('restart'), clipboard: executeClipboard, screenshot: executeScreenshot, front_camera: executeFrontCamera, network_scanner: executeNetworkScanner, file_watcher: executeFileWatcher, window_monitor: executeWindowMonitor, process_monitor: executeProcessMonitor, trash: executeTrash, browser: executeBrowser, read_file: executeReadFile, write_file: executeWriteFile, shell: executeShell, virtual_hearing: executeVirtualHearing, virtual_vision: executeVirtualVision, virtual_input: executeVirtualInput, virtual_controller: executeVirtualController, hardware_control: executeHardwareControl,
+    whisper: executeWhisper, think: executeThink, pick: executeRandomPick, sky_view: executeSkyView, clock: executeClock, calendar: executeCalendar, coin: executeCoinFlip, dice: executeDiceRoll, random: executeRandom, rng: executeRng, move: executeMove, timer: executeTimer, stopwatch: executeStopwatch, schedule: executeSchedule, calculator: executeCalculator, web: executeWeb, dialogue: executeDialogue, knowledge: executeKnowledge, memory: executeMemory, lookup: executeLookup, map: executeMap, audio: executeAudio, note: executeNote, inventory: executeInventory, trade: executeTrade, invite: executeInvite, kick: executeKick, mind_reader: executeMindReader, oracle: executeOracle, teleport: executeTeleport, key: executeKey, clothing: executeClothing, summon: executeSummon, unsummon: executeUnsummon, narrate: executeNarrate, substrate: executeSubstrate, inspect: executeInspect, administrator: executeAdministrator, creator: executeCreator, destroyer: executeDestroyer, schedule_response: executeScheduleResponse, text_to_speech: executeTextToSpeech, gpu: executeGpu, system_info: executeSystemInfo, notify: executeNotify, volume_control: executeVolumeControl, lock_screen: executeLockScreen, sleep: executePower('sleep'), shutdown: executePower('shutdown'), restart: executePower('restart'), clipboard: executeClipboard, screenshot: executeScreenshot, front_camera: executeFrontCamera, network_scanner: executeNetworkScanner, file_watcher: executeFileWatcher, window_monitor: executeWindowMonitor, process_monitor: executeProcessMonitor, trash: executeTrash, browser: executeBrowser, read_file: executeReadFile, write_file: executeWriteFile, shell: executeShell, virtual_hearing: executeVirtualHearing, virtual_vision: executeVirtualVision, virtual_input: executeVirtualInput, virtual_controller: executeVirtualController, hardware_control: executeHardwareControl,
 };
 
 export function getFallbackToolResult(innerString: string): ToolResult {
@@ -3118,6 +3130,50 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
 
     appendPendingAction(nextMessage, { type: 'summon', payload: { characterId: targetChar.id, characterName: targetChar.name } });
     return { toolType: 'summon', args, textContent: `Summoned ${targetChar.name}.`, displayReplacement: `[✨ Summoned ${targetChar.name}]` };
+}
+
+// ─── Unsummon ───────────────────────────────────────────────────────
+function executeUnsummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
+    const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+    const allChars = context.allCharacters || [];
+
+    if (action === 'list') {
+        const protagonistIds = new Set(interactionData.protagonistIds || []);
+        const unsummonable = (interactionData.participants || [])
+            .filter(c => !protagonistIds.has(c.id))
+            .map(c => ({ character_id: c.id, name: c.name }));
+        return {
+            toolType: 'unsummon',
+            args,
+            textContent: JSON.stringify({ unsummonable_characters: unsummonable }),
+            displayReplacement: `[💨 ${unsummonable.length} unsummonable character(s)]`
+        };
+    }
+
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
+    if (!charQuery) return helpResult('unsummon', 'character_id="..."', 'remove a participant character from current session');
+
+    const q = charQuery.toLowerCase();
+    const targetChar = (interactionData.participants || []).find(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q));
+    if (!targetChar) {
+        const exists = allChars.some(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q));
+        return {
+            toolType: 'unsummon',
+            args,
+            textContent: exists
+                ? `[Error: Character "${charQuery}" is not a participant in current session]`
+                : `[Error: Character "${charQuery}" does not exist]`,
+            displayReplacement: '[Error: Character not found]'
+        };
+    }
+
+    if (interactionData.protagonistIds?.includes(targetChar.id)) {
+        return { toolType: 'unsummon', args, textContent: '[Error: Cannot unsummon session protagonist]', displayReplacement: '[Error: Protected character]' };
+    }
+
+    appendPendingAction(nextMessage, { type: 'unsummon', payload: { characterId: targetChar.id, characterName: targetChar.name } });
+    return { toolType: 'unsummon', args, textContent: `Unsummoned ${targetChar.name}.`, displayReplacement: `[💨 Unsummoned ${targetChar.name}]` };
 }
 
 // ─── Narrate ────────────────────────────────────────────────────────

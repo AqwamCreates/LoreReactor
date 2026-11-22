@@ -255,6 +255,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     { tool: 'schedule', label: 'Action Scheduler', keywords: ['schedule', 'planner', 'organizer', 'calendar', 'timetable', 'routine'], tier: 'in_world_mutating', riskDescription: 'Schedules automated future actions and repeating triggers.' },
     { tool: 'note', label: 'Persistent Character Notes', keywords: ['scribe', 'secretary', 'scholar', 'writer', 'diary', 'journal', 'notebook'], tier: 'in_world_mutating', riskDescription: 'Writes and saves persistent text notes into character inventory storage.' },
     { tool: 'summon', label: 'Summon Non-Participant', keywords: ['summon', 'conjure', 'call upon', 'necromancer', 'summoner'], tier: 'in_world_mutating', riskDescription: 'Adds a non-participant character into the active session.' },
+    { tool: 'unsummon', label: 'Unsummon Participant', keywords: ['unsummon', 'despawn', 'dispel', 'dismiss', 'banish', 'send away'], tier: 'in_world_mutating', riskDescription: 'Removes a participant character from the active session.' },
     { tool: 'invite', label: 'Invite Participant to Room', keywords: ['invite', 'welcome', 'bring over', 'gather', 'call'], tier: 'in_world_mutating', riskDescription: 'Brings an existing session participant to your current location.' },
     { tool: 'kick', label: 'Eject Participant from Room', keywords: ['kick', 'eject', 'banish', 'dismiss', 'expel', 'bouncer'], tier: 'in_world_mutating', riskDescription: 'Ejects a participant out of your current location.' },
 

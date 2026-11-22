@@ -39,6 +39,7 @@ export const defaultCharacterTools: Record<tool, boolean> = {
     teleport: false,
     key: false,
     summon: false,
+    unsummon: false,
     narrate: false,
     substrate: false,
     inspect: false,
