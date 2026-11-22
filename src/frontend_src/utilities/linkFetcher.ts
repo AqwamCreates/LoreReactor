@@ -44,7 +44,7 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
     try {
         const response = await fetch(FETCH_PROXY_URL, {
             method: 'POST',
-            headers: { 'textContent-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 url,
                 headers: {
@@ -54,7 +54,7 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
             }),
         });
 
-        const contentType = response.headers.get('textContent-type') || '';
+        const contentType = response.headers.get('content-type') || '';
 
         // Handle non-JSON proxy responses gracefully
         if (!contentType.includes('application/json')) {
