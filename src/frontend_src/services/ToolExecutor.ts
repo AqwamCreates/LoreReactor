@@ -14,21 +14,20 @@ import type {
     TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry, TradeOffer
 } from '../types';
 import { findLatestMessage, createMessage } from '../utilities/messageLogic';
-import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
+import { getGlobalMessageHistory, getLocalMessageHistory, getLocationMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocation, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../utilities/locationLogic';
 import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './TextMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualHearing, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand} from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualHearing, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand } from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { generateSkyViewText, getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
-import { getLocationMessageHistory } from '../utilities/timelineLogic';
 import { localURL } from '../../configurations';
 import { embeddingEngine } from './EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from './RetrievalEngine';
 import { retrieveEligibleMemories, detokenizeMemoryContent } from '../utilities/memoryLogic';
-import { toolResultEndString, toolResultStartString } from '../dictionaries/stringList';
+import { toolCallEndString, toolCallStartString, toolResultEndString, toolResultStartString } from '../dictionaries/stringList';
 import { computeMovementCost } from '../utilities/dynamicCharacterLogic';
 
 // Re-export so consumers importing from ToolExecutor remain compatible
@@ -68,6 +67,36 @@ export interface ToolExecutionContext {
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
+// ─── JSON Schema Types & Definitions ────────────────────────────────
+export type JsonSchemaType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
+
+export interface JsonSchemaProperty {
+    type: JsonSchemaType | readonly JsonSchemaType[];
+    description?: string;
+    enum?: readonly (string | number | boolean)[];
+    default?: unknown;
+    items?: { type: JsonSchemaType };
+    additionalProperties?: boolean | { type: JsonSchemaType };
+    minimum?: number;
+    maximum?: number;
+}
+
+export interface ToolInputSchema {
+    type: 'object';
+    properties: Record<string, JsonSchemaProperty>;
+    required?: readonly string[];
+    additionalProperties?: boolean;
+}
+
+export interface ToolDefinition {
+    name: tool;
+    description: string;
+    inputSchema: ToolInputSchema;
+    examples: Record<string, unknown>[];
+    defaultAction?: string;
+    actionRequired?: Record<string, readonly string[]>;
+}
+
 // ─── Canonical entityType Mapping ───────────────────────────────────
 export const VALID_ENTITY_TYPES: entityType[] = [
     'character', 'context', 'location', 'audioTrack', 'world',
@@ -93,7 +122,7 @@ export function normalizeEntityType(raw: string): entityType | null {
         spatiotemporalmodel: 'spatiotemporalModel', spatiotemporalmodels: 'spatiotemporalModel',
         imagemodel: 'spatiotemporalModel', imagemodels: 'spatiotemporalModel',
         videomodel: 'spatiotemporalModel', videomodels: 'spatiotemporalModel',
-        tokenSampler: 'tokenSampler', tokenSamplers: 'tokenSampler',
+        tokensampler: 'tokenSampler', tokensamplers: 'tokenSampler',
         promptblock: 'promptBlock', promptblocks: 'promptBlock',
         stoppattern: 'stopPattern', stoppatterns: 'stopPattern',
         retrievalconfiguration: 'retrievalConfiguration', retrievalconfigurations: 'retrievalConfiguration',
@@ -105,6 +134,880 @@ export function normalizeEntityType(raw: string): entityType | null {
         folder: 'entityFolder', folders: 'entityFolder',
     };
     return map[cleaned] ?? null;
+}
+
+const EX_CHAR = '550e8400-e29b-41d4-a716-446655440000';
+const EX_LOC = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+const EX_LOC_2 = '7c9e6679-7425-40de-944b-e07fc1f90ae8';
+const EX_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
+
+export const TOOL_DEFINITIONS: Record<tool, ToolDefinition> = {
+    whisper: {
+        name: 'whisper',
+        description: 'Send private message visible only to target character UUID(s), or list character UUIDs.',
+        defaultAction: 'send',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['send', 'list'], default: 'send' },
+                target_character_ids: { type: 'array', items: { type: 'string' }, description: 'Recipient character UUIDs.' },
+                text: { type: 'string', description: 'Private message content.' },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { send: ['target_character_ids', 'text'], list: [] },
+        examples: [{ action: 'list' }, { target_character_ids: [EX_CHAR], text: 'Meet me outside in five minutes.' }],
+    },
+    think: {
+        name: 'think',
+        description: 'Evaluate context and plan next move internally.',
+        inputSchema: { type: 'object', properties: { reasoning: { type: 'string' } }, required: ['reasoning'], additionalProperties: false },
+        examples: [{ reasoning: 'She looks hesitant; I should ask carefully.' }],
+    },
+    pick: {
+        name: 'pick',
+        description: 'Randomly pick one option from a list.',
+        inputSchema: { type: 'object', properties: { options: { type: 'array', items: { type: 'string' } } }, required: ['options'], additionalProperties: false },
+        examples: [{ options: ['left corridor', 'right staircase', 'wait'] }],
+    },
+    sky_view: {
+        name: 'sky_view',
+        description: 'View the sky at the current location.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    clock: {
+        name: 'clock',
+        description: 'Get current time at character location.',
+        inputSchema: { type: 'object', properties: { format: { type: 'string', enum: ['12h', '24h', 'unix'], default: '12h' } }, additionalProperties: false },
+        examples: [{}, { format: '24h' }],
+    },
+    calendar: {
+        name: 'calendar',
+        description: 'Get current date and time at character location.',
+        inputSchema: { type: 'object', properties: { format: { type: 'string', enum: ['full', 'date', 'time', 'iso', 'unix'], default: 'full' } }, additionalProperties: false },
+        examples: [{}, { format: 'date' }],
+    },
+    coin: {
+        name: 'coin',
+        description: 'Flip a coin (Heads or Tails).',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    dice: {
+        name: 'dice',
+        description: 'Roll dice using notation (e.g. "2d6+3") or count/sides/modifier.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                notation: { type: 'string', description: 'e.g. "2d6+3"' },
+                count: { type: 'integer', minimum: 1 },
+                sides: { type: 'integer', minimum: 1 },
+                modifier: { type: 'integer' },
+            },
+            additionalProperties: false,
+        },
+        examples: [{ notation: '2d6+3' }, { count: 1, sides: 20, modifier: 2 }],
+    },
+    random: {
+        name: 'random',
+        description: 'Generate a random integer between min and max.',
+        inputSchema: { type: 'object', properties: { min: { type: 'integer', default: 1 }, max: { type: 'integer', default: 100 } }, additionalProperties: false },
+        examples: [{ min: 1, max: 100 }],
+    },
+    rng: {
+        name: 'rng',
+        description: 'Roll on a named RNG table defined in contexts by context UUID, or list available RNG table UUIDs.',
+        defaultAction: 'roll',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['roll', 'list'], default: 'roll' },
+                table_context_id: { type: 'string', description: 'Context UUID.' },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { roll: ['table_context_id'], list: [] },
+        examples: [{ action: 'list' }, { table_context_id: EX_ID }],
+    },
+    move: {
+        name: 'move',
+        description: 'Move character to an adjacent location UUID, or list reachable location UUIDs.',
+        defaultAction: 'move',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['move', 'list'], default: 'move' },
+                location_id: { type: 'string', description: 'Target adjacent location UUID.' },
+                quiet_leave: { type: 'boolean', default: false },
+                quiet_enter: { type: 'boolean', default: false },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { move: ['location_id'], list: [] },
+        examples: [{ action: 'list' }, { location_id: EX_LOC, quiet_leave: false, quiet_enter: false }],
+    },
+    timer: {
+        name: 'timer',
+        description: 'Manage countdown timers.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['set', 'check', 'delete', 'list'] },
+                name: { type: 'string' },
+                duration: { type: 'string', description: 'e.g. "5m", "1h30m", "45s"' },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { set: ['name', 'duration'], delete: ['name'], check: [], list: [] },
+        examples: [{ action: 'set', name: 'Kettle', duration: '5m' }, { action: 'check', name: 'Kettle' }],
+    },
+    stopwatch: {
+        name: 'stopwatch',
+        description: 'Manage stopwatch counters.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['start', 'stop', 'pause', 'resume', 'reset', 'check', 'list'] }, name: { type: 'string' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { start: ['name'], stop: ['name'], pause: ['name'], resume: ['name'], reset: ['name'], check: [], list: [] },
+        examples: [{ action: 'start', name: 'Sprint' }, { action: 'check', name: 'Sprint' }],
+    },
+    schedule: {
+        name: 'schedule',
+        description: 'Schedule automated actions.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['set', 'set_repeat', 'cancel', 'cancel_all', 'list'] },
+                name: { type: 'string' },
+                duration: { type: 'string' },
+                interval: { type: 'string' },
+                action_desc: { type: 'string' },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { set: ['name', 'duration', 'action_desc'], set_repeat: ['name', 'interval', 'action_desc'], cancel: ['name'], cancel_all: [], list: [] },
+        examples: [{ action: 'set', name: 'Patrol', duration: '1h', action_desc: 'Guard starts patrol' }, { action: 'list' }],
+    },
+    calculator: {
+        name: 'calculator',
+        description: 'Evaluate mathematical expression.',
+        inputSchema: { type: 'object', properties: { expression: { type: 'string' } }, required: ['expression'], additionalProperties: false },
+        examples: [{ expression: '(15 * 7) + 3' }],
+    },
+    web: {
+        name: 'web',
+        description: 'Search the web or fetch a URL.',
+        inputSchema: { type: 'object', properties: { url_or_search_query: { type: 'string' } }, required: ['url_or_search_query'], additionalProperties: false },
+        examples: [{ url_or_search_query: 'https://example.com' }],
+    },
+    dialogue: {
+        name: 'dialogue',
+        description: 'Manage dialogue prompts by UUID.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['list', 'recall'] }, prompt_id: { type: 'string', description: 'Dialogue prompt UUID.' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { list: [], recall: ['prompt_id'] },
+        examples: [{ action: 'list' }, { action: 'recall', prompt_id: EX_ID }],
+    },
+    knowledge: {
+        name: 'knowledge',
+        description: 'Inspect character knowledge base by UUID or semantic query.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['list', 'recall', 'fuzzy_recall'] },
+                knowledge_id: { type: 'string', description: 'Knowledge prompt UUID.' },
+                query: { type: 'string' },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { list: [], recall: ['knowledge_id'], fuzzy_recall: ['query'] },
+        examples: [{ action: 'list' }, { action: 'recall', knowledge_id: EX_ID }, { action: 'fuzzy_recall', query: 'northern treaty' }],
+    },
+    memory: {
+        name: 'memory',
+        description: 'Manage persistent character memories by UUID.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['list', 'recall', 'save'] }, memory_id: { type: 'string', description: 'Memory UUID.' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { list: [], recall: [], save: [] },
+        examples: [{ action: 'list' }, { action: 'recall', memory_id: EX_ID }],
+    },
+    lookup: {
+        name: 'lookup',
+        description: 'Search contexts and world lore for keywords.',
+        inputSchema: { type: 'object', properties: { keyword: { type: 'string' } }, required: ['keyword'], additionalProperties: false },
+        examples: [{ keyword: 'gatekeeper' }],
+    },
+    map: {
+        name: 'map',
+        description: 'Calculate distance between location UUIDs, or list location UUIDs.',
+        defaultAction: 'distance',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['distance', 'list'], default: 'distance' },
+                to_location_id: { type: 'string', description: 'Destination location UUID.' },
+                from_location_id: { type: 'string', description: 'Origin location UUID.' },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { distance: ['to_location_id'], list: [] },
+        examples: [{ action: 'list' }, { to_location_id: EX_LOC, from_location_id: EX_LOC_2 }],
+    },
+    audio: {
+        name: 'audio',
+        description: 'Manage background audio playback by track UUID, or list track UUIDs.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['play', 'stop', 'list'] }, track_id: { type: 'string', description: 'AudioTrack UUID.' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { play: ['track_id'], stop: [], list: [] },
+        examples: [{ action: 'list' }, { action: 'play', track_id: EX_ID }],
+    },
+    note: {
+        name: 'note',
+        description: 'Manage persistent character notes.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['set', 'get', 'delete', 'list'] }, key: { type: 'string' }, text: { type: 'string' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { set: ['key', 'text'], get: ['key'], delete: ['key'], list: [] },
+        examples: [{ action: 'set', key: 'door_code', text: '4819' }, { action: 'list' }],
+    },
+    inventory: {
+        name: 'inventory',
+        description: 'Manage character inventory items.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['list', 'add', 'remove', 'set'] },
+                item: { type: 'string' },
+                qty: { type: 'number', default: 1 },
+                value: { type: ['string', 'number'] },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { list: [], add: ['item'], remove: ['item'], set: ['item', 'value'] },
+        examples: [{ action: 'list' }, { action: 'add', item: 'Brass Key', qty: 1 }],
+    },
+    trade: {
+        name: 'trade',
+        description: 'Transfer items or manage trade offers with character UUIDs.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['give', 'take', 'offer', 'accept', 'decline', 'list_offers', 'list_characters'] },
+                target_character_id: { type: 'string', description: 'Target character UUID.' },
+                item: { type: 'string' },
+                qty: { type: 'number', default: 1 },
+                give_items: { type: 'object', additionalProperties: { type: 'number' } },
+                take_items: { type: 'object', additionalProperties: { type: 'number' } },
+                offer_id: { type: 'string' },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: {
+            give: ['target_character_id', 'item'],
+            take: ['target_character_id', 'item'],
+            offer: ['target_character_id', 'give_items', 'take_items'],
+            accept: ['offer_id'],
+            decline: ['offer_id'],
+            list_offers: [],
+            list_characters: [],
+        },
+        examples: [
+            { action: 'list_characters' },
+            { action: 'give', target_character_id: EX_CHAR, item: 'Health Potion', qty: 1 },
+            { action: 'offer', target_character_id: EX_CHAR, give_items: { 'Iron Sword': 1 }, take_items: { 'Gold Coin': 50 } },
+        ],
+    },
+    invite: {
+        name: 'invite',
+        description: 'Bring existing participant UUID to current location, or list participant UUIDs.',
+        defaultAction: 'invite',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['invite', 'list'], default: 'invite' }, character_id: { type: 'string', description: 'Character UUID.' } },
+            additionalProperties: false,
+        },
+        actionRequired: { invite: ['character_id'], list: [] },
+        examples: [{ action: 'list' }, { character_id: EX_CHAR }],
+    },
+    kick: {
+        name: 'kick',
+        description: 'Eject co-located character UUID from location, or list co-located character / reachable location UUIDs.',
+        defaultAction: 'kick',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['kick', 'list_characters', 'list_locations'], default: 'kick' },
+                character_id: { type: 'string', description: 'Co-located character UUID.' },
+                destination_location_id: { type: 'string', description: 'Optional adjacent location UUID.' },
+                quiet_leave: { type: 'boolean', default: false },
+                quiet_enter: { type: 'boolean', default: false },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { kick: ['character_id'], list_characters: [], list_locations: [] },
+        examples: [{ action: 'list_characters' }, { character_id: EX_CHAR, destination_location_id: EX_LOC }],
+    },
+    mind_reader: {
+        name: 'mind_reader',
+        description: 'Read recent internal thoughts of a target character UUID, or list character UUIDs.',
+        defaultAction: 'read',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['read', 'list'], default: 'read' },
+                character_id: { type: 'string', description: 'Target character UUID.' },
+                limit: { type: 'integer', minimum: 1, default: 1 },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { read: ['character_id'], list: [] },
+        examples: [{ action: 'list' }, { character_id: EX_CHAR, limit: 2 }],
+    },
+    oracle: {
+        name: 'oracle',
+        description: 'Peer into a remote location UUID, or list location UUIDs.',
+        defaultAction: 'scry',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['scry', 'list'], default: 'scry' },
+                location_id: { type: 'string', description: 'Target location UUID.' },
+                limit: { type: 'integer', minimum: 1, default: 5 },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { scry: ['location_id'], list: [] },
+        examples: [{ action: 'list' }, { location_id: EX_LOC, limit: 5 }],
+    },
+    teleport: {
+        name: 'teleport',
+        description: 'Instantly move character to any location UUID, or list location UUIDs.',
+        defaultAction: 'teleport',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['teleport', 'list'], default: 'teleport' },
+                location_id: { type: 'string', description: 'Destination location UUID.' },
+                quiet_leave: { type: 'boolean', default: false },
+                quiet_enter: { type: 'boolean', default: false },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { teleport: ['location_id'], list: [] },
+        examples: [{ action: 'list' }, { location_id: EX_LOC }],
+    },
+    key: {
+        name: 'key',
+        description: 'Lock or unlock location UUIDs for specific character UUIDs, or list UUIDs.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['lock', 'unlock', 'list'] },
+                location_id: { type: 'string', description: 'Location UUID.' },
+                character_id: { type: 'string', description: 'Optional character UUID.' },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { lock: ['location_id'], unlock: ['location_id'], list: [] },
+        examples: [{ action: 'list' }, { action: 'lock', location_id: EX_LOC, character_id: EX_CHAR }],
+    },
+    clothing: {
+        name: 'clothing',
+        description: 'Manage worn clothing items by character UUID and clothing UUID.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['wear', 'remove', 'list'] },
+                character_id: { type: 'string', description: 'Character UUID.' },
+                clothing_id: { type: 'string', description: 'Clothing UUID.' },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { wear: ['character_id', 'clothing_id'], remove: ['character_id', 'clothing_id'], list: [] },
+        examples: [{ action: 'list', character_id: EX_CHAR }, { action: 'wear', character_id: EX_CHAR, clothing_id: EX_ID }],
+    },
+    summon: {
+        name: 'summon',
+        description: 'Add a non-participant character UUID to current session, or list summonable character UUIDs.',
+        defaultAction: 'summon',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['summon', 'list'], default: 'summon' }, character_id: { type: 'string', description: 'Character UUID.' } },
+            additionalProperties: false,
+        },
+        actionRequired: { summon: ['character_id'], list: [] },
+        examples: [{ action: 'list' }, { character_id: EX_CHAR }],
+    },
+    narrate: {
+        name: 'narrate',
+        description: 'Inject ambient narration without consuming chat stamina.',
+        inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'], additionalProperties: false },
+        examples: [{ text: 'Distant thunder rolls across the valley.' }],
+    },
+    substrate: {
+        name: 'substrate',
+        description: 'Invoke substrate.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    inspect: {
+        name: 'inspect',
+        description: "Examine character's visible state by character UUID, or list character UUIDs.",
+        defaultAction: 'inspect',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['inspect', 'list'], default: 'inspect' }, character_id: { type: 'string', description: 'Character UUID.' } },
+            additionalProperties: false,
+        },
+        actionRequired: { inspect: ['character_id'], list: [] },
+        examples: [{ action: 'list' }, { character_id: EX_CHAR }],
+    },
+    administrator: {
+        name: 'administrator',
+        description: 'Manage and inspect all system entities and settings by UUID.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: {
+                    type: 'string',
+                    enum: ['list_entities', 'view_entity', 'edit_entity', 'add_to_entity_folder', 'remove_from_entity_folder', 'list_chats', 'switch_model', 'toggle_account', 'join_session', 'leave_session', 'accept_join', 'reject_join'],
+                },
+                entity_type: { type: 'string', enum: VALID_ENTITY_TYPES },
+                entity_id: { type: 'string', description: 'Entity UUID.' },
+                field: { type: 'string' },
+                value: { type: ['string', 'number', 'boolean', 'object', 'array'] },
+                entity_folder_id: { type: 'string', description: 'EntityFolder UUID.' },
+                item_id: { type: 'string', description: 'Item UUID.' },
+                model_id: { type: 'string', description: 'LanguageModel UUID.' },
+                account_id: { type: 'string', description: 'Account UUID.' },
+                session_id: { type: 'string', description: 'MultiplayerData session UUID.' },
+                password: { type: 'string' },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: {
+            list_entities: ['entity_type'],
+            view_entity: ['entity_type', 'entity_id'],
+            edit_entity: ['entity_type', 'entity_id', 'field', 'value'],
+            add_to_entity_folder: ['entity_folder_id', 'item_id'],
+            remove_from_entity_folder: ['entity_folder_id', 'item_id'],
+            list_chats: [],
+            switch_model: ['model_id'],
+            toggle_account: ['account_id'],
+            join_session: ['session_id'],
+            leave_session: [],
+            accept_join: ['account_id'],
+            reject_join: ['account_id'],
+        },
+        examples: [{ action: 'list_entities', entity_type: 'character' }, { action: 'view_entity', entity_type: 'character', entity_id: EX_CHAR }],
+    },
+    creator: {
+        name: 'creator',
+        description: 'Create a new system entity.',
+        inputSchema: {
+            type: 'object',
+            properties: { entity_type: { type: 'string', enum: VALID_ENTITY_TYPES }, name: { type: 'string' } },
+            required: ['entity_type', 'name'],
+            additionalProperties: false,
+        },
+        examples: [{ entity_type: 'location', name: 'Hidden Cellar' }],
+    },
+    destroyer: {
+        name: 'destroyer',
+        description: 'Destroy a system entity by UUID, or list entity UUIDs.',
+        defaultAction: 'destroy',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['destroy', 'list'], default: 'destroy' },
+                entity_type: { type: 'string', enum: VALID_ENTITY_TYPES },
+                entity_id: { type: 'string', description: 'Entity UUID.' },
+            },
+            required: ['entity_type'],
+            additionalProperties: false,
+        },
+        actionRequired: { destroy: ['entity_type', 'entity_id'], list: ['entity_type'] },
+        examples: [{ action: 'list', entity_type: 'context' }, { entity_type: 'context', entity_id: EX_ID }],
+    },
+    schedule_response: {
+        name: 'schedule_response',
+        description: 'Schedule a delayed follow-up response from this character.',
+        inputSchema: {
+            type: 'object',
+            properties: { duration: { type: 'string' }, thought: { type: 'string' } },
+            required: ['duration'],
+            additionalProperties: false,
+        },
+        examples: [{ duration: '2h', thought: 'Check if Sensei is awake' }],
+    },
+    text_to_speech: {
+        name: 'text_to_speech',
+        description: 'Speak text aloud via TTS, or pass "stop".',
+        inputSchema: { type: 'object', properties: { text: { type: 'string' }, voice: { type: 'string' } }, required: ['text'], additionalProperties: false },
+        examples: [{ text: 'Welcome back.' }, { text: 'stop' }],
+    },
+    gpu: {
+        name: 'gpu',
+        description: 'Fetch GPU utilization, VRAM, temperature, and power draw.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    system_info: {
+        name: 'system_info',
+        description: 'Fetch CPU and RAM telemetry.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    notify: {
+        name: 'notify',
+        description: 'Send a native OS desktop notification.',
+        inputSchema: { type: 'object', properties: { title: { type: 'string', default: 'AI Assistant' }, message: { type: 'string' } }, required: ['message'], additionalProperties: false },
+        examples: [{ title: 'Reminder', message: 'Timer expired.' }],
+    },
+    volume_control: {
+        name: 'volume_control',
+        description: 'Adjust host system master volume.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['get', 'set', 'mute', 'unmute'] }, level: { type: 'number', minimum: 0, maximum: 100 } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { get: [], set: ['level'], mute: [], unmute: [] },
+        examples: [{ action: 'get' }, { action: 'set', level: 50 }],
+    },
+    lock_screen: {
+        name: 'lock_screen',
+        description: 'Lock host workstation screen.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    sleep: { name: 'sleep', description: 'Put host system to sleep.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, examples: [{}] },
+    shutdown: { name: 'shutdown', description: 'Shut down host system.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, examples: [{}] },
+    restart: { name: 'restart', description: 'Restart host system.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, examples: [{}] },
+    clipboard: {
+        name: 'clipboard',
+        description: 'Read or write to the host OS clipboard.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['read', 'write'] }, text: { type: 'string' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { read: [], write: ['text'] },
+        examples: [{ action: 'read' }, { action: 'write', text: 'Copied text' }],
+    },
+    front_camera: {
+        name: 'front_camera',
+        description: 'Capture front camera snapshot and attach to visual input.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    screenshot: {
+        name: 'screenshot',
+        description: 'Capture screenshot and attach to visual input.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    network_scanner: {
+        name: 'network_scanner',
+        description: 'Scan local network devices.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    file_watcher: {
+        name: 'file_watcher',
+        description: 'Monitor workspace folders for changes.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['start', 'check'] }, path: { type: 'string', default: '.' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { start: ['path'], check: [] },
+        examples: [{ action: 'start', path: './src' }, { action: 'check' }],
+    },
+    window_monitor: {
+        name: 'window_monitor',
+        description: 'Get active foreground window info.',
+        inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+        examples: [{}],
+    },
+    process_monitor: {
+        name: 'process_monitor',
+        description: 'Check running OS processes.',
+        inputSchema: {
+            type: 'object',
+            properties: { query: { type: 'string', default: '' }, limit: { type: 'integer', minimum: 1, default: 5 } },
+            additionalProperties: false,
+        },
+        examples: [{}, { query: 'node', limit: 5 }],
+    },
+    trash: {
+        name: 'trash',
+        description: 'Move a file or folder to OS recycle bin / trash.',
+        inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'], additionalProperties: false },
+        examples: [{ path: './temp.txt' }],
+    },
+    browser: {
+        name: 'browser',
+        description: 'Open webpage or web search in browser.',
+        inputSchema: { type: 'object', properties: { url_or_search_query: { type: 'string' } }, required: ['url_or_search_query'], additionalProperties: false },
+        examples: [{ url_or_search_query: 'https://example.com' }],
+    },
+    read_file: {
+        name: 'read_file',
+        description: 'Open local file, video, or link in default app.',
+        inputSchema: { type: 'object', properties: { path_or_url: { type: 'string' } }, required: ['path_or_url'], additionalProperties: false },
+        examples: [{ path_or_url: '~/documents/notes.txt' }],
+    },
+    write_file: {
+        name: 'write_file',
+        description: 'Write or create a file on local filesystem.',
+        inputSchema: {
+            type: 'object',
+            properties: { file_path: { type: 'string' }, content: { type: 'string' } },
+            required: ['file_path', 'content'],
+            additionalProperties: false,
+        },
+        examples: [{ file_path: './notes.txt', content: 'Hello\nWorld' }],
+    },
+    shell: {
+        name: 'shell',
+        description: 'Execute a terminal/shell command on the host OS.',
+        inputSchema: { type: 'object', properties: { command: { type: 'string' } }, required: ['command'], additionalProperties: false },
+        examples: [{ command: 'git status' }],
+    },
+    virtual_hearing: {
+        name: 'virtual_hearing',
+        description: 'Start, stop, or check server desktop audio perception.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['start', 'stop', 'status'] }, duration: { type: 'number', minimum: 1, default: 30 } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { start: [], stop: [], status: [] },
+        examples: [{ action: 'start', duration: 30 }, { action: 'stop' }],
+    },
+    virtual_vision: {
+        name: 'virtual_vision',
+        description: 'Capture targeted desktop window or region vision.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                target: { type: 'string', enum: ['active', 'fullscreen', 'region'], default: 'active' },
+                appName: { type: 'string' },
+                title: { type: 'string' },
+                x: { type: 'number' },
+                y: { type: 'number' },
+                width: { type: 'number' },
+                height: { type: 'number' },
+            },
+            additionalProperties: false,
+        },
+        examples: [{ target: 'active' }, { target: 'region', x: 0, y: 0, width: 800, height: 600 }],
+    },
+    virtual_input: {
+        name: 'virtual_input',
+        description: 'Control host mouse and keyboard.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['move', 'click', 'type', 'press', 'scroll', 'screen_size', 'get_position'] },
+                x: { type: 'number' },
+                y: { type: 'number' },
+                text: { type: 'string' },
+                key: { type: 'string' },
+                button: { type: 'string', enum: ['left', 'right', 'middle'], default: 'left' },
+                modifier: { type: 'string' },
+                double: { type: 'boolean', default: false },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { move: ['x', 'y'], click: [], type: ['text'], press: ['key'], scroll: [], screen_size: [], get_position: [] },
+        examples: [{ action: 'move', x: 500, y: 300 }, { action: 'click', button: 'left' }],
+    },
+    virtual_controller: {
+        name: 'virtual_controller',
+        description: 'Control host virtual Xbox 360 gamepad.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['tap', 'press', 'release', 'stick', 'trigger', 'reset', 'status'] },
+                button: { type: 'string' },
+                stick: { type: 'string', enum: ['left', 'right'], default: 'left' },
+                trigger: { type: 'string', enum: ['left', 'right'], default: 'right' },
+                x: { type: 'number', minimum: -1, maximum: 1 },
+                y: { type: 'number', minimum: -1, maximum: 1 },
+                value: { type: 'number', minimum: 0, maximum: 1 },
+                durationMs: { type: 'number', minimum: 0 },
+            },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { tap: ['button'], press: ['button'], release: ['button'], stick: ['stick', 'x', 'y'], trigger: ['trigger', 'value'], reset: [], status: [] },
+        examples: [{ action: 'tap', button: 'A' }, { action: 'stick', stick: 'left', x: 0.0, y: 1.0 }],
+    },
+    hardware_control: {
+        name: 'hardware_control',
+        description: 'Communicate with external USB/serial hardware.',
+        inputSchema: {
+            type: 'object',
+            properties: { action: { type: 'string', enum: ['list', 'send'] }, port: { type: 'string' }, command: { type: 'string' } },
+            required: ['action'],
+            additionalProperties: false,
+        },
+        actionRequired: { list: [], send: ['port', 'command'] },
+        examples: [{ action: 'list' }, { action: 'send', port: 'COM3', command: 'LED_ON' }],
+    },
+};
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function matchesSchemaType(value: unknown, expected: JsonSchemaType): boolean {
+    switch (expected) {
+        case 'string': return typeof value === 'string';
+        case 'number': return typeof value === 'number' && Number.isFinite(value);
+        case 'integer': return typeof value === 'number' && Number.isInteger(value);
+        case 'boolean': return typeof value === 'boolean';
+        case 'array': return Array.isArray(value);
+        case 'object': return isPlainObject(value);
+        default: return false;
+    }
+}
+
+function validateToolArguments(def: ToolDefinition, obj: Record<string, unknown>): string | null {
+    const schema = def.inputSchema;
+
+    if (schema.additionalProperties === false) {
+        const allowed = Object.keys(schema.properties);
+        const unknown = Object.keys(obj).filter(k => !(k in schema.properties));
+        if (unknown.length > 0) {
+            return `Unknown parameter(s): ${unknown.join(', ')}. Allowed parameters: ${allowed.length > 0 ? allowed.join(', ') : '(none)'}.`;
+        }
+    }
+
+    if (schema.required) {
+        for (const req of schema.required) {
+            const val = obj[req];
+            if (val === undefined || val === null) {
+                return `Missing required parameter "${req}".`;
+            }
+        }
+    }
+
+    for (const [key, value] of Object.entries(obj)) {
+        if (value === undefined) continue;
+        const prop = schema.properties[key];
+        if (!prop) continue;
+
+        const allowedTypes = Array.isArray(prop.type) ? prop.type : [prop.type];
+        if (!allowedTypes.some(t => matchesSchemaType(value, t))) {
+            return `Parameter "${key}" must be of type ${allowedTypes.join(' | ')}.`;
+        }
+
+        if (prop.enum) {
+            const matchesEnum = prop.enum.some(allowedVal =>
+                typeof allowedVal === 'string' && typeof value === 'string'
+                    ? allowedVal.toLowerCase() === value.toLowerCase()
+                    : allowedVal === value
+            );
+            if (!matchesEnum) {
+                return `Parameter "${key}" must be one of: ${prop.enum.join(', ')}.`;
+            }
+        }
+
+        if (typeof value === 'number') {
+            if (prop.minimum !== undefined && value < prop.minimum) return `Parameter "${key}" must be >= ${prop.minimum}.`;
+            if (prop.maximum !== undefined && value > prop.maximum) return `Parameter "${key}" must be <= ${prop.maximum}.`;
+        }
+
+        if (Array.isArray(value) && prop.items) {
+            for (let i = 0; i < value.length; i++) {
+                if (!matchesSchemaType(value[i], prop.items.type)) {
+                    return `Parameter "${key}[${i}]" must be of type ${prop.items.type}.`;
+                }
+            }
+        }
+
+        if (isPlainObject(value) && prop.additionalProperties && typeof prop.additionalProperties === 'object') {
+            const valType = prop.additionalProperties.type;
+            for (const [subKey, subVal] of Object.entries(value)) {
+                if (!matchesSchemaType(subVal, valType)) {
+                    return `Parameter "${key}.${subKey}" must be of type ${valType}.`;
+                }
+            }
+        }
+    }
+
+    if (def.actionRequired) {
+        const rawAction = typeof obj.action === 'string' ? obj.action.toLowerCase() : def.defaultAction;
+        if (rawAction && def.actionRequired[rawAction]) {
+            for (const req of def.actionRequired[rawAction]) {
+                const val = obj[req];
+                if (
+                    val === undefined ||
+                    val === null ||
+                    (Array.isArray(val) && val.length === 0) ||
+                    (isPlainObject(val) && Object.keys(val).length === 0)
+                ) {
+                    return `Missing required parameter "${req}" for action "${rawAction}".`;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+function formatToolSchema(def: ToolDefinition): string {
+    const payload: Record<string, unknown> = {
+        name: def.name,
+        description: def.description,
+        inputSchema: def.inputSchema,
+    };
+    if (def.actionRequired) {
+        payload.actionRequiredFields = def.actionRequired;
+    }
+    payload.examples = def.examples.map(ex => ({
+        name: def.name,
+        arguments: ex,
+    }));
+    return JSON.stringify(payload);
+}
+
+function formatSchemaError(def: ToolDefinition, errorMessage: string): string {
+    return `[Error: ${errorMessage}]\n${formatToolSchema(def)}`;
 }
 
 function getEntitiesByType(context: ToolExecutionContext | undefined, type: entityType): any[] {
@@ -131,23 +1034,60 @@ function getEntitiesByType(context: ToolExecutionContext | undefined, type: enti
     }
 }
 
-// ─── Universal Python & CLI Argument Parser ─────────────────────────
+// ─── Universal JSON / Python / CLI Argument Parser ──────────────────
 export class ArgAccessor {
     positional: string[];
     kwargs: Record<string, string>;
     raw: string;
+    jsonArgs?: Record<string, unknown>;
 
     constructor(
         positional: string[],
         kwargs: Record<string, string>,
-        raw: string
+        raw: string,
+        jsonArgs?: Record<string, unknown>,
     ) {
         this.positional = positional;
         this.kwargs = kwargs;
         this.raw = raw;
+        this.jsonArgs = jsonArgs;
+    }
+
+    get isJson(): boolean {
+        return this.jsonArgs !== undefined;
+    }
+
+    private findJsonValue(...names: string[]): unknown {
+        if (!this.jsonArgs) return undefined;
+        for (const name of names) {
+            if (name in this.jsonArgs && this.jsonArgs[name] !== undefined) {
+                return this.jsonArgs[name];
+            }
+            const lower = name.toLowerCase();
+            for (const [k, v] of Object.entries(this.jsonArgs)) {
+                if (k.toLowerCase() === lower && v !== undefined) {
+                    return v;
+                }
+            }
+        }
+        return undefined;
+    }
+
+    getValue(index: number, ...names: string[]): unknown {
+        const jVal = this.findJsonValue(...names);
+        if (jVal !== undefined) return jVal;
+        return this.get(index, ...names);
     }
 
     get(index: number, ...names: string[]): string | undefined {
+        const jVal = this.findJsonValue(...names);
+        if (jVal !== undefined && jVal !== null) {
+            if (typeof jVal === 'string') return jVal;
+            if (typeof jVal === 'number' || typeof jVal === 'boolean') return String(jVal);
+            return JSON.stringify(jVal);
+        }
+        if (this.isJson) return undefined;
+
         for (const name of names) {
             const val = this.kwargs[name.toLowerCase()];
             if (val !== undefined && val !== '') {
@@ -158,16 +1098,69 @@ export class ArgAccessor {
     }
 
     getNumber(index: number, ...names: string[]): number | undefined {
+        const jVal = this.findJsonValue(...names);
+        if (typeof jVal === 'number') return Number.isFinite(jVal) ? jVal : undefined;
+        if (this.isJson && jVal === undefined) return undefined;
+
         const val = this.get(index, ...names);
         if (val === undefined || val === '') return undefined;
         const n = Number(val);
         return Number.isNaN(n) ? undefined : n;
+    }
+
+    getBoolean(index: number, ...names: string[]): boolean {
+        const jVal = this.findJsonValue(...names);
+        if (typeof jVal === 'boolean') return jVal;
+        if (this.isJson && jVal === undefined) return false;
+
+        const val = this.get(index, ...names);
+        return val?.toLowerCase() === 'true';
+    }
+
+    getStringArray(index: number, ...names: string[]): string[] {
+        const jVal = this.findJsonValue(...names);
+        if (Array.isArray(jVal)) {
+            return jVal.map(v => String(v)).filter(Boolean);
+        }
+        if (this.isJson) {
+            if (typeof jVal === 'string') return jVal.split(',').filter(Boolean);
+            return [];
+        }
+
+        const val = this.get(index, ...names);
+        if (!val) return [];
+        return val.split(',').filter(Boolean);
+    }
+
+    getItemRecord(index: number, ...names: string[]): Record<string, number> {
+        const jVal = this.findJsonValue(...names);
+        if (isPlainObject(jVal)) {
+            const out: Record<string, number> = {};
+            for (const [k, v] of Object.entries(jVal)) {
+                const n = Number(v);
+                if (k && Number.isFinite(n)) out[k] = n;
+            }
+            return out;
+        }
+        const str = this.get(index, ...names);
+        return str ? parseItemList(str) : {};
     }
 }
 
 export function parsePythonArgs(rawArgs: string): ArgAccessor {
     const trimmed = rawArgs;
     if (!trimmed) return new ArgAccessor([], {}, rawArgs);
+
+    if (/^\s*\{/.test(trimmed)) {
+        try {
+            const parsed: unknown = JSON.parse(trimmed);
+            if (isPlainObject(parsed)) {
+                return new ArgAccessor([], {}, rawArgs, parsed);
+            }
+        } catch {
+            // Fall through
+        }
+    }
 
     let input = trimmed;
 
@@ -297,28 +1290,28 @@ function resolveActiveToolActions(nextMessage: BaseMessage, interactionData: Int
     return latest?.message?.activeToolActions ? { ...latest.message.activeToolActions } : {};
 }
 
-// ─── Entity Resolution Helpers ──────────────────────────────────────
-function resolveCharacter(idOrName: string, interactionData: InteractionData, allCharacters: Character[] = []): Character | undefined {
-    let query = idOrName.toLowerCase();
+// ─── Entity Resolution Helpers (UUID Only) ──────────────────────────
+function resolveCharacter(idQuery: string, interactionData: InteractionData, allCharacters: Character[] = []): Character | undefined {
+    let query = idQuery.toLowerCase();
     if (!query) return undefined;
     if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
         query = query.slice(1, -1).toLowerCase();
     }
     const participants = interactionData.participants;
-    let found = participants.find(c => c.id.toLowerCase() === query || c.name.toLowerCase() === query || c.id.startsWith(query));
+    let found = participants.find(c => c.id.toLowerCase() === query || c.id.toLowerCase().startsWith(query));
     if (found) return found;
-    found = allCharacters.find(c => c.id.toLowerCase() === query || c.name.toLowerCase() === query || c.id.startsWith(query));
+    found = allCharacters.find(c => c.id.toLowerCase() === query || c.id.toLowerCase().startsWith(query));
     return found;
 }
 
-function resolveLocation(idOrName: string, interactionData: InteractionData): Location | undefined {
-    let query = idOrName.toLowerCase();
+function resolveLocation(idQuery: string, interactionData: InteractionData): Location | undefined {
+    let query = idQuery.toLowerCase();
     if (!query) return undefined;
     if ((query.startsWith('"') && query.endsWith('"')) || (query.startsWith("'") && query.endsWith("'"))) {
         query = query.slice(1, -1).toLowerCase();
     }
     const sessionLocs = interactionData.locations || [];
-    return sessionLocs.find(l => l.id.toLowerCase() === query || l.name.toLowerCase() === query || l.id.startsWith(query));
+    return sessionLocs.find(l => l.id.toLowerCase() === query || l.id.toLowerCase().startsWith(query));
 }
 
 function getCharacterTimeData(interactionData: InteractionData, character: Character): TimeData {
@@ -354,15 +1347,32 @@ export function getFallbackToolResult(innerString: string): ToolResult {
     let toolType = trimmedInnerString;
     let args = '';
 
-    const fnMatch = trimmedInnerString.match(/^([a-zA-Z_]\w*)\s*\(([\s\S]*)\)$/);
-    if (fnMatch) {
-        toolType = fnMatch[1];
-        args = fnMatch[2];
+    if (/^\s*\{/.test(trimmedInnerString)) {
+        try {
+            const parsed: unknown = JSON.parse(trimmedInnerString);
+            if (isPlainObject(parsed) && typeof parsed.name === 'string') {
+                toolType = parsed.name.toLowerCase();
+                if (parsed.arguments !== undefined && parsed.arguments !== null) {
+                    args = typeof parsed.arguments === 'string' ? parsed.arguments : JSON.stringify(parsed.arguments);
+                }
+            }
+        } catch {
+            const nameMatch = trimmedInnerString.match(/"name"\s*:\s*"([^"]+)"/);
+            if (nameMatch) {
+                toolType = nameMatch[1].toLowerCase();
+            }
+        }
     } else {
-        const spaceIdx = trimmedInnerString.search(/\s/);
-        if (spaceIdx !== -1) {
-            toolType = trimmedInnerString.slice(0, spaceIdx);
-            args = trimmedInnerString.slice(spaceIdx + 1);
+        const fnMatch = trimmedInnerString.match(/^([a-zA-Z_]\w*)\s*\(([\s\S]*)\)$/);
+        if (fnMatch) {
+            toolType = fnMatch[1];
+            args = fnMatch[2];
+        } else {
+            const spaceIdx = trimmedInnerString.search(/\s/);
+            if (spaceIdx !== -1) {
+                toolType = trimmedInnerString.slice(0, spaceIdx);
+                args = trimmedInnerString.slice(spaceIdx + 1);
+            }
         }
     }
 
@@ -384,10 +1394,38 @@ export async function executeTool(
         return { toolType, args, textContent: `${toolResultStartString}Tool disabled${toolResultEndString}`, displayReplacement: "" };
     }
 
+    const def = TOOL_DEFINITIONS[toolType];
     const executeFunction = toolFunctions[toolType as tool];
     if (!executeFunction) {
+        if (invocation.parseError) {
+            return { toolType: toolType || 'unknown', args, textContent: `[Error: ${invocation.parseError}]`, displayReplacement: '[Error: Invalid tool call]' };
+        }
         console.warn(`Unknown tool type: ${toolType}`);
         return { toolType, args, textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`, displayReplacement: "" };
+    }
+
+    if (invocation.parseError && def) {
+        return { toolType, args, textContent: formatSchemaError(def, invocation.parseError), displayReplacement: `[Error: Invalid ${toolType} JSON]` };
+    }
+
+    if (!args && def) {
+        return { toolType, args: '', textContent: formatToolSchema(def), displayReplacement: `[ℹ️ ${toolType}]` };
+    }
+
+    if (def && /^\s*\{/.test(args)) {
+        let parsedObj: unknown;
+        try {
+            parsedObj = JSON.parse(args);
+        } catch (err) {
+            return { toolType, args, textContent: formatSchemaError(def, `Invalid JSON arguments: ${(err as Error).message}`), displayReplacement: `[Error: Invalid ${toolType} arguments]` };
+        }
+        if (!isPlainObject(parsedObj)) {
+            return { toolType, args, textContent: formatSchemaError(def, 'Tool "arguments" must be a JSON object.'), displayReplacement: `[Error: Invalid ${toolType} arguments]` };
+        }
+        const validationError = validateToolArguments(def, parsedObj);
+        if (validationError) {
+            return { toolType, args, textContent: formatSchemaError(def, validationError), displayReplacement: `[Error: Invalid ${toolType} arguments]` };
+        }
     }
 
     try {
@@ -433,14 +1471,22 @@ export function formatToolDisplay(result: ToolResult, rawMatch: string, mode: to
 // ─── Whisper ────────────────────────────────────────────────────────
 function executeWhisper(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    let targetIdsStr = pArgs.get(0, 'target_char_id', 'target', 'target_id', 'to');
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+
+    if (action === 'list') {
+        const chars = (interactionData.participants || []).map(c => ({ character_id: c.id, name: c.name }));
+        return { toolType: 'whisper', args, textContent: JSON.stringify({ characters: chars }), displayReplacement: `[🤫 ${chars.length} character(s)]` };
+    }
+
+    let targetIdentifiers = pArgs.getStringArray(0, 'target_character_ids', 'target_char_id', 'target', 'target_id', 'to');
     let text = pArgs.get(1, 'text', 'message', 'content');
 
-    if (!pArgs.kwargs.text && pArgs.positional.length > 0) {
+    if (!pArgs.isJson && !pArgs.kwargs.text && pArgs.positional.length > 0) {
         const trimmed = args;
         const cliMatch = trimmed.match(/^("([^"]+)"|'([^']+)'|([^\s]+))\s+([\s\S]+)$/);
         if (cliMatch) {
-            targetIdsStr = cliMatch[2] || cliMatch[3] || cliMatch[4];
+            const rawIds = cliMatch[2] || cliMatch[3] || cliMatch[4];
+            targetIdentifiers = rawIds.split(',').filter(Boolean);
             text = cliMatch[5];
             if ((text.startsWith('"') && text.endsWith('"')) || (text.startsWith("'") && text.endsWith("'"))) {
                 text = text.slice(1, -1);
@@ -450,11 +1496,10 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
         }
     }
 
-    if (!targetIdsStr || !text) {
+    if (targetIdentifiers.length === 0 || !text) {
         return helpResult('whisper', 'target_char_id="...", text="..."', 'send private message visible only to target(s)');
     }
 
-    const targetIdentifiers = targetIdsStr.split(',').filter(Boolean);
     const allChars = context.allCharacters || [];
     const validTargetIds: string[] = [];
     const validTargetNames: string[] = [];
@@ -468,7 +1513,7 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
     }
 
     if (validTargetIds.length === 0) {
-        return { toolType: 'whisper', args, textContent: `[Error: Target character "${targetIdsStr}" not found]`, displayReplacement: '[Error: Target not found]' };
+        return { toolType: 'whisper', args, textContent: `[Error: Target character "${targetIdentifiers.join(',')}" not found]`, displayReplacement: '[Error: Target not found]' };
     }
 
     appendPendingAction(nextMessage, {
@@ -482,7 +1527,7 @@ function executeWhisper(args: string, nextMessage: BaseMessage, interactionData:
 // ─── Think ──────────────────────────────────────────────────────────
 function executeThink(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const reasoning = pArgs.get(0, 'reasoning', 'thought', 'text', 'input') || pArgs.positional.join(' ');
+    const reasoning = pArgs.get(0, 'reasoning', 'thought', 'text', 'input') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
 
     if (!reasoning) {
         return helpResult('think', 'reasoning="..."', 'evaluate context and plan next move internally');
@@ -524,9 +1569,65 @@ function executeThink(args: string, nextMessage: BaseMessage, interactionData: I
 }
 
 // ─── Mind Reader ────────────────────────────────────────────────────
+function extractReasoningFromText(text: string): string[] {
+    const thoughts: string[] = [];
+    const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const callStart = escapeRegex(toolCallStartString);
+    const callEnd = escapeRegex(toolCallEndString);
+    const resStart = escapeRegex(toolResultStartString);
+    const resEnd = escapeRegex(toolResultEndString);
+
+    const tokenRegex = new RegExp(`${callStart}([\\s\\S]*?)${callEnd}|${resStart}(think\\([\\s\\S]*?\\))${resEnd}`, 'g');
+    for (const m of text.matchAll(tokenRegex)) {
+        const callInner = m[1];
+        const legacyResInner = m[2];
+        if (callInner) {
+            if (/^\s*\{/.test(callInner)) {
+                try {
+                    const parsed: unknown = JSON.parse(callInner);
+                    if (
+                        isPlainObject(parsed) &&
+                        typeof parsed.name === 'string' &&
+                        parsed.name.toLowerCase() === 'think' &&
+                        isPlainObject(parsed.arguments) &&
+                        typeof parsed.arguments.reasoning === 'string' &&
+                        parsed.arguments.reasoning
+                    ) {
+                        thoughts.push(parsed.arguments.reasoning);
+                    }
+                } catch {
+                    // ignore malformed JSON
+                }
+            } else {
+                const fnMatch = callInner.match(/^think\s*\(([\s\S]*)\)$/i);
+                if (fnMatch) {
+                    const thinkArgs = parsePythonArgs(fnMatch[1]);
+                    const reasoning = thinkArgs.get(0, 'reasoning', 'thought', 'text', 'input', 'reason') || thinkArgs.positional.join(' ');
+                    if (reasoning) thoughts.push(reasoning);
+                }
+            }
+        } else if (legacyResInner) {
+            const fnMatch = legacyResInner.match(/^think\s*\(([\s\S]*)\)$/i);
+            if (fnMatch) {
+                const thinkArgs = parsePythonArgs(fnMatch[1]);
+                const reasoning = thinkArgs.get(0, 'reasoning', 'thought', 'text', 'input', 'reason') || thinkArgs.positional.join(' ');
+                if (reasoning) thoughts.push(reasoning);
+            }
+        }
+    }
+    return thoughts;
+}
+
 function executeMindReader(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'target', 'character', 'character_id', 'name') || pArgs.positional.join(' ');
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+
+    if (action === 'list') {
+        const chars = (interactionData.participants || []).map(c => ({ character_id: c.id, name: c.name }));
+        return { toolType: 'mind_reader', args, textContent: JSON.stringify({ characters: chars }), displayReplacement: `[🧠 ${chars.length} character(s)]` };
+    }
+
+    const targetQuery = pArgs.get(0, 'character_id', 'target', 'character', 'id') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     const limit = pArgs.getNumber(1, 'limit', 'count', 'depth') ?? 1;
 
     if (!targetQuery) {
@@ -541,20 +1642,12 @@ function executeMindReader(args: string, _nextMessage: BaseMessage, interactionD
     const history = getGlobalMessageHistory(interactionData);
     const targetMessages = history.filter(m => m.character.id === targetChar.id && (m.messageType === 'chat' || m.messageType === 'whisper'));
     const extractedThoughts: string[] = [];
-    const thinkRegex = /⟪think\(([\s\S]*?)\)⟫|⟦think\(([\s\S]*?)\)⟧/g;
 
-    // Iterate backwards to get the most recent think calls
     for (let i = targetMessages.length - 1; i >= 0; i--) {
         const msg = targetMessages[i] as ChatMessage | WhisperMessage;
-        const text = msg.textContent || '';
-        const matches = [...text.matchAll(thinkRegex)];
-        for (const m of matches) {
-            const rawArgs = m[1] || m[2];
-            const thinkPAArgs = parsePythonArgs(rawArgs);
-            const reasoning = thinkPAArgs.get(0, 'reasoning', 'thought', 'text', 'input', 'reason') || thinkPAArgs.positional.join(' ');
-            if (reasoning) {
-                extractedThoughts.unshift(reasoning);
-            }
+        const found = extractReasoningFromText(msg.textContent || '');
+        if (found.length > 0) {
+            extractedThoughts.unshift(...found);
         }
         if (extractedThoughts.length >= limit) {
             break;
@@ -586,12 +1679,17 @@ function executeMindReader(args: string, _nextMessage: BaseMessage, interactionD
 // ─── Random Pick ────────────────────────────────────────────────────
 function executeRandomPick(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
-    let options = pArgs.positional;
-    const optKwarg = pArgs.get(-1, 'options', 'choices');
-    if (optKwarg) {
-        options = optKwarg.split(',').filter(Boolean);
-    } else if (options.length === 1 && options[0].includes(',')) {
-        options = options[0].split(',').filter(Boolean);
+    let options = pArgs.isJson
+        ? pArgs.getStringArray(0, 'options', 'choices')
+        : pArgs.positional;
+
+    if (!pArgs.isJson) {
+        const optKwarg = pArgs.get(-1, 'options', 'choices');
+        if (optKwarg) {
+            options = optKwarg.split(',').filter(Boolean);
+        } else if (options.length === 1 && options[0].includes(',')) {
+            options = options[0].split(',').filter(Boolean);
+        }
     }
 
     if (options.length === 0) {
@@ -602,7 +1700,7 @@ function executeRandomPick(args: string): ToolResult {
     return { toolType: 'pick', args, textContent: picked, displayReplacement: `[🎯 "${picked}"]` };
 }
 
-// ─── Sky View ────────────────────────────────────────────────────────
+// ─── Sky View ───────────────────────────────────────────────────────
 function executeSkyView(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const location = getCurrentLocation(interactionData, nextMessage.character);
     if (!location || !location?.hasSkyView) {
@@ -613,7 +1711,7 @@ function executeSkyView(args: string, nextMessage: BaseMessage, interactionData:
     return { toolType: 'sky_view', args, textContent: skyDescription, displayReplacement: `[🔭 ${skyDescription}]` };
 }
 
-// ─── Clock ────────────────────────────────────────────────────────────
+// ─── Clock ──────────────────────────────────────────────────────────
 function executeClock(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
@@ -629,7 +1727,7 @@ function executeClock(args: string, nextMessage: BaseMessage, interactionData: I
     return { toolType: 'clock', args, textContent: timeStr, displayReplacement: `[🕰️ ${timeStr}]` };
 }
 
-// ─── Calendar ────────────────────────────────────────────────────────
+// ─── Calendar ───────────────────────────────────────────────────────
 function executeCalendar(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const format = pArgs.get(0, 'format', 'type')?.toLowerCase();
@@ -649,7 +1747,7 @@ function executeCalendar(args: string, nextMessage: BaseMessage, interactionData
     return { toolType: 'calendar', args, textContent: dateStr, displayReplacement: `[📅 ${dateStr}]` };
 }
 
-// ─── Coin Flip ───────────────────────────────────────────────────────
+// ─── Coin Flip ──────────────────────────────────────────────────────
 function executeCoinFlip(args: string): ToolResult {
     const result = Math.random() < 0.5 ? 'Heads' : 'Tails';
     return { toolType: 'coin', args, textContent: `The coin shows ${result.toLowerCase()}`, displayReplacement: `[🪙 Coin flip: ${result}]` };
@@ -704,12 +1802,12 @@ export function executeDiceRoll(args: string): ToolResult {
         const modifier = kwMod ?? 0;
         const modSign = modifier > 0 ? `+${modifier}` : modifier < 0 ? `${modifier}` : '';
         notation = `${count}d${kwSides}${modSign}`;
-    } else if (!notation && pArgs.positional.length === 1) {
+    } else if (!notation && !pArgs.isJson && pArgs.positional.length === 1) {
         const p = pArgs.positional[0];
         if (/^\d+$/.test(p)) notation = `1d${p}`;
         else if (/^d\d+$/i.test(p)) notation = `1${p}`;
         else notation = p;
-    } else if (!notation && pArgs.positional.length >= 2) {
+    } else if (!notation && !pArgs.isJson && pArgs.positional.length >= 2) {
         const count = pArgs.getNumber(0) ?? 1;
         const sides = pArgs.getNumber(1) ?? 6;
         const modifier = pArgs.getNumber(2) ?? 0;
@@ -732,19 +1830,19 @@ export function executeDiceRoll(args: string): ToolResult {
     return { toolType: 'dice', args, textContent: content, displayReplacement: `[🎲 ${label}${modStr} → [${rollsStr}] = ${result.total}]` };
 }
 
-// ─── Random Number ───────────────────────────────────────────────────
+// ─── Random Number ──────────────────────────────────────────────────
 function executeRandom(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
     let min = pArgs.getNumber(0, 'min', 'start') ?? 1;
     let max = pArgs.getNumber(1, 'max', 'end', 'stop');
 
-    if (max === undefined && pArgs.positional.length === 1 && pArgs.positional[0].includes('-')) {
+    if (max === undefined && !pArgs.isJson && pArgs.positional.length === 1 && pArgs.positional[0].includes('-')) {
         const parts = pArgs.positional[0].split('-');
         min = Number(parts[0]) || 1;
         max = Number(parts[1]) || 100;
     } else if (max === undefined) {
         max = pArgs.getNumber(0, 'max', 'end') ?? 100;
-        if (pArgs.positional.length === 1 && !pArgs.kwargs['min']) min = 1;
+        if (!pArgs.isJson && pArgs.positional.length === 1 && !pArgs.kwargs['min']) min = 1;
     }
 
     if (min > max) [min, max] = [max, min];
@@ -752,16 +1850,33 @@ function executeRandom(args: string): ToolResult {
     return { toolType: 'random', args, textContent: result.toString(), displayReplacement: `[🎲 Random(${min}-${max}): ${result}]` };
 }
 
-// ─── RNG Table ────────────────────────────────────────────────────────
+// ─── RNG Table ──────────────────────────────────────────────────────
+// ─── RNG Table ──────────────────────────────────────────────────────
 function executeRng(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const tableId = pArgs.get(0, 'table_context_id', 'table', 'context_id', 'name') || pArgs.positional.join(' ');
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+    const contexts = interactionData.contexts || [];
+
+    if (action === 'list') {
+        const tables = contexts
+            .filter(c => c.text && /^\d+[-:]/.test(c.text || ''))
+            .map(c => ({ table_context_id: c.id, name: c.name }));
+        return { toolType: 'rng', args, textContent: JSON.stringify({ tables }), displayReplacement: `[🎲 ${tables.length} RNG table(s)]` };
+    }
+
+    const tableId = pArgs.get(0, 'table_context_id', 'table', 'context_id', 'name') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!tableId) {
         return helpResult('rng', 'table_context_id="..."', 'roll on a named RNG table defined in contexts');
     }
 
-    const contexts = interactionData.contexts || [];
-    const tableContext = contexts.find(c => c.id === tableId || c.name?.toLowerCase() === tableId.toLowerCase());
+    const q = tableId.toLowerCase();
+    const tableContext = contexts.find(c => 
+        c.id.toLowerCase() === q || 
+        c.id.toLowerCase().startsWith(q) || 
+        c.name?.toLowerCase() === q ||
+        c.name?.toLowerCase().includes(q)
+    );
+
     if (!tableContext || !tableContext.text) {
         return { toolType: 'rng', args, textContent: `[Error: RNG table "${tableId}" not found in contexts]`, displayReplacement: '[Error: Table not found]' };
     }
@@ -797,15 +1912,31 @@ function executeRng(args: string, _nextMessage: BaseMessage, interactionData: In
 // ─── Move ───────────────────────────────────────────────────────────
 function executeMove(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to') || pArgs.positional.join(' ');
-    const quietLeave = pArgs.get(-1, 'quiet_leave')?.toLowerCase() === 'true';
-    const quietEnter = pArgs.get(-1, 'quiet_enter')?.toLowerCase() === 'true';
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+    const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
+
+    if (action === 'list') {
+        const reachable = getReachableLocationsByCharacter(interactionData, nextMessage.character).map(l => ({
+            location_id: l.id,
+            name: l.name,
+            locked: isCharacterLockedFromLocation(interactionData, nextMessage.character.id, l.id),
+        }));
+        return {
+            toolType: 'move',
+            args,
+            textContent: JSON.stringify({ current_location_id: currentLocation?.id ?? null, current_location_name: currentLocation?.name ?? null, reachable_locations: reachable }),
+            displayReplacement: `[🚶 ${reachable.length} reachable location(s)]`,
+        };
+    }
+
+    const targetQuery = pArgs.get(0, 'location_id', 'location', 'target', 'destination', 'to') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
+    const quietLeave = pArgs.getBoolean(-1, 'quiet_leave');
+    const quietEnter = pArgs.getBoolean(-1, 'quiet_enter');
 
     if (!targetQuery) {
         return helpResult('move', 'location_id="...", quiet_leave=False, quiet_enter=False', 'move character to an adjacent location');
     }
 
-    const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
     if (!currentLocation) return { toolType: 'move', args, textContent: '[Error: Current character location unknown]', displayReplacement: '[Error: Unknown location]' };
 
     const targetLocation = resolveLocation(targetQuery, interactionData);
@@ -1025,7 +2156,7 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             const name = pArgs.get(1, 'name', 'schedule_name');
             const durRaw = pArgs.get(2, 'duration', 'time', 'interval');
             const durationMs = durRaw ? parseDurationToMs(durRaw) : null;
-            const desc = pArgs.get(3, 'action_desc', 'desc', 'do', 'event', 'text') || pArgs.positional.slice(3).join(' ');
+            const desc = pArgs.get(3, 'action_desc', 'desc', 'do', 'event', 'text') || (!pArgs.isJson ? pArgs.positional.slice(3).join(' ') : undefined);
             if (!name || !durationMs || !desc) {
                 return { toolType: 'schedule', args, textContent: '[Error: schedule(action="set", name="...", duration="...", action_desc="...") requires all parameters]', displayReplacement: '[Error: Usage]' };
             }
@@ -1039,7 +2170,7 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
             const name = pArgs.get(1, 'name', 'schedule_name');
             const durRaw = pArgs.get(2, 'interval', 'duration', 'time');
             const intervalMs = durRaw ? parseDurationToMs(durRaw) : null;
-            const desc = pArgs.get(3, 'action_desc', 'desc', 'do', 'event', 'text') || pArgs.positional.slice(3).join(' ');
+            const desc = pArgs.get(3, 'action_desc', 'desc', 'do', 'event', 'text') || (!pArgs.isJson ? pArgs.positional.slice(3).join(' ') : undefined);
             if (!name || !intervalMs || !desc) {
                 return { toolType: 'schedule', args, textContent: '[Error: schedule(action="set_repeat", name="...", interval="...", action_desc="...") requires all parameters]', displayReplacement: '[Error: Usage]' };
             }
@@ -1074,7 +2205,7 @@ function executeSchedule(args: string, nextMessage: BaseMessage, interactionData
 // ─── Calculator ─────────────────────────────────────────────────────
 function executeCalculator(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const expression = pArgs.get(0, 'expression', 'expr', 'math') || pArgs.positional.join(' ');
+    const expression = pArgs.get(0, 'expression', 'expr', 'math') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!expression) {
         return helpResult('calculator', 'expression="..."', 'evaluate mathematical expression');
     }
@@ -1097,7 +2228,7 @@ function executeCalculator(args: string): ToolResult {
 // ─── Web ────────────────────────────────────────────────────────────
 async function executeWeb(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const input = pArgs.get(0, 'url_or_search_query', 'query_or_url', 'query', 'url', 'search') || pArgs.positional.join(' ');
+    const input = pArgs.get(0, 'url_or_search_query', 'query_or_url', 'query', 'url', 'search') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!input) return helpResult('web', 'url_or_search_query="..."', 'search the web or fetch a URL');
 
     try {
@@ -1148,21 +2279,25 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
     }
 
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'prompt_id', 'id') || pArgs.positional.slice(1).join(' ');
-        const matched = activeDialoguePrompts.filter(dp => dp.id === queryId || dp.name?.toLowerCase() === queryId?.toLowerCase() || dp.id.startsWith(queryId || ""));
+        const rawQueryId = pArgs.get(1, 'prompt_id', 'id') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : '');
+        if (!rawQueryId) {
+            return helpResult('dialogue', 'action="list|recall", prompt_id="..."', 'manage dialogue prompts');
+        }
+        const queryId = rawQueryId.toLowerCase();
+        const matched = activeDialoguePrompts.filter(dp => dp.id.toLowerCase() === queryId || dp.id.toLowerCase().startsWith(queryId));
         if (matched.length > 0) {
             const recalled = await collectActiveDialoguePromptContent(matched, evalContext);
             return { toolType: 'dialogue', args, textContent: recalled.join('\n') || 'No active instructions', displayReplacement: `[💬 Recalled ${recalled.length} instruction(s)]` };
         }
 
         if (nextMessage.character.useEmbeddingModelForDialoguePrompts && nextMessage.character.dialogueRetrievalConfiguration) {
-            const queryVector = await embeddingEngine.embed(queryId);
+            const queryVector = await embeddingEngine.embed(rawQueryId);
             if (queryVector) {
                 const items: RetrievableItem[] = activeDialoguePrompts.map(dp => ({
                     id: dp.id, name: dp.name, textContent: dp.textContent, embedding: dp.embedding, firstCreatedTimestamp: dp.firstCreatedTimestamp
                 }));
                 const overrideConfig = { ...nextMessage.character.dialogueRetrievalConfiguration, topK: 3, tokenBudget: 512 };
-                const results = await retrieveRelevantContext(queryVector, queryId, items, overrideConfig);
+                const results = await retrieveRelevantContext(queryVector, rawQueryId, items, overrideConfig);
                 if (results.length > 0) {
                     return {
                         toolType: 'dialogue',
@@ -1173,7 +2308,7 @@ async function executeDialogue(args: string, nextMessage: BaseMessage, interacti
                 }
             }
         }
-        return { toolType: 'dialogue', args, textContent: `No active dialogue prompt matching "${queryId}".`, displayReplacement: '[💬 No match]' };
+        return { toolType: 'dialogue', args, textContent: `No active dialogue prompt matching "${rawQueryId}".`, displayReplacement: '[💬 No match]' };
     }
 
     return { toolType: 'dialogue', args, textContent: `[Error: Unknown dialogue action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
@@ -1217,14 +2352,18 @@ async function executeKnowledge(args: string, nextMessage: BaseMessage, interact
     }
 
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'id', 'knowledge_id') || pArgs.positional.slice(1).join(' ');
-        const matched = activeKnowledgePrompts.filter(kp => kp.id === queryId || kp.name?.toLowerCase() === queryId?.toLowerCase() || kp.id.startsWith(queryId || ""));
-        if (matched.length === 0) return { toolType: 'knowledge', args, textContent: `No active knowledge matching "${queryId}".`, displayReplacement: '[🧠 No match]' };
+        const rawQueryId = pArgs.get(1, 'knowledge_id', 'id') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : '');
+        if (!rawQueryId) {
+            return helpResult('knowledge', 'action="list|recall|fuzzy_recall", id="..."', 'inspect character knowledge base');
+        }
+        const queryId = rawQueryId.toLowerCase();
+        const matched = activeKnowledgePrompts.filter(kp => kp.id.toLowerCase() === queryId || kp.id.toLowerCase().startsWith(queryId));
+        if (matched.length === 0) return { toolType: 'knowledge', args, textContent: `No active knowledge matching "${rawQueryId}".`, displayReplacement: '[🧠 No match]' };
         return { toolType: 'knowledge', args, textContent: matched.map(k => `[${k.name}]: ${k.textContent}`).join('\n'), displayReplacement: `[🧠 Recalled ${matched.length} entry(ies)]` };
     }
 
     if (action === 'fuzzy_recall') {
-        const searchString = pArgs.get(1, 'query', 'search', 'text') || pArgs.positional.slice(1).join(' ');
+        const searchString = pArgs.get(1, 'query', 'search', 'text') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : '');
         if (!searchString) return { toolType: 'knowledge', args, textContent: 'No search string provided for fuzzy recall.', displayReplacement: '[🧠 Fuzzy Recall: Empty]' };
 
         if (!nextMessage.character.useEmbeddingModelForKnowledgePrompts || !nextMessage.character.knowledgeRetrievalConfiguration) {
@@ -1279,13 +2418,14 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
     }
 
     if (action === 'recall') {
-        const queryId = pArgs.get(1, 'id', 'memory_id') || pArgs.positional.slice(1).join(' ');
+        const queryId = pArgs.get(1, 'memory_id', 'id') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : undefined);
         const latest = findLatestMessage(interactionData, character);
         const knownNames = latest?.message.knownCharacterNames;
 
         if (queryId) {
+            const q = queryId.toLowerCase();
             for (const [, mems] of Object.entries(character.memories || {})) {
-                const found = mems.find(m => m.id === queryId || m.name?.toLowerCase() === queryId.toLowerCase() || m.id.startsWith(queryId));
+                const found = mems.find(m => m.id.toLowerCase() === q || m.id.toLowerCase().startsWith(q));
                 if (found) {
                     const detokenized = detokenizeMemoryContent(
                         found.textContent,
@@ -1359,7 +2499,7 @@ async function executeMemory(args: string, nextMessage: BaseMessage, interaction
 // ─── Lookup ─────────────────────────────────────────────────────────
 function executeLookup(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const query = pArgs.get(0, 'keyword', 'query', 'search', 'text')?.toLowerCase() || pArgs.positional.join(' ').toLowerCase();
+    const query = pArgs.get(0, 'keyword', 'query', 'search', 'text')?.toLowerCase() || (!pArgs.isJson ? pArgs.positional.join(' ').toLowerCase() : undefined);
     if (!query) {
         return helpResult('lookup', 'keyword="..."', 'search contexts and world lore for keywords');
     }
@@ -1373,10 +2513,17 @@ function executeLookup(args: string, _nextMessage: BaseMessage, interactionData:
     return { toolType: 'lookup', args, textContent: matches.join('\n') || `No results for "${query}"`, displayReplacement: `[🔍 ${matches.length} result(s)]` };
 }
 
-// ─── Map ────────────────────────────────────────────────────
+// ─── Map ────────────────────────────────────────────────────────────
 function executeMap(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'target_location_id', 'target', 'to', 'destination');
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+
+    if (action === 'list') {
+        const locs = (interactionData.locations || []).map(l => ({ location_id: l.id, name: l.name }));
+        return { toolType: 'map', args, textContent: JSON.stringify({ locations: locs }), displayReplacement: `[🗺️ ${locs.length} location(s)]` };
+    }
+
+    const targetQuery = pArgs.get(0, 'to_location_id', 'target_location_id', 'target', 'to', 'destination');
     const fromQuery = pArgs.get(1, 'from_location_id', 'from', 'source');
 
     if (!targetQuery) {
@@ -1415,14 +2562,20 @@ function executeMap(args: string, nextMessage: BaseMessage, interactionData: Int
 function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
-    const trackId = pArgs.get(1, 'track_id', 'track', 'name') || pArgs.positional.slice(1).join(' ');
+    const tracks = interactionData.audioTracks || context.allAudioTracks || [];
 
     if (!action) {
         return helpResult('audio', 'action="play|stop", track_id="..."', 'manage background audio playback');
     }
 
-    const tracks = interactionData.audioTracks || context.allAudioTracks || [];
-    const track = tracks.find(t => t.id === trackId || t.name.toLowerCase() === trackId.toLowerCase());
+    if (action === 'list') {
+        const list = tracks.map(t => ({ track_id: t.id, name: t.name, category: t.audioCategory }));
+        return { toolType: 'audio', args, textContent: JSON.stringify({ audio_tracks: list }), displayReplacement: `[🔊 ${list.length} track(s)]` };
+    }
+
+    const trackId = pArgs.get(1, 'track_id', 'track', 'name') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : undefined);
+    const q = trackId ? trackId.toLowerCase() : '';
+    const track = trackId ? tracks.find(t => t.id.toLowerCase() === q || t.id.toLowerCase().startsWith(q)) : undefined;
     const audioEngine = getAudioEngine();
 
     if (action === 'play') {
@@ -1439,7 +2592,7 @@ function executeAudio(args: string, _nextMessage: BaseMessage, interactionData: 
     return { toolType: 'audio', args, textContent: `[Error: Unknown audio action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
 }
 
-// ─── Note ──────────────────────────────────────────────────────────
+// ─── Note ───────────────────────────────────────────────────────────
 function executeNote(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
@@ -1453,7 +2606,7 @@ function executeNote(args: string, nextMessage: BaseMessage, interactionData: In
     switch (action) {
         case 'set': {
             const key = pArgs.get(1, 'key', 'name');
-            const text = pArgs.get(2, 'text', 'content', 'value') || pArgs.positional.slice(2).join(' ');
+            const text = pArgs.get(2, 'text', 'content', 'value') || (!pArgs.isJson ? pArgs.positional.slice(2).join(' ') : undefined);
             if (!key || !text) return { toolType: 'note', args, textContent: '[Error: note(action="set", key="...", text="...") requires key and text]', displayReplacement: '[Error: Usage]' };
             notes[key] = text;
             activeActions.notes = notes;
@@ -1518,15 +2671,21 @@ function executeInventory(args: string, nextMessage: BaseMessage, interactionDat
         }
         case 'set': {
             const item = pArgs.get(1, 'item', 'name');
-            const val = pArgs.get(2, 'value', 'val', 'qty');
+            const val = pArgs.getValue(2, 'value', 'val', 'qty');
             if (!item || val === undefined) return { toolType: 'inventory', args, textContent: '[Error: inventory(action="set", item="...", value=...) requires item and value]', displayReplacement: '[Error: Usage]' };
-            inventory[item] = Number.isNaN(Number(val)) ? val : Number(val);
+            inventory[item] = typeof rawValToInventory(val) === 'number' ? Number(val) : String(val);
             nextMessage.inventory = inventory;
             return { toolType: 'inventory', args, textContent: `Set "${item}" to ${val}.`, displayReplacement: `[📦 Set ${item}]` };
         }
         default:
             return { toolType: 'inventory', args, textContent: `[Error: Unknown inventory action "${action}"]`, displayReplacement: '[Error: Unknown action]' };
     }
+}
+
+function rawValToInventory(val: unknown): string | number {
+    if (typeof val === 'number') return val;
+    const s = String(val);
+    return Number.isNaN(Number(s)) ? s : Number(s);
 }
 
 // ─── Trade ──────────────────────────────────────────────────────────
@@ -1546,6 +2705,11 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
     if (!action) return helpResult('trade', 'action="give|take|offer|accept|decline|list_offers", ...', 'transfer items or manage trade offers');
+
+    if (action === 'list_characters') {
+        const chars = (interactionData.participants || []).map(c => ({ character_id: c.id, name: c.name }));
+        return { toolType: 'trade', args, textContent: JSON.stringify({ characters: chars }), displayReplacement: `[🤝 ${chars.length} character(s)]` };
+    }
 
     const latest = findLatestMessage(interactionData, nextMessage.character);
     const myInv: Inventory = nextMessage.inventory
@@ -1606,10 +2770,10 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
     }
 
     if (action === 'offer') {
-        const targetQuery = pArgs.get(1, 'character', 'target', 'to');
-        const giveRaw = pArgs.get(2, 'give_items', 'give');
-        const takeRaw = pArgs.get(3, 'take_items', 'take');
-        if (!targetQuery || !giveRaw || !takeRaw) {
+        const targetQuery = pArgs.get(1, 'target_character_id', 'character', 'target', 'to');
+        const giveItems = pArgs.getItemRecord(2, 'give_items', 'give');
+        const takeItems = pArgs.getItemRecord(3, 'take_items', 'take');
+        if (!targetQuery || Object.keys(giveItems).length === 0 || Object.keys(takeItems).length === 0) {
             return { toolType: 'trade', args, textContent: '[Error: trade(action="offer", target="...", give_items="...", take_items="...") requires all parameters]', displayReplacement: '[Error: Usage]' };
         }
 
@@ -1619,12 +2783,12 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
         const offerId = uuidv4().slice(0, 8);
         const newOffer: TradeOffer = {
             id: offerId, fromCharacterId: nextMessage.character.id, toCharacterId: targetChar.id,
-            giveItems: parseItemList(giveRaw), takeItems: parseItemList(takeRaw), timestamp: Date.now(),
+            giveItems, takeItems, timestamp: Date.now(),
         };
         offers.push(newOffer);
         activeActions.tradeOffers = offers;
         nextMessage.activeToolActions = activeActions;
-        return { toolType: 'trade', args, textContent: `Offered trade [${offerId}] to ${targetChar.name} (Give: ${giveRaw}, Take: ${takeRaw}).`, displayReplacement: `[🤝 Offered trade to ${targetChar.name}]` };
+        return { toolType: 'trade', args, textContent: `Offered trade [${offerId}] to ${targetChar.name} (Give: ${JSON.stringify(giveItems)}, Take: ${JSON.stringify(takeItems)}).`, displayReplacement: `[🤝 Offered trade to ${targetChar.name}]` };
     }
 
     if (action === 'list_offers') {
@@ -1649,7 +2813,20 @@ function executeTrade(args: string, nextMessage: BaseMessage, interactionData: I
 // ─── Invite ─────────────────────────────────────────────────────────
 function executeInvite(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id') || pArgs.positional.join(' ');
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+
+    if (action === 'list') {
+        const coLocatedIds = new Set(getCoLocatedParticipants(interactionData, nextMessage.character).map(c => c.id));
+        const invitees = (interactionData.participants || [])
+            .filter(c => c.id !== nextMessage.character.id && !coLocatedIds.has(c.id))
+            .map(c => {
+                const loc = getCurrentLocation(interactionData, c);
+                return { character_id: c.id, name: c.name, location_id: loc?.id ?? null, location_name: loc?.name ?? null };
+            });
+        return { toolType: 'invite', args, textContent: JSON.stringify({ characters: invitees }), displayReplacement: `[📨 ${invitees.length} invitee(s)]` };
+    }
+
+    const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!targetQuery) return helpResult('invite', 'character_id="..."', 'bring existing participant to current location');
 
     const targetChar = resolveCharacter(targetQuery, interactionData, context.allCharacters || []);
@@ -1662,31 +2839,31 @@ function executeInvite(args: string, nextMessage: BaseMessage, interactionData: 
 // ─── Kick ───────────────────────────────────────────────────────────
 function executeKick(args: string, nextMessage: BaseMessage, interactionData: InteractionData, _context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
     const targetQuery = pArgs.get(0, 'character_id', 'character', 'target', 'id');
-    const quietLeave = pArgs.get(-1, 'quiet_leave')?.toLowerCase() === 'true';
-    const quietEnter = pArgs.get(-1, 'quiet_enter')?.toLowerCase() === 'true';
-
-    if (!targetQuery) return helpResult('kick', 'character_id="...", destination_location_id=None, quiet_leave=False, quiet_enter=False', 'eject character from location');
+    const quietLeave = pArgs.getBoolean(-1, 'quiet_leave');
+    const quietEnter = pArgs.getBoolean(-1, 'quiet_enter');
 
     const currentLocation = getCurrentLocation(interactionData, nextMessage.character);
     if (!currentLocation) {
         return { toolType: 'kick', args, textContent: '[Error: Current character location unknown]', displayReplacement: '[Error: Unknown location]' };
     }
 
-    if (targetQuery.toLowerCase() === 'characters') {
+    if (action === 'list_characters' || (!pArgs.isJson && targetQuery?.toLowerCase() === 'characters')) {
         const list = getCoLocatedParticipants(interactionData, nextMessage.character).map(c => `${c.name} (${c.id})`);
         return { toolType: 'kick', args, textContent: list.join('\n') || 'No co-located characters', displayReplacement: `[👢 ${list.length} character(s)]` };
     }
-    if (targetQuery.toLowerCase() === 'locations') {
+    if (action === 'list_locations' || (!pArgs.isJson && targetQuery?.toLowerCase() === 'locations')) {
         const reachable = getReachableLocationsByCharacter(interactionData, nextMessage.character);
         return { toolType: 'kick', args, textContent: reachable.map(l => `${l.name} (${l.id})`).join('\n') || 'No reachable locations', displayReplacement: `[👢 ${reachable.length} location(s)]` };
     }
 
+    if (!targetQuery) return helpResult('kick', 'character_id="...", destination_location_id=None, quiet_leave=False, quiet_enter=False', 'eject character from location');
+
     const coLocated = getCoLocatedParticipants(interactionData, nextMessage.character);
     const targetChar = coLocated.find(c =>
         c.id.toLowerCase() === targetQuery.toLowerCase() ||
-        c.name.toLowerCase() === targetQuery.toLowerCase() ||
-        c.id.startsWith(targetQuery.toLowerCase())
+        c.id.toLowerCase().startsWith(targetQuery.toLowerCase())
     );
 
     if (!targetChar) {
@@ -1743,12 +2920,19 @@ function executeKick(args: string, nextMessage: BaseMessage, interactionData: In
     };
 }
 
-// ─── Oracle ───────────────────────────────────────────────────────
+// ─── Oracle ─────────────────────────────────────────────────────────
 function executeOracle(args: string, _nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetLocQuery = pArgs.get(0, 'location', 'target', 'place', 'to');
-    const limit = pArgs.getNumber(1, 'limit', 'count') ?? 5;
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
     const locations = interactionData.locations || [];
+
+    if (action === 'list') {
+        const list = locations.map(l => ({ location_id: l.id, name: l.name }));
+        return { toolType: 'oracle', args, textContent: JSON.stringify({ locations: list }), displayReplacement: `[🔮 ${list.length} location(s)]` };
+    }
+
+    const targetLocQuery = pArgs.get(0, 'location_id', 'location', 'target', 'place', 'to');
+    const limit = pArgs.getNumber(1, 'limit', 'count') ?? 5;
 
     if (!targetLocQuery) {
         const locList = locations.map(l => `"${l.name}" (${l.id})`).join(', ');
@@ -1757,8 +2941,7 @@ function executeOracle(args: string, _nextMessage: BaseMessage, interactionData:
 
     const targetLoc = locations.find(l =>
         l.id.toLowerCase() === targetLocQuery.toLowerCase() ||
-        l.name.toLowerCase().includes(targetLocQuery.toLowerCase()) ||
-        l.id.startsWith(targetLocQuery.toLowerCase())
+        l.id.toLowerCase().startsWith(targetLocQuery.toLowerCase())
     );
 
     if (!targetLoc) {
@@ -1775,9 +2958,16 @@ function executeOracle(args: string, _nextMessage: BaseMessage, interactionData:
 // ─── Teleport ───────────────────────────────────────────────────────
 function executeTeleport(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target') || pArgs.positional.join(' ');
-    const quietLeave = pArgs.get(-1, 'quiet_leave')?.toLowerCase() === 'true';
-    const quietEnter = pArgs.get(-1, 'quiet_enter')?.toLowerCase() === 'true';
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+
+    if (action === 'list') {
+        const list = (interactionData.locations || []).map(l => ({ location_id: l.id, name: l.name }));
+        return { toolType: 'teleport', args, textContent: JSON.stringify({ locations: list }), displayReplacement: `[⚡ ${list.length} location(s)]` };
+    }
+
+    const targetQuery = pArgs.get(0, 'location_id', 'location', 'destination', 'target') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
+    const quietLeave = pArgs.getBoolean(-1, 'quiet_leave');
+    const quietEnter = pArgs.getBoolean(-1, 'quiet_enter');
 
     if (!targetQuery) return helpResult('teleport', 'location_id="...", quiet_leave=False, quiet_enter=False', 'instantly move character to any location');
 
@@ -1816,6 +3006,13 @@ function executeTeleport(args: string, nextMessage: BaseMessage, interactionData
 function executeKey(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase();
+
+    if (action === 'list') {
+        const locations = (interactionData.locations || []).map(l => ({ location_id: l.id, name: l.name }));
+        const characters = (interactionData.participants || []).map(c => ({ character_id: c.id, name: c.name }));
+        return { toolType: 'key', args, textContent: JSON.stringify({ locations, characters }), displayReplacement: '[🔒 Key targets listed]' };
+    }
+
     const locQuery = pArgs.get(1, 'location_id', 'location');
     const charQuery = pArgs.get(2, 'character_id', 'character', 'target');
 
@@ -1849,16 +3046,34 @@ function executeKey(args: string, nextMessage: BaseMessage, interactionData: Int
 // ─── Clothing ───────────────────────────────────────────────────────
 function executeClothing(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    let charQuery = pArgs.get(0, 'character_id', 'character');
-    let action = pArgs.get(1, 'action', 'command')?.toLowerCase();
-    let clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item');
+    let action = pArgs.get(-1, 'action', 'command')?.toLowerCase();
+    let charQuery = pArgs.get(-1, 'character_id', 'character');
+    let clothingQuery = pArgs.get(-1, 'clothing_id', 'clothing', 'item');
 
-    if (charQuery && (charQuery.toLowerCase() === 'wear' || charQuery.toLowerCase() === 'remove')) {
-        action = charQuery.toLowerCase();
-        charQuery = pArgs.get(1, 'character_id', 'character');
-        clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item') || pArgs.positional.slice(2).join(' ');
-    } else if (!clothingQuery && pArgs.positional.length > 2) {
-        clothingQuery = pArgs.positional.slice(2).join(' ');
+    if (!pArgs.isJson) {
+        charQuery = pArgs.get(0, 'character_id', 'character');
+        action = pArgs.get(1, 'action', 'command')?.toLowerCase();
+        clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item');
+        if (charQuery && (charQuery.toLowerCase() === 'wear' || charQuery.toLowerCase() === 'remove' || charQuery.toLowerCase() === 'list')) {
+            action = charQuery.toLowerCase();
+            charQuery = pArgs.get(1, 'character_id', 'character');
+            clothingQuery = pArgs.get(2, 'clothing_id', 'clothing', 'item') || pArgs.positional.slice(2).join(' ');
+        } else if (!clothingQuery && pArgs.positional.length > 2) {
+            clothingQuery = pArgs.positional.slice(2).join(' ');
+        }
+    }
+
+    if (action === 'list') {
+        const targetChar = charQuery
+            ? resolveCharacter(charQuery, interactionData, context.allCharacters || [])
+            : nextMessage.character;
+        if (!targetChar) return { toolType: 'clothing', args, textContent: `[Error: Character "${charQuery}" not found]`, displayReplacement: '[Error: Character not found]' };
+        const latest = findLatestMessage(interactionData, targetChar);
+        const statuses = nextMessage.character.id === targetChar.id
+            ? (nextMessage.characterClothingWearingStatuses || latest?.message?.characterClothingWearingStatuses || {})
+            : (latest?.message?.characterClothingWearingStatuses || {});
+        const items = (targetChar.clothings || []).map(c => ({ clothing_id: c.id, name: c.name, worn: Boolean(statuses[c.id]) }));
+        return { toolType: 'clothing', args, textContent: JSON.stringify({ character_id: targetChar.id, clothings: items }), displayReplacement: `[👕 ${items.length} clothing item(s)]` };
     }
 
     if (!charQuery || !action || !clothingQuery) {
@@ -1868,7 +3083,8 @@ function executeClothing(args: string, nextMessage: BaseMessage, interactionData
     const targetChar = resolveCharacter(charQuery, interactionData, context.allCharacters || []);
     if (!targetChar) return { toolType: 'clothing', args, textContent: `[Error: Character "${charQuery}" not found]`, displayReplacement: '[Error: Character not found]' };
 
-    const clothing = targetChar.clothings?.find(c => c.id === clothingQuery || c.name.toLowerCase() === clothingQuery.toLowerCase());
+    const q = clothingQuery.toLowerCase();
+    const clothing = targetChar.clothings?.find(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q));
     if (!clothing) return { toolType: 'clothing', args, textContent: `[Error: Clothing "${clothingQuery}" not found on ${targetChar.name}]`, displayReplacement: '[Error: Clothing not found]' };
 
     const wearing = nextMessage.characterClothingWearingStatuses ? { ...nextMessage.characterClothingWearingStatuses } : {};
@@ -1891,11 +3107,20 @@ function executeClothing(args: string, nextMessage: BaseMessage, interactionData
 // ─── Summon ─────────────────────────────────────────────────────────
 function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name') || pArgs.positional.join(' ');
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+    const allChars = context.allCharacters || [];
+
+    if (action === 'list') {
+        const participantIds = new Set((interactionData.participants || []).map(p => p.id));
+        const summonable = allChars.filter(c => !participantIds.has(c.id)).map(c => ({ character_id: c.id, name: c.name }));
+        return { toolType: 'summon', args, textContent: JSON.stringify({ summonable_characters: summonable }), displayReplacement: `[✨ ${summonable.length} summonable character(s)]` };
+    }
+
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!charQuery) return helpResult('summon', 'character_id="..."', 'add a non-participant character to current session');
 
-    const allChars = context.allCharacters || [];
-    const targetChar = interactionData.participants.find(c => c.id === charQuery || c.name.toLowerCase() === charQuery.toLowerCase()) || allChars.find(c => c.id === charQuery || c.name.toLowerCase() === charQuery.toLowerCase());
+    const q = charQuery.toLowerCase();
+    const targetChar = interactionData.participants.find(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q)) || allChars.find(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q));
     if (!targetChar) return { toolType: 'summon', args, textContent: `[Error: Character "${charQuery}" does not exist]`, displayReplacement: '[Error: Character not found]' };
 
     appendPendingAction(nextMessage, { type: 'summon', payload: { characterId: targetChar.id, characterName: targetChar.name } });
@@ -1905,21 +3130,28 @@ function executeSummon(args: string, nextMessage: BaseMessage, interactionData: 
 // ─── Narrate ────────────────────────────────────────────────────────
 function executeNarrate(args: string): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const text = pArgs.get(0, 'text', 'narration', 'content') || pArgs.positional.join(' ');
+    const text = pArgs.get(0, 'text', 'narration', 'content') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!text) return helpResult('narrate', 'text="..."', 'inject ambient narration without consuming chat stamina');
     return { toolType: 'narrate', args, textContent: text, displayReplacement: `[🎙️ ${text}]` };
 }
 
-// ─── Substrate ────────────────────────────────────────────────────────
+// ─── Substrate ──────────────────────────────────────────────────────
 function executeSubstrate(args: string): ToolResult {
-    const text = "To do."
-    return { toolType: 'narrate', args, textContent: text, displayReplacement: `[🎨 ${text}]` };
+    const text = "To do.";
+    return { toolType: 'substrate', args, textContent: text, displayReplacement: `[🎨 ${text}]` };
 }
 
 // ─── Inspect ────────────────────────────────────────────────────────
 function executeInspect(args: string, _nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
-    const charQuery = pArgs.get(0, 'character_id', 'character', 'target') || pArgs.positional.join(' ');
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+
+    if (action === 'list') {
+        const chars = (interactionData.participants || []).map(c => ({ character_id: c.id, name: c.name }));
+        return { toolType: 'inspect', args, textContent: JSON.stringify({ characters: chars }), displayReplacement: `[🔍 ${chars.length} character(s)]` };
+    }
+
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!charQuery) return helpResult('inspect', 'character_id="..."', "examine character's visible state");
 
     const targetChar = resolveCharacter(charQuery, interactionData, context.allCharacters || []);
@@ -1977,7 +3209,7 @@ function executeAdministrator(
 
     if (action === 'view_entity' || action === 'get_entity') {
         const rawType = pArgs.get(1, 'entity_type', 'type') || '';
-        const query = pArgs.get(2, 'entity_id', 'id', 'name');
+        const query = pArgs.get(2, 'entity_id', 'id');
         const resolvedType = normalizeEntityType(rawType);
         if (!resolvedType || !query) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="view_entity", entity_type="...", entity_id="...") requires entity_type and entity_id]', displayReplacement: '[Error: Usage]' };
@@ -1986,16 +3218,14 @@ function executeAdministrator(
         const entities = getEntitiesByType(context, resolvedType);
         const item = entities.find((x: any) =>
             x.id?.toLowerCase() === query.toLowerCase() ||
-            (x.name && x.name.toLowerCase() === query.toLowerCase()) ||
-            (x.username && x.username.toLowerCase() === query.toLowerCase()) ||
-            x.id?.startsWith(query.toLowerCase())
+            x.id?.toLowerCase().startsWith(query.toLowerCase())
         );
 
         if (!item) {
             return { toolType: 'administrator', args, textContent: `[Error: ${resolvedType} entity "${query}" not found]`, displayReplacement: '[Error: Not found]' };
         }
 
-        const { kvCacheTextContentPaths, kvCacheInteractionTextContentSummaries, ...displayItem } = item;
+        const { kvCacheTextContentPaths: _kp1, kvCacheInteractionTextContentSummaries: _kp2, ...displayItem } = item;
         return { toolType: 'administrator', args, textContent: `[Entity: ${resolvedType}]\n${JSON.stringify(displayItem, null, 2)}`, displayReplacement: `[🔧 View: ${item.name || item.username || item.id}]` };
     }
 
@@ -2003,18 +3233,19 @@ function executeAdministrator(
         const rawType = pArgs.get(1, 'entity_type', 'type') || '';
         const entityId = pArgs.get(2, 'entity_id', 'id');
         const field = pArgs.get(3, 'field', 'key');
-        const value = pArgs.get(4, 'value', 'val') || pArgs.positional.slice(4).join(' ');
+        const rawVal = pArgs.getValue(4, 'value', 'val');
         const resolvedType = normalizeEntityType(rawType);
 
-        if (!resolvedType || !entityId || !field || value === undefined) {
+        if (!resolvedType || !entityId || !field || rawVal === undefined) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="edit_entity", entity_type="...", entity_id="...", field="...", value="...") requires all arguments]', displayReplacement: '[Error: Usage]' };
         }
 
+        const value = typeof rawVal === 'string'
+            ? (pArgs.isJson ? rawVal : (pArgs.positional.slice(4).join(' ') || rawVal))
+            : JSON.stringify(rawVal);
+
         const entities = getEntitiesByType(context, resolvedType);
-        const item = entities.find((x: any) =>
-            x.id?.toLowerCase() === entityId.toLowerCase() ||
-            (x.name && x.name.toLowerCase() === entityId.toLowerCase())
-        );
+        const item = entities.find((x: any) => x.id?.toLowerCase() === entityId.toLowerCase());
 
         const targetId = item ? item.id : entityId;
         const targetName = item?.name || item?.username || entityId;
@@ -2025,14 +3256,14 @@ function executeAdministrator(
     }
 
     if (action === 'add_to_entity_folder') {
-        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name');
+        const entityFolderQuery = pArgs.get(1, 'entity_folder_id');
         const itemId = pArgs.get(2, 'item_id', 'id', 'item');
         if (!entityFolderQuery || !itemId) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="add_to_entity_folder", entity_folder_id="...", item_id="...") requires entity folder and item ID]', displayReplacement: '[Error: Usage]' };
         }
 
         const folders = context.allEntityFolders || [];
-        const f = folders.find(x => x.id.toLowerCase() === entityFolderQuery.toLowerCase() || x.name.toLowerCase() === entityFolderQuery.toLowerCase() || x.id.startsWith(entityFolderQuery.toLowerCase()));
+        const f = folders.find(x => x.id.toLowerCase() === entityFolderQuery.toLowerCase() || x.id.toLowerCase().startsWith(entityFolderQuery.toLowerCase()));
         const folderId = f ? f.id : entityFolderQuery;
         const folderName = f ? f.name : entityFolderQuery;
 
@@ -2041,14 +3272,14 @@ function executeAdministrator(
     }
 
     if (action === 'remove_from_entity_folder') {
-        const entityFolderQuery = pArgs.get(1, 'entity_folder_id', 'name');
+        const entityFolderQuery = pArgs.get(1, 'entity_folder_id');
         const itemId = pArgs.get(2, 'item_id', 'id', 'item');
         if (!entityFolderQuery || !itemId) {
             return { toolType: 'administrator', args, textContent: '[Error: administrator(action="remove_from_entity_folder", entity_folder_id="...", item_id="...") requires entity folder and item ID]', displayReplacement: '[Error: Usage]' };
         }
 
         const folders = context.allEntityFolders || [];
-        const f = folders.find(x => x.id.toLowerCase() === entityFolderQuery.toLowerCase() || x.name.toLowerCase() === entityFolderQuery.toLowerCase() || x.id.startsWith(entityFolderQuery.toLowerCase()));
+        const f = folders.find(x => x.id.toLowerCase() === entityFolderQuery.toLowerCase() || x.id.toLowerCase().startsWith(entityFolderQuery.toLowerCase()));
         const folderId = f ? f.id : entityFolderQuery;
         const folderName = f ? f.name : entityFolderQuery;
 
@@ -2070,7 +3301,7 @@ function executeAdministrator(
             return { toolType: 'administrator', args, textContent: `Chat Sessions (${allShells.length}):\n${lines.join('\n')}`, displayReplacement: `[🔧 ${allShells.length} chat(s)]` };
         }
         case 'switch_model': {
-            const modelName = pArgs.get(1, 'model_name', 'name', 'languageModel') || pArgs.positional.slice(1).join(' ');
+            const modelName = pArgs.get(1, 'model_id', 'model_name', 'name', 'languageModel') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : undefined);
             if (!modelName) return { toolType: 'administrator', args, textContent: '[Error: administrator(action="switch_model", model_name="...") requires model name]', displayReplacement: '[Error: Usage]' };
             appendPendingAction(nextMessage, { type: 'administrator_switch_model', payload: { modelName } });
             return { toolType: 'administrator', args, textContent: `Requested switch to model "${modelName}".`, displayReplacement: `[🔧 Switch: ${modelName}]` };
@@ -2112,7 +3343,7 @@ function executeAdministrator(
 function executeCreator(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
     const rawType = pArgs.get(0, 'entity_type', 'type') || '';
-    const entityName = pArgs.get(1, 'name', 'entity_name') || pArgs.positional.slice(1).join(' ');
+    const entityName = pArgs.get(1, 'name', 'entity_name') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : undefined);
     const resolvedType = normalizeEntityType(rawType);
 
     if (!resolvedType || !entityName) {
@@ -2127,9 +3358,17 @@ function executeCreator(args: string, nextMessage: BaseMessage, _interactionData
 // ─── Destroyer ──────────────────────────────────────────────────────
 function executeDestroyer(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
     const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(-1, 'action')?.toLowerCase() || 'destroy';
     const rawType = pArgs.get(0, 'entity_type', 'type') || '';
-    const entityId = pArgs.get(1, 'entity_id', 'id', 'name') || pArgs.positional.slice(1).join(' ');
     const resolvedType = normalizeEntityType(rawType);
+
+    if (action === 'list') {
+        if (!resolvedType) return helpResult('destroyer', 'entity_type="...", entity_id="..."', `valid types: ${VALID_ENTITY_TYPES.join(', ')}`);
+        const list = getEntitiesByType(context, resolvedType).map((item: any) => ({ entity_id: item.id, name: item.name || item.username || item.id }));
+        return { toolType: 'destroyer', args, textContent: JSON.stringify({ entity_type: resolvedType, entities: list }), displayReplacement: `[💀 ${list.length} ${resolvedType}(s)]` };
+    }
+
+    const entityId = pArgs.get(1, 'entity_id', 'id') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : undefined);
 
     if (!resolvedType || !entityId) {
         return helpResult('destroyer', 'entity_type="...", entity_id="..."', `valid types: ${VALID_ENTITY_TYPES.join(', ')}`);
@@ -2148,7 +3387,7 @@ function executeDestroyer(args: string, nextMessage: BaseMessage, interactionDat
 function executeScheduleResponse(args: string, nextMessage: BaseMessage, interactionData: InteractionData): ToolResult {
     const pArgs = parsePythonArgs(args);
     const durationRaw = pArgs.get(0, 'duration', 'time', 'delay');
-    const thought = pArgs.get(1, 'thought', 'reason', 'prompt') || pArgs.positional.slice(1).join(' ') || 'Checking in later';
+    const thought = pArgs.get(1, 'thought', 'reason', 'prompt') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : undefined) || 'Checking in later';
 
     const durationMs = durationRaw ? parseDurationToMs(durationRaw) : null;
     if (!durationMs) {
@@ -2179,10 +3418,10 @@ interface GpuStatusResponse {
     temperatureC: number | null; powerWatts: number | null; name: string; timestamp: number;
 }
 
-// ── Text to Speech ───────────────────────────────────────────────
+// ─── Text to Speech ─────────────────────────────────────────────────
 async function executeTextToSpeech(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const text = pArgs.get(0, 'text', 'message') || pArgs.positional.join(' ');
+    const text = pArgs.get(0, 'text', 'message') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     const voice = pArgs.get(1, 'voice');
 
     if (!text || text.toLowerCase() === 'stop') {
@@ -2224,18 +3463,18 @@ async function executeGpu(args: string): Promise<ToolResult> {
 async function executeSystemInfo(args: string): Promise<ToolResult> {
     const res = await getSystemInfo();
     if (!res.success || !res.data) {
-        return { toolType: 'system-info', args, textContent: `[Error: ${res.error || 'Failed to fetch system info'}]`, displayReplacement: '[❌ system-info failed]' };
+        return { toolType: 'system_info', args, textContent: `[Error: ${res.error || 'Failed to fetch system info'}]`, displayReplacement: '[❌ system-info failed]' };
     }
     const d = res.data;
     const content = `CPU: ${d.cpuManufacturer} ${d.cpuBrand} (${d.cores} cores), Load: ${d.loadPercent}%, RAM: ${d.memoryUsedMB}MB / ${d.memoryTotalMB}MB`;
-    return { toolType: 'system-info', args, textContent: content, displayReplacement: `[🖥️ CPU: ${d.loadPercent}% | RAM: ${Math.round(d.memoryUsedMB / 1024)}/${Math.round(d.memoryTotalMB / 1024)}GB]` };
+    return { toolType: 'system_info', args, textContent: content, displayReplacement: `[🖥️ CPU: ${d.loadPercent}% | RAM: ${Math.round(d.memoryUsedMB / 1024)}/${Math.round(d.memoryTotalMB / 1024)}GB]` };
 }
 
 // ─── Native OS Desktop Notifications ────────────────────────────────
 async function executeNotify(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const title = pArgs.get(0, 'title', 'heading') || 'AI Assistant';
-    const message = pArgs.get(1, 'message', 'text', 'content') || pArgs.positional.slice(1).join(' ');
+    const message = pArgs.get(1, 'message', 'text', 'content') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : undefined);
 
     if (!message) {
         return helpResult('notify', 'title="...", message="..."', 'send a native OS desktop notification');
@@ -2250,7 +3489,7 @@ async function executeNotify(args: string, _nextMessage: BaseMessage, _interacti
     return { toolType: 'notify', args, textContent: `Sent OS notification "${title}": ${message}`, displayReplacement: `[🔔 Notification sent]` };
 }
 
-// ─── Volume Control Tool ────────────────────────────────────
+// ─── Volume Control Tool ────────────────────────────────────────────
 async function executeVolumeControl(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = (pArgs.get(0, 'action', 'command')?.toLowerCase() || 'get') as 'get' | 'set' | 'mute' | 'unmute';
@@ -2300,7 +3539,7 @@ function executePower(action: 'sleep' | 'shutdown' | 'restart') {
 async function executeClipboard(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase() || 'read';
-    const text = pArgs.get(1, 'text', 'content') || pArgs.positional.slice(1).join(' ');
+    const text = pArgs.get(1, 'text', 'content') || (!pArgs.isJson ? pArgs.positional.slice(1).join(' ') : undefined);
 
     if (action !== 'read' && action !== 'write') {
         return helpResult('clipboard', 'action="read|write", text="..."', 'read or write to the host OS clipboard');
@@ -2319,7 +3558,7 @@ async function executeClipboard(args: string, _nextMessage: BaseMessage, _intera
     }
 }
 
-// ─── Screenshot Capture ─────────────────────────────────────
+// ─── Screenshot Capture ─────────────────────────────────────────────
 async function executeScreenshot(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const res = await captureScreenshot(nextMessage.character?.id);
     if (!res.success || !res.base64) {
@@ -2337,7 +3576,7 @@ async function executeScreenshot(args: string, nextMessage: BaseMessage, _intera
     return { toolType: 'screenshot', args, textContent: `Screenshot captured and attached to visual input.`, displayReplacement: `[📸 Screenshot captured]` };
 }
 
-// ─── front_camera Tool ────────────────────────────────────────────────────
+// ─── front_camera Tool ──────────────────────────────────────────────
 async function executeFrontCamera(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     if (!context.captureFrontCameraImage) {
         return { toolType: 'front_camera', args, textContent: '[Error: Front camera capture is not available in this context.]', displayReplacement: '[❌ front_camera unavailable]' };
@@ -2371,7 +3610,7 @@ async function executeNetworkScanner(args: string): Promise<ToolResult> {
 // ─── Safe Trash / Recycle Bin Tool ──────────────────────────────────
 async function executeTrash(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const targetPath = pArgs.get(0, 'path', 'file_path', 'target') || pArgs.positional.join(' ');
+    const targetPath = pArgs.get(0, 'path', 'file_path', 'target') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!targetPath) {
         return helpResult('trash', 'path="..."', 'safely move a file or folder to OS recycle bin / trash');
     }
@@ -2385,7 +3624,7 @@ async function executeTrash(args: string, _nextMessage: BaseMessage, _interactio
     return { toolType: 'trash', args, textContent: `Moved "${res.path || targetPath}" to the operating system recycle bin.`, displayReplacement: `[🗑️ Trashed: "${targetPath}"]` };
 }
 
-// ── File Watcher ─────────────────────────────────────────────────
+// ─── File Watcher ───────────────────────────────────────────────────
 async function executeFileWatcher(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase() || 'check';
@@ -2409,7 +3648,7 @@ async function executeFileWatcher(args: string): Promise<ToolResult> {
     return helpResult('file_watcher', 'action="start|check", path="..."', 'monitor workspace folders for changes');
 }
 
-// ── Process Monitor ──────────────────────────────────────────────
+// ─── Process Monitor ────────────────────────────────────────────────
 async function executeProcessMonitor(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const query = pArgs.get(0, 'query', 'name') || '';
@@ -2424,7 +3663,7 @@ async function executeProcessMonitor(args: string): Promise<ToolResult> {
     return { toolType: 'process_monitor', args, textContent: `Running (${res.runningCount}/${res.totalCount} active):\n${summary}`, displayReplacement: `[⚙️ ${res.processes.length} process(es)]` };
 }
 
-// ── Active Window Monitor ────────────────────────────────────────
+// ─── Active Window Monitor ──────────────────────────────────────────
 async function executeWindowMonitor(args: string): Promise<ToolResult> {
     const res = await getActiveWindowInfo();
     if (!res.success || !res.window) {
@@ -2437,7 +3676,7 @@ async function executeWindowMonitor(args: string): Promise<ToolResult> {
 // ─── Open Browser ───────────────────────────────────────────────────
 async function executeBrowser(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const input = pArgs.get(0, 'url_or_search_query', 'query_or_url', 'query', 'url', 'search') || pArgs.positional.join(' ');
+    const input = pArgs.get(0, 'url_or_search_query', 'query_or_url', 'query', 'url', 'search') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!input) return helpResult('browser', 'url_or_search_query="..."', 'open webpage or web search in browser');
 
     const isDirectUrl = /^https?:\/\//i.test(input) || /^[\w-]+\.[\w-]+(\S*)/i.test(input);
@@ -2454,7 +3693,7 @@ async function executeBrowser(args: string, _nextMessage: BaseMessage, _interact
 // ─── Read File ──────────────────────────────────────────────────────
 async function executeReadFile(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const target = pArgs.get(0, 'path_or_url', 'path', 'file_path', 'url') || pArgs.positional.join(' ');
+    const target = pArgs.get(0, 'path_or_url', 'path', 'file_path', 'url') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!target) return helpResult('read_file', 'path_or_url="..."', 'open local file, video, or link in default app');
 
     const res = await readFile(target);
@@ -2470,7 +3709,7 @@ async function executeWriteFile(args: string, _nextMessage: BaseMessage, _intera
     const pArgs = parsePythonArgs(args);
     const filePath = pArgs.get(0, 'file_path', 'path', 'filename');
     let content = pArgs.get(1, 'content', 'text', 'data');
-    if (content === undefined && pArgs.positional.length > 1) {
+    if (content === undefined && !pArgs.isJson && pArgs.positional.length > 1) {
         content = pArgs.positional.slice(1).join(' ');
     }
     if (!filePath || content === undefined) {
@@ -2485,10 +3724,10 @@ async function executeWriteFile(args: string, _nextMessage: BaseMessage, _intera
     return { toolType: 'write_file', args, textContent: `Successfully wrote file to "${res.path || filePath}".`, displayReplacement: `[📁 Saved: "${filePath}"]` };
 }
 
-// ─── Shell ─────────────────────────────────────
+// ─── Shell ──────────────────────────────────────────────────────────
 async function executeShell(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
-    const command = pArgs.get(0, 'command', 'cmd') || pArgs.positional.join(' ');
+    const command = pArgs.get(0, 'command', 'cmd') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
     if (!command) {
         return helpResult('shell', 'command="..."', 'execute a terminal/shell command on the host OS');
     }
@@ -2529,7 +3768,7 @@ async function executeVirtualHearing(args: string, _nextMessage: BaseMessage, _i
     return { toolType: 'virtual_hearing', args, textContent: res.message || (res.active ? 'Hearing is ACTIVE.' : 'Hearing is IDLE.'), displayReplacement: res.active ? '[🎧 Hearing: Active]' : '[🎧 Hearing: Idle]' };
 }
 
-// ─── Virtual Vision Tool ────────────────────────────────────
+// ─── Virtual Vision Tool ────────────────────────────────────────────
 async function executeVirtualVision(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const target = (pArgs.get(0, 'target', 'mode')?.toLowerCase() || 'active') as 'active' | 'fullscreen' | 'region';
@@ -2564,7 +3803,7 @@ async function executeVirtualInput(args: string, _nextMessage: BaseMessage, _int
     const key = pArgs.get(1, 'key', 'button_name');
     const button = (pArgs.get(1, 'button')?.toLowerCase() || 'left') as 'left' | 'right' | 'middle';
     const modifier = pArgs.get(2, 'modifier', 'mod');
-    const double = pArgs.get(2, 'double')?.toLowerCase() === 'true';
+    const double = pArgs.getBoolean(2, 'double');
 
     const res = await sendVirtualInput({ action: action as any, x, y, text, key, button, modifier, double });
     if (!res.success) {
@@ -2601,7 +3840,17 @@ async function executeVirtualController(args: string, _nextMessage: BaseMessage,
     let value: number | undefined;
     const durationMs = pArgs.getNumber(-1, 'durationms', 'duration', 'time', 'ms');
 
-    if (rawFirst && BUTTON_SET.has(rawFirst) && pArgs.positional.length === 1 && Object.keys(pArgs.kwargs).length === 0) {
+    if (pArgs.isJson) {
+        action = rawFirst || 'tap';
+        button = pArgs.get(-1, 'button', 'btn', 'key')?.toUpperCase();
+        const stickRaw = pArgs.get(-1, 'stick', 'side')?.toLowerCase();
+        if (stickRaw === 'left' || stickRaw === 'right') stick = stickRaw;
+        const trigRaw = pArgs.get(-1, 'trigger', 'side')?.toLowerCase();
+        if (trigRaw === 'left' || trigRaw === 'right') trigger = trigRaw;
+        x = pArgs.getNumber(-1, 'x');
+        y = pArgs.getNumber(-1, 'y');
+        value = pArgs.getNumber(-1, 'value', 'val');
+    } else if (rawFirst && BUTTON_SET.has(rawFirst) && pArgs.positional.length === 1 && Object.keys(pArgs.kwargs).length === 0) {
         action = 'tap';
         button = rawFirst.toUpperCase();
     } else if (rawFirst === 'stick') {
@@ -2650,12 +3899,12 @@ async function executeVirtualController(args: string, _nextMessage: BaseMessage,
     return { toolType: 'virtual_controller', args, textContent: res.message || `Controller action ${label} executed successfully.`, displayReplacement: `[🎮 ${label}]` };
 }
 
-// ── Hardware Control ─────────────────────────────────────────────
+// ─── Hardware Control ───────────────────────────────────────────────
 async function executeHardwareControl(args: string): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const action = pArgs.get(0, 'action', 'command')?.toLowerCase() || 'list';
     const port = pArgs.get(1, 'port', 'path');
-    const command = pArgs.get(2, 'command', 'cmd') || pArgs.positional.slice(2).join(' ');
+    const command = pArgs.get(2, 'command', 'cmd') || (!pArgs.isJson ? pArgs.positional.slice(2).join(' ') : undefined);
 
     if (action === 'list') {
         const res = await getHardwarePorts();
@@ -2701,7 +3950,6 @@ export function processPendingToolActions(
             sequenceTime++;
 
             switch (action.type) {
-                // ─── 1. MOVE ──────────────────────────────────────────────
                 case 'move': {
                     const destLocId = action.payload.destinationLocationId;
                     const destLocName = action.payload.destinationLocationName || destLocId;
@@ -2713,7 +3961,7 @@ export function processPendingToolActions(
                         if (updatedActionStamina !== undefined) {
                             const currentLocId = getCurrentLocation(updatedData, targetMsg.character)?.id;
                             if (currentLocId && currentLocId !== destLocId && updatedData.locations) {
-                                const movementCost = computeMovementCost(currentLocId, destLocId, updatedData.locations)
+                                const movementCost = computeMovementCost(currentLocId, destLocId, updatedData.locations);
                                 updatedActionStamina = Math.max(0, updatedActionStamina - movementCost);
                             }
                         }
@@ -2739,7 +3987,6 @@ export function processPendingToolActions(
                     }
                     break;
                 }
-                // ─── 2. TELEPORT ──────────────────────────────────────────
                 case 'teleport': {
                     const destLocId = action.payload.destinationLocationId;
                     const destLocName = action.payload.destinationLocationName || destLocId;
@@ -2768,7 +4015,6 @@ export function processPendingToolActions(
                     }
                     break;
                 }
-                // ─── 3. WHISPER ───────────────────────────────────────────
                 case 'whisper': {
                     const targetIds = action.payload.targetCharacterIds.split(',');
                     const text = action.payload.text;
@@ -2790,7 +4036,6 @@ export function processPendingToolActions(
                     changed = true;
                     break;
                 }
-                // ─── 4. INVITE ────────────────────────────────────────────
                 case 'invite': {
                     const charId = action.payload.characterId;
                     let invitedChar = (updatedData.participants || []).find(p => p.id === charId);
@@ -2819,7 +4064,6 @@ export function processPendingToolActions(
                     }
                     break;
                 }
-                // ─── 5. KICK ──────────────────────────────────────────────
                 case 'kick': {
                     const sessionParticipants = updatedData.participants || [];
                     const kickedChar = sessionParticipants.find(p => p.id === action.payload.characterId);
@@ -2853,7 +4097,6 @@ export function processPendingToolActions(
                     }
                     break;
                 }
-                // ─── 6. SUMMON ────────────────────────────────────────────
                 case 'summon': {
                     const charId = action.payload.characterId;
                     const sessionParticipants = updatedData.participants || [];
@@ -2865,7 +4108,6 @@ export function processPendingToolActions(
                     options?.onToast?.(`✨ ${realCharacter.name} joined.`, 'info');
                     break;
                 }
-                // ─── LOCK / UNLOCK LOCATION ─────────────────────────
                 case 'lock_location': {
                     const charId = action.payload.characterId;
                     const locId = action.payload.locationId;
@@ -2910,7 +4152,6 @@ export function processPendingToolActions(
                     changed = true;
                     break;
                 }
-                // ─── 7. ADMINISTRATOR COMMANDS ────────────────────────────
                 case 'administrator_switch_model': options?.onToast?.(`🔧 Switch to "${action.payload.modelName}" requested.`, 'info'); break;
                 case 'administrator_toggle_account': options?.onToast?.(`🔑 Toggle account "${action.payload.accountId}" requested.`, 'info'); break;
                 case 'administrator_join_session': options?.onToast?.(`👥 Join session "${action.payload.sessionId}" requested.`, 'info'); break;

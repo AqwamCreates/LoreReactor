@@ -17,16 +17,44 @@ export interface ParsedChunkResult {
     toolInvocations: ToolInvocation[];
 }
 
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /**
  * Extracts toolType and args from the inner text of a tool token:
- *   - Function style: "dice(sides: 6, count: 5)" -> toolType: "dice", args: "sides: 6, count: 5"
- *   - CLI style:      "inventory add \"Iron Sword\" 3" -> toolType: "inventory", args: "add \"Iron Sword\" 3"
- *   - Simple:         "coin" -> toolType: "coin", args: ""
+ *   - JSON no args:    {"name": "move"} -> toolType: "move", args: ""
+ *   - JSON with args:  {"name": "move", "arguments": {...}} -> toolType: "move", args: "{...}"
+ *   - Function style:  "dice(sides: 6, count: 5)" -> toolType: "dice", args: "sides: 6, count: 5"
+ *   - CLI style:       "inventory add \"Iron Sword\" 3" -> toolType: "inventory", args: "add \"Iron Sword\" 3"
+ *   - Simple:          "coin" -> toolType: "coin", args: ""
  */
 function parseInnerToolCall(inner: string): { toolType: string; args: string } {
     const trimmed = inner;
 
-    // 1. Function format: name(...)
+    // 1. JSON format: {"name": "...", "arguments"?: {...}}
+    if (/^\s*\{/.test(trimmed)) {
+        try {
+            const parsed: unknown = JSON.parse(trimmed);
+            if (isPlainObject(parsed) && typeof parsed.name === 'string' && parsed.name) {
+                const toolType = parsed.name.toLowerCase();
+                const hasArgs = Object.prototype.hasOwnProperty.call(parsed, 'arguments') && parsed.arguments !== undefined;
+                return {
+                    toolType,
+                    args: hasArgs ? JSON.stringify(parsed.arguments) : '',
+                };
+            }
+        } catch {
+            const nameMatch = trimmed.match(/"name"\s*:\s*"([^"]+)"/);
+            const extractedName = nameMatch ? nameMatch[1].toLowerCase() : '';
+            return {
+                toolType: extractedName,
+                args: '',
+            };
+        }
+    }
+
+    // 2. Function format: name(...)
     const fnMatch = trimmed.match(/^([a-zA-Z_]\w*)\s*\(([\s\S]*)\)$/);
     if (fnMatch) {
         return {
@@ -35,7 +63,7 @@ function parseInnerToolCall(inner: string): { toolType: string; args: string } {
         };
     }
 
-    // 2. Space-separated format: name arg1 arg2...
+    // 3. Space-separated format: name arg1 arg2...
     const spaceIdx = trimmed.search(/\s/);
     if (spaceIdx === -1) {
         return {

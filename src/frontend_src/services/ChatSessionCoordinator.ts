@@ -689,6 +689,11 @@ class ChatSessionCoordinator {
                 return;
             }
 
+            // Ensure user slash commands with no args execute instead of inspecting schema
+            if (!slashInvocation.args) {
+                slashInvocation.args = '{}';
+            }
+
             if (!this.acquireLock()) { this.deps.addToast('Already processing...', 'info'); return; }
             const lockEpoch = this.currentLockEpoch;
             try {
@@ -712,7 +717,7 @@ class ChatSessionCoordinator {
                 
                 updatedData = processPendingToolActions(updatedData, this.deps.allCharacters, { onToast: this.deps.addToast });
                 
-                broadcastToolStateChanges(preToolData, updatedData, this.deps.onStateBroadcast);
+                broadcastToolStateChanges(preToolData, updatedData, this.deps?.onStateBroadcast);
                 useChatStore.setState({ interactionData: updatedData });
                 this.deps.onMessageBroadcast?.(slashMessage);
 

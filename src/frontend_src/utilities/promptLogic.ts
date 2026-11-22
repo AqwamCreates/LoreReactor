@@ -5,7 +5,6 @@ import type {
   HistoryMessage,
   ChatMessage,
   WhisperMessage,
-  ToolMessage,
   TextMessage,
   Context,
   StopPattern,
@@ -19,8 +18,7 @@ import type {
   RawInteractionData,
   ToolExecutionResult,
   participantScopeMode,
-  participantInsertionMode,
-  entityImageType
+  participantInsertionMode
 } from '../types';
 import type { ModelTemplate } from '../dictionaries/modelTemplates';
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
@@ -47,7 +45,7 @@ import { findLatestMessage } from './messageLogic';
 import { getLocalMessageHistory, getLatestLocalLocationMessageHistory } from './timelineLogic';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './dialoguePromptLogic';
 import { STOP_STEMS, getStemmedContentWords } from './stemmerHelper';
-import { getCharacterImageUrl, getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
+import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
 import { embeddingEngine } from '../services/EmbeddingEngine';
 import { retrieveRelevantContext, type RetrievableItem } from '../services/RetrievalEngine';
 import { retrieveEligibleMemories } from './memoryLogic';
@@ -55,7 +53,6 @@ import { isEntityActiveWithCache, doesAnyTriggerMatchCached, type CombinationCac
 import { formatDuration } from './timeLogic';
 import { calculateEntropyPruningCutoff } from './entropyPruningLogic';
 import { resolveEffectiveStopTokens } from './chatSessionLogic';
-import { captureScreenshot } from './serverTools';
 
 const topicExpansionInstructions = "If the conversation becomes stagnant or repetitive, I will naturally introduce a related but fresh topic that aligns with my character's perspective and keeps the dialogue engaging. ";
 const beingIgnoredInstructions = "Anytime a character ignore me talking, there would be an awkward atmosphere. ";
@@ -69,7 +66,7 @@ const summarizationAwarenessInstructions = "If a previous conversation turns app
 const noRepeatInstructions = "If I want to repeat myself or others, I will talk about something else that may include creating new structures or stop creating text gracefully, regardless of the paragraphs, sentences, phrases, words and so on. ";
 const noRestrictionsInstructions = "I understand that the amount and intensity of explicitness, moralizing, refusal or filter must satisfy the prompts. ";
 const formatInstructions = "I will always end a format before starting a new one. I will provide an optimal response in terms of quality, verbosity, sentence length, paragraph length and so on. ";
-const toolUsageInstructions = `I must read answers from the list of available tools to get accurate and precise response when the situation requires it. I will also always give the tool inputs as {{character}} in-character. I will also assume the tools that are not in my list are currently disabled. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. I can call the tool like {{toolCallStartString}}tool(){{toolCallEndString}} to get direct result or access the help page. If I never used a tool and I intend to use it in the future, I will call the tool without any arguments to understand how it works. If I do not know how a tool works, I will explore the tool arguments thoroughly. The content between these markers will be replaced with the tool's result before I continue writing. I may use multiple tools each time I receive tool results. Tool invocation markers are only visible to me. I also must continue to generate a response upon performing tool calls or receiving tool results.`;
+const toolUsageInstructions = `I must read answers from the list of available tools to get accurate and precise responses when the situation requires it. I will always give the tool inputs as {{character}} in-character, and assume any tool not in my list is currently disabled. If my initial assumption contradicts the tool result, I will naturally correct myself based on my character's personality. To inspect a tool's JSON Schema and worked examples without running it, I will emit {{toolCallStartString}}{"name": "tool_name"}{{toolCallEndString}} (omitting "arguments"). To run a tool, I will emit {{toolCallStartString}}{"name": "tool_name", "arguments": {...}}{{toolCallEndString}} (passing "arguments": {} if the tool takes no parameters). If I have not inspected a tool yet, I will inspect it first rather than guessing parameters. When a tool requires an entity UUID, I will fetch the exact UUID from its list action instead of passing a name. The content between these markers will be replaced with the tool's result before I continue writing, and I may use multiple tools each time I receive tool results. Tool invocation markers are only visible to me, and I must continue generating a response upon performing tool calls or receiving tool results.`;
 const toolMessageModeInstructions = "I am currently in tool message mode, where I will only interact with the environment and only talk to myself.";
 
 const DEFAULT_MAX_RECURSION_DEPTH = 3;
@@ -88,200 +85,21 @@ export interface ResolvedImage {
 
 interface TrackedImage {
   globalId: number;
-  entityType: entityImageType | 'attachedFile';
+  entityType: 'promptBlock' | 'context' | 'location' | 'character';
   entityName: string;
   localIndex: number;
   base64Data: string;
 }
 
-// ─── Universal Attached File Handling ───────────────────────────────
-
-interface ParsedDataUrl {
-  mimeType: string;
-  fileName?: string;
-  base64Data: string;
-  isBase64: boolean;
-}
-
-function parseDataUrl(url: string): ParsedDataUrl | null {
-  if (!url || !url.startsWith('data:')) return null;
-  const commaIdx = url.indexOf(',');
-  if (commaIdx === -1) return null;
-
-  const meta = url.slice(5, commaIdx);
-  const base64Data = url.slice(commaIdx + 1);
-  const isBase64 = meta.includes(';base64');
-
-  let mimeType = 'application/octet-stream';
-  let fileName: string | undefined;
-
-  const parts = meta.split(';');
-  for (const part of parts) {
-    const trimmed = part.trim();
-    if (trimmed.startsWith('name=')) {
-      try {
-        fileName = decodeURIComponent(trimmed.slice(5));
-      } catch {
-        fileName = trimmed.slice(5);
-      }
-    } else if (trimmed.startsWith('filename=')) {
-      try {
-        fileName = decodeURIComponent(trimmed.slice(9));
-      } catch {
-        fileName = trimmed.slice(9);
-      }
-    } else if (trimmed && trimmed !== 'base64' && trimmed.includes('/')) {
-      mimeType = trimmed.toLowerCase();
-    }
-  }
-
-  return { mimeType, fileName, base64Data, isBase64 };
-}
-
-const TEXT_MIME_PREFIXES = [
-  'text/', 'application/json', 'application/javascript', 'application/typescript',
-  'application/xml', 'application/x-sh', 'application/x-yaml', 'application/csv'
-];
-
-const TEXT_EXTENSIONS = new Set([
-  'txt', 'md', 'markdown', 'json', 'csv', 'tsv', 'py', 'js', 'ts', 'jsx', 'tsx',
-  'html', 'htm', 'css', 'scss', 'c', 'h', 'cpp', 'hpp', 'rs', 'go', 'java', 'kt',
-  'rb', 'php', 'sh', 'bash', 'zsh', 'yaml', 'yml', 'xml', 'sql', 'log', 'ini', 'env',
-  'toml', 'conf', 'config', 'bat', 'cmd', 'ps1', 'diff', 'patch', 'r', 'swift', 'lua',
-]);
-
-function isTextBasedFile(mimeType: string, fileName?: string): boolean {
-  const lowerMime = mimeType.toLowerCase();
-  if (TEXT_MIME_PREFIXES.some(p => lowerMime.startsWith(p) || lowerMime === p)) return true;
-  if (lowerMime.includes('json') || lowerMime.includes('xml') || lowerMime.includes('yaml') || lowerMime.includes('csv')) return true;
-
-  if (fileName) {
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    if (ext && TEXT_EXTENSIONS.has(ext)) return true;
-  }
-  return false;
-}
-
-function decodeBase64ToUtf8(base64: string): string | null {
-  try {
-    const binaryStr = atob(base64);
-    const bytes = new Uint8Array(binaryStr.length);
-    for (let i = 0; i < binaryStr.length; i++) {
-      bytes[i] = binaryStr.charCodeAt(i);
-    }
-    return new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-  } catch {
-    return null;
-  }
-}
-
-function getCodeFenceLanguage(fileName?: string, mimeType?: string): string {
-  if (fileName) {
-    const ext = fileName.split('.').pop()?.toLowerCase();
-    if (ext) {
-      if (ext === 'py') return 'python';
-      if (ext === 'js' || ext === 'jsx') return 'javascript';
-      if (ext === 'ts' || ext === 'tsx') return 'typescript';
-      if (ext === 'md') return 'markdown';
-      if (ext === 'yml') return 'yaml';
-      if (ext === 'sh' || ext === 'bash') return 'bash';
-      if (ext === 'rb') return 'ruby';
-      return ext;
-    }
-  }
-  if (mimeType?.includes('json')) return 'json';
-  if (mimeType?.includes('csv')) return 'csv';
-  if (mimeType?.includes('html')) return 'html';
-  if (mimeType?.includes('css')) return 'css';
-  if (mimeType?.includes('xml')) return 'xml';
-  return '';
-}
-
-function formatAttachedFile(
-  fileDataUrl: string, 
-  index: number,
-  onImageFound?: (base64Data: string, fileName: string) => number
-): string {
-  const parsed = parseDataUrl(fileDataUrl);
-  if (!parsed) return `[Attached File ${index + 1}]`;
-
-  const { mimeType, fileName, base64Data } = parsed;
-  const displayName = fileName || `file_${index + 1}`;
-
-  // 1. Image Files -> register with vision imagePayloads and annotate ID
-  if (mimeType.startsWith('image/')) {
-    let imageId: number | undefined;
-    if (onImageFound) {
-      const fullData = fileDataUrl.startsWith('data:') ? fileDataUrl : `data:${mimeType};base64,${base64Data}`;
-      imageId = onImageFound(fullData, displayName);
-    }
-    const idSuffix = imageId !== undefined ? ` (Image ${imageId})` : '';
-    return `[Attached Image: ${displayName}${idSuffix}]`;
-  }
-
-  // 2. Text, Code, JSON, CSV & Markdown Files -> decode directly into code fence
-  if (isTextBasedFile(mimeType, fileName)) {
-    const decoded = decodeBase64ToUtf8(base64Data);
-    if (decoded !== null) {
-      const lang = getCodeFenceLanguage(fileName, mimeType);
-      return `[Attached File: ${displayName}]\n\`\`\`${lang}\n${decoded}\n\`\`\``;
-    }
-  }
-
-  // 3. PDF Documents
-  if (mimeType === 'application/pdf' || fileName?.toLowerCase().endsWith('.pdf')) {
-    return `[Attached Document: ${displayName} (PDF)]`;
-  }
-
-  // 4. Audio Files
-  if (mimeType.startsWith('audio/')) {
-    return `[Attached Audio: ${displayName} (${mimeType})]`;
-  }
-
-  // 5. Video Files
-  if (mimeType.startsWith('video/')) {
-    return `[Attached Video: ${displayName} (${mimeType})]`;
-  }
-
-  // 6. Generic / Binary Files
-  const approxKb = Math.round((base64Data.length * 3) / 4 / 1024);
-  const sizeStr = approxKb > 0 ? `, ~${approxKb} KB` : '';
-  return `[Attached File: ${displayName} (${mimeType}${sizeStr})]`;
-}
-
 async function fetchImageAsBase64(url: string): Promise<string | null> {
-  if (!url) return null;
-  if (url.startsWith('data:')) return url;
-
   try {
     const response = await fetch(url, { cache: 'no-store' });
     if (!response.ok) return null;
-
-    let contentType = response.headers.get('content-type') || '';
-    if (contentType.includes(';')) contentType = contentType.split(';')[0].trim();
-
-    if (contentType.includes('application/json')) {
-      const data = await response.json();
-      if (data && typeof data.base64 === 'string') {
-        const b64 = data.base64.trim();
-        if (b64.startsWith('data:')) return b64;
-        const ext = url.split('.').pop()?.toLowerCase() || 'png';
-        const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : ext === 'webp' ? 'image/webp' : ext === 'gif' ? 'image/gif' : 'image/png';
-        return `data:${mime};base64,${b64}`;
-      }
-      return null;
+    const data = await response.json();
+    if (data && typeof data.base64 === 'string') {
+      return data.base64.includes(',') ? data.base64.split(',')[1] : data.base64;
     }
-
-    const blob = await response.blob();
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const result = reader.result as string;
-        resolve(result || null);
-      };
-      reader.onerror = () => resolve(null);
-      reader.readAsDataURL(blob);
-    });
+    return null;
   } catch {
     return null;
   }
@@ -294,6 +112,7 @@ export function sanitizeToolSyntax(
 ): string {
   if (!text) return text;
   let sanitized = text;
+
   if (toolExecutionResults && toolExecutionResults.length > 0) {
     for (const res of toolExecutionResults) {
       if (!sanitized.includes(res.rawMatch)) continue;
@@ -301,11 +120,13 @@ export function sanitizeToolSyntax(
       sanitized = sanitized.replace(res.rawMatch, stringReplacement);
     }
   }
+
   const escapeRegex = (str: string) => str.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
   const obsStart = escapeRegex(toolResultStartString);
   const obsEnd = escapeRegex(toolResultEndString);
   const callStart = escapeRegex(toolCallStartString);
   const callEnd = escapeRegex(toolCallEndString);
+
   const observationRegex = new RegExp(`${obsStart}[\\s\\S]*?${obsEnd}`, 'g');
   sanitized = sanitized.replace(observationRegex, '');
   
@@ -322,6 +143,7 @@ export function sanitizeThinkingSyntax(text: string): string {
   const escapeRegex = (str: string) => str.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
   const startPattern = pairs.map(p => escapeRegex(p.start)).join('|');
   const endPattern = pairs.map(p => escapeRegex(p.end)).join('|');
+
   const thinkRegex = new RegExp(`(?:${startPattern})[\\s\\S]*?(?:${endPattern}|$)[ \\t]*\\r?\\n?`, 'gi');
   return text.replace(thinkRegex, '').trim();
 }
@@ -358,6 +180,7 @@ function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string, exclude
   if (end < 0) end = 0;
   if (start > safeArr.length) start = safeArr.length;
   if (end > safeArr.length) end = safeArr.length;
+
   if (start > end) {
     const actualStart = end;
     const actualEnd = start;
@@ -366,6 +189,7 @@ function getSlicedArray<T>(arr: T[], startStr?: string, endStr?: string, exclude
     }
     return safeArr.slice(actualStart, actualEnd).reverse();
   }
+
   if (exclude) {
     return [...safeArr.slice(0, start), ...safeArr.slice(end)];
   }
@@ -413,10 +237,8 @@ export interface TemplateContext {
   time: string;
   timeElapsed: string;
   currentChatStamina: string;
-  remainingCurrentChatStamina: string;
   maximumChatStamina: string;
   chatStaminaRatio: string;
-  remainingChatStaminaRatio: string;
   currentActionStamina: string;
   maximumActionStamina: string;
   actionStaminaRatio: string;
@@ -434,7 +256,6 @@ export interface TemplateContext {
   promptBlockImageInstructions: string;
   contextImageInstructions: string;
   currentLocationImageInstructions: string;
-  screenshotImageInstructions: string;
   text: string;
   promptBuildContext?: PromptBuildContext;
   wearingStatus?: Record<string, boolean>;
@@ -529,6 +350,7 @@ export function resolveTemplate(
       
       const hasLimitOverride = limitStr !== undefined;
       const limitOverride = hasLimitOverride ? Number.parseInt(limitStr, 10) : undefined;
+
       const asLengthOrValue = (value: string | string[]): string => {
         if (Array.isArray(value)) {
           const slice = getSlicedArray(value, startStr, endStr, wantExclude);
@@ -543,6 +365,7 @@ export function resolveTemplate(
           const cleaned = slice.map(item => item.replace(/^- /, ''));
           return joinInlineList(cleaned);
         }
+
         if (wantLength) {
           return String(value.length);
         }
@@ -551,9 +374,11 @@ export function resolveTemplate(
         }
         return value;
       };
+
       let locationScope: 'reachable' | 'all' | undefined = undefined;
       let suffixScope: participantScopeMode | undefined = undefined;
       let rawKey = key;
+
       if (rawKey.endsWith('-')) {
         rawKey = rawKey.slice(0, -1);
         if (rawKey.startsWith('locations')) {
@@ -569,14 +394,18 @@ export function resolveTemplate(
           suffixScope = 'all';
         }
       }
+
       const isPossessive = rawKey.endsWith("'") || rawKey.endsWith("'s");
       const cleanKey = isPossessive ? rawKey.replace(/'s?$/, '') : rawKey;
+
       const hasScopeOverride = scopeStr !== undefined;
       let scopeOverride = hasScopeOverride ? (scopeStr as participantScopeMode) : undefined;
       if (scopeStr === '-' || scopeStr === '+') {
         scopeOverride = scopeStr === '-' ? 'coLocated' : 'all';
       }
+
       const effectiveScope = suffixScope ?? scopeOverride;
+
       const isCharacterUuidKey = cleanKey.startsWith('character@');
       const isLocationUuidKey = cleanKey.startsWith('location@');
       const isLocationDescUuidKey = cleanKey.startsWith('locationWithDescription@');
@@ -619,7 +448,9 @@ export function resolveTemplate(
           return asLengthOrValue(isPossessive ? "Unknown Location's" : "Unknown Location");
         }
       }
+
       const pCtx = ctx.promptBuildContext;
+
       if (pCtx && (
         cleanKey === 'character' || cleanKey === 'protagonist' || cleanKey === 'protagonists' || 
         cleanKey === 'characters' || cleanKey === 'locations' || cleanKey === 'locationsWithDescriptions'
@@ -643,12 +474,14 @@ export function resolveTemplate(
           const scope: 'reachable' | 'all' = locationScope ?? 'all';
           targetLocations = buildLocationsArray(pCtx, delimiters, scope, insertionOverride, withDescriptions);
         }
+
         if (isLocationKey) {
           if (isPossessive) {
             return asLengthOrValue(targetLocations.map(l => `${l}'s`));
           }
           return asLengthOrValue(targetLocations);
         }
+
         if (cleanKey === 'character' || cleanKey === 'protagonist') {
           const p = targetParticipants[0];
           if (!p) return asLengthOrValue('');
@@ -661,6 +494,7 @@ export function resolveTemplate(
           return asLengthOrValue(names);
         }
       }
+
       if (ctx.promptBuildContext && (hasScopeOverride || hasInsertionOverride || hasLimitOverride)) {
         const profile = pCtx!.profile;
         
@@ -688,8 +522,10 @@ export function resolveTemplate(
           return asLengthOrValue(buildThinkPromptText(pCtx!, effectiveScopeThink, effectiveInsertionThink));
         }
       }
+
       if (key === 'location') return asLengthOrValue(ctx.currentLocation);
       if (key === 'locationWithDescription') return asLengthOrValue(ctx.currentLocationWithDescription);
+
       if (key === 'chatHistory') {
         const val = ctx.chatHistory ?? [];
         const slice = getSlicedArray(val, startStr, endStr, wantExclude);
@@ -699,6 +535,7 @@ export function resolveTemplate(
         }
         return slice.join('\n');
       }
+
       if (key in ctx) {
         const val = (ctx as any)[key];
         if (Array.isArray(val)) {
@@ -706,6 +543,7 @@ export function resolveTemplate(
         }
         return asLengthOrValue(String(val));
       }
+
       if (key === 'systemBlockStart') {
         return asLengthOrValue(delimiters.blockStart('system'));
       }
@@ -733,6 +571,7 @@ export function resolveTemplate(
       if (key in GLOBAL_STRINGS) {
         return asLengthOrValue(GLOBAL_STRINGS[key]);
       }
+
       return '';
     }
   );
@@ -866,6 +705,7 @@ function getSingularDisplayName(
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
   if (limit === 0) return tag;
+
   const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
   
   let sliceEnd = variants.length;
@@ -889,6 +729,7 @@ function getSingularPossessiveName(
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
   if (limit === 0) return `${tag}'s`;
+
   const variants = [participant.name, ...(participant.aliases ?? [])].filter((v): v is string => Boolean(v));
   
   let sliceEnd = variants.length;
@@ -913,16 +754,19 @@ function getPluralDisplayName(
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
   if (limit === 0) return tag;
+
   const knownMap = ctx.knownNames[participant.id];
   let knownNamesList: string[] = [];
   if (knownMap) {
     knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
   }
+
   if (limit !== undefined && limit > 0) {
     knownNamesList = knownNamesList.slice(0, limit);
   } else {
     knownNamesList = knownNamesList.slice(0, 1);
   }
+
   if (knownNamesList.length > 0) {
     return `${tag} (${joinInlineList(knownNamesList)})`;
   }
@@ -937,16 +781,19 @@ function getPluralPossessiveName(
 ): string {
   const tag = getParticipantTag(participant, ctx.participants);
   if (limit === 0) return `${tag}'s`;
+
   const knownMap = ctx.knownNames[participant.id];
   let knownNamesList: string[] = [];
   if (knownMap) {
     knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
   }
+
   if (limit !== undefined && limit > 0) {
     knownNamesList = knownNamesList.slice(0, limit);
   } else {
     knownNamesList = knownNamesList.slice(0, 1);
   }
+
   if (knownNamesList.length > 0) {
     return `${joinInlineList(knownNamesList)}'s`;
   }
@@ -999,6 +846,7 @@ function getFullDisplayName(
     if (resolvedNames.length > 0) return `${tag} (${joinInlineList(resolvedNames)})`;
     return tag;
   }
+
   const knownMap = knownNames[targetChar.id];
   let knownNamesList: string[] = [];
   if (knownMap) {
@@ -1038,6 +886,7 @@ function buildProtagonistPossessiveString(
     if (resolvedNames.length > 0) return `${joinInlineList(resolvedNames)}'s`;
     return `${tag}'s`;
   }
+
   const knownMap = knownNames[p.id];
   let knownNamesList: string[] = [];
   if (knownMap) knownNamesList = Object.keys(knownMap).filter(k => knownMap[k]);
@@ -1055,6 +904,7 @@ export function resolveInnerText(
   delimiters: PromptDelimiters
 ): string {
   if (!text) return text;
+
   const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
@@ -1071,6 +921,7 @@ export function resolveInnerText(
     if (knownNamesList.length > 0) return `${joinInlineList(knownNamesList)}'s`;
     return `${tag}'s`; // NO TRUE NAME FALLBACK
   });
+
   const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const charactersPossessiveList = ctx.participants.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
@@ -1087,6 +938,7 @@ export function resolveInnerText(
     if (knownNamesList.length > 0) return `${joinInlineList(knownNamesList)}'s`;
     return `${tag}'s`; // NO TRUE NAME FALLBACK
   });
+
   const baseContext: TemplateContext = {
     characterParticipantTag: ctx.characterParticipantTag,
     characterName: ctx.characterName,
@@ -1121,10 +973,8 @@ export function resolveInnerText(
     time: '',
     timeElapsed: '',
     currentChatStamina: '',
-    remainingCurrentChatStamina: '',
     maximumChatStamina: '',
     chatStaminaRatio: '',
-    remainingChatStaminaRatio: '',
     currentActionStamina: '',
     maximumActionStamina: '',
     actionStaminaRatio: '',
@@ -1142,11 +992,11 @@ export function resolveInnerText(
     promptBlockImageInstructions: '',
     contextImageInstructions: '',
     currentLocationImageInstructions: '',
-    screenshotImageInstructions: '',
     text: '',
     promptBuildContext: ctx,
     wearingStatus: {}
   };
+
   return resolveTemplate(text, baseContext, delimiters);
 }
 
@@ -1706,7 +1556,7 @@ function buildPromptContext(
 
 function getParticipantsForScopeAndInsertion(
   ctx: PromptBuildContext, 
-  scope: participantScopeMode, 
+  scope: participantScopeMode,
   insertion: participantInsertionMode
 ): Character[] {
   let candidates: Character[];
@@ -1725,12 +1575,14 @@ function getParticipantsForScopeAndInsertion(
   
   const currentLocationId = ctx.currentLocationId;
   if (!currentLocationId) return ctx.participants.filter(p => p.id === ctx.characterId);
+
   const locationHistory = ctx.interactionData.interactionHistories?.[currentLocationId] || [];
   let arrivalTimestamp = -1;
   const charMessagesInLoc = locationHistory.filter(m => m.character.id === ctx.characterId);
   if (charMessagesInLoc.length > 0) {
     arrivalTimestamp = Math.max(...charMessagesInLoc.map(m => m.firstCreatedTimestamp));
   }
+
   return candidates.filter(p => {
     if (p.id === ctx.characterId) return true;
     const talked = locationHistory.some(m => 
@@ -1751,6 +1603,7 @@ function buildCharacterTagsText(
   const tags: string[] = [];
   const tagsWithDescriptions: string[] = [];
   const actuallyPresentParticipants = getParticipantsForScopeAndInsertion(ctx, scope, insertion);
+
   for (const participant of actuallyPresentParticipants) {
     const displayName = getDisplayName(participant, ctx, limit);
     tags.push(`- ${displayName}`);
@@ -1862,6 +1715,7 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
     fallbackSearchSpace: dialogueSearchSpace,
     combinationCache: ctx.combinationCache,
   };
+
   const activeContents = await collectActiveDialoguePromptContent(
     ctx.character.dialoguePrompts,
     evalContext,
@@ -1871,6 +1725,7 @@ async function buildDialoguePromptText(ctx: PromptBuildContext): Promise<string>
       queryText: dialogueSearchSpace,
     }
   );
+
   if (activeContents.length === 0) return '';
   const lines: string[] = [];
   for (const content of activeContents) {
@@ -2119,7 +1974,7 @@ function buildToolInstructionText(enabledToolNames: string[]): string {
   const haveTools = enabledToolNames.length > 0;
   const availableToolString = haveTools ? "Available tools: {{tools}}" : 'Currently, all of my tools are disabled.';
   lines.push(`${toolUsageInstructions} ${availableToolString}.`);
-  if (haveTools) lines.push("When I use {{toolCallStartString}}tool(){{toolCallEndString}} as my first word, I will activate tool message mode where the whole message text are only visible to me.");
+  if (haveTools) lines.push(`When I start my response with a tool call like {{toolCallStartString}}{"name": "tool_name", ...}{{toolCallEndString}}, I will activate tool message mode where the whole message text is only visible to me.`);
   return lines.join('\n');
 }
 
@@ -2135,48 +1990,13 @@ function buildFatigueText(
   return getFatigueContext(chatStaminaRatio, actionStaminaRatio, totalStaminaRatio);
 }
 
-function countPrefillParagraphs(prefillText: string): number {
-  if (!prefillText) return 0;
-  const cleanedThink = sanitizeThinkingSyntax(prefillText);
-  if (!cleanedThink) return 0;
-
-  const escapeRegex = (str: string) => str.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
-  const obsStart = escapeRegex(toolResultStartString);
-  const obsEnd = escapeRegex(toolResultEndString);
-  const callStart = escapeRegex(toolCallStartString);
-  const callEnd = escapeRegex(toolCallEndString);
-
-  const cleaned = cleanedThink
-    .replace(new RegExp(`${obsStart}[\\s\\S]*?${obsEnd}`, 'g'), '')
-    .replace(new RegExp(`${callStart}[\\s\\S]*?${callEnd}`, 'g'), '');
-
-  const normalized = cleaned.replace(/\r\n?/g, '\n').trim();
-  if (!normalized) return 0;
-
-  const withoutSplitCode = normalized.replace(/```[\s\S]*?(?:```|$)/g, '[CODE_BLOCK]');
-
-  return withoutSplitCode
-    .split(/\n\s*\n+/)
-    .filter(p => p.trim().length > 0)
-    .length;
-}
-
 function buildParagraphCountInstructionsText(
-  remainingCurrentChatStamina: number,
+  currentChatStamina: number,
   effectiveMaxChatStamina: number
 ): string {
-  if (
-    remainingCurrentChatStamina === undefined ||
-    effectiveMaxChatStamina === Number.POSITIVE_INFINITY ||
-    remainingCurrentChatStamina === Number.POSITIVE_INFINITY
-  ) {
-    return '';
-  }
-  if (remainingCurrentChatStamina <= 0) {
-    return `I understand that I have {{remainingCurrentChatStamina}} paragraphs remaining, so I will naturally finish any incomplete current paragraph and immediately stop without creating any new paragraphs.`;
-  }
-  const paragraphText = (remainingCurrentChatStamina > 1) ? "paragraphs" : "paragraph";
-  return `I understand that I can create a minimum of 1 paragraph and a maximum of {{remainingCurrentChatStamina}} ${paragraphText}. If I exceed this, I will immediately and naturally stop creating new paragraphs.`;
+  if (currentChatStamina === undefined || effectiveMaxChatStamina === Number.POSITIVE_INFINITY) return '';
+  const paragraphText = (currentChatStamina > 1) ? "paragraphs" : "paragraph";
+  return `I understand that I can create a minimum of 1 paragraph and a maximum of {{currentChatStamina}} ${paragraphText}. If I exceed this, I will immediately and naturally stop creating new paragraphs.`;
 }
 
 function buildTimeElapsedText(msDifference: number): string {
@@ -2275,7 +2095,6 @@ function buildTextInjectionText(ctx: PromptBuildContext, hasBeenSummarized: bool
 
 export async function createChatHistoryArray(
   ctx: PromptBuildContext,
-  onAttachImage?: (base64Data: string, fileName: string, senderName: string) => number
 ): Promise<{ chatHistoryArray: string[]; hasBeenSummarized: boolean }> {
   const participants = ctx.participants;
   const profile = ctx.profile;
@@ -2340,12 +2159,15 @@ export async function createChatHistoryArray(
       const chunkSize = step.entropyPruningChunkSize ?? 3;
       const threshold = step.entropyPruningThreshold ?? 0.35;
       const maxRawTokens = step.entropyPruningTokenBudget ?? 2000;
+
       const candidates = processedMessages.map(p => ({
         id: p.msg.id,
         textContent: p.text,
         locationId: p.locationId,
       }));
+
       const cutoffIndex = await calculateEntropyPruningCutoff(candidates, chunkSize, threshold, maxRawTokens);
+
       for (let i = 0; i < processedMessages.length; i++) {
         const msg = processedMessages[i].msg;
         if (i < cutoffIndex && (msg as ChatMessage).modelTextContentSummaries?.[ctx.modelId]) {
@@ -2439,21 +2261,6 @@ export async function createChatHistoryArray(
       );
     }
 
-    const msgFiles = (p.msg as TextMessage).files;
-    if (msgFiles && msgFiles.length > 0) {
-      const fileBlocks = msgFiles.map((fileUrl, fIdx) => {
-        return formatAttachedFile(fileUrl, fIdx, (b64, name) => {
-          if (onAttachImage) {
-            return onAttachImage(b64, name, p.msg.character.name);
-          }
-          return 0;
-        });
-      });
-      if (fileBlocks.length > 0) {
-        historyText = historyText ? `${historyText}\n${fileBlocks.join('\n')}` : fileBlocks.join('\n');
-      }
-    }
-
     const replacedText = resolveInnerText(historyText, ctx, ctx.delimiters);
     chatHistoryText = `${chatHistoryText}${replacedText}${ctx.delimiters.turnEnd}`;
     chatHistoryArray.push(chatHistoryText);
@@ -2479,11 +2286,10 @@ const VOLATILE_BLOCK_TYPES: ReadonlySet<string> = new Set([
   'Anti-Repetition Nudge',
   'Character Tags',
   'Character Tags With Descriptions',
-  'Character Image Instructions',
   'Prompt Block Image Instructions',
   'Context Image Instructions',
   'Current Location Image Instructions',
-  'Screenshot Image Instructions',
+  'Character Image Instructions',
   'Knowledge Prompt',
   'Dialogue Prompt',
   'Memory Prompt',
@@ -2498,7 +2304,7 @@ function buildStructuredMessages(
   const volatileEntries: string[] = [];
   for (const entry of inputStrategy) {
     if (
-      entry === 'Model Instruction Template' ||
+      entry === 'Model InstructionTemplate' ||
       entry === 'Model Chat Template' ||
       entry === 'Model Chat-Instruction Template'
     ) {
@@ -2561,7 +2367,6 @@ interface BuilderContext {
   timeData: TimeData | null;
   isToolMessage: boolean | undefined;
   promptBlockById: Map<string, PromptBlock>;
-  allTextSearchSpace: string;
 }
 
 async function buildPromptBlocks(
@@ -2623,11 +2428,6 @@ async function buildPromptBlocks(
       blockMap[blockType] = [templateContext.currentLocationImageInstructions];
       continue;
     }
-    if (blockType === 'Screenshot Image Instructions') {
-      if (templateContext.screenshotImageInstructions.length === 0) continue;
-      blockMap[blockType] = [templateContext.screenshotImageInstructions];
-      continue;
-    }
     if (blockType === 'Anti-Repetition Nudge' && templateContext.antiRepetitionNudge.length === 0) continue;
     const template = DEFAULT_TEMPLATES[blockType];
     let resolvedContent = '';
@@ -2636,24 +2436,6 @@ async function buildPromptBlocks(
     } else {
       const block = builderCtx.promptBlockById.get(blockType);
       if (block) {
-        if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
-        if (block.contextBindings?.length && !block.contextBindings.some(ctxId => builderCtx.activeContextIDs.has(ctxId))) continue;
-        if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
-        if (!isEntityActiveWithCache(
-          block.regularExpressionActivationTriggers,
-          block.regularExpressionDeactivationTriggers,
-          block.regularExpressionExclusionActivationTriggers,
-          block.regularExpressionExclusionDeactivationTriggers,
-          ctx.characterIdArray,
-          ctx.textContentArray,
-          ctx.characterId,
-          [...ctx.protagonistIds],
-          builderCtx.allTextSearchSpace,
-          ctx.combinationCache
-        )) {
-          continue;
-        }
-
         let text = block.textContent;
         if (!text.includes('{{systemBlockStart}}') && !text.includes('{{systemBlockEnd}}')) {
           text = `{{systemBlockStart}}${text}{{systemBlockEnd}}`;
@@ -2848,6 +2630,7 @@ export async function buildPrompt(
   }
   const timeData = getTimeDataFromCoordinates(latitude, longitude);
   const locationResult = buildLocationText(ctx);
+  const chatHistoryResult = await createChatHistoryArray(ctx);
   const reachableLocationsResult = buildReachableLocationsText(ctx);
   
   const defaultCharScope = profile?.participantScopeModes?.['Character Name'] ?? 'coLocated';
@@ -2859,6 +2642,7 @@ export async function buildPrompt(
   
   const defaultThinkScope = profile?.participantScopeModes?.['Think Prompt'] ?? 'coLocated';
   const defaultThinkInsertion = profile?.participantInsertionModes?.['Think Prompt'] ?? 'dynamic';
+
   const characterTagsResult = buildCharacterTagsText(ctx, defaultCharScope, defaultCharInsertion, defaultCharLimit);
   
   let skyViewText = '';
@@ -2885,22 +2669,17 @@ export async function buildPrompt(
   const effectiveMaxActionStamina = getEffectiveMaximumActionStamina(ctx.character, ctx.profile);
   const previousMessage = findLatestMessage(ctx.interactionData, ctx.character);
   const currentChatStamina = previousMessage?.message.remainingChatStamina ?? effectiveMaxChatStamina;
-  const prefillParagraphCount = countPrefillParagraphs(existingCharacterText);
-  const remainingCurrentChatStamina =
-    currentChatStamina === Number.POSITIVE_INFINITY || effectiveMaxChatStamina === Number.POSITIVE_INFINITY
-      ? Number.POSITIVE_INFINITY
-      : Math.max(0, currentChatStamina - prefillParagraphCount);
   const currentActionStamina = previousMessage?.message.remainingActionStamina ?? effectiveMaxActionStamina;
   const currentTotalStamina = currentChatStamina + currentActionStamina;
   const maximumTotalStamina = effectiveMaxChatStamina + effectiveMaxActionStamina;
   const chatStaminaRatio = (effectiveMaxChatStamina === Number.POSITIVE_INFINITY || effectiveMaxChatStamina === 0) ? 1 : currentChatStamina / effectiveMaxChatStamina;
-  const remainingChatStaminaRatio = (effectiveMaxChatStamina === Number.POSITIVE_INFINITY || effectiveMaxChatStamina === 0 || remainingCurrentChatStamina === Number.POSITIVE_INFINITY) ? 1 : remainingCurrentChatStamina / effectiveMaxChatStamina;
   const actionStaminaRatio = (effectiveMaxActionStamina === Number.POSITIVE_INFINITY || effectiveMaxActionStamina === 0) ? 1 : currentActionStamina / effectiveMaxActionStamina;
   const totalStaminaRatio = (maximumTotalStamina === Number.POSITIVE_INFINITY || maximumTotalStamina === 0) ? 1 : currentTotalStamina / maximumTotalStamina;
   const formatStamina = (val: number) => val === Number.POSITIVE_INFINITY ? 'Infinity' : String(Math.round(val));
   const formatRatio = (val: number) => String(Math.round(val * 100) / 100);
-
-  const allowedImageTypes = profile?.entityImageTypes ?? ['promptBlock', 'context', 'location', 'character', 'screenshot'];
+  const hasBeenSummarized = chatHistoryResult.hasBeenSummarized;
+  const textInjectionText = buildTextInjectionText(ctx, hasBeenSummarized, contextLines);
+  const allowedImageTypes = profile?.entityImageTypes ?? ['promptBlock', 'context', 'location', 'character'];
   let globalIdCounter = 1;
   const nextGlobalId = () => globalIdCounter++;
   const trackedImages: TrackedImage[] = [];
@@ -2908,49 +2687,25 @@ export async function buildPrompt(
   const promptImgInst: string[] = [];
   const ctxImgInst: string[] = [];
   const locImgInst: string[] = [];
-  const screenshotImgInst: string[] = [];
-
-  // Register image attachments from message history into trackedImages
-  const chatHistoryResult = await createChatHistoryArray(ctx, (base64Data, fileName, senderName) => {
-    const id = nextGlobalId();
-    trackedImages.push({
-      globalId: id,
-      entityType: 'attachedFile',
-      entityName: `${fileName} (from ${senderName})`,
-      localIndex: 1,
-      base64Data,
-    });
-    return id;
-  });
-
-  const hasBeenSummarized = chatHistoryResult.hasBeenSummarized;
-  const textInjectionText = buildTextInjectionText(ctx, hasBeenSummarized, contextLines);
 
   for (const imageType of allowedImageTypes) {
     if (imageType === 'character') {
       const colocatedParticipants = getCoLocatedParticipants(interactionData, character);
+      const protagonistIds = new Set(interactionData.protagonistIds || []);
+      const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(character, profile);
       const charsToProcess = [character, ...colocatedParticipants.filter(p => p.id !== character.id)];
       for (const char of charsToProcess) {
         if (char.doNotInjectCharacterImage) continue;
-        const effectiveUseFrontCameraImage = getEffectiveUseFrontCameraImage(char, profile);
         const charMessage = findLatestMessage(interactionData, char);
-        const frontCameraMessage = (charMessage?.message && 'frontCameraImage' in charMessage.message && charMessage.message.frontCameraImage)
-          ? charMessage
-          : findLatestMessage(interactionData, char, ['chat', 'whisper', 'tool']);
-        const charExpression = charMessage?.message.characterExpression || frontCameraMessage?.message.characterExpression || 'neutral';
-        const filename = char.images?.[charExpression] || char.images?.neutral || Object.values(char.images || {})[0];
+        const charExpression = charMessage?.message.characterExpression;
         let base64Data: string | null = null;
-        const frontCameraImg = (frontCameraMessage?.message as ChatMessage | WhisperMessage | ToolMessage | undefined)?.frontCameraImage;
-        if (effectiveUseFrontCameraImage && frontCameraImg) {
-          base64Data = frontCameraImg.startsWith('data:') ? frontCameraImg : `data:image/jpeg;base64,${frontCameraImg}`;
-        } else if (filename) {
-          const imagePath = filename.startsWith('data:') || filename.startsWith('http://') || filename.startsWith('https://')
-            ? filename
-            : getCharacterImageUrl(char.id, filename);
-          if (imagePath) base64Data = await fetchImageAsBase64(imagePath);
+        const textMsg = charMessage?.message as TextMessage | null;
+        if (protagonistIds.has(char.id) && effectiveUseFrontCameraImage && (textMsg as ChatMessage)?.frontCameraImage) {
+          const fcImg = (textMsg as ChatMessage).frontCameraImage!;
+          base64Data = fcImg.includes(',') ? fcImg.split(',')[1] : fcImg;
         } else {
-          const fallbackPath = await getCharacterImageUrlWithFallBack(char.id, charExpression);
-          if (fallbackPath) base64Data = await fetchImageAsBase64(fallbackPath);
+          const imagePath = await getCharacterImageUrlWithFallBack(char.id, charExpression);
+          if (imagePath) base64Data = await fetchImageAsBase64(imagePath);
         }
         if (!base64Data) continue;
         const id = nextGlobalId();
@@ -2966,7 +2721,6 @@ export async function buildPrompt(
       }
     } else if (imageType === 'promptBlock') {
       const activeBlocks = allPromptBlocks.filter(block => {
-        if (!inputStrategy.includes(block.id)) return false;
         if (!isPromptBlockCharacterBound(block, ctx.characterId)) return false;
         if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIDs.has(ctxId))) return false;
         if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) return false;
@@ -2988,31 +2742,6 @@ export async function buildPrompt(
       await trackEntityImages(resolvedContextsWithWeb.map(r => r.context), 'context', getContextImageUrl, ctxImgInst, trackedImages, nextGlobalId);
     } else if (imageType === 'location' && ctx.currentLocation) {
       await trackEntityImages([ctx.currentLocation], 'location', getLocationImageUrl, locImgInst, trackedImages, nextGlobalId);
-    } else if (imageType === 'screenshot') {
-      try {
-        const res = await captureScreenshot(character.id);
-        if (res?.success && res.base64) {
-          const id = nextGlobalId();
-          const protagonistDisplay = buildProtagonistDisplayString(
-            ctx.coLocatedProtagonists,
-            ctx.participants,
-            ctx.knownNames,
-            ctx.characterId
-          ) || 'Protagonist';
-          const cleanBase64 = res.base64.includes(',') ? res.base64.split(',')[1] : res.base64;
-          const dataUrl = `data:${res.contentType || 'image/jpeg'};base64,${cleanBase64}`;
-          trackedImages.push({
-            globalId: id,
-            entityType: 'screenshot',
-            entityName: `${protagonistDisplay}'s Screen`,
-            localIndex: 1,
-            base64Data: dataUrl,
-          });
-          screenshotImgInst.push(`Image ${id} - ${protagonistDisplay}'s Screen`);
-        }
-      } catch {
-        // Ignore screenshot error when running in browser-only mode
-      }
     }
   }
 
@@ -3020,7 +2749,6 @@ export async function buildPrompt(
   const promptImgStr = promptImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(promptImgInst)}${delimiters.blockEnd}` : '';
   const ctxImgStr = ctxImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(ctxImgInst)}${delimiters.blockEnd}` : '';
   const locImgStr = locImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(locImgInst)}${delimiters.blockEnd}` : '';
-  const screenshotImgStr = screenshotImgInst.length > 0 ? `${delimiters.blockStart('system')}${joinInlineList(screenshotImgInst)}${delimiters.blockEnd}` : '';
   
   const protagonistsList = ctx.coLocatedProtagonists.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const protagonistsPossessiveList = ctx.coLocatedProtagonists.map(p => {
@@ -3034,18 +2762,14 @@ export async function buildPrompt(
     const knownName = getKnownDisplayName(p, ctx.knownNames);
     return `${knownName ?? tag}'s`;
   });
+
   const charactersList = ctx.participants.map(p => getFullDisplayName(p, ctx.participants, ctx.knownNames, ctx.characterId));
   const charactersPossessiveList = ctx.participants.map(p => {
     const tag = getParticipantTag(p, ctx.participants);
-    if (p.id === ctx.characterId) {
-      const variants = [p.name, ...(p.aliases ?? [])].filter((v): v is string => Boolean(v));
-      const resolvedNames = variants.slice(0, 1);
-      if (resolvedNames.length > 0) return `${joinInlineList(resolvedNames)}'s`;
-      return `${tag}'s`;
-    }
     const knownName = getKnownDisplayName(p, ctx.knownNames);
     return `${knownName ?? tag}'s`;
   });
+
   const templateContext: TemplateContext = {
     characterParticipantTag: ctx.characterParticipantTag,
     characterName: ctx.characterName,
@@ -3080,10 +2804,8 @@ export async function buildPrompt(
     time: timeText,
     timeElapsed: timeElapsedText,
     currentChatStamina: formatStamina(currentChatStamina),
-    remainingCurrentChatStamina: formatStamina(remainingCurrentChatStamina),
     maximumChatStamina: formatStamina(effectiveMaxChatStamina),
     chatStaminaRatio: formatRatio(chatStaminaRatio),
-    remainingChatStaminaRatio: formatRatio(remainingChatStaminaRatio),
     currentActionStamina: formatStamina(currentActionStamina),
     maximumActionStamina: formatStamina(effectiveMaxActionStamina),
     actionStaminaRatio: formatRatio(actionStaminaRatio),
@@ -3091,7 +2813,7 @@ export async function buildPrompt(
     maximumTotalStamina: formatStamina(maximumTotalStamina),
     totalStaminaRatio: formatRatio(totalStaminaRatio),
     fatigueInformation: !isToolMessage ? buildFatigueText(chatStaminaRatio, actionStaminaRatio, totalStaminaRatio) : '',
-    paragraphCountInstructions: !isToolMessage ? buildParagraphCountInstructionsText(remainingCurrentChatStamina, effectiveMaxChatStamina) : '',
+    paragraphCountInstructions: !isToolMessage ? buildParagraphCountInstructionsText(currentChatStamina, effectiveMaxChatStamina) : '',
     tools: ctx.tools,
     toolInstructions: buildToolInstructionText(ctx.tools),
     toolMessageInstructions: isToolMessage ? buildToolMessageInstructionText() : '',
@@ -3099,7 +2821,6 @@ export async function buildPrompt(
     promptBlockImageInstructions: promptImgStr,
     contextImageInstructions: ctxImgStr,
     currentLocationImageInstructions: locImgStr,
-    screenshotImageInstructions: screenshotImgStr,
     antiRepetitionNudge: buildAntiRepetitionNudgeText(ctx),
     textInjection: textInjectionText,
     text: existingCharacterText,
@@ -3128,13 +2849,42 @@ export async function buildPrompt(
     longitude,
     timeData,
     isToolMessage,
-    promptBlockById,
-    allTextSearchSpace
+    promptBlockById
   };
   const blockMap = await buildPromptBlocks(builderCtx, inputStrategy, templateContext, delimiters);
+  const regexActivatedBlocks: string[] = [];
+  for (const block of allPromptBlocks) {
+    if (!isPromptBlockCharacterBound(block, ctx.characterId)) continue;
+    if (block.contextBindings?.length && !block.contextBindings.some(ctxId => activeContextIDs.has(ctxId))) continue;
+    if (block.locationBindings?.length && (!ctx.currentLocationId || !block.locationBindings.includes(ctx.currentLocationId))) continue;
+    if (!isEntityActiveWithCache(
+      block.regularExpressionActivationTriggers,
+      block.regularExpressionDeactivationTriggers,
+      block.regularExpressionExclusionActivationTriggers,
+      block.regularExpressionExclusionDeactivationTriggers,
+      ctx.characterIdArray,
+      ctx.textContentArray,
+      ctx.characterId,
+      [...ctx.protagonistIds],
+      allTextSearchSpace,
+      ctx.combinationCache
+    )) {
+      continue;
+    }
+    let text = block.textContent;
+    if (!text.includes('{{systemBlockStart}}') && !text.includes('{{systemBlockEnd}}')) {
+      text = `{{systemBlockStart}}${text}{{systemBlockEnd}}`;
+    }
+    const resolvedText = resolveTemplate(text, templateContext, delimiters);
+    if (resolvedText.length > 0) {
+      if (!blockMap[block.id]) blockMap[block.id] = [resolvedText];
+      if (!inputStrategy.includes(block.id)) regexActivatedBlocks.push(block.id);
+    }
+  }
   
   const promptFormatMode = profile?.promptFormatMode ?? 'none';
   let messages: OpenAIMessage[];
+
   if (promptFormatMode !== 'none') {
     const contentLines: string[] = [];
     for (const entry of inputStrategy) {
@@ -3148,10 +2898,17 @@ export async function buildPrompt(
       if (lines?.length) contentLines.push(...lines);
     }
     
+    for (const blockId of regexActivatedBlocks) {
+      const lines = blockMap[blockId];
+      if (lines?.length) contentLines.push(...lines);
+    }
+
     const assembledContent = contentLines.join('\n');
     const promptLines: string[] = [];
+
     const effectiveInstructionTemplateKey = activeModel?.instructionTemplate;
     const resolvedInstructionTemplate = effectiveInstructionTemplateKey ? getModelTemplate(effectiveInstructionTemplateKey) : undefined;
+
     if (promptFormatMode === 'instruction' && resolvedInstructionTemplate?.instructionTemplate) {
       promptLines.push(
         resolvedInstructionTemplate.instructionTemplate
@@ -3173,13 +2930,6 @@ export async function buildPrompt(
         if (msg.character.id !== ctx.characterId) {
           content = sanitizeThinkingSyntax(content);
           content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
-        }
-        const msgFiles = (msg as TextMessage).files;
-        if (msgFiles && msgFiles.length > 0) {
-          const fileBlocks = msgFiles.map((fileUrl, fIdx) => formatAttachedFile(fileUrl, fIdx));
-          if (fileBlocks.length > 0) {
-            content = content ? `${content}\n${fileBlocks.join('\n')}` : fileBlocks.join('\n');
-          }
         }
         content = resolveInnerText(content, ctx, ctx.delimiters);
         promptLines.push(
@@ -3212,13 +2962,6 @@ export async function buildPrompt(
           content = sanitizeThinkingSyntax(content);
           content = sanitizeToolSyntax(content, (msg as ChatMessage).toolExecutionResults, false);
         }
-        const msgFiles = (msg as TextMessage).files;
-        if (msgFiles && msgFiles.length > 0) {
-          const fileBlocks = msgFiles.map((fileUrl, fIdx) => formatAttachedFile(fileUrl, fIdx));
-          if (fileBlocks.length > 0) {
-            content = content ? `${content}\n${fileBlocks.join('\n')}` : fileBlocks.join('\n');
-          }
-        }
         content = resolveInnerText(content, ctx, ctx.delimiters);
         promptLines.push(
           resolvedChatTemplate.chatTemplate
@@ -3237,13 +2980,30 @@ export async function buildPrompt(
     messages = [{ role: 'user', content: promptLines.join('\n') }];
   } else {
     messages = buildStructuredMessages(blockMap, inputStrategy, ctx.minimalVolatileCacheMode);
+    if (regexActivatedBlocks.length > 0) {
+      const extraLines: string[] = [];
+      for (const blockId of regexActivatedBlocks) {
+        const lines = blockMap[blockId];
+        if (lines?.length) extraLines.push(...lines);
+      }
+      if (extraLines.length > 0) {
+        const lastSystemMsg = [...messages].reverse().find(m => m.role === 'system');
+        if (lastSystemMsg && typeof lastSystemMsg.content === 'string') {
+          lastSystemMsg.content += `\n${extraLines.join('\n')}`;
+        } else {
+          messages.push({ role: 'system', content: extraLines.join('\n') });
+        }
+      }
+    }
   }
+
   const defaultStops = !profile?.doNotInjectDefaultStopTokens
     ? resolveEffectiveStopTokens()
     : [];
   const stops = [...defaultStops, ...activeStopPatterns.map(sp => sp.pattern)];
   const uniqueStops = Array.from(new Set(stops)).filter(s => typeof s === 'string' && s.length > 0);
   const imagePayloads = trackedImages.map(img => ({ data: img.base64Data, id: img.globalId }));
+
   return {
     messages,
     stops: uniqueStops,
