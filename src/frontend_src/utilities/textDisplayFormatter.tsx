@@ -29,6 +29,8 @@ function escapeRegex(s: string): string {
     return s.replace(/[.*+?${}()|[\]\\]/g, '\\$&');
 }
 
+const isWordChar = (ch: string): boolean => /[\p{L}\p{N}]/u.test(ch);
+
 const thinkPairs = getModelThinkTokenPairs();
 const thinkStartPattern = thinkPairs.length > 0
     ? thinkPairs.map(p => escapeRegex(p.start)).join('|')
@@ -122,6 +124,7 @@ function CollapsibleThinkBlock({
 function findPairedFormat(text: string, marker: string): { index: number, length: number, innerContent: string } | null {
     const mLen = marker.length;
     const baseChar = marker[0];
+    const disallowIntraword = marker === '_';
     
     const isMarker = (str: string, idx: number): boolean => {
         if (idx < 0 || idx > str.length - mLen) return false;
@@ -132,11 +135,19 @@ function findPairedFormat(text: string, marker: string): { index: number, length
         return true;
     };
 
+    const getMarkerRoles = (str: string, idx: number) => {
+        const before = idx > 0 ? str[idx - 1] : '';
+        const after = str[idx + mLen] || '';
+        const canOpen = !/\s/.test(after) && (!disallowIntraword || !isWordChar(before));
+        const canClose = !/\s/.test(before) && (!disallowIntraword || !isWordChar(after));
+        return { canOpen, canClose };
+    };
+
     let startIdx = -1;
     for (let i = 0; i <= text.length - mLen; i++) {
         if (isMarker(text, i)) {
-            const after = text[i + mLen] || '';
-            if (!/\s/.test(after)) {
+            const { canOpen } = getMarkerRoles(text, i);
+            if (canOpen) {
                 startIdx = i;
                 break;
             }
@@ -150,28 +161,29 @@ function findPairedFormat(text: string, marker: string): { index: number, length
     const crlfEnd = text.indexOf('\r\n\r\n', startIdx);
     if (crlfEnd !== -1 && (paraEnd === -1 || crlfEnd < paraEnd)) paraEnd = crlfEnd;
     
-    const paragraphText = text.substring(startIdx, paraEnd);
-    
-    let markerIndices: number[] = [];
-    for (let j = 0; j <= paragraphText.length - mLen; j++) {
-        if (isMarker(paragraphText, j)) {
-            markerIndices.push(j);
+    const markerIndices: number[] = [];
+    for (let j = startIdx; j <= paraEnd - mLen; j++) {
+        if (isMarker(text, j)) {
+            const { canOpen, canClose } = getMarkerRoles(text, j);
+            if (canOpen || canClose) {
+                markerIndices.push(j);
+            }
         }
     }
     
     // Forgiving fallback with consumption for orphaned middle markers
     if (markerIndices.length >= 3 && markerIndices.length % 2 !== 0) {
         const lastIdx = markerIndices[markerIndices.length - 1];
-        const afterLast = paragraphText.substring(lastIdx + mLen).trim();
+        const afterLast = text.substring(lastIdx + mLen, paraEnd).trim();
         if (afterLast === '' || /^[.!?',"]+$/.test(afterLast)) {
             let cleanInner = '';
-            let prevEnd = mLen;
+            let prevEnd = startIdx + mLen;
             for (let i = 1; i < markerIndices.length - 1; i++) {
                 const orphanIdx = markerIndices[i];
-                cleanInner += paragraphText.substring(prevEnd, orphanIdx);
+                cleanInner += text.substring(prevEnd, orphanIdx);
                 prevEnd = orphanIdx + mLen;
             }
-            cleanInner += paragraphText.substring(prevEnd, lastIdx);
+            cleanInner += text.substring(prevEnd, lastIdx);
             return { index: startIdx, length: lastIdx + mLen - startIdx, innerContent: cleanInner };
         }
     }
@@ -181,10 +193,7 @@ function findPairedFormat(text: string, marker: string): { index: number, length
     
     while (i < paraEnd) {
         if (isMarker(text, i)) {
-            const before = i > 0 ? text[i - 1] : '';
-            const after = text[i + mLen] || '';
-            const canClose = !/\s/.test(before);
-            const canOpen = !/\s/.test(after);
+            const { canOpen, canClose } = getMarkerRoles(text, i);
             
             if (canClose && !canOpen) depth--;
             else if (!canClose && canOpen) depth++;
