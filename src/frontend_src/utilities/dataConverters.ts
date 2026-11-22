@@ -597,8 +597,8 @@ function parseNarrateTextCharacterIds(raw: unknown): Record<textType, string> {
     const defaults: Record<textType, string> = {
         normal: '', quote: '', bold: '', italic: '',
         underline: '', parenthesis: '', bracket: '', brace: '',
-        strikethrough: '', inline_code: '', code_block: '',
-        think_block: '', 
+        strikethrough: '', inline_code: '', block_quote: '', header: '',
+        code_block: '', think_block: '',
     };
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return defaults;
     const obj = raw as Record<string, unknown>;
@@ -682,6 +682,8 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
             brace: (rawNarrateTexts.brace as boolean) ?? defaultNarrateTexts.brace,
             strikethrough: (rawNarrateTexts.strikethrough as boolean) ?? defaultNarrateTexts.strikethrough,
             inline_code: (rawNarrateTexts.inline_code as boolean) ?? defaultNarrateTexts.inline_code,
+            block_quote: (rawNarrateTexts.block_quote as boolean) ?? defaultNarrateTexts.block_quote,
+            header: (rawNarrateTexts.header as boolean) ?? defaultNarrateTexts.header,
             code_block: (rawNarrateTexts.code_block as boolean) ?? defaultNarrateTexts.code_block,
             think_block: (rawNarrateTexts.think_block as boolean) ?? defaultNarrateTexts.think_block,
         },

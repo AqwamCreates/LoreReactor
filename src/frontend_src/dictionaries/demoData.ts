@@ -251,7 +251,7 @@ export function createDemoData(): DemoDataBundle {
     narrateTextCharacterIds: {
       normal: '', quote: '', bold: '', italic: '', underline: '',
       parenthesis: '', bracket: '', brace: '', strikethrough: '',
-      inline_code: '', code_block: '', think_block: '',
+      inline_code: '',  block_quote: '', header: '', code_block: '', think_block: '',
     },
     tools: { ...defaultProfileTools },
     inputStrategy: [...defaultInputStrategy],
