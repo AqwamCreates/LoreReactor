@@ -201,7 +201,7 @@ export function createDemoData(): DemoDataBundle {
     autonomousInteractionIntervalMs: 30000,
     enableFaceDetection: false,
     faceDetectionIntervalMs: 1000,
-    faceDetectionProbabilityThreshold: 0.75,
+    faceDetectionProbabilityThreshold: 0.80,
     volume: 1,
     forceNameReveal: false,
     enableAmbientNarration: false,

@@ -632,7 +632,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         autonomousInteractionIntervalMs: (p.autonomousInteractionIntervalMs as number) ?? 10000,
         enableFaceDetection: typeof p.enableFaceDetection === 'boolean' ? p.enableFaceDetection : false,
         faceDetectionIntervalMs: typeof p.faceDetectionIntervalMs === 'number' && Number.isFinite(p.faceDetectionIntervalMs) ? Math.max(50, p.faceDetectionIntervalMs) : 1000,
-        faceDetectionProbabilityThreshold: typeof p.faceDetectionProbabilityThreshold === 'number' && Number.isFinite(p.faceDetectionProbabilityThreshold) ? Math.max(0, Math.min(1, p.faceDetectionProbabilityThreshold)) : 0.75,
+        faceDetectionProbabilityThreshold: typeof p.faceDetectionProbabilityThreshold === 'number' && Number.isFinite(p.faceDetectionProbabilityThreshold) ? Math.max(0, Math.min(1, p.faceDetectionProbabilityThreshold)) : 0.80,
         enableAutoSpeechDetection: (p.enableAutoSpeechDetection as boolean) ?? false,
         speechVolumeActivationThreshold: (p.speechVolumeActivationThreshold as number) ?? 18,
         speechSilenceVolumeActivationThreshold: (p.speechSilenceVolumeActivationThreshold as number) ?? 8,

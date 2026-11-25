@@ -990,7 +990,7 @@ export interface Profile extends ObjectData {
   autonomousInteractionIntervalMs: number;
   enableFaceDetection: boolean; // Default is false.
   faceDetectionIntervalMs: number; // Default is 1000.
-  faceDetectionProbabilityThreshold: number; // Probability Gate: 0 to 1 (Default: 0.75)
+  faceDetectionProbabilityThreshold: number; // Probability Gate: 0 to 1 (Default: 0.80)
   volume: number;
   forceNameReveal: boolean;
   enableAmbientNarration: boolean; // Default is false.
@@ -1062,7 +1062,7 @@ export interface RawProfile extends RawData {
   autonomousInteractionIntervalMs: number;
   enableFaceDetection: boolean; // Default is false.
   faceDetectionIntervalMs: number; // Default is 1000.
-  faceDetectionProbabilityThreshold: number; // Probability Gate: 0 to 1 (Default: 0.75)
+  faceDetectionProbabilityThreshold: number; // Probability Gate: 0 to 1 (Default: 0.80)
   volume: number;
   forceNameReveal: boolean;
   enableAmbientNarration: boolean; // Default is false.
