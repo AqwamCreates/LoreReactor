@@ -24,6 +24,7 @@ interface FetchResult {
 }
 
 const fetchCache = new Map<string, FetchResult>();
+const inFlightFetches = new Map<string, Promise<FetchResult>>();
 
 function getCacheKey(url: string, mode: string): string {
     return `${mode}::${url}`;
@@ -39,6 +40,8 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
     contentType: string;
     text?: string;
     base64?: string;
+    links?: string[];
+    imageUrls?: string[];
     error?: string;
 }> {
     try {
@@ -86,6 +89,8 @@ async function proxiedFetch(url: string, acceptHeader: string): Promise<{
             contentType: json.contentType || contentType,
             text: json.text,
             base64: json.base64,
+            links: Array.isArray(json.links) ? json.links : undefined,
+            imageUrls: Array.isArray(json.imageUrls) ? json.imageUrls : undefined,
         };
     } catch (e) {
         return {
@@ -124,11 +129,6 @@ function isWithinSubdirectory(candidateUrl: string, scopePrefix: string): boolea
         return false;
     }
 }
-
-/**
- * Constructs a search engine URL from search terms.
- */
-
 
 /**
  * Cleans an image URL by stripping everything after the file extension.
@@ -288,131 +288,142 @@ async function fetchSingleUrl(url: string, cacheTimeToLiveMs: number, fetchMode:
     // Layer 1: In-memory cache
     const cacheKey = getCacheKey(url, fetchMode);
     const cached = fetchCache.get(cacheKey);
-    if (cached && (now - cached.fetchedAt) < cacheTimeToLiveMs) {
+    if (cached && !cached.error && (now - cached.fetchedAt) < cacheTimeToLiveMs) {
         return cached;
     }
 
-    // Layer 2: Persistent disk cache (raw textContent only — mode-specific processing happens after)
-    if (cacheTimeToLiveMs > 0) {
-        try {
-            const diskCached = await findWebpageByUrl(url);
-            if (diskCached && (now - diskCached.lastUpdatedTimestamp) < cacheTimeToLiveMs) {
-                let textContent = diskCached.textContent;
-
-                // Apply mode-specific processing to disk-cached raw textContent
-                if (fetchMode === 'extract') {
-                    textContent = extractStructuredContent(textContent);
-                }
-
-                const result: FetchResult = {
-                    url,
-                    textContent,
-                    links: [],
-                    images: [],
-                    fetchedAt: diskCached.lastUpdatedTimestamp,
-                    tokenEstimate: await tokenEngine.countTokens(textContent),
-                };
-                fetchCache.set(cacheKey, result);
-                return result;
-            }
-        } catch (e) {
-            console.warn(`Failed to check disk cache for ${url}:`, e);
-        }
+    const inFlightKey = `${cacheKey}::${includeImages}`;
+    const existingPromise = inFlightFetches.get(inFlightKey);
+    if (existingPromise) {
+        return existingPromise;
     }
 
-    // Layer 3: Network fetch via proxy
-    try {
-        const result = await proxiedFetch(url, 'text/html,text/plain,*/*');
+    const fetchPromise = (async (): Promise<FetchResult> => {
+        // Layer 2: Persistent disk cache (raw textContent only — mode-specific processing happens after)
+        if (cacheTimeToLiveMs > 0) {
+            try {
+                const diskCached = await findWebpageByUrl(url);
+                if (diskCached && (now - diskCached.lastUpdatedTimestamp) < cacheTimeToLiveMs) {
+                    let textContent = diskCached.textContent;
 
-        if (!result.ok) {
-            throw new Error(`HTTP ${result.status}: ${result.error || 'Unknown error'}`);
-        }
+                    // Apply mode-specific processing to disk-cached raw textContent
+                    if (fetchMode === 'extract') {
+                        textContent = extractStructuredContent(textContent);
+                    }
 
-        const contentType = result.contentType || '';
-        const rawBody = result.text || '';
-
-        let textContent: string;
-        let links: string[] = [];
-        let imageUrls: string[] = [];
-
-        if (contentType.includes('text/html')) {
-            const parsed = parseHtml(rawBody, url);
-            textContent = parsed.text;
-            links = parsed.links;
-            imageUrls = parsed.imageUrls;
-        } else {
-            textContent = rawBody;
-        }
-
-        // Apply mode-specific processing
-        if (fetchMode === 'extract') {
-            textContent = extractStructuredContent(textContent);
-        }
-
-        let images: WebpageImageInfo[] = [];
-        if (includeImages && imageUrls.length > 0) {
-            const downloadPromises = imageUrls.map(async (imgUrl) => {
-                const downloaded = await downloadImageAsBase64(imgUrl);
-                if (downloaded) {
-                    return {
-                        url: imgUrl,
-                        base64: downloaded.base64,
-                        mimeType: downloaded.mimeType,
-                    } as WebpageImageInfo;
+                    const result: FetchResult = {
+                        url,
+                        textContent,
+                        links: [],
+                        images: [],
+                        fetchedAt: diskCached.lastUpdatedTimestamp,
+                        tokenEstimate: await tokenEngine.countTokens(textContent),
+                    };
+                    fetchCache.set(cacheKey, result);
+                    return result;
                 }
-                return null;
-            });
-
-            const downloadResults = await Promise.all(downloadPromises);
-            images = downloadResults.filter((r): r is WebpageImageInfo => r !== null);
+            } catch (e) {
+                console.warn(`Failed to check disk cache for ${url}:`, e);
+            }
         }
 
-        const fetchResult: FetchResult = {
-            url,
-            textContent,
-            links,
-            images,
-            fetchedAt: now,
-            tokenEstimate: await tokenEngine.countTokens(textContent),
-        };
-
-        fetchCache.set(cacheKey, fetchResult);
-
-        // Persist raw textContent to disk cache (before mode-specific processing)
-        // We save the raw version so other modes can reuse it
+        // Layer 3: Network fetch via proxy
         try {
-            const rawContent = contentType.includes('text/html') ? parseHtml(rawBody, url).text : rawBody;
-            await saveRawWebpage({
-                id: uuidv4(),
-                name: url,
+            const result = await proxiedFetch(url, 'text/html,text/plain,*/*');
+
+            if (!result.ok) {
+                throw new Error(`HTTP ${result.status}: ${result.error || 'Unknown error'}`);
+            }
+
+            const contentType = result.contentType || '';
+            const rawBody = result.text || '';
+
+            let rawTextBeforeExtract: string;
+            let links: string[] = Array.isArray(result.links) ? result.links : [];
+            let imageUrls: string[] = Array.isArray(result.imageUrls) ? result.imageUrls : [];
+
+            if (contentType.includes('text/html')) {
+                const parsed = parseHtml(rawBody, url);
+                rawTextBeforeExtract = parsed.text;
+                if (links.length === 0) links = parsed.links;
+                if (imageUrls.length === 0) imageUrls = parsed.imageUrls;
+            } else {
+                rawTextBeforeExtract = rawBody;
+            }
+
+            // Apply mode-specific processing
+            const textContent = fetchMode === 'extract'
+                ? extractStructuredContent(rawTextBeforeExtract)
+                : rawTextBeforeExtract;
+
+            let images: WebpageImageInfo[] = [];
+            if (includeImages && imageUrls.length > 0) {
+                const downloadPromises = imageUrls.map(async (imgUrl) => {
+                    const downloaded = await downloadImageAsBase64(imgUrl);
+                    if (downloaded) {
+                        return {
+                            url: imgUrl,
+                            base64: downloaded.base64,
+                            mimeType: downloaded.mimeType,
+                        } as WebpageImageInfo;
+                    }
+                    return null;
+                });
+
+                const downloadResults = await Promise.all(downloadPromises);
+                images = downloadResults.filter((r): r is WebpageImageInfo => r !== null);
+            }
+
+            const fetchResult: FetchResult = {
                 url,
-                textContent: rawContent,
-                firstCreatedTimestamp: now,
-                lastUpdatedTimestamp: now,
-            });
+                textContent,
+                links,
+                images,
+                fetchedAt: now,
+                tokenEstimate: await tokenEngine.countTokens(textContent),
+            };
+
+            fetchCache.set(cacheKey, fetchResult);
+
+            // Persist raw textContent to disk cache (before mode-specific processing)
+            if (rawTextBeforeExtract.trim().length > 0) {
+                try {
+                    await saveRawWebpage({
+                        id: uuidv4(),
+                        name: url,
+                        url,
+                        textContent: rawTextBeforeExtract,
+                        firstCreatedTimestamp: now,
+                        lastUpdatedTimestamp: now,
+                    });
+                } catch (e) {
+                    console.warn(`Failed to persist webpage cache for ${url}:`, e);
+                }
+            }
+
+            return fetchResult;
         } catch (e) {
-            console.warn(`Failed to persist webpage cache for ${url}:`, e);
+            const errorMsg = (e as Error).message;
+
+            console.warn(`Failed to fetch ${url}: ${errorMsg}`);
+
+            return {
+                url,
+                textContent: '',
+                links: [],
+                images: [],
+                fetchedAt: now,
+                tokenEstimate: 0,
+                error: errorMsg,
+            };
         }
+    })();
 
-        return fetchResult;
-
-    } catch (e) {
-        const errorMsg = (e as Error).message;
-
-        console.warn(`Failed to fetch ${url}: ${errorMsg}`);
-
-        const errorResult: FetchResult = {
-            url,
-            textContent: '',
-            links: [],
-            images: [],
-            fetchedAt: now,
-            tokenEstimate: 0,
-            error: errorMsg,
-        };
-
-        fetchCache.set(cacheKey, errorResult);
-        return errorResult;
+    inFlightFetches.set(inFlightKey, fetchPromise);
+    try {
+        return await fetchPromise;
+    } finally {
+        inFlightFetches.delete(inFlightKey);
     }
 }
 
