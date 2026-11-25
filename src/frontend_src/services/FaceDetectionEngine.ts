@@ -7,7 +7,7 @@ const FACE_MODEL_URL = 'https://huggingface.co/onnxmodelzoo/version-RFB-640/reso
 const MODEL_INPUT_WIDTH = 640;
 const MODEL_INPUT_HEIGHT = 480;
 const DEFAULT_INTERVAL_MS = 1000;
-const DEFAULT_PROBABILITY_THRESHOLD = 0.75;
+const DEFAULT_PROBABILITY_THRESHOLD = 0.80;
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 
 export type FaceDetectionStatus = 'idle' | 'loading' | 'monitoring';
