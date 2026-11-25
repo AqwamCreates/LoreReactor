@@ -52,11 +52,13 @@ interface UseChatSessionOptions {
     allActions: InterjectableAction[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
     requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
+    captureFrontCameraImage?: () => Promise<string | null>;
 }
 
 export function useChatSession(options: UseChatSessionOptions) {
     const { addToast } = useToast();
-    const { captureFrontCameraImage } = useFrontCamera(addToast);
+    const { captureFrontCameraImage: fallbackCaptureFrontCameraImage } = useFrontCamera(addToast);
+    const captureFrontCameraImage = options.captureFrontCameraImage ?? fallbackCaptureFrontCameraImage;
     const lmEngine = getLanguageModelEngine();
 
     // ─── 1. Bind Dependencies to Headless Coordinator ───

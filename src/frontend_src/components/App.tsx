@@ -228,6 +228,7 @@ function App() {
         allEntityFolders: entityFolders.entityFolders, 
         requestBorrowedModel: handleRequestBorrowedModel,
         requestPeerInference: mp.multiplayerSync.requestPeerInference,
+        captureFrontCameraImage,
     });
 
     const {

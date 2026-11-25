@@ -896,16 +896,74 @@ class ChatSessionCoordinator {
             const targetMsg = history[targetIdx];
             const isProtagonist = protagonistIdSet.has(targetMsg.character.id);
 
+            let freshFrontCameraImage: string | undefined;
+            const localProtagonist = state.localProtagonist;
+            const isLocalUsersMessage = !localProtagonist || targetMsg.character.id === localProtagonist.id;
+
+            if (
+                isProtagonist &&
+                isLocalUsersMessage &&
+                (targetMsg.messageType === 'chat' || targetMsg.messageType === 'whisper' || targetMsg.messageType === 'tool') &&
+                this.deps.captureFrontCameraImage
+            ) {
+                const protagonistChar =
+                    (localProtagonist?.id === targetMsg.character.id ? localProtagonist : undefined) ||
+                    currentData.participants.find(p => p.id === targetMsg.character.id) ||
+                    this.deps.allCharacters.find(c => c.id === targetMsg.character.id) ||
+                    targetMsg.character;
+
+                if (getEffectiveUseFrontCameraImage(protagonistChar, currentData.profile)) {
+                    try {
+                        const img = await this.deps.captureFrontCameraImage();
+                        if (img) freshFrontCameraImage = img;
+                    } catch (e) {
+                        console.warn('Regenerate front camera capture failed:', e);
+                    }
+                    if (this.currentLockEpoch !== lockEpoch || this.wasStopped) return;
+                }
+            }
+
             const trimIdx = isProtagonist ? targetIdx + 1 : targetIdx;
             const keptHistories: Record<string, HistoryMessage[]> = {};
             for (const [locId, msgs] of Object.entries(currentData.interactionHistories || {})) {
-                keptHistories[locId] = msgs.filter(m => {
-                    const globalIdx = history.findIndex(hm => hm.id === m.id);
-                    return globalIdx !== -1 && globalIdx < trimIdx;
-                });
+                keptHistories[locId] = msgs
+                    .filter(m => {
+                        const globalIdx = history.findIndex(hm => hm.id === m.id);
+                        return globalIdx !== -1 && globalIdx < trimIdx;
+                    })
+                    .map(m => {
+                        if (
+                            freshFrontCameraImage &&
+                            m.id === targetMsg.id &&
+                            (m.messageType === 'chat' || m.messageType === 'whisper' || m.messageType === 'tool')
+                        ) {
+                            if (m.messageType === 'tool') {
+                                return {
+                                    ...m,
+                                    frontCameraImage: freshFrontCameraImage,
+                                    lastUpdatedTimestamp: Date.now(),
+                                };
+                            }
+                            return {
+                                ...m,
+                                frontCameraImage: freshFrontCameraImage,
+                                kvCacheTextContentPaths: {},
+                                kvCacheTextContentSummaryPaths: {},
+                                kvCacheInteractionTextContentSummaries: {},
+                                lastUpdatedTimestamp: Date.now(),
+                            };
+                        }
+                        return m;
+                    });
             }
 
-            let updatedData = { ...currentData, interactionHistories: keptHistories, lastUpdatedTimestamp: Date.now() };
+            const numberOfMessages = Object.values(keptHistories).reduce((sum, msgs) => sum + msgs.length, 0);
+            let updatedData: InteractionData = {
+                ...currentData,
+                interactionHistories: keptHistories,
+                numberOfMessages,
+                lastUpdatedTimestamp: Date.now(),
+            };
             useChatStore.setState({ interactionData: updatedData });
             saveRawInteractionData(updatedData).catch(console.warn);
 
