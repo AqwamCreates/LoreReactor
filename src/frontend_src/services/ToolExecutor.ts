@@ -1451,7 +1451,7 @@ export async function executeTool(
     const args = invocation.args;
 
     if (!isToolEnabled(nextMessage.character, toolType, interactionData.profile)) {
-        return { toolType, args, textContent: `${toolResultStartString}Tool disabled${toolResultEndString}`, displayReplacement: "" };
+        return { toolType, args, textContent: 'Tool disabled', displayReplacement: "" };
     }
 
     const def = TOOL_DEFINITIONS[toolType];
@@ -1461,7 +1461,7 @@ export async function executeTool(
             return { toolType: toolType || 'unknown', args, textContent: `[Error: ${invocation.parseError}]`, displayReplacement: '[Error: Invalid tool call]' };
         }
         console.warn(`Unknown tool type: ${toolType}`);
-        return { toolType, args, textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`, displayReplacement: "" };
+        return { toolType, args, textContent: 'Something went wrong', displayReplacement: "" };
     }
 
     if (invocation.parseError && def) {
@@ -1491,12 +1491,12 @@ export async function executeTool(
     try {
         const result = await executeFunction(args, nextMessage, interactionData, context, displayMode);
         if (!result || !result.textContent) {
-            return { toolType, args, textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`, displayReplacement: result?.displayReplacement || "" };
+            return { toolType, args, textContent: 'Something went wrong', displayReplacement: result?.displayReplacement || "" };
         }
         return result;
     } catch (error) {
         console.error(`Tool "${toolType}" execution error:`, error);
-        return { toolType, args, textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`, displayReplacement: "" };
+        return { toolType, args, textContent: 'Something went wrong', displayReplacement: "" };
     }
 }
 

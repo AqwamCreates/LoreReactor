@@ -169,7 +169,7 @@ async function processToolInvocations(
             toolResult = {
                 toolType: inv.toolType,
                 args: inv.args,
-                textContent: `${toolResultStartString}Tool is currently disabled${toolResultEndString}`,
+                textContent: 'Tool is currently disabled',
                 displayReplacement: ""
             };
         } else {
@@ -178,7 +178,7 @@ async function processToolInvocations(
                 toolResult = results[0] || {
                     toolType: inv.toolType,
                     args: inv.args,
-                    textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`,
+                    textContent: 'Something went wrong',
                     displayReplacement: ''
                 };
             } catch (e) {
@@ -186,7 +186,7 @@ async function processToolInvocations(
                 toolResult = {
                     toolType: inv.toolType,
                     args: inv.args,
-                    textContent: `${toolResultStartString}Something went wrong${toolResultEndString}`,
+                    textContent: 'Something went wrong',
                     displayReplacement: ''
                 };
             }
@@ -229,7 +229,6 @@ function applyToolReplacements(
         const { rawMatch, resultText } = replacements.rawReplacements[i];
         const rawReplacement = `${rawMatch}${toolResultStartString}result: ${resultText}${toolResultEndString} `;
 
-        // Find the first occurrence of rawMatch that is NOT already followed by a result delimiter
         let matchIdx = -1;
         let searchStart = 0;
         while (searchStart < currentRaw.length) {
