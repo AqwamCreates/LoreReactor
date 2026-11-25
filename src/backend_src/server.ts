@@ -2235,20 +2235,191 @@ app.get('/gpu/status', (_req, response) => {
 });
 
 // --- Web Fetch Proxy (Puppeteer CORS bypass) ---
-import puppeteer, { type Browser } from 'puppeteer';
+import puppeteer, { type Browser, type Page } from 'puppeteer';
 
-function isBotChallenge(text: string): boolean {
-  const lower = text.toLowerCase();
-  return (
+const MAX_CONCURRENT_WEB_PAGES = 3;
+let activeWebFetchSlots = 0;
+const webFetchWaitQueue: Array<() => void> = [];
+
+let webFetchBrowser: Browser | null = null;
+let webFetchBrowserLaunchPromise: Promise<Browser> | null = null;
+let webFetchBrowserClosingPromise: Promise<void> | null = null;
+let webFetchInitialBlankPage: Page | null = null;
+let activeWebFetchPages = 0;
+let webFetchIdleTimer: NodeJS.Timeout | null = null;
+
+async function acquireWebFetchSlot(): Promise<void> {
+  if (activeWebFetchSlots < MAX_CONCURRENT_WEB_PAGES) {
+    activeWebFetchSlots++;
+    return;
+  }
+  await new Promise<void>((resolve) => {
+    webFetchWaitQueue.push(resolve);
+  });
+}
+
+function releaseWebFetchSlot(): void {
+  const next = webFetchWaitQueue.shift();
+  if (next) {
+    next();
+  } else {
+    activeWebFetchSlots = Math.max(0, activeWebFetchSlots - 1);
+  }
+}
+
+async function acquireWebFetchBrowser(): Promise<Browser> {
+  if (webFetchIdleTimer) {
+    clearTimeout(webFetchIdleTimer);
+    webFetchIdleTimer = null;
+  }
+
+  if (webFetchBrowserClosingPromise) {
+    await webFetchBrowserClosingPromise.catch(() => {});
+  }
+
+  if (webFetchBrowser && webFetchBrowser.connected) {
+    return webFetchBrowser;
+  }
+
+  if (webFetchBrowserLaunchPromise) {
+    return webFetchBrowserLaunchPromise;
+  }
+
+  webFetchBrowserLaunchPromise = (async () => {
+    const launchArgs = ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=700,700'];
+    const profileDir = path.join(ROOT_DIR, 'user_data', 'browser_profile');
+    ensureDirectory(profileDir);
+
+    let browser: Browser;
+    try {
+      browser = await puppeteer.launch({
+        headless: false,
+        userDataDir: profileDir,
+        args: launchArgs,
+      });
+    } catch (err: any) {
+      log.warn(`[WebFetch] Launch with persistent browser_profile failed (${err.message}); falling back to isolated profile.`);
+      browser = await puppeteer.launch({
+        headless: false,
+        args: launchArgs,
+      });
+    }
+
+    webFetchBrowser = browser;
+    try {
+      const pages = await browser.pages();
+      webFetchInitialBlankPage = pages[0] ?? null;
+    } catch {
+      webFetchInitialBlankPage = null;
+    }
+
+    browser.once('disconnected', () => {
+      if (webFetchBrowser === browser) {
+        webFetchBrowser = null;
+        webFetchInitialBlankPage = null;
+      }
+    });
+
+    return browser;
+  })();
+
+  try {
+    return await webFetchBrowserLaunchPromise;
+  } finally {
+    webFetchBrowserLaunchPromise = null;
+  }
+}
+
+function scheduleWebFetchBrowserClose(): void {
+  if (activeWebFetchPages > 0) return;
+  if (webFetchIdleTimer) clearTimeout(webFetchIdleTimer);
+  webFetchIdleTimer = setTimeout(async () => {
+    webFetchIdleTimer = null;
+    if (activeWebFetchPages > 0) return;
+    const browser = webFetchBrowser;
+    webFetchBrowser = null;
+    webFetchInitialBlankPage = null;
+    if (browser && browser.connected) {
+      const closing = browser.close().catch(() => {});
+      webFetchBrowserClosingPromise = closing;
+      try {
+        await closing;
+      } finally {
+        if (webFetchBrowserClosingPromise === closing) {
+          webFetchBrowserClosingPromise = null;
+        }
+      }
+    }
+  }, 750);
+}
+
+function cleanupWebFetchBrowser(): void {
+  if (webFetchIdleTimer) {
+    clearTimeout(webFetchIdleTimer);
+    webFetchIdleTimer = null;
+  }
+  const browser = webFetchBrowser;
+  webFetchBrowser = null;
+  webFetchInitialBlankPage = null;
+  if (browser) {
+    try {
+      const proc = browser.process();
+      if (proc) terminateChildProcess(proc);
+      else browser.close().catch(() => {});
+    } catch {}
+  }
+}
+
+function isImageRequest(url: string, reqHeaders?: Record<string, unknown>): boolean {
+  let pathname = url;
+  try {
+    pathname = new URL(url).pathname;
+  } catch { /* fallback to raw url */ }
+  if (/\.(png|jpe?g|webp|gif|svg|ico|avif|bmp|tiff)$/i.test(pathname)) {
+    return true;
+  }
+  const accept = reqHeaders?.Accept ?? reqHeaders?.accept;
+  return typeof accept === 'string' && accept.trim().toLowerCase().startsWith('image/');
+}
+
+function isBotChallenge(text: string, title = '', hasChallengeDom = false): boolean {
+  if (hasChallengeDom) return true;
+
+  const trimmed = text.trim();
+  const lower = trimmed.toLowerCase();
+  const lowerTitle = title.trim().toLowerCase();
+
+  if (
+    lowerTitle === 'just a moment...' ||
+    lowerTitle.includes('attention required! | cloudflare') ||
+    lowerTitle.includes('ddos-guard')
+  ) {
+    return true;
+  }
+
+  if (
     lower.includes('detected unusual traffic') ||
-    lower.includes('please click here if you are not redirected') ||
     lower.includes('bots use duckduckgo too') ||
     lower.includes('select all squares') ||
-    lower.includes('just a moment...') ||
-    lower.includes('please wait') ||
     lower.includes('cf-browser-verification') ||
-    lower.includes('challenges.cloudflare.com')
-  );
+    lower.includes('challenges.cloudflare.com') ||
+    lower.includes('verify you are human') ||
+    lower.includes('enable javascript and cookies to continue')
+  ) {
+    return true;
+  }
+
+  if (
+    trimmed.length < 1500 &&
+    (lower.includes('just a moment...') ||
+      lower.includes('please wait') ||
+      lower.includes('please click here if you are not redirected') ||
+      lower.includes('checking your browser'))
+  ) {
+    return true;
+  }
+
+  return false;
 }
 
 app.post('/api/web/fetch', async (req, response) => {
@@ -2259,8 +2430,7 @@ app.post('/api/web/fetch', async (req, response) => {
     return response.status(400).json({ error: 'Missing url' });
   }
 
-  const isImageExt = /\.(png|jpe?g|webp|gif|svg|ico)$/i.test(url);
-  if (isImageExt) {
+  if (isImageRequest(url, reqHeaders)) {
     try {
       const res = await fetch(url, { headers: reqHeaders });
       const contentType = res.headers.get('content-type') || 'image/jpeg';
@@ -2269,14 +2439,42 @@ app.post('/api/web/fetch', async (req, response) => {
     } catch { /* fallback to browser */ }
   }
 
+  await acquireWebFetchSlot();
   let browser: Browser | null = null;
+  let page: Page | null = null;
+  let pageCounted = false;
+  let clientClosed = false;
+
+  const onResponseClose = () => {
+    if (!response.writableEnded) {
+      clientClosed = true;
+      if (page && !page.isClosed()) {
+        page.close().catch(() => {});
+      }
+    }
+  };
+  response.on('close', onResponseClose);
+
   try {
-    browser = await puppeteer.launch({
-      headless: false,
-      userDataDir: path.join(ROOT_DIR, 'user_data', 'browser_profile'),
-      args: ['--no-sandbox', '--disable-setuid-sandbox', '--window-size=700,700'],
-    });
-    const page = await browser.newPage();
+    if (clientClosed) return;
+
+    activeWebFetchPages++;
+    pageCounted = true;
+    browser = await acquireWebFetchBrowser();
+    if (clientClosed || !browser.connected) {
+      if (!clientClosed && !response.headersSent) {
+        return response.status(400).json({ ok: false, status: 400, contentType: '', error: 'Browser was closed before the page could be resolved.' });
+      }
+      return;
+    }
+
+    page = await browser.newPage();
+    if (webFetchInitialBlankPage && webFetchInitialBlankPage !== page && !webFetchInitialBlankPage.isClosed()) {
+      const blankToClose = webFetchInitialBlankPage;
+      webFetchInitialBlankPage = null;
+      blankToClose.close().catch(() => {});
+    }
+
     page.setDefaultNavigationTimeout(0);
     page.setDefaultTimeout(0);
     await page.setUserAgent(
@@ -2285,31 +2483,106 @@ app.post('/api/web/fetch', async (req, response) => {
     await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 0 });
 
     let finalText = '';
-    while (!page.isClosed() && browser.connected) {
+    let finalLinks: string[] = [];
+    let finalImageUrls: string[] = [];
+
+    while (!clientClosed && !page.isClosed() && browser.connected) {
       try {
-        const currentText = await page.evaluate(() => document.body?.innerText || '');
-        if (currentText.length > 0 && !isBotChallenge(currentText)) {
+        const extracted = await page.evaluate(() => {
+          const text = document.body?.innerText || document.documentElement?.textContent || '';
+          const title = document.title || '';
+          const hasChallengeDom = Boolean(
+            document.querySelector(
+              '#challenge-running, #challenge-form, #cf-challenge-running, #cf-turnstile, .cf-turnstile, .g-recaptcha, .h-captcha, iframe[src*="challenges.cloudflare.com"], iframe[src*="recaptcha"], iframe[src*="hcaptcha.com"]'
+            )
+          );
+          return { text, title, hasChallengeDom };
+        });
+
+        if (extracted.text.trim().length > 0 && !isBotChallenge(extracted.text, extracted.title, extracted.hasChallengeDom)) {
           await new Promise((r) => setTimeout(r, 1500));
-          finalText = await page.evaluate(() => document.body?.innerText || '');
-          break;
+          if (clientClosed || page.isClosed() || !browser.connected) break;
+
+          const settled = await page.evaluate(() => {
+            const text = document.body?.innerText || document.documentElement?.textContent || '';
+            const title = document.title || '';
+            const hasChallengeDom = Boolean(
+              document.querySelector(
+                '#challenge-running, #challenge-form, #cf-challenge-running, #cf-turnstile, .cf-turnstile, .g-recaptcha, .h-captcha, iframe[src*="challenges.cloudflare.com"], iframe[src*="recaptcha"], iframe[src*="hcaptcha.com"]'
+              )
+            );
+            const links: string[] = [];
+            const seenLinks = new Set<string>();
+            document.querySelectorAll<HTMLAnchorElement>('a[href]').forEach((a) => {
+              const href = a.href;
+              if (href && (href.startsWith('http://') || href.startsWith('https://')) && !seenLinks.has(href)) {
+                seenLinks.add(href);
+                links.push(href);
+              }
+            });
+            const imageUrls: string[] = [];
+            const seenImgs = new Set<string>();
+            document.querySelectorAll<HTMLImageElement>('img[src]').forEach((img) => {
+              const src = img.src;
+              if (
+                src &&
+                (src.startsWith('http://') || src.startsWith('https://')) &&
+                !src.includes('pixel') &&
+                !src.includes('spacer') &&
+                !src.includes('1x1') &&
+                !src.includes('blank.gif') &&
+                !seenImgs.has(src)
+              ) {
+                seenImgs.add(src);
+                imageUrls.push(src);
+              }
+            });
+            return { text, title, hasChallengeDom, links, imageUrls };
+          });
+
+          if (settled.text.trim().length > 0 && !isBotChallenge(settled.text, settled.title, settled.hasChallengeDom)) {
+            finalText = settled.text;
+            finalLinks = settled.links;
+            finalImageUrls = settled.imageUrls;
+            break;
+          }
         }
       } catch {
-        if (page.isClosed() || !browser.connected) break;
+        if (clientClosed || page.isClosed() || !browser.connected) break;
       }
       await new Promise((r) => setTimeout(r, 500));
     }
 
-    if (browser.connected) {
-      await browser.close();
-    }
-    if (!finalText) {
+    if (clientClosed || response.headersSent) return;
+
+    if (!finalText.trim()) {
       return response.status(400).json({ ok: false, status: 400, contentType: '', error: 'Browser was closed before the page could be resolved.' });
     }
-    response.json({ ok: true, status: 200, contentType: 'text/plain', text: finalText });
+    response.json({
+      ok: true,
+      status: 200,
+      contentType: 'text/plain',
+      text: finalText,
+      links: finalLinks,
+      imageUrls: finalImageUrls,
+    });
   } catch (err: any) {
-    if (browser?.connected) await browser.close();
+    if (clientClosed || response.headersSent) return;
+    if ((page && page.isClosed()) || (browser && !browser.connected)) {
+      return response.status(400).json({ ok: false, status: 400, contentType: '', error: 'Browser was closed before the page could be resolved.' });
+    }
     log.error(`[WebFetch] Puppeteer error: ${err.message}`);
     response.status(500).json({ ok: false, status: 500, contentType: '', error: err.message });
+  } finally {
+    response.off('close', onResponseClose);
+    if (page && !page.isClosed()) {
+      await page.close().catch(() => {});
+    }
+    if (pageCounted) {
+      activeWebFetchPages = Math.max(0, activeWebFetchPages - 1);
+      scheduleWebFetchBrowserClose();
+    }
+    releaseWebFetchSlot();
   }
 });
 
@@ -3247,15 +3520,18 @@ app.post('/api/text-to-speech/synthesize', async (request, response) => {
 
 // --- Startup & Cleanup ---
 process.on('SIGINT', () => { 
-  cleanupVirtualController(); 
+  cleanupVirtualController();
+  cleanupWebFetchBrowser();
   process.exit(0); 
 });
 process.on('SIGTERM', () => { 
-  cleanupVirtualController(); 
+  cleanupVirtualController();
+  cleanupWebFetchBrowser();
   process.exit(0); 
 });
 process.on('exit', () => { 
-  cleanupVirtualController(); 
+  cleanupVirtualController();
+  cleanupWebFetchBrowser();
 });
 
 const startServer = () => {
