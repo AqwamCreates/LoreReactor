@@ -2648,6 +2648,43 @@ app.post('/tool/volume', async (req, res) => {
   }
 });
 
+app.post('/tool/focus-window', (req, res) => {
+  const { appName, title, pid } = req.body;
+  if (!appName && !title && !pid) {
+    return res.status(400).json({ success: false, error: 'Missing appName, title, or pid' });
+  }
+  try {
+    if (IS_WINDOWS) {
+      const script = `
+        $sig = '[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd); [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);'
+        Add-Type -MemberDefinition $sig -Name Win32Utils -Namespace Win32 -ErrorAction SilentlyContinue
+        ${pid ? `$proc = Get-Process -Id ${pid} -ErrorAction SilentlyContinue` : ''}
+        ${!pid && appName ? `$proc = Get-Process -Name "*${String(appName).replace(/[^a-zA-Z0-9_\-\*]/g, '')}*" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1` : ''}
+        ${!pid && !appName && title ? `$proc = Get-Process -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -like "*${String(title).replace(/[^a-zA-Z0-9_\-\*\s]/g, '')}*" -and $_.MainWindowHandle -ne [IntPtr]::Zero } | Select-Object -First 1` : ''}
+        if ($proc -and $proc.MainWindowHandle -ne [IntPtr]::Zero) {
+          [Win32.Win32Utils]::ShowWindow($proc.MainWindowHandle, 9)
+          [Win32.Win32Utils]::SetForegroundWindow($proc.MainWindowHandle)
+          exit 0
+        }
+        $wshell = New-Object -ComObject WScript.Shell
+        $targetName = "${String(appName || title || pid).replace(/"/g, '`"')}"
+        $activated = $wshell.AppActivate($targetName)
+        if ($activated) { exit 0 } else { exit 1 }
+      `;
+      execSync(`powershell -NoProfile -Command "${script.replace(/\r?\n/g, ' ')}"`, { stdio: 'pipe', timeout: 5000 });
+    } else if (IS_MACOS) {
+      const target = String(appName || title || '').replace(/"/g, '\\"');
+      execSync(`osascript -e 'tell application "${target}" to activate'`, { stdio: 'pipe', timeout: 5000 });
+    } else {
+      const target = String(title || appName || '').replace(/"/g, '\\"');
+      execSync(`wmctrl -a "${target}" || xdotool search --name "${target}" windowactivate`, { stdio: 'pipe', timeout: 5000 });
+    }
+    res.json({ success: true, message: `Focused window: ${appName || title || pid}` });
+  } catch (error: any) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 app.post('/tool/lock-screen', (_req, res) => {
   try {
     if (IS_WINDOWS) execSync('rundll32.exe user32.dll,LockWorkStation');

@@ -35,6 +35,11 @@ export const VALID_ENTITY_TYPES = [
 ];
 
 export const COMMAND_TREE: SlashCmd[] = [
+    { name: 'file_search', desc: 'List, read, or search attached files', subs: [
+        { name: 'list', desc: 'List visible attached files' },
+        { name: 'read', desc: 'Read or inspect an attached file', args: [{ name: 'query', type: 'text', desc: 'Filename, index, or message UUID', example: 'notes.txt' }] },
+        { name: 'search', desc: 'Search across attached files', args: [{ name: 'query', type: 'text', desc: 'Search query', example: 'secret_key' }] },
+    ]},
     { name: 'whisper', desc: 'Send a private message', args: [
         { name: 'targets', type: 'session_character', desc: 'Target character(s), comma-separated', example: 'char1,char2' },
         { name: 'text', type: 'text', desc: 'Whisper content', example: 'Meet me at the inn' }
@@ -177,7 +182,9 @@ export const COMMAND_TREE: SlashCmd[] = [
         ]},
     ]},
     { name: 'summon', desc: 'Add character to session', args: [{ name: 'character', type: 'global_character', desc: 'Character' }] },
+    { name: 'unsummon', desc: 'Remove character from session', args: [{ name: 'character', type: 'session_character', desc: 'Participant character to remove' }] },
     { name: 'narrate', desc: 'Inject narration', args: [{ name: 'text', type: 'text', desc: 'Narration text', example: 'The wind howls through the trees.' }] },
+    { name: 'substrate', desc: 'Invoke substrate' },
     { name: 'inspect', desc: 'Examine character', args: [{ name: 'character', type: 'session_character', desc: 'Target character' }] },
     { name: 'administrator', desc: 'Admin controls', subs: [
         { name: 'list_chats', desc: 'List all sessions' },
@@ -239,6 +246,11 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'check', desc: 'Check file changes' },
     ]},
     { name: 'window_monitor', desc: 'Check active foreground window' },
+    { name: 'focus_window', desc: 'Bring application or window to foreground', args: [
+        { name: 'appName', type: 'text', desc: 'Application or process name', example: 'chrome', optional: true },
+        { name: 'title', type: 'text', desc: 'Window title substring', example: 'Notepad', optional: true },
+        { name: 'pid', type: 'text', desc: 'Process ID', example: '1234', optional: true }
+    ]},
     { name: 'process_monitor', desc: 'Check running OS processes', args: [{ name: 'query', type: 'text', desc: 'Filter query (optional)', example: 'node', optional: true }] },
     { name: 'trash', desc: 'Move file to recycle bin/trash', args: [{ name: 'path', type: 'text', desc: 'File or folder path', example: 'temp.txt' }] },
     { name: 'browser', desc: 'Open URL or search in browser', args: [{ name: 'url_or_query', type: 'text', desc: 'URL or search query', example: 'https://example.com' }] },
@@ -254,7 +266,8 @@ export const COMMAND_TREE: SlashCmd[] = [
         { name: 'status', desc: 'Check hearing status' },
     ]},
     { name: 'virtual_vision', desc: 'Targeted window & region vision', args: [
-        { name: 'target', type: 'text', desc: 'active, fullscreen, or region', example: 'active', optional: true }
+        { name: 'target', type: 'text', desc: 'active, fullscreen, or region', example: 'active', optional: true },
+        { name: 'appName', type: 'text', desc: 'Target app name (optional)', example: 'chrome', optional: true }
     ]},
     { name: 'virtual_controller', desc: 'Simulate Xbox 360 gamepad', subs: [
         { name: 'tap', desc: 'Tap button', args: [{ name: 'button', type: 'text', desc: 'Button name (A, B, X, Y, LB, RB, LT, RT, START, BACK)', example: 'A' }] },

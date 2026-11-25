@@ -46,6 +46,7 @@ export interface VirtualHearingParams {
   action?: 'start' | 'stop' | 'end' | 'status';
   duration?: number;
 }
+
 export interface VirtualVisionParams {
   target?: 'active' | 'fullscreen' | 'region';
   appName?: string;
@@ -90,6 +91,12 @@ export interface VirtualHearingResult {
   events?: string[];
   rawObservation?: string;
   error?: string;
+}
+
+export interface FocusWindowParams {
+  appName?: string;
+  title?: string;
+  pid?: number;
 }
 
 export async function speakText(text: string, voice?: string, speed = 1.0) {
@@ -140,6 +147,23 @@ export async function controlVolume(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, level }),
+    });
+    return await response.json();
+  } catch (e) {
+    return { success: false, error: (e as Error).message };
+  }
+}
+
+export async function focusWindow(params: FocusWindowParams): Promise<{
+  success: boolean;
+  message?: string;
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`${localURL}/tool/focus-window`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
     });
     return await response.json();
   } catch (e) {

@@ -126,7 +126,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     },
 
     // ═════════════════════════════════════════════════════════════════
-    // TIER 3: AMBIENT SENSORS & WEB (Read-Only Telemetry & Audio)
+    // TIER 3: AMBIENT SENSORS & WEB (Read-Only Telemetry, Audio & Focus)
     // ═════════════════════════════════════════════════════════════════
     { 
         tool: 'virtual_vision', 
@@ -148,6 +148,13 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
         keywords: ['assistant', 'companion', 'roommate', 'secretary', 'overseer', 'hacker', 'ai', 'monitor'], 
         tier: 'ambient', 
         riskDescription: 'Detects the title of the software or browser tab you currently have focused.' 
+    },
+    { 
+        tool: 'focus_window', 
+        label: 'Application & Window Focus', 
+        keywords: ['focus window', 'switch window', 'bring to front', 'switch app', 'focus app', 'foreground window', 'activate window', 'window focus'], 
+        tier: 'ambient', 
+        riskDescription: 'Brings a specific application window or desktop process to the foreground.' 
     },
     { 
         tool: 'process_monitor', 
@@ -262,6 +269,7 @@ export const TOOL_SECURITY_RULES: ToolRule[] = [
     // ═════════════════════════════════════════════════════════════════
     // TIER 5: IN-WORLD READ-ONLY NARRATIVE (Pure Cognitive & Dice)
     // ═════════════════════════════════════════════════════════════════
+    { tool: 'file_search', label: 'Chat File & Attachment Search', keywords: ['attachment', 'attached file', 'file search', 'read attachment', 'search files', 'document search'], tier: 'in_world_readonly', riskDescription: 'Searches, lists, and reads file attachments uploaded within the chat session.' },
     { tool: 'oracle', label: 'Spatial Timeline Scryer', keywords: ['seer', 'oracle', 'clairvoyant', 'psychic', 'diviner', 'all-seeing', 'prophet', 'mystic'], tier: 'in_world_readonly' },
     { tool: 'dice', label: 'Dice Roller', keywords: ['gambler', 'rogue', 'game', 'dnd', 'casino', 'luck', 'chance', 'roll'], tier: 'in_world_readonly' },
     { tool: 'coin', label: 'Coin Flip', keywords: ['gamble', 'coin', 'flip', 'fifty fifty', 'toss'], tier: 'in_world_readonly' },

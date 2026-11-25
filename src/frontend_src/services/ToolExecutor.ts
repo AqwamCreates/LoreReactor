@@ -26,7 +26,7 @@ import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './TextMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
 import { v4 as uuidv4 } from 'uuid';
-import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualHearing, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand } from '../utilities/serverTools';
+import { speakText, stopSpeech, getSystemInfo, sendDesktopNotification, controlVolume, focusWindow, lockScreen, setSystemPower, clipboardAction, captureScreenshot, scanLocalNetwork, startFileWatcher, getFileWatcherEvents, getActiveWindowInfo, getRunningProcesses, moveToTrash, writeFile, readFile, runShellCommand, captureVirtualHearing, captureVirtualVision, sendVirtualInput, sendVirtualController, getHardwarePorts, sendHardwareCommand } from '../utilities/serverTools';
 import { buildSearchUrl } from '../utilities/searchURLBuilder';
 import { generateSkyViewText, getTimeDataFromCoordinates, type TimeData } from './LocationEngine';
 import { localURL } from '../../configurations';
@@ -808,6 +808,20 @@ export const TOOL_DEFINITIONS: Record<tool, ToolDefinition> = {
         inputSchema: { type: 'object', properties: {}, additionalProperties: false },
         examples: [{}],
     },
+    focus_window: {
+        name: 'focus_window',
+        description: 'Bring a specific desktop application or window to the foreground by app name, window title, or PID.',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                appName: { type: 'string', description: 'Application or process name (e.g. "chrome", "notepad")' },
+                title: { type: 'string', description: 'Window title substring' },
+                pid: { type: 'integer', description: 'Process ID' },
+            },
+            additionalProperties: false,
+        },
+        examples: [{ appName: 'chrome' }, { title: 'Notepad' }, { pid: 1234 }],
+    },
     process_monitor: {
         name: 'process_monitor',
         description: 'Check running OS processes.',
@@ -1379,7 +1393,7 @@ export const TOOL_EMOJI_MAP: Record<tool, string> = {
     text_to_speech: '🔊', gpu: '📟', system_info: '🖥️', notify: '🔔', volume_control: '🔊',
     lock_screen: '🔒', sleep: '⚡', shutdown: '⚡', restart: '⚡',
     clipboard: '📋', screenshot: '📸', front_camera: '📷', network_scanner: '🌐',
-    file_watcher: '📂', process_monitor: '⚙️', window_monitor: '🖥️',
+    file_watcher: '📂', process_monitor: '⚙️', window_monitor: '🖥️', focus_window: '🪟',
     trash: '🗑️', browser: '🌐', read_file: '🔗', write_file: '📁', shell: '💻',
     virtual_hearing: '🎧', virtual_vision: '👁️', virtual_input: '🖱️', virtual_controller: '🎮',
     hardware_control: '🔌',
@@ -1387,7 +1401,7 @@ export const TOOL_EMOJI_MAP: Record<tool, string> = {
 
 const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
     file_search: executeFileSearch,
-    whisper: executeWhisper, think: executeThink, pick: executeRandomPick, sky_view: executeSkyView, clock: executeClock, calendar: executeCalendar, coin: executeCoinFlip, dice: executeDiceRoll, random: executeRandom, rng: executeRng, move: executeMove, timer: executeTimer, stopwatch: executeStopwatch, schedule: executeSchedule, calculator: executeCalculator, web: executeWeb, dialogue: executeDialogue, knowledge: executeKnowledge, memory: executeMemory, lookup: executeLookup, map: executeMap, audio: executeAudio, note: executeNote, inventory: executeInventory, trade: executeTrade, invite: executeInvite, kick: executeKick, mind_reader: executeMindReader, oracle: executeOracle, teleport: executeTeleport, key: executeKey, clothing: executeClothing, narrate: executeNarrate, substrate: executeSubstrate, inspect: executeInspect, summon: executeSummon, unsummon: executeUnsummon,administrator: executeAdministrator, creator: executeCreator, destroyer: executeDestroyer, schedule_response: executeScheduleResponse, text_to_speech: executeTextToSpeech, gpu: executeGpu, system_info: executeSystemInfo, notify: executeNotify, volume_control: executeVolumeControl, lock_screen: executeLockScreen, sleep: executePower('sleep'), shutdown: executePower('shutdown'), restart: executePower('restart'), clipboard: executeClipboard, screenshot: executeScreenshot, front_camera: executeFrontCamera, network_scanner: executeNetworkScanner, file_watcher: executeFileWatcher, window_monitor: executeWindowMonitor, process_monitor: executeProcessMonitor, trash: executeTrash, browser: executeBrowser, read_file: executeReadFile, write_file: executeWriteFile, shell: executeShell, virtual_hearing: executeVirtualHearing, virtual_vision: executeVirtualVision, virtual_input: executeVirtualInput, virtual_controller: executeVirtualController, hardware_control: executeHardwareControl,
+    whisper: executeWhisper, think: executeThink, pick: executeRandomPick, sky_view: executeSkyView, clock: executeClock, calendar: executeCalendar, coin: executeCoinFlip, dice: executeDiceRoll, random: executeRandom, rng: executeRng, move: executeMove, timer: executeTimer, stopwatch: executeStopwatch, schedule: executeSchedule, calculator: executeCalculator, web: executeWeb, dialogue: executeDialogue, knowledge: executeKnowledge, memory: executeMemory, lookup: executeLookup, map: executeMap, audio: executeAudio, note: executeNote, inventory: executeInventory, trade: executeTrade, invite: executeInvite, kick: executeKick, mind_reader: executeMindReader, oracle: executeOracle, teleport: executeTeleport, key: executeKey, clothing: executeClothing, narrate: executeNarrate, substrate: executeSubstrate, inspect: executeInspect, summon: executeSummon, unsummon: executeUnsummon,administrator: executeAdministrator, creator: executeCreator, destroyer: executeDestroyer, schedule_response: executeScheduleResponse, text_to_speech: executeTextToSpeech, gpu: executeGpu, system_info: executeSystemInfo, notify: executeNotify, volume_control: executeVolumeControl, focus_window: executeFocusWindow, lock_screen: executeLockScreen, sleep: executePower('sleep'), shutdown: executePower('shutdown'), restart: executePower('restart'), clipboard: executeClipboard, screenshot: executeScreenshot, front_camera: executeFrontCamera, network_scanner: executeNetworkScanner, file_watcher: executeFileWatcher, window_monitor: executeWindowMonitor, process_monitor: executeProcessMonitor, trash: executeTrash, browser: executeBrowser, read_file: executeReadFile, write_file: executeWriteFile, shell: executeShell, virtual_hearing: executeVirtualHearing, virtual_vision: executeVirtualVision, virtual_input: executeVirtualInput, virtual_controller: executeVirtualController, hardware_control: executeHardwareControl,
 };
 
 export function getFallbackToolResult(innerString: string): ToolResult {
@@ -3825,6 +3839,37 @@ async function executeVolumeControl(args: string): Promise<ToolResult> {
     return helpResult('volume_control', 'action="get|set|mute|unmute", level=50', 'adjust host system master volume');
 }
 
+// ─── Focus Window Tool ──────────────────────────────────────────────
+async function executeFocusWindow(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
+    const pArgs = parsePythonArgs(args);
+    const appName = pArgs.get(0, 'appname', 'app', 'name') || (!pArgs.isJson && pArgs.positional.length > 0 ? pArgs.positional[0] : undefined);
+    const title = pArgs.get(1, 'title', 'window_title') || (!pArgs.isJson && pArgs.positional.length > 1 ? pArgs.positional[1] : undefined);
+    const pid = pArgs.getNumber(2, 'pid', 'processid');
+
+    if (!appName && !title && pid === undefined) {
+        return helpResult('focus_window', 'appName="chrome", title="...", pid=1234', 'bring a specific desktop application or window to the foreground');
+    }
+
+    const res = await focusWindow({ appName, title, pid });
+    if (!res.success) {
+        return {
+            toolType: 'focus_window',
+            args,
+            textContent: `[Error: ${res.error || 'Failed to focus window'}]`,
+            displayReplacement: '[❌ Focus failed]',
+        };
+    }
+
+    const targetDesc = appName || title || (pid !== undefined ? `PID ${pid}` : 'window');
+    context.addToast?.(`Brought ${targetDesc} to foreground`, 'info');
+    return {
+        toolType: 'focus_window',
+        args,
+        textContent: res.message || `Successfully focused window for ${targetDesc}.`,
+        displayReplacement: `[🪟 Focused: ${targetDesc}]`,
+    };
+}
+
 // ─── Workstation Lock Screen Tool ───────────────────────────────────
 async function executeLockScreen(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const res = await lockScreen();
@@ -4115,8 +4160,17 @@ async function executeVirtualVision(args: string, nextMessage: BaseMessage, _int
         dataUrl,
     });
 
+    const boundsDesc = res.bounds
+        ? ` Window Offset: (X=${res.bounds.left}, Y=${res.bounds.top}, Width=${res.bounds.width}, Height=${res.bounds.height}). When clicking inside this target with virtual_input, translate relative coordinates by adding X+${res.bounds.left} and Y+${res.bounds.top}.`
+        : '';
+
     context.addToast?.(`Captured target: ${res.target}`, 'info');
-    return { toolType: 'virtual_vision', args, textContent: `Captured targeted vision (${res.target}) and attached to visual input.`, displayReplacement: `[👁️ Vision: ${res.target}]` };
+    return {
+        toolType: 'virtual_vision',
+        args,
+        textContent: `Captured targeted vision (${res.target}) and attached to visual input.${boundsDesc}`,
+        displayReplacement: `[👁️ Vision: ${res.target}]`
+    };
 }
 
 // ─── Virtual Input Tool (Mouse & Keyboard) ──────────────────────────
