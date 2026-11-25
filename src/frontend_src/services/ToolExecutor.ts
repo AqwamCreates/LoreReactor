@@ -3414,7 +3414,72 @@ function executeInspect(args: string, _nextMessage: BaseMessage, interactionData
     };
 }
 
+// ─── Summon ─────────────────────────────────────────────────────────
+function executeSummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
+    const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+    const allChars = context.allCharacters || [];
 
+    if (action === 'list') {
+        const participantIds = new Set((interactionData.participants || []).map(p => p.id));
+        const summonable = allChars.filter(c => !participantIds.has(c.id)).map(c => ({ character_id: c.id, name: c.name }));
+        return { toolType: 'summon', args, textContent: JSON.stringify({ summonable_characters: summonable }), displayReplacement: `[✨ ${summonable.length} summonable character(s)]` };
+    }
+
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
+    if (!charQuery) return helpResult('summon', 'character_id="..."', 'add a non-participant character to current session');
+
+    const q = charQuery.toLowerCase();
+    const targetChar = interactionData.participants.find(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q)) || allChars.find(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q));
+    if (!targetChar) return { toolType: 'summon', args, textContent: `[Error: Character "${charQuery}" does not exist]`, displayReplacement: '[Error: Character not found]' };
+
+    appendPendingAction(nextMessage, { type: 'summon', payload: { characterId: targetChar.id, characterName: targetChar.name } });
+    return { toolType: 'summon', args, textContent: `Summoned ${targetChar.name}.`, displayReplacement: `[✨ Summoned ${targetChar.name}]` };
+}
+
+// ─── Unsummon ───────────────────────────────────────────────────────
+function executeUnsummon(args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext): ToolResult {
+    const pArgs = parsePythonArgs(args);
+    const action = pArgs.get(-1, 'action')?.toLowerCase();
+    const allChars = context.allCharacters || [];
+
+    if (action === 'list') {
+        const protagonistIds = new Set(interactionData.protagonistIds || []);
+        const unsummonable = (interactionData.participants || [])
+            .filter(c => !protagonistIds.has(c.id))
+            .map(c => ({ character_id: c.id, name: c.name }));
+        return {
+            toolType: 'unsummon',
+            args,
+            textContent: JSON.stringify({ unsummonable_characters: unsummonable }),
+            displayReplacement: `[💨 ${unsummonable.length} unsummonable character(s)]`
+        };
+    }
+
+    const charQuery = pArgs.get(0, 'character_id', 'character', 'target', 'name') || (!pArgs.isJson ? pArgs.positional.join(' ') : undefined);
+    if (!charQuery) return helpResult('unsummon', 'character_id="..."', 'remove a participant character from current session');
+
+    const q = charQuery.toLowerCase();
+    const targetChar = (interactionData.participants || []).find(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q));
+    if (!targetChar) {
+        const exists = allChars.some(c => c.id.toLowerCase() === q || c.id.toLowerCase().startsWith(q));
+        return {
+            toolType: 'unsummon',
+            args,
+            textContent: exists
+                ? `[Error: Character "${charQuery}" is not a participant in current session]`
+                : `[Error: Character "${charQuery}" does not exist]`,
+            displayReplacement: '[Error: Character not found]'
+        };
+    }
+
+    if (interactionData.protagonistIds?.includes(targetChar.id)) {
+        return { toolType: 'unsummon', args, textContent: '[Error: Cannot unsummon session protagonist]', displayReplacement: '[Error: Protected character]' };
+    }
+
+    appendPendingAction(nextMessage, { type: 'unsummon', payload: { characterId: targetChar.id, characterName: targetChar.name } });
+    return { toolType: 'unsummon', args, textContent: `Unsummoned ${targetChar.name}.`, displayReplacement: `[💨 Unsummoned ${targetChar.name}]` };
+}
 
 // ─── Administrator ──────────────────────────────────────────────────
 function executeAdministrator(
