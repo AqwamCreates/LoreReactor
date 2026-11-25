@@ -988,6 +988,9 @@ export type textGenerationBehaviourOnNarration = 'wait' | 'continue' | 'interrup
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
+  enableFaceDetection: boolean; // Default is false.
+  faceDetectionIntervalMs: number; // Default is 1000.
+  faceDetectionProbabilityThreshold: number; // Probability Gate: 0 to 1 (Default: 0.75)
   volume: number;
   forceNameReveal: boolean;
   enableAmbientNarration: boolean; // Default is false.
@@ -1034,6 +1037,7 @@ export interface Profile extends ObjectData {
   summarizationSteps: SummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
+  faceDetectionDeviceType: deviceType; // Default is auto.
   sentimentalAnalysisDeviceType: deviceType; // Default is auto.
   textToSpeechDeviceType: deviceType; // Default is auto.
   speechToTextDeviceType: deviceType; // Default is auto.
@@ -1056,6 +1060,9 @@ export interface Profile extends ObjectData {
 export interface RawProfile extends RawData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
+  enableFaceDetection: boolean; // Default is false.
+  faceDetectionIntervalMs: number; // Default is 1000.
+  faceDetectionProbabilityThreshold: number; // Probability Gate: 0 to 1 (Default: 0.75)
   volume: number;
   forceNameReveal: boolean;
   enableAmbientNarration: boolean; // Default is false.
@@ -1102,6 +1109,7 @@ export interface RawProfile extends RawData {
   summarizationSteps: RawSummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
+  faceDetectionDeviceType: deviceType; // Default is auto.
   sentimentalAnalysisDeviceType: deviceType; // Default is auto.
   textToSpeechDeviceType: deviceType; // Default is auto.
   speechToTextDeviceType: deviceType; // Default is auto.

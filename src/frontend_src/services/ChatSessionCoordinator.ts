@@ -14,6 +14,7 @@ import { sentimentEngine } from './SentimentAnalysisEngine';
 import { speculativeMarkovEngine } from './SpeculativeMarkovEngine';
 import { runSummarization } from './SummarizationEngine';
 import { textToSpeechEngine } from './TextToSpeechEngine';
+import { frontCameraEngine } from './FrontCameraEngine';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 
 import { createMessage, findLatestMessage, getMessageById } from '../utilities/messageLogic';
@@ -58,7 +59,6 @@ export interface CoordinatorDependencies {
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
     requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
     addToast: (msg: string, type?: 'success' | 'error' | 'info') => void;
-    captureFrontCameraImage: () => Promise<string | null>;
     onMessageBroadcast?: (message: HistoryMessage) => void;
     onStateBroadcast?: (state: Partial<InteractionData>) => void;
 }
@@ -179,7 +179,7 @@ class ChatSessionCoordinator {
             allRawInteractionDataShells: this.deps.allRawInteractionDataShells,
             allEntityFolders: this.deps.allEntityFolders,
             allExtensions: [],
-            captureFrontCameraImage: this.deps.captureFrontCameraImage,
+            captureFrontCameraImage: () => frontCameraEngine.captureImage(),
             addToast: this.deps.addToast,
         };
     }
@@ -208,11 +208,11 @@ class ChatSessionCoordinator {
             
             let turnData = d;
             const protagonistId = useChatStore.getState().localProtagonist?.id || turnData.protagonistIds?.[0];
-            if (protagonistId && this.deps.captureFrontCameraImage) {
+            if (protagonistId) {
                 const protagonist = turnData.participants.find(p => p.id === protagonistId);
                 if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile)) {
                     try {
-                        const freshImageBase64 = await this.deps.captureFrontCameraImage();
+                        const freshImageBase64 = await frontCameraEngine.captureImage();
                         if (freshImageBase64) {
                             const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
                             if (
@@ -532,6 +532,7 @@ class ChatSessionCoordinator {
     private async runSequence(
         startData: InteractionData, 
         excludeFromSequence?: Set<string>,
+        options?: { skipAmbientNarration?: boolean },
     ): Promise<InteractionData> {
         let currentData = startData;
         const preTurnCount = getGlobalMessageHistory(currentData).length;
@@ -565,7 +566,7 @@ class ChatSessionCoordinator {
         }
 
         const postTurnCount = getGlobalMessageHistory(currentData).length;
-        if (postTurnCount <= preTurnCount && currentData.profile?.enableAmbientNarration && !this.wasStopped) {
+        if (!options?.skipAmbientNarration && postTurnCount <= preTurnCount && currentData.profile?.enableAmbientNarration && !this.wasStopped) {
             const ambientData = await this.generateAmbientNarration(currentData, this.abortController.signal);
             if (ambientData) {
                 currentData = ambientData;
@@ -808,9 +809,9 @@ class ChatSessionCoordinator {
 
         try {
             let frontCameraImageBase64: string | undefined;
-            if (getEffectiveUseFrontCameraImage(protagonist, currentData.profile) && this.deps.captureFrontCameraImage) {
+            if (getEffectiveUseFrontCameraImage(protagonist, currentData.profile)) {
                 try {
-                    const img = await this.deps.captureFrontCameraImage();
+                    const img = await frontCameraEngine.captureImage();
                     if (img) frontCameraImageBase64 = img;
                 } catch (e) {
                     console.warn('Directed action front camera capture failed:', e);
@@ -903,8 +904,7 @@ class ChatSessionCoordinator {
             if (
                 isProtagonist &&
                 isLocalUsersMessage &&
-                (targetMsg.messageType === 'chat' || targetMsg.messageType === 'whisper' || targetMsg.messageType === 'tool') &&
-                this.deps.captureFrontCameraImage
+                (targetMsg.messageType === 'chat' || targetMsg.messageType === 'whisper' || targetMsg.messageType === 'tool')
             ) {
                 const protagonistChar =
                     (localProtagonist?.id === targetMsg.character.id ? localProtagonist : undefined) ||
@@ -914,7 +914,7 @@ class ChatSessionCoordinator {
 
                 if (getEffectiveUseFrontCameraImage(protagonistChar, currentData.profile)) {
                     try {
-                        const img = await this.deps.captureFrontCameraImage();
+                        const img = await frontCameraEngine.captureImage();
                         if (img) freshFrontCameraImage = img;
                     } catch (e) {
                         console.warn('Regenerate front camera capture failed:', e);
@@ -1093,6 +1093,26 @@ class ChatSessionCoordinator {
                 .then(() => this.resetAutonomousPacing())
                 .finally(() => this.releaseLockIfCurrent(lockEpoch));
         }
+    }
+
+    public handleFacePresenceChange(_isDetected: boolean): void {
+        if (!this.deps || this.deps.isMultiplayerClient) return;
+        if (this.isGenerating) return;
+
+        const state = useChatStore.getState();
+        const currentData = state.interactionData;
+        if (!currentData || !currentData.profile?.enableFaceDetection) return;
+
+        const hasActiveModel = Boolean(state.selectedLanguageModel || state.activeStrategy);
+        if (!hasActiveModel) return;
+
+        if (!this.acquireLock()) return;
+        const lockEpoch = this.currentLockEpoch;
+
+        this.runSequence(currentData, undefined, { skipAmbientNarration: true })
+            .then(() => this.resetAutonomousPacing())
+            .catch((e) => console.warn('Face detection turn sequence failed:', e))
+            .finally(() => this.releaseLockIfCurrent(lockEpoch));
     }
 }
 

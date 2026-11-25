@@ -20,7 +20,7 @@ import { buildModelLoadArguments } from '../utilities/modelLoadArguments';
 import { localURL } from '../../configurations';
 import { speechToTextEngine } from '../services/SpeechToTextEngine';
 import { cloudBackends } from '../dictionaries/languageModelInformation';
-import { useFrontCamera } from '../hooks/useFrontCamera';
+import { frontCameraEngine } from '../services/FrontCameraEngine';
 import type { Character, Context, Location, AudioTrack, World, LanguageModel, Account, MultiplayerData, InteractionData, ChatMessage, WhisperMessage, HistoryMessage, RawInteractionData, cloudBackend, TextMessage } from '../types';
 import { useChatStore } from '../hooks/useChatStore';
 import { useGenerationStore } from '../hooks/useGenerationStore';
@@ -126,7 +126,14 @@ function dataUrlPayloadToFile(item: File | { name?: string; base64?: string }): 
 // ─── App Component ───────────────────────────────────────────────────
 function App() {
     const { addToast } = useToast();
-    const { captureFrontCameraImage } = useFrontCamera(addToast);
+
+    useEffect(() => {
+        return frontCameraEngine.onError(addToast);
+    }, [addToast]);
+
+    useEffect(() => {
+        return () => frontCameraEngine.stop();
+    }, []);
 
     // ─── Manager Hooks ───────────────────────────────────────────────
     const interactionDatas = useInteractionDataManager();
@@ -228,7 +235,6 @@ function App() {
         allEntityFolders: entityFolders.entityFolders, 
         requestBorrowedModel: handleRequestBorrowedModel,
         requestPeerInference: mp.multiplayerSync.requestPeerInference,
-        captureFrontCameraImage,
     });
 
     const {
@@ -723,7 +729,7 @@ function App() {
 
         let frontCam: string | undefined;
         if (currentCharacter && getEffectiveUseFrontCameraImage(currentCharacter, interactionData?.profile)) {
-            const img = await captureFrontCameraImage();
+            const img = await frontCameraEngine.captureImage();
             if (img) frontCam = img;
         }
 
@@ -736,7 +742,7 @@ function App() {
                 scrollToBottom(true);
             });
         });
-    }, [inputText, pendingFiles, sendMessage, captureFrontCameraImage, interactionData, currentCharacter, scrollToBottom]);
+    }, [inputText, pendingFiles, sendMessage, interactionData, currentCharacter, scrollToBottom]);
 
     const handleSendRef = useRef(handleSend);
     useEffect(() => {
@@ -1155,12 +1161,12 @@ function App() {
 
         let frontCam: string | undefined;
         if (getEffectiveUseFrontCameraImage(localProtagonist, interactionData?.profile)) {
-            const img = await captureFrontCameraImage();
+            const img = await frontCameraEngine.captureImage();
             if (img) frontCam = img;
         }
 
         await sendMessage(`/move location_id="${location.id}"`, undefined, frontCam);
-    }, [interactionData, localProtagonist, addToast, modals.locationList, captureFrontCameraImage, sendMessage]);
+    }, [interactionData, localProtagonist, addToast, modals.locationList, sendMessage]);
 
     const baseViewProps: ViewModeProps = {
         displayMessages: committedMessages as TextMessage[],
@@ -1324,7 +1330,7 @@ function App() {
                     : [];
                 let frontCam: string | undefined;
                 if (currentCharacter && getEffectiveUseFrontCameraImage(currentCharacter, interactionData?.profile)) {
-                    const img = await captureFrontCameraImage();
+                    const img = await frontCameraEngine.captureImage();
                     if (img) frontCam = img;
                 }
                 sendMessage(e.data.text, convertedFiles, frontCam);
@@ -1390,7 +1396,7 @@ function App() {
             companionChannelRef.current = null;
         };
     }, [
-        sendMessage, captureFrontCameraImage, actionMenu, actions, localProtagonist, 
+        sendMessage, actionMenu, actions, localProtagonist, 
         interactionData, currentCharacter, setGlobalModelId, toggleLanguageModelLoad, 
         handleActivateBudgetStrategy, saveProfile, setInteractionData, addToast, 
         profiles.profiles, resumeGeneration, regenerateFromMessage, stopGeneration, 

@@ -5,13 +5,14 @@ import { useChatStore } from './useChatStore';
 import { useGenerationStore } from './useGenerationStore';
 import { useChatUI } from './useChatUI';
 import { useToast } from '../context/ToastContext';
-import { useFrontCamera } from './useFrontCamera';
 import { chatCoordinator } from '../services/ChatSessionCoordinator';
 import { MultiplayerEvents } from '../services/MultiplayerEvents';
 import { createNewInteractionData } from '../utilities/interactionDataLogic';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
+import { faceDetectionEngine } from '../services/FaceDetectionEngine';
+import { frontCameraEngine } from '../services/FrontCameraEngine';
 import { loadRawBudgetData } from '../storages/serverStorage';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
@@ -52,13 +53,10 @@ interface UseChatSessionOptions {
     allActions: InterjectableAction[];
     requestBorrowedModel?: () => Promise<LanguageModel | null>;
     requestPeerInference?: (peerAccountId: string, modelName: string, promptOrMessages: any, onToken: (token: string) => void, signal?: AbortSignal) => Promise<void>;
-    captureFrontCameraImage?: () => Promise<string | null>;
 }
 
 export function useChatSession(options: UseChatSessionOptions) {
     const { addToast } = useToast();
-    const { captureFrontCameraImage: fallbackCaptureFrontCameraImage } = useFrontCamera(addToast);
-    const captureFrontCameraImage = options.captureFrontCameraImage ?? fallbackCaptureFrontCameraImage;
     const lmEngine = getLanguageModelEngine();
 
     // ─── 1. Bind Dependencies to Headless Coordinator ───
@@ -88,12 +86,11 @@ export function useChatSession(options: UseChatSessionOptions) {
             requestBorrowedModel: options.requestBorrowedModel,
             requestPeerInference: options.requestPeerInference,
             addToast,
-            captureFrontCameraImage,
             onMessageBroadcast: options.onMessageBroadcast,
             onStateBroadcast: options.onStateBroadcast,
         });
         chatCoordinator.setupPeerInference();
-    }, [options, addToast, captureFrontCameraImage]);
+    }, [options, addToast]);
 
     // ─── 2. Multiplayer Events ───
     useEffect(() => {
@@ -104,7 +101,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         return unsubscribe;
     }, [options.isMultiplayerClient]);
 
-    // ─── 3. Background Effects (Budget, Polling, Tokens, Autonomous Mode, FM Unload) ───
+    // ─── 3. Background Effects (Budget, Polling, Tokens, Autonomous Mode, Face Detection, FM Unload) ───
     const interactionData = useChatStore(s => s.interactionData);
     const selectedLanguageModel = useChatStore(s => s.selectedLanguageModel);
     const selectedSpatiotemporalModel = useChatStore(s => s.selectedSpatiotemporalModel);
@@ -202,6 +199,62 @@ export function useChatSession(options: UseChatSessionOptions) {
             chatCoordinator.stopAutonomousMode();
         };
     }, [autonomousMode, activeChatId, options.isMultiplayerClient]);
+
+    // Face Presence Detection Lifecycle
+    const enableFaceDetection = Boolean(interactionData?.profile?.enableFaceDetection);
+    const faceDetectionIntervalMs = interactionData?.profile?.faceDetectionIntervalMs ?? 1000;
+    const faceDetectionProbabilityThreshold = interactionData?.profile?.faceDetectionProbabilityThreshold ?? 0.75;
+    const faceDetectionDeviceType = interactionData?.profile?.faceDetectionDeviceType ?? 'auto';
+
+    const faceConfigRef = useRef({
+        intervalMs: faceDetectionIntervalMs,
+        probabilityThreshold: faceDetectionProbabilityThreshold,
+        devicePreference: faceDetectionDeviceType,
+    });
+    faceConfigRef.current = {
+        intervalMs: faceDetectionIntervalMs,
+        probabilityThreshold: faceDetectionProbabilityThreshold,
+        devicePreference: faceDetectionDeviceType,
+    };
+
+    useEffect(() => {
+        if (enableFaceDetection && activeChatId && !options.isMultiplayerClient) {
+            frontCameraEngine.setKeepAlive('face_detection', true);
+            void faceDetectionEngine.startMonitoring({
+                getVideoElement: () => frontCameraEngine.getVideoElement(true),
+                onPresenceChange: (isDetected) => {
+                    chatCoordinator.handleFacePresenceChange(isDetected);
+                },
+                intervalMs: faceConfigRef.current.intervalMs,
+                probabilityThreshold: faceConfigRef.current.probabilityThreshold,
+                devicePreference: faceConfigRef.current.devicePreference,
+            });
+        } else {
+            faceDetectionEngine.stopMonitoring(true);
+            frontCameraEngine.setKeepAlive('face_detection', false);
+        }
+
+        return () => {
+            faceDetectionEngine.stopMonitoring(true);
+            frontCameraEngine.setKeepAlive('face_detection', false);
+        };
+    }, [enableFaceDetection, activeChatId, options.isMultiplayerClient]);
+
+    // Live-sync interval, threshold, and hardware device changes without resetting baseline
+    useEffect(() => {
+        if (!enableFaceDetection || options.isMultiplayerClient) return;
+        faceDetectionEngine.updateMonitoringOptions({
+            intervalMs: faceDetectionIntervalMs,
+            probabilityThreshold: faceDetectionProbabilityThreshold,
+            devicePreference: faceDetectionDeviceType,
+        });
+    }, [
+        enableFaceDetection,
+        options.isMultiplayerClient,
+        faceDetectionIntervalMs,
+        faceDetectionProbabilityThreshold,
+        faceDetectionDeviceType,
+    ]);
 
     // Persist Factorization Machine Weights on Window Unload
     useEffect(() => {

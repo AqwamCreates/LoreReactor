@@ -84,6 +84,10 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
     const [autonomousMode, setAutonomousMode] = useState(ep?.autonomousMode ?? false);
     const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(ep?.autonomousInteractionIntervalMs ?? 10000);
 
+    const [enableFaceDetection, setEnableFaceDetection] = useState<boolean>(ep?.enableFaceDetection ?? false);
+    const [faceDetectionIntervalMs, setFaceDetectionIntervalMs] = useState<number>(ep?.faceDetectionIntervalMs ?? 1000);
+    const [faceDetectionProbabilityThreshold, setFaceDetectionProbabilityThreshold] = useState<number>(ep?.faceDetectionProbabilityThreshold ?? 0.75);
+
     const [enableAutoSpeechDetection, setEnableAutoSpeechDetection] = useState<boolean>(ep?.enableAutoSpeechDetection ?? false);
     const [speechVolumeActivationThreshold, setSpeechVolumeActivationThreshold] = useState<number>(ep?.speechVolumeActivationThreshold ?? 18);
     const [speechSilenceVolumeActivationThreshold, setSpeechSilenceVolumeActivationThreshold] = useState<number>(ep?.speechSilenceVolumeActivationThreshold ?? 8);
@@ -119,6 +123,9 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
             ...ep,
             name, description: description || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
+            enableFaceDetection,
+            faceDetectionIntervalMs,
+            faceDetectionProbabilityThreshold,
             enableAutoSpeechDetection, 
             speechVolumeActivationThreshold, 
             speechSilenceVolumeActivationThreshold, 
@@ -166,6 +173,38 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
                                 </div>
                                 <SliderInput label="" value={autonomousInteractionIntervalMs} minimumValue={1000} maximumValue={600000} stepValue={1000} decimals={0} onChange={(val) => setAutonomousInteractionIntervalMs(Math.round(val))} description="How often the engine evaluates characters for autonomous actions." />
                             </div>
+                        )}
+                    </div>
+
+                    <div className="editor-section">
+                        <span className="editor-section-title">Face Detection</span>
+                        <ProfileCheckbox checked={enableFaceDetection} onChange={setEnableFaceDetection} label="Enable Face Detection" hint="Monitor the front camera for physical presence changes and trigger character evaluation." />
+                        {enableFaceDetection && (
+                            <>
+                                <div className="editor-nested-field">
+                                    <div className="slider-header-row">
+                                        <label className="editor-label editor-label-small editor-label-no-margin">Detection Interval</label>
+                                        <span className="slider-value-display">{(faceDetectionIntervalMs / 1000).toFixed(1)}s</span>
+                                    </div>
+                                    <SliderInput label="" value={faceDetectionIntervalMs} minimumValue={100} maximumValue={60000} stepValue={100} decimals={0} onChange={(val) => setFaceDetectionIntervalMs(Math.round(val))} description="How frequently the front camera frame is checked for a face." />
+                                </div>
+                                <div className="editor-nested-field">
+                                    <div className="slider-header-row">
+                                        <label className="editor-label editor-label-small editor-label-no-margin">Face Probability Threshold</label>
+                                        <span className="slider-value-display">{faceDetectionProbabilityThreshold.toFixed(2)}</span>
+                                    </div>
+                                    <SliderInput 
+                                        label="" 
+                                        value={faceDetectionProbabilityThreshold} 
+                                        minimumValue={0.10} 
+                                        maximumValue={0.95} 
+                                        stepValue={0.05} 
+                                        decimals={2} 
+                                        onChange={(val) => setFaceDetectionProbabilityThreshold(Number(val.toFixed(2)))} 
+                                        description="Minimum confidence score (0.0-1.0) from UltraFace to confirm face presence." 
+                                    />
+                                </div>
+                            </>
                         )}
                     </div>
 

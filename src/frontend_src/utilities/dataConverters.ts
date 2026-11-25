@@ -215,6 +215,15 @@ function parseEntityType(raw: unknown): entityType {
     return 'character';
 }
 
+const VALID_DEVICE_TYPES: deviceType[] = ['auto', 'cpu', 'gpu'];
+
+function parseDeviceType(raw: unknown): deviceType {
+    if (typeof raw === 'string' && VALID_DEVICE_TYPES.includes(raw as deviceType)) {
+        return raw as deviceType;
+    }
+    return 'auto';
+}
+
 export function fillEntityFolderDefaults(f: Record<string, unknown>): EntityFolder {
     const now = Date.now();
     return {
@@ -621,6 +630,9 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         description: (p.description as string) || undefined,
         autonomousMode: (p.autonomousMode as boolean) ?? false,
         autonomousInteractionIntervalMs: (p.autonomousInteractionIntervalMs as number) ?? 10000,
+        enableFaceDetection: typeof p.enableFaceDetection === 'boolean' ? p.enableFaceDetection : false,
+        faceDetectionIntervalMs: typeof p.faceDetectionIntervalMs === 'number' && Number.isFinite(p.faceDetectionIntervalMs) ? Math.max(50, p.faceDetectionIntervalMs) : 1000,
+        faceDetectionProbabilityThreshold: typeof p.faceDetectionProbabilityThreshold === 'number' && Number.isFinite(p.faceDetectionProbabilityThreshold) ? Math.max(0, Math.min(1, p.faceDetectionProbabilityThreshold)) : 0.75,
         enableAutoSpeechDetection: (p.enableAutoSpeechDetection as boolean) ?? false,
         speechVolumeActivationThreshold: (p.speechVolumeActivationThreshold as number) ?? 18,
         speechSilenceVolumeActivationThreshold: (p.speechSilenceVolumeActivationThreshold as number) ?? 8,
@@ -658,6 +670,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         minimalVolatileCacheMode: (p.minimalVolatileCacheMode as boolean) ?? false,
         doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
         enableSpeculativeMarkov: (p.enableSpeculativeMarkov as boolean) ?? false,
+        faceDetectionDeviceType: parseDeviceType(p.faceDetectionDeviceType),
         sentimentalAnalysisDeviceType: (p.sentimentalAnalysisDeviceType as deviceType) ?? 'auto',
         textToSpeechDeviceType: (p.textToSpeechDeviceType as deviceType) ?? 'auto',
         speechToTextDeviceType: (p.speechToTextDeviceType as deviceType) ?? 'auto',
