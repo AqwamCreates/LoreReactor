@@ -6,40 +6,38 @@ import type {
 import type { OpenAIMessage } from '../services/ProviderCacheStrategy';
 import { v4 as uuidv4 } from 'uuid';
 import { generateInitialCharacterText } from './characterLogic';
-import { buildPrompt } from './promptLogic';
+import {
+    compileTurnPrompt,
+    prepareTurnPromptSnapshot,
+    type PreparedTurnPromptSnapshot,
+    type TurnWorkingState,
+} from './promptLogic';
 import { findLatestMessage, getMessageById } from './messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from './timelineLogic';
 import { toolCallStartString, toolCallEndString } from '../dictionaries/stringList';
 
 // ─── Core Functions ────────────────────────────────────────────────
 
-export async function buildRequestBody(
-    interactionData: InteractionData,
-    character: Character,
-    knownCharacterNames: Record<string, Record<string, boolean>>,
+export function buildTurnRequestBody(
+    snapshot: PreparedTurnPromptSnapshot,
+    workingState: TurnWorkingState,
     existingCharacterText: string,
-    allPromptBlocks: PromptBlock[],
-    modelId: string,
-    isToolMessage: boolean,
-    allRawInteractionDataShells: RawInteractionData[],
-): Promise<{ 
-    body: Record<string, unknown>; 
-    knownCharacterNames: Record<string, Record<string, boolean>>; 
-    fetchErrors: string[]; 
-    characterClothingWearingStatuses: Record<string, boolean> 
-}> {
-    const profile = interactionData.profile;
+): {
+    body: Record<string, unknown>;
+    knownCharacterNames: Record<string, Record<string, boolean>>;
+    fetchErrors: string[];
+    characterClothingWearingStatuses: Record<string, boolean>;
+} {
+    const profile = snapshot.interactionData.profile;
+    const {
+        messages,
+        stops,
+        imagePayloads,
+        characterClothingWearingStatuses,
+        fetchErrors,
+    } = compileTurnPrompt(snapshot, workingState, existingCharacterText);
 
-    const { 
-        messages, 
-        stops, 
-        imagePayloads, 
-        characterClothingWearingStatuses, 
-        fetchErrors 
-    } = await buildPrompt(interactionData, character, knownCharacterNames, existingCharacterText, allPromptBlocks, modelId, isToolMessage, allRawInteractionDataShells);
-
-    const languageModelTokenSampler = character.languageModelTokenSampler;
-
+    const languageModelTokenSampler = snapshot.character.languageModelTokenSampler;
     const finalMessages: OpenAIMessage[] = messages;
     const { stop: paramStops, ...otherParams } = languageModelTokenSampler?.parameters || {};
 
@@ -57,7 +55,7 @@ export async function buildRequestBody(
     if (profile?.randomizeTextCharacterInjection) {
         const maxRetries = profile.maximumNumberOfTextCharacterRandomizationPerModel ?? 1;
         const injections: string[] = [];
-        for (let i = 0; i < maxRetries; i++) injections.push(generateInitialCharacterText(character));
+        for (let i = 0; i < maxRetries; i++) injections.push(generateInitialCharacterText(snapshot.character));
         body._baseMessages = finalMessages.map(m => ({ ...m }));
 
         if (!profile.randomizeTextCharacterInjectionOnRetry && injections.length > 0) {
@@ -79,9 +77,53 @@ export async function buildRequestBody(
     if (imagePayloads && imagePayloads.length > 0) {
         body.image_data = imagePayloads;
     }
-    body.session_id = interactionData.id;
+    body.session_id = snapshot.interactionData.id;
 
-    return { body, knownCharacterNames, fetchErrors, characterClothingWearingStatuses };
+    return {
+        body,
+        knownCharacterNames: snapshot.knownNames,
+        fetchErrors,
+        characterClothingWearingStatuses,
+    };
+}
+
+export async function buildRequestBody(
+    interactionData: InteractionData,
+    character: Character,
+    knownCharacterNames: Record<string, Record<string, boolean>>,
+    existingCharacterText: string,
+    allPromptBlocks: PromptBlock[],
+    modelId: string,
+    isToolMessage: boolean,
+    allRawInteractionDataShells: RawInteractionData[],
+): Promise<{ 
+    body: Record<string, unknown>; 
+    knownCharacterNames: Record<string, Record<string, boolean>>; 
+    fetchErrors: string[]; 
+    characterClothingWearingStatuses: Record<string, boolean> 
+}> {
+    const snapshot = await prepareTurnPromptSnapshot(
+        interactionData,
+        character,
+        knownCharacterNames,
+        allPromptBlocks,
+        modelId,
+        isToolMessage,
+        allRawInteractionDataShells,
+    );
+
+    const latest = findLatestMessage(interactionData, character)?.message;
+    const workingState: TurnWorkingState = {
+        inventory: latest?.inventory ? { ...latest.inventory } : {},
+        activeToolActions: latest?.activeToolActions ? { ...latest.activeToolActions } : {},
+        pendingToolActions: [],
+        clothingWearingStatuses: { ...snapshot.characterClothingWearingStatuses },
+        lockedLocations: latest?.characterLockedLocations ? { ...latest.characterLockedLocations } : {},
+        attachedFiles: [],
+        ephemeralImages: [],
+    };
+
+    return buildTurnRequestBody(snapshot, workingState, existingCharacterText);
 }
 
 export function convertIdsToDisplayNames(text: string, interactionData: InteractionData, character: Character): string {
@@ -216,8 +258,6 @@ export function updatePartialMessageInInteractionData(
     characterExpression?: string,
     targetMessageId?: string,
 ): InteractionData {
-    // If targetMessageId is provided (e.g. during a resume turn), look up that exact message.
-    // Otherwise, find the latest message from the generating character.
     const target = targetMessageId
         ? getMessageById(interactionData, targetMessageId)
         : findLatestMessage(interactionData, character);

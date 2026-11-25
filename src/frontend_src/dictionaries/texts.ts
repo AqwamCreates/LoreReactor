@@ -1,7 +1,7 @@
 import type { textType, tool } from '../types';
 
 export const toolLabels: Record<tool, string> = {
-    whisper: 'Whisper', think: 'Think', 
+    file_search: 'File Search', whisper: 'Whisper', think: 'Think', 
     pick: 'Random Pick', sky_view: 'Sky View', clock: 'Clock', calendar: 'Calendar', coin: 'Coin Flip', dice: 'Roll Dice',
     random: 'Random Number', rng: 'RNG Table', move: 'Move', timer: 'Timer',
     stopwatch: 'Stopwatch', schedule: 'Schedule', calculator: 'Calculator', web: 'Web Search', dialogue: 'Dialogue',
@@ -23,6 +23,7 @@ export const toolLabels: Record<tool, string> = {
 };
 
 export const characterToolDescriptions: Record<tool, string> = {
+    file_search: 'Allow this character to list, read, and search files attached to messages visible in your local chat history perspective.',
     whisper: 'Allow this character to give private messages',
     think: 'Allow this character to think before committing to an output.',
     pick: 'Allow this character to randomly pick from a list of options.',

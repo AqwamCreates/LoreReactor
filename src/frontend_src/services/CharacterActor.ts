@@ -3,16 +3,22 @@ import type {
     Character, InteractionData, BudgetStrategy, BudgetData, 
     PromptBlock, tool, ChatMessage, LanguageModel, Profile, 
     ToolExecutionResult, toolUsageDisplayMode, toolUsageDisplayPlacementMode,
-    ActiveToolActions, PendingToolAction, Inventory,
     WhisperMessage,
     NarrationMessage,
     ToolMessage,
     HistoryMessage
 } from '../types';
 import { saveRawBudgetData } from '../storages/serverStorage';
-import { buildRequestBody, addMessageToInteractionData } from '../utilities/interactionDataLogic';
+import { buildTurnRequestBody, addMessageToInteractionData } from '../utilities/interactionDataLogic';
 import { detectName } from '../utilities/nameDetection';
-import { getFilteredTextMessages, detectUnsummarizedLocationDepartures } from '../utilities/promptLogic';
+import {
+    getFilteredTextMessages,
+    detectUnsummarizedLocationDepartures,
+    prepareTurnPromptSnapshot,
+    type PreparedTurnPromptSnapshot,
+    type TurnWorkingState,
+    type EphemeralVisualAttachment,
+} from '../utilities/promptLogic';
 import { getBudgetStrategyEngine, type RequestMetadata } from './BudgetStrategyEngine';
 import { calculateRequestCost, type ModelPricing } from '../utilities/costCalculator';
 import { getEffectiveTools, initializeClothingWearingStatuses } from '../utilities/characterLogic';
@@ -95,6 +101,10 @@ export interface DisplayContext {
     character: Character;
 }
 
+type ToolCarrierMessage = ChatMessage & {
+    _ephemeralVisuals?: EphemeralVisualAttachment[];
+};
+
 // ─── Helpers ────────────────────────────────────────────────────────
 
 function hasModelSpecificSummaries(data: InteractionData, modelId: string): boolean {
@@ -137,7 +147,7 @@ async function processToolInvocations(
     invocations: ToolInvocation[],
     character: Character,
     profile: Profile | undefined,
-    targetMessage: ChatMessage,
+    targetMessage: ToolCarrierMessage,
     interactionData: InteractionData,
     context: ToolExecutionContext,
 ): Promise<ProcessedReplacements | null> {
@@ -339,9 +349,6 @@ export class CharacterActor {
         let previousExpression: string | null = null;
         let lastIsCompleted = true;
 
-        // 🛠️ CRITICAL FIX: If resumingMessageId is passed, the message already exists in data!
-        // We must mark isResuming as true so it updates the existing message in-place
-        // rather than executing the else branch and creating a duplicate empty message!
         const isResuming = Boolean(resumingMessageId || (existingCharacterText && existingCharacterText.length > 0));
         const seedText = existingCharacterText || prefillText || '';
 
@@ -354,9 +361,6 @@ export class CharacterActor {
             const targetIdx = globalHistory.findIndex(m => m.id === resumingMessageId);
 
             if (targetIdx !== -1) {
-                // Messages strictly before the target message become the prior history.
-                // The target message itself is represented exclusively via seedText / existingCharacterText.
-                // All messages with index > targetIdx are future messages and are completely excluded.
                 const validPastIds = new Set(globalHistory.slice(0, targetIdx).map(m => m.id));
 
                 const truncatedHistories: Record<string, HistoryMessage[]> = {};
@@ -377,11 +381,9 @@ export class CharacterActor {
             }
         }
 
-        // Use dataForPrompt for prompt building (timelineLogic uses shadowCacheId to compute fresh, unpolluted context)
         const filteredMessages = getFilteredTextMessages(dataForPrompt, character.id, allPromptBlocks);
         const knownCharacterNames = detectName(character, filteredMessages);
 
-        // State inheritance targets the original message metadata
         const latestMsg = resumingMessageId
             ? getMessageById(data, resumingMessageId)?.message
             : findLatestMessage(data, character)?.message;
@@ -395,14 +397,106 @@ export class CharacterActor {
             character,
         };
 
-        let resolvedClothingStatuses: Record<string, boolean> = initializeClothingWearingStatuses(character);
-        let accumulatedActiveToolActions: ActiveToolActions = latestMsg?.activeToolActions ? { ...latestMsg.activeToolActions } : {};
-        let accumulatedPendingActions: PendingToolAction[] = [];
-        let accumulatedLockedLocations: Record<string, boolean> = latestMsg?.characterLockedLocations ? { ...latestMsg.characterLockedLocations } : {};
-        let accumulatedInventory: Inventory = latestMsg?.inventory ? { ...latestMsg.inventory } : {};
+        const initialFiles =
+            latestMsg && (latestMsg.messageType === 'chat' || latestMsg.messageType === 'whisper' || latestMsg.messageType === 'tool') && latestMsg.files
+                ? [...latestMsg.files]
+                : [];
+
+        const workingState: TurnWorkingState = {
+            inventory: latestMsg?.inventory ? { ...latestMsg.inventory } : {},
+            activeToolActions: latestMsg?.activeToolActions ? { ...latestMsg.activeToolActions } : {},
+            pendingToolActions: [],
+            clothingWearingStatuses: latestMsg?.characterClothingWearingStatuses
+                ? { ...latestMsg.characterClothingWearingStatuses }
+                : initializeClothingWearingStatuses(character),
+            lockedLocations: latestMsg?.characterLockedLocations ? { ...latestMsg.characterLockedLocations } : {},
+            attachedFiles: initialFiles,
+            ephemeralImages: [],
+        };
 
         const isFreshTurn = !existingCharacterText || existingCharacterText.length === 0;
         let hasResolvedClothing = false;
+
+        // Snapshot cache per modelId so tool-call continuation passes never re-run RAG, web fetch, or random rolls.
+        const snapshotCache = new Map<string, PreparedTurnPromptSnapshot>();
+
+        const getOrPrepareSnapshot = async (modelId: string): Promise<PreparedTurnPromptSnapshot> => {
+            const cached = snapshotCache.get(modelId);
+            if (cached) return cached;
+
+            const snapshot = await prepareTurnPromptSnapshot(
+                dataForPrompt,
+                character,
+                knownCharacterNames,
+                allPromptBlocks,
+                modelId,
+                isToolMessage,
+                toolContext.allRawInteractionDataShells,
+            );
+
+            if (!hasResolvedClothing) {
+                if (isFreshTurn) {
+                    workingState.clothingWearingStatuses = { ...snapshot.characterClothingWearingStatuses };
+                }
+                hasResolvedClothing = true;
+            }
+
+            snapshotCache.set(modelId, snapshot);
+            return snapshot;
+        };
+
+        const executeToolsAndSyncState = async (pendingInvs: ToolInvocation[]): Promise<ProcessedReplacements | null> => {
+            const dummyTargetMsg = createMessage(character, {
+                textContent: '',
+                files: [...workingState.attachedFiles],
+                clothingWearingStatuses: { ...workingState.clothingWearingStatuses },
+                knownCharacterNames,
+                activeToolActions: { ...workingState.activeToolActions },
+                pendingToolActions: [...workingState.pendingToolActions],
+                inventory: { ...workingState.inventory },
+                characterLockedLocations: { ...workingState.lockedLocations },
+                interactionData: dataForPrompt,
+                previousMessage: latestMsg,
+            }) as ToolCarrierMessage;
+
+            dummyTargetMsg._ephemeralVisuals = [];
+
+            const prevFilesCount = dummyTargetMsg.files?.length ?? 0;
+            const toolResult = await processToolInvocations(
+                pendingInvs,
+                character,
+                data.profile,
+                dummyTargetMsg,
+                dataForPrompt,
+                toolContext,
+            );
+            if (!toolResult) return null;
+
+            if (dummyTargetMsg.activeToolActions) workingState.activeToolActions = { ...dummyTargetMsg.activeToolActions };
+            if (dummyTargetMsg.pendingToolActions) workingState.pendingToolActions = [...dummyTargetMsg.pendingToolActions];
+            if (dummyTargetMsg.characterClothingWearingStatuses) workingState.clothingWearingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
+            if (dummyTargetMsg.characterLockedLocations) workingState.lockedLocations = { ...dummyTargetMsg.characterLockedLocations };
+            if (dummyTargetMsg.inventory) workingState.inventory = { ...dummyTargetMsg.inventory };
+
+            if (dummyTargetMsg.files) {
+                workingState.attachedFiles = [...dummyTargetMsg.files];
+                if (dummyTargetMsg.files.length > prevFilesCount && (!dummyTargetMsg._ephemeralVisuals || dummyTargetMsg._ephemeralVisuals.length === 0)) {
+                    for (const newFile of dummyTargetMsg.files.slice(prevFilesCount)) {
+                        workingState.ephemeralImages.push({
+                            source: 'user_file',
+                            label: 'Tool Attachment',
+                            dataUrl: newFile,
+                        });
+                    }
+                }
+            }
+
+            if (dummyTargetMsg._ephemeralVisuals && dummyTargetMsg._ephemeralVisuals.length > 0) {
+                workingState.ephemeralImages.push(...dummyTargetMsg._ephemeralVisuals);
+            }
+
+            return toolResult;
+        };
 
         try {
             let currentExistingText = seedText;
@@ -557,12 +651,8 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const reqResult = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
-                    if (!hasResolvedClothing) {
-                        if (isFreshTurn) resolvedClothingStatuses = reqResult.characterClothingWearingStatuses;
-                        hasResolvedClothing = true;
-                    }
-                    const { body } = reqResult;
+                    const snapshot = await getOrPrepareSnapshot(modelId);
+                    const { body } = buildTurnRequestBody(snapshot, workingState, currentExistingText);
                     body.session_id = data.id;
                     await runSingleStreamPass(body, false);
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
@@ -570,26 +660,8 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createMessage(character, { 
-                        textContent: '',
-                        clothingWearingStatuses: resolvedClothingStatuses, 
-                        knownCharacterNames,
-                        activeToolActions: accumulatedActiveToolActions,
-                        pendingToolActions: accumulatedPendingActions,
-                        inventory: accumulatedInventory,
-                        characterLockedLocations: accumulatedLockedLocations,
-                        interactionData: dataForPrompt,
-                        previousMessage: latestMsg,
-                    }) as ChatMessage;
-
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, dataForPrompt, toolContext);
+                    const toolResult = await executeToolsAndSyncState(pendingInvs);
                     if (!toolResult) break;
-
-                    if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
-                    if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
-                    if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
-                    if (dummyTargetMsg.characterLockedLocations) accumulatedLockedLocations = { ...dummyTargetMsg.characterLockedLocations };
-                    if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
                     applyToolReplacements(accState, toolResult, callbacks, displayContext);
@@ -625,13 +697,8 @@ export class CharacterActor {
                     const initialSelection = await bse.selectModelForRequest({ prompt: '' }, metadata);
                     const initialModelId = initialSelection?.modelId || '';
 
-                    const initialResult = await buildRequestBody(
-                        dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, initialModelId, isToolMessage, toolContext.allRawInteractionDataShells
-                    );
-                    if (!hasResolvedClothing) {
-                        if (isFreshTurn) resolvedClothingStatuses = initialResult.characterClothingWearingStatuses;
-                        hasResolvedClothing = true;
-                    }
+                    const initialSnapshot = await getOrPrepareSnapshot(initialModelId);
+                    const initialResult = buildTurnRequestBody(initialSnapshot, workingState, currentExistingText);
 
                     const promptText = extractPromptTextFromBody(initialResult.body);
                     lastPromptText = promptText;
@@ -646,10 +713,12 @@ export class CharacterActor {
                             detectUnsummarizedLocationDepartures(dataForPrompt, character, activeModelId).length > 0
                         );
 
+                    const activeSnapshot = needsRebuild
+                        ? await getOrPrepareSnapshot(activeModelId)
+                        : initialSnapshot;
+
                     const { body } = needsRebuild
-                        ? await buildRequestBody(
-                              dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, activeModelId, isToolMessage, toolContext.allRawInteractionDataShells
-                          )
+                        ? buildTurnRequestBody(activeSnapshot, workingState, currentExistingText)
                         : initialResult;
 
                     body.session_id = data.id;
@@ -667,26 +736,8 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createMessage(character, { 
-                        textContent: '',
-                        clothingWearingStatuses: resolvedClothingStatuses, 
-                        knownCharacterNames,
-                        activeToolActions: accumulatedActiveToolActions,
-                        pendingToolActions: accumulatedPendingActions,
-                        inventory: accumulatedInventory,
-                        characterLockedLocations: accumulatedLockedLocations,
-                        interactionData: dataForPrompt,
-                        previousMessage: latestMsg,
-                    }) as ChatMessage;
-
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, dataForPrompt, toolContext);
+                    const toolResult = await executeToolsAndSyncState(pendingInvs);
                     if (!toolResult) break;
-
-                    if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
-                    if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
-                    if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
-                    if (dummyTargetMsg.characterLockedLocations) accumulatedLockedLocations = { ...dummyTargetMsg.characterLockedLocations };
-                    if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
                     applyToolReplacements(accState, toolResult, callbacks, displayContext);
@@ -721,12 +772,8 @@ export class CharacterActor {
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
 
                     accState.get().setLastRawLen(0);
-                    const reqResult = await buildRequestBody(dataForPrompt, character, knownCharacterNames, currentExistingText, allPromptBlocks, modelId, isToolMessage, toolContext.allRawInteractionDataShells);
-                    if (!hasResolvedClothing) {
-                        if (isFreshTurn) resolvedClothingStatuses = reqResult.characterClothingWearingStatuses;
-                        hasResolvedClothing = true;
-                    }
-                    const { body } = reqResult;
+                    const snapshot = await getOrPrepareSnapshot(modelId);
+                    const { body } = buildTurnRequestBody(snapshot, workingState, currentExistingText);
                     body.session_id = data.id;
                     await runSingleStreamPass(body, false);
                     if (signal.aborted) return { error: { message: 'Aborted', type: 'aborted' } };
@@ -734,26 +781,8 @@ export class CharacterActor {
                     const pendingInvs = accState.getPending();
                     if (pendingInvs.length === 0) break;
 
-                    const dummyTargetMsg = createMessage(character, { 
-                        textContent: '',
-                        clothingWearingStatuses: resolvedClothingStatuses, 
-                        knownCharacterNames,
-                        activeToolActions: accumulatedActiveToolActions,
-                        pendingToolActions: accumulatedPendingActions,
-                        inventory: accumulatedInventory,
-                        characterLockedLocations: accumulatedLockedLocations,
-                        interactionData: dataForPrompt,
-                        previousMessage: latestMsg,
-                    }) as ChatMessage;
-
-                    const toolResult = await processToolInvocations(pendingInvs, character, data.profile, dummyTargetMsg, dataForPrompt, toolContext);
+                    const toolResult = await executeToolsAndSyncState(pendingInvs);
                     if (!toolResult) break;
-
-                    if (dummyTargetMsg.activeToolActions) accumulatedActiveToolActions = { ...dummyTargetMsg.activeToolActions };
-                    if (dummyTargetMsg.pendingToolActions) accumulatedPendingActions = [...dummyTargetMsg.pendingToolActions];
-                    if (dummyTargetMsg.characterClothingWearingStatuses) resolvedClothingStatuses = { ...dummyTargetMsg.characterClothingWearingStatuses };
-                    if (dummyTargetMsg.characterLockedLocations) accumulatedLockedLocations = { ...dummyTargetMsg.characterLockedLocations };
-                    if (dummyTargetMsg.inventory) accumulatedInventory = { ...dummyTargetMsg.inventory };
 
                     accState.get().addExecutionResults(toolResult.executionResults);
                     applyToolReplacements(accState, toolResult, callbacks, displayContext);
@@ -791,7 +820,6 @@ export class CharacterActor {
 
             if (isResuming) {
                 const allExecutionResults = accState.getCollectedExecutionResults();
-                // Updates the target message in-place in the live data, preserving all future messages intact
                 const newHistories = { ...data.interactionHistories };
                 for (const [locId, msgs] of Object.entries(newHistories)) {
                     const targetIdx = latestMsg 
@@ -809,23 +837,26 @@ export class CharacterActor {
                                 ...allExecutionResults,
                             ];
                         }
+                        if (workingState.attachedFiles.length > 0 && targetMsg.messageType !== 'narration') {
+                            targetMsg.files = [...workingState.attachedFiles];
+                        }
                         if (latestExpression) {
                             targetMsg.characterExpression = latestExpression;
                         }
-                        if (accumulatedPendingActions.length > 0) {
+                        if (workingState.pendingToolActions.length > 0) {
                             targetMsg.pendingToolActions = [
                                 ...(targetMsg.pendingToolActions || []),
-                                ...accumulatedPendingActions,
+                                ...workingState.pendingToolActions,
                             ];
                         }
-                        if (Object.keys(accumulatedActiveToolActions).length > 0) {
-                            targetMsg.activeToolActions = accumulatedActiveToolActions;
+                        if (Object.keys(workingState.activeToolActions).length > 0) {
+                            targetMsg.activeToolActions = workingState.activeToolActions;
                         }
-                        if (Object.keys(accumulatedInventory).length > 0) {
-                            targetMsg.inventory = accumulatedInventory;
+                        if (Object.keys(workingState.inventory).length > 0) {
+                            targetMsg.inventory = workingState.inventory;
                         }
-                        targetMsg.characterClothingWearingStatuses = resolvedClothingStatuses;
-                        targetMsg.characterLockedLocations = accumulatedLockedLocations;
+                        targetMsg.characterClothingWearingStatuses = workingState.clothingWearingStatuses;
+                        targetMsg.characterLockedLocations = workingState.lockedLocations;
 
                         newHistories[locId][targetIdx] = targetMsg;
                         break;
@@ -833,19 +864,20 @@ export class CharacterActor {
                 }
                 updatedData = { ...data, interactionHistories: newHistories, lastUpdatedTimestamp: Date.now() };
             } else {
-                const hasPending = accumulatedPendingActions.length > 0;
-                const hasActive = Object.keys(accumulatedActiveToolActions).length > 0;
-                const hasInv = Object.keys(accumulatedInventory).length > 0;
+                const hasPending = workingState.pendingToolActions.length > 0;
+                const hasActive = Object.keys(workingState.activeToolActions).length > 0;
+                const hasInv = Object.keys(workingState.inventory).length > 0;
                 const allExecutionResults = accState.getCollectedExecutionResults();
 
                 const msg = createMessage(character, {
                     textContent: rawText,
-                    clothingWearingStatuses: resolvedClothingStatuses,
+                    files: workingState.attachedFiles.length > 0 ? workingState.attachedFiles : undefined,
+                    clothingWearingStatuses: workingState.clothingWearingStatuses,
                     knownCharacterNames,
-                    characterLockedLocations: accumulatedLockedLocations,
-                    pendingToolActions: hasPending ? accumulatedPendingActions : undefined,
-                    activeToolActions: hasActive ? accumulatedActiveToolActions : undefined,
-                    inventory: hasInv ? accumulatedInventory : undefined,
+                    characterLockedLocations: workingState.lockedLocations,
+                    pendingToolActions: hasPending ? workingState.pendingToolActions : undefined,
+                    activeToolActions: hasActive ? workingState.activeToolActions : undefined,
+                    inventory: hasInv ? workingState.inventory : undefined,
                     toolExecutionResults: allExecutionResults.length > 0 ? allExecutionResults : undefined,
                     characterExpression: latestExpression ?? undefined,
                     interactionData: data,

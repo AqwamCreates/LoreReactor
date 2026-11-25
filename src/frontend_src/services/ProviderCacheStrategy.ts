@@ -80,7 +80,6 @@ function toAnthropicContentBlock(part: unknown): Record<string, unknown> {
     }
     const p = part as Record<string, unknown>;
 
-    // Convert OpenAI-style { type: 'image_url', image_url: { url } } to Anthropic source format
     if (p.type === 'image_url' && p.image_url && typeof p.image_url === 'object') {
         const imgObj = p.image_url as Record<string, unknown>;
         const rawUrl = String(imgObj.url || '');
@@ -134,18 +133,6 @@ class SessionAffinityStrategy implements ProviderCacheStrategy {
     }
 }
 
-/**
- * Anthropic Explicit Cache Strategy
- * 
- * Anthropic /v1/messages API requirements:
- * 1. System instructions must be passed via the top-level "system" parameter, not inside "messages" [1].
- * 2. Messages roles must alternate between "user" and "assistant" [3].
- * 3. Images use { type: "image", source: { type: "base64", media_type, data } } instead of image_url [2].
- * 4. Cache breakpoints are placed on content blocks:
- *      - Last block of the system prompt [4]
- *      - Last block of the final user message (conversation history boundary) [4]
- * 5. Requires headers: anthropic-beta, anthropic-version, and direct browser access headers [5].
- */
 class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
     supports(b: backend): boolean {
         return b === 'Anthropic';
@@ -154,7 +141,6 @@ class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
     apply(ctx: CacheContext): CacheStrategyResult {
         if (ctx.messages.length === 0) return {};
 
-        // 1. Separate system messages from chat turns
         const systemBlocks: Record<string, unknown>[] = [];
         const nonSystemMessages: OpenAIMessage[] = [];
 
@@ -169,7 +155,6 @@ class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
             }
         }
 
-        // Attach cache_control to the final system prompt block
         if (systemBlocks.length > 0) {
             systemBlocks[systemBlocks.length - 1] = {
                 ...systemBlocks[systemBlocks.length - 1],
@@ -177,7 +162,6 @@ class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
             };
         }
 
-        // 2. Ensure alternating user/assistant turns and convert content blocks
         const alternatingMessages: OpenAIMessage[] = [];
 
         for (const msg of nonSystemMessages) {
@@ -196,7 +180,6 @@ class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
             }
         }
 
-        // Ensure the conversation begins with a user turn
         if (alternatingMessages.length === 0 || alternatingMessages[0].role !== 'user') {
             alternatingMessages.unshift({
                 role: 'user',
@@ -204,7 +187,27 @@ class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
             });
         }
 
-        // 3. Attach cache_control to the last content block of the final user message
+        // Prevent trailing whitespace rejection on Anthropic assistant prefill continuations
+        const lastMsg = alternatingMessages[alternatingMessages.length - 1];
+        if (lastMsg?.role === 'assistant' && Array.isArray(lastMsg.content)) {
+            const parts = [...lastMsg.content] as Record<string, unknown>[];
+            const lastPart = parts[parts.length - 1];
+            if (lastPart && lastPart.type === 'text' && typeof lastPart.text === 'string') {
+                const trimmed = lastPart.text.trimEnd();
+                if (trimmed.length > 0) {
+                    parts[parts.length - 1] = { ...lastPart, text: trimmed };
+                    lastMsg.content = parts;
+                } else {
+                    parts.pop();
+                    if (parts.length === 0) {
+                        alternatingMessages.pop();
+                    } else {
+                        lastMsg.content = parts;
+                    }
+                }
+            }
+        }
+
         for (let i = alternatingMessages.length - 1; i >= 0; i--) {
             if (alternatingMessages[i].role === 'user') {
                 const parts = [...toContentParts(alternatingMessages[i].content)] as Record<string, unknown>[];
@@ -241,20 +244,6 @@ class AnthropicExplicitCacheStrategy implements ProviderCacheStrategy {
     }
 }
 
-/**
- * Qwen Explicit Cache Strategy
- * 
- * Qwen/DashScope explicit cache uses cache_control markers on individual
- * content blocks within the messages array. Content must be wrapped as
- * [{type:"text", text:..., cache_control:{type:"ephemeral"}}] for the
- * marker to take effect. Up to 4 markers per request; backward lookback
- * limited to 20 content blocks from each marker. Cache TTL is 5 minutes,
- * reset on hit. Creation billed at 125% of input price; hits at 10%.
- * 
- * Markers are placed on:
- *   - First system message (static prompt prefix)
- *   - Last message before generation trigger (conversation history boundary)
- */
 class QwenExplicitCacheStrategy implements ProviderCacheStrategy {
     supports(b: backend): boolean {
         return b === 'Qwen';
@@ -269,12 +258,10 @@ class QwenExplicitCacheStrategy implements ProviderCacheStrategy {
             : ctx.messages.length - 1;
 
         const patched = ctx.messages.map((msg, i) => {
-            // Marker 1: First system message (static prompt prefix)
             if (msg.role === 'system' && i === 0) {
                 return wrapContentWithCacheControl(msg);
             }
 
-            // Marker 2: Conversation history boundary before assistant reply
             if (i === targetBoundaryIndex && i > 0) {
                 return wrapContentWithCacheControl(msg);
             }
@@ -286,12 +273,6 @@ class QwenExplicitCacheStrategy implements ProviderCacheStrategy {
     }
 }
 
-/**
- * Wraps a message's string content into the array format required by
- * Qwen's explicit cache API: [{type:"text", text:..., cache_control:{type:"ephemeral"}}]
- * If content is already an array (e.g., multimodal), attaches cache_control
- * to the first text block.
- */
 function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
     if (typeof msg.content === 'string') {
         return {
@@ -306,7 +287,6 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
         };
     }
 
-    // Content is already an array (multimodal or previously wrapped)
     if (Array.isArray(msg.content)) {
         const wrapped = [...msg.content];
         for (let i = 0; i < wrapped.length; i++) {
@@ -322,15 +302,6 @@ function wrapContentWithCacheControl(msg: OpenAIMessage): OpenAIMessage {
     return msg;
 }
 
-/**
- * Single-System Message Strategy
- * 
- * Certain providers' OpenAI-compatible APIs (like Google) are strict regarding turn flow:
- * 1. Merges consecutive messages of the same role into a single message.
- * 2. Preserves multimodal array parts ({type: "image_url"}) without turning them into JSON strings.
- * 3. Converts prior system roles into user turns while preserving all text and vision blocks.
- * 4. Employs a "Dummy User" trick for trailing assistant messages to satisfy API validation.
- */
 class SingleSystemStrategy implements ProviderCacheStrategy {
     private readonly backends: ReadonlySet<backend> = new Set(['Google', 'Cohere']);
 
@@ -343,7 +314,6 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
 
         const patched: OpenAIMessage[] = [];
 
-        // 1. Convert system to user & merge consecutive identical roles without destroying arrays
         for (const msg of ctx.messages) {
             const role = msg.role === 'system' ? 'user' : msg.role;
             
@@ -359,7 +329,6 @@ class SingleSystemStrategy implements ProviderCacheStrategy {
             }
         }
 
-        // 2. The "Dummy User" trick for strict APIs (Google Gemini)
         if (ctx.backendName === 'Google' && patched.length > 0) {
             const lastMsg = patched[patched.length - 1];
             if (lastMsg.role === 'assistant') {
@@ -406,7 +375,6 @@ const strategies: readonly ProviderCacheStrategy[] = [
     new NoCacheStrategy(),
 ] as const;
 
-/** Default strategy for unknown/future backends that may support implicit caching */
 const defaultStrategy: ProviderCacheStrategy = new ImplicitCacheStrategy();
 
 export function getCachingStrategy(backendName: backend): ProviderCacheStrategy {

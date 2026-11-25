@@ -3,7 +3,12 @@ import type { ToolInvocation } from './ToolInvocationParser';
 import { fetchLinkContent } from '../utilities/linkFetcher';
 import { collectActiveDialoguePromptContent, buildDialogueSearchSpace, getActiveDialoguePrompts } from '../utilities/dialoguePromptLogic';
 import { isEntityActiveWithCache, type TriggerEvaluationContext, type CombinationCache } from '../utilities/triggerLogic';
-import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
+import {
+    getUniversalMessageFilterFlags,
+    getVisibleMessagesInPerspective,
+    parseAttachmentDataUrl,
+    type EphemeralVisualAttachment,
+} from '../utilities/promptLogic';
 import type {
     BaseMessage, Character, Context, Location, AudioTrack, Profile,
     InteractionData, Inventory, ChatMessage, WhisperMessage, TextMessage,
@@ -16,6 +21,7 @@ import type {
 import { findLatestMessage, createMessage } from '../utilities/messageLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory, getLocationMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocation, getReachableLocationsByCharacter, isCharacterLockedFromLocation, getCoLocatedParticipants } from '../utilities/locationLogic';
+import { isToolEnabled } from '../utilities/characterLogic';
 import { getAudioEngine } from './AudioEngine';
 import { generateCharacterMemory } from './TextMessageSummarizationEngine';
 import { saveRawCharacter } from '../storages/serverStorage';
@@ -30,7 +36,6 @@ import { retrieveEligibleMemories, detokenizeMemoryContent } from '../utilities/
 import { toolCallEndString, toolCallStartString, toolResultEndString, toolResultStartString } from '../dictionaries/stringList';
 import { computeMovementCost } from '../utilities/dynamicCharacterLogic';
 
-// Re-export so consumers importing from ToolExecutor remain compatible
 export type {
     PendingToolAction, pendingToolActionType, ActiveToolActions,
     TradeOffer, TimerEntry, StopwatchEntry, ScheduleEntry, ScheduledResponseEntry
@@ -67,7 +72,18 @@ export interface ToolExecutionContext {
     addToast: (msg: string, type: 'success' | 'error' | 'info') => void;
 }
 
-// ─── JSON Schema Types & Definitions ────────────────────────────────
+type ToolCarrierMessage = BaseMessage & {
+    _ephemeralVisuals?: EphemeralVisualAttachment[];
+};
+
+function pushEphemeralVisual(nextMessage: BaseMessage, visual: EphemeralVisualAttachment): void {
+    const carrier = nextMessage as ToolCarrierMessage;
+    if (!carrier._ephemeralVisuals) {
+        carrier._ephemeralVisuals = [];
+    }
+    carrier._ephemeralVisuals.push(visual);
+}
+
 export type JsonSchemaType = 'string' | 'number' | 'integer' | 'boolean' | 'array' | 'object';
 
 export interface JsonSchemaProperty {
@@ -97,7 +113,6 @@ export interface ToolDefinition {
     actionRequired?: Record<string, readonly string[]>;
 }
 
-// ─── Canonical entityType Mapping ───────────────────────────────────
 export const VALID_ENTITY_TYPES: entityType[] = [
     'character', 'context', 'location', 'audioTrack', 'world',
     'interactionData', 'languageModel', 'spatiotemporalModel', 'tokenSampler', 'promptBlock', 'stopPattern',
@@ -142,6 +157,28 @@ const EX_LOC_2 = '7c9e6679-7425-40de-944b-e07fc1f90ae8';
 const EX_ID = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
 
 export const TOOL_DEFINITIONS: Record<tool, ToolDefinition> = {
+    file_search: {
+        name: 'file_search',
+        description: 'List, read, or search files attached by any character visible in your local chat history perspective. Only call when files are attached or referenced.',
+        defaultAction: 'list',
+        inputSchema: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['list', 'read', 'search'], default: 'list' },
+                query: { type: 'string', description: 'Filename, 1-based attachment index, message UUID, or text query to search for.' },
+                character_id: { type: 'string', description: 'Optional character UUID to filter attachments by sender.' },
+                offset: { type: 'integer', minimum: 0, default: 0, description: 'Character offset when reading large text files.' },
+                limit: { type: 'integer', minimum: 1, default: 4000, description: 'Maximum characters to return when reading text files.' },
+            },
+            additionalProperties: false,
+        },
+        actionRequired: { list: [], read: ['query'], search: ['query'] },
+        examples: [
+            { action: 'list' },
+            { action: 'read', query: 'notes.txt' },
+            { action: 'search', query: 'secret_key' },
+        ],
+    },
     whisper: {
         name: 'whisper',
         description: 'Send private message visible only to target character UUID(s), or list character UUIDs.',
@@ -1046,7 +1083,6 @@ function getEntitiesByType(context: ToolExecutionContext | undefined, type: enti
     }
 }
 
-// ─── Universal JSON / Python / CLI Argument Parser ──────────────────
 export class ArgAccessor {
     positional: string[];
     kwargs: Record<string, string>;
@@ -1286,7 +1322,6 @@ export function parsePythonArgs(rawArgs: string): ArgAccessor {
     return new ArgAccessor(positional, kwargs, rawArgs);
 }
 
-// ─── Clean First-Class Helpers ──────────────────────────────────────
 function appendPendingAction(nextMessage: BaseMessage, action: PendingToolAction): void {
     if (!nextMessage.pendingToolActions) {
         nextMessage.pendingToolActions = [];
@@ -1302,7 +1337,6 @@ function resolveActiveToolActions(nextMessage: BaseMessage, interactionData: Int
     return latest?.message?.activeToolActions ? { ...latest.message.activeToolActions } : {};
 }
 
-// ─── Entity Resolution Helpers (UUID Only) ──────────────────────────
 function resolveCharacter(idQuery: string, interactionData: InteractionData, allCharacters: Character[] = []): Character | undefined {
     let query = idQuery.toLowerCase();
     if (!query) return undefined;
@@ -1332,6 +1366,7 @@ function getCharacterTimeData(interactionData: InteractionData, character: Chara
 }
 
 export const TOOL_EMOJI_MAP: Record<tool, string> = {
+    file_search: '📎',
     whisper: '🤫', think: '💭', pick: '🎯', sky_view: '🔭', clock: '🕰️', calendar: '📅',
     coin: '🪙', dice: '🎲', random: '🎲', rng: '🎲', move: '🚶',
     timer: '⏱️', stopwatch: '⏱️', schedule: '📅', calculator: '🧮',
@@ -1351,6 +1386,7 @@ export const TOOL_EMOJI_MAP: Record<tool, string> = {
 };
 
 const toolFunctions: Record<tool, (args: string, nextMessage: BaseMessage, interactionData: InteractionData, context: ToolExecutionContext, displayMode?: toolUsageDisplayMode) => ToolResult | Promise<ToolResult>> = {
+    file_search: executeFileSearch,
     whisper: executeWhisper, think: executeThink, pick: executeRandomPick, sky_view: executeSkyView, clock: executeClock, calendar: executeCalendar, coin: executeCoinFlip, dice: executeDiceRoll, random: executeRandom, rng: executeRng, move: executeMove, timer: executeTimer, stopwatch: executeStopwatch, schedule: executeSchedule, calculator: executeCalculator, web: executeWeb, dialogue: executeDialogue, knowledge: executeKnowledge, memory: executeMemory, lookup: executeLookup, map: executeMap, audio: executeAudio, note: executeNote, inventory: executeInventory, trade: executeTrade, invite: executeInvite, kick: executeKick, mind_reader: executeMindReader, oracle: executeOracle, teleport: executeTeleport, key: executeKey, clothing: executeClothing, summon: executeSummon, unsummon: executeUnsummon, narrate: executeNarrate, substrate: executeSubstrate, inspect: executeInspect, administrator: executeAdministrator, creator: executeCreator, destroyer: executeDestroyer, schedule_response: executeScheduleResponse, text_to_speech: executeTextToSpeech, gpu: executeGpu, system_info: executeSystemInfo, notify: executeNotify, volume_control: executeVolumeControl, lock_screen: executeLockScreen, sleep: executePower('sleep'), shutdown: executePower('shutdown'), restart: executePower('restart'), clipboard: executeClipboard, screenshot: executeScreenshot, front_camera: executeFrontCamera, network_scanner: executeNetworkScanner, file_watcher: executeFileWatcher, window_monitor: executeWindowMonitor, process_monitor: executeProcessMonitor, trash: executeTrash, browser: executeBrowser, read_file: executeReadFile, write_file: executeWriteFile, shell: executeShell, virtual_hearing: executeVirtualHearing, virtual_vision: executeVirtualVision, virtual_input: executeVirtualInput, virtual_controller: executeVirtualController, hardware_control: executeHardwareControl,
 };
 
@@ -1400,9 +1436,7 @@ export async function executeTool(
     const toolType = invocation.toolType as tool;
     const args = invocation.args;
 
-    // ✅ FIX: Wrap system-level meta-errors in observation markers so sanitizeToolSyntax
-    // strips them from the AI's context, preventing fourth-wall breaks.
-    if (nextMessage.character.tools && nextMessage.character.tools[toolType] === false) {
+    if (!isToolEnabled(nextMessage.character, toolType, interactionData.profile)) {
         return { toolType, args, textContent: `${toolResultStartString}Tool disabled${toolResultEndString}`, displayReplacement: "" };
     }
 
@@ -1478,6 +1512,236 @@ export function formatToolDisplay(result: ToolResult, rawMatch: string, mode: to
         case 'raw': return rawMatch;
         default: return result.displayReplacement;
     }
+}
+
+// ─── File Search ────────────────────────────────────────────────────
+function executeFileSearch(
+    args: string,
+    nextMessage: BaseMessage,
+    interactionData: InteractionData,
+    context: ToolExecutionContext,
+): ToolResult {
+    const pArgs = parsePythonArgs(args);
+    let action = pArgs.get(0, 'action', 'command')?.toLowerCase() || 'list';
+    let query = pArgs.get(1, 'query', 'filename', 'file', 'name', 'id');
+
+    if (!pArgs.isJson && action && !['list', 'read', 'search'].includes(action)) {
+        query = pArgs.positional.join(' ');
+        action = 'read';
+    }
+
+    const characterFilterRaw = pArgs.get(-1, 'character_id', 'character', 'sender_id');
+    const offset = Math.max(0, pArgs.getNumber(-1, 'offset', 'start') ?? 0);
+    const limit = Math.max(1, Math.min(20000, pArgs.getNumber(-1, 'limit', 'max_chars') ?? 4000));
+
+    let filterChar: Character | undefined;
+    if (characterFilterRaw) {
+        filterChar = resolveCharacter(characterFilterRaw, interactionData, context.allCharacters || []);
+        if (!filterChar) {
+            return {
+                toolType: 'file_search',
+                args,
+                textContent: `[Error: Character "${characterFilterRaw}" not found]`,
+                displayReplacement: '[Error: Character not found]',
+            };
+        }
+    }
+
+    const visibleEntries = getVisibleMessagesInPerspective(
+        interactionData,
+        nextMessage.character,
+        context.allPromptBlocks || [],
+        { includeSelfTools: true, respectLocations: true },
+    );
+
+    const collected: Array<{
+        index: number;
+        messageId: string;
+        characterId: string;
+        characterName: string;
+        messageType: string;
+        timestamp: number;
+        rawDataUrl: string;
+        parsed: NonNullable<ReturnType<typeof parseAttachmentDataUrl>>;
+    }> = [];
+
+    for (const entry of visibleEntries) {
+        if (filterChar && entry.message.character.id !== filterChar.id) continue;
+        const files = (entry.message as ChatMessage | WhisperMessage | ToolMessage).files;
+        if (!files || files.length === 0) continue;
+
+        for (let i = 0; i < files.length; i++) {
+            const parsed = parseAttachmentDataUrl(files[i], `file_${i + 1}`);
+            if (!parsed) continue;
+            collected.push({
+                index: collected.length + 1,
+                messageId: entry.message.id,
+                characterId: entry.message.character.id,
+                characterName: entry.message.character.name,
+                messageType: entry.message.messageType,
+                timestamp: entry.message.firstCreatedTimestamp,
+                rawDataUrl: files[i],
+                parsed,
+            });
+        }
+    }
+
+    if (action === 'list') {
+        const listPayload = collected.map(item => ({
+            index: item.index,
+            message_id: item.messageId,
+            character_id: item.characterId,
+            character_name: item.characterName,
+            filename: item.parsed.filename,
+            mime_type: item.parsed.mimeType,
+            kind: item.parsed.isImage ? 'image' : item.parsed.isText ? 'text' : 'binary',
+            size_bytes: item.parsed.byteSize,
+        }));
+        return {
+            toolType: 'file_search',
+            args,
+            textContent: JSON.stringify({ total_files: listPayload.length, files: listPayload }),
+            displayReplacement: `[📎 ${listPayload.length} attached file(s)]`,
+        };
+    }
+
+    if (action === 'read') {
+        if (!query) {
+            return helpResult('file_search', 'action="read", query="filename.txt"', 'list, read, or search attached files in local chat history');
+        }
+        const trimmedQuery = query.trim();
+        const qLower = trimmedQuery.toLowerCase();
+
+        let match: (typeof collected)[number] | undefined;
+        if (/^\d+$/.test(trimmedQuery)) {
+            const idxNum = Number.parseInt(trimmedQuery, 10);
+            match = collected.find(item => item.index === idxNum);
+        }
+        if (!match) {
+            match = [...collected].reverse().find(item => item.parsed.filename.toLowerCase() === qLower);
+        }
+        if (!match) {
+            match = [...collected].reverse().find(item => item.parsed.filename.toLowerCase().includes(qLower));
+        }
+        if (!match) {
+            match = [...collected].reverse().find(item => item.messageId.toLowerCase().startsWith(qLower));
+        }
+
+        if (!match) {
+            return {
+                toolType: 'file_search',
+                args,
+                textContent: `No visible attached file matching "${query}". Call file_search with action="list" to inspect available attachments.`,
+                displayReplacement: `[📎 File not found: "${query}"]`,
+            };
+        }
+
+        if (match.parsed.isImage) {
+            pushEphemeralVisual(nextMessage, {
+                source: 'file_search',
+                label: `Attached Image '${match.parsed.filename}' from ${match.characterName}`,
+                dataUrl: match.rawDataUrl,
+            });
+            return {
+                toolType: 'file_search',
+                args,
+                textContent: `Attached image "${match.parsed.filename}" (${match.parsed.mimeType}, from ${match.characterName}) to visual input for inspection.`,
+                displayReplacement: `[📎 Loaded image: "${match.parsed.filename}"]`,
+            };
+        }
+
+        if (match.parsed.isText) {
+            const fullText = match.parsed.decodeText();
+            const safeOffset = Math.min(offset, fullText.length);
+            const slice = fullText.slice(safeOffset, safeOffset + limit);
+            const hasMore = safeOffset + slice.length < fullText.length;
+            const header = `[File: ${match.parsed.filename} | From: ${match.characterName} | Range: ${safeOffset}-${safeOffset + slice.length} of ${fullText.length} chars${hasMore ? ` | Next offset: ${safeOffset + slice.length}` : ''}]`;
+            return {
+                toolType: 'file_search',
+                args,
+                textContent: slice ? `${header}\n${slice}` : `${header}\n[Empty slice]`,
+                displayReplacement: `[📎 Read "${match.parsed.filename}"]`,
+            };
+        }
+
+        return {
+            toolType: 'file_search',
+            args,
+            textContent: `[Binary file "${match.parsed.filename}" (${match.parsed.mimeType}, ${match.parsed.byteSize} bytes) from ${match.characterName} cannot be read as plain text.]`,
+            displayReplacement: `[📎 Binary: "${match.parsed.filename}"]`,
+        };
+    }
+
+    if (action === 'search') {
+        if (!query) {
+            return helpResult('file_search', 'action="search", query="..."', 'list, read, or search attached files in local chat history');
+        }
+        const qLower = query.toLowerCase();
+        const matches: Array<{
+            index: number;
+            filename: string;
+            character_name: string;
+            kind: string;
+            snippets: string[];
+        }> = [];
+        let attachedImagesCount = 0;
+
+        for (const item of collected) {
+            const nameMatches = item.parsed.filename.toLowerCase().includes(qLower);
+            const snippets: string[] = [];
+
+            if (item.parsed.isText) {
+                const lines = item.parsed.decodeText().split(/\r?\n/);
+                for (let lineIdx = 0; lineIdx < lines.length; lineIdx++) {
+                    if (lines[lineIdx].toLowerCase().includes(qLower)) {
+                        snippets.push(`L${lineIdx + 1}: ${lines[lineIdx].slice(0, 240)}`);
+                        if (snippets.length >= 5) break;
+                    }
+                }
+            } else if (item.parsed.isImage && nameMatches && attachedImagesCount < 4) {
+                pushEphemeralVisual(nextMessage, {
+                    source: 'file_search',
+                    label: `Attached Image '${item.parsed.filename}' from ${item.characterName}`,
+                    dataUrl: item.rawDataUrl,
+                });
+                attachedImagesCount++;
+                snippets.push('Image matched by filename and attached to visual input.');
+            }
+
+            if (nameMatches || snippets.length > 0) {
+                matches.push({
+                    index: item.index,
+                    filename: item.parsed.filename,
+                    character_name: item.characterName,
+                    kind: item.parsed.isImage ? 'image' : item.parsed.isText ? 'text' : 'binary',
+                    snippets,
+                });
+            }
+        }
+
+        if (matches.length === 0) {
+            return {
+                toolType: 'file_search',
+                args,
+                textContent: `No matches found for "${query}" across ${collected.length} visible attached file(s).`,
+                displayReplacement: `[📎 0 matches for "${query}"]`,
+            };
+        }
+
+        return {
+            toolType: 'file_search',
+            args,
+            textContent: JSON.stringify({ query, match_count: matches.length, matches }),
+            displayReplacement: `[📎 ${matches.length} file match(es)]`,
+        };
+    }
+
+    return {
+        toolType: 'file_search',
+        args,
+        textContent: `[Error: Unknown file_search action "${action}". Expected list, read, or search.]`,
+        displayReplacement: '[Error: Unknown action]',
+    };
 }
 
 // ─── Whisper ────────────────────────────────────────────────────────
@@ -1988,7 +2252,6 @@ function executeMove(args: string, nextMessage: BaseMessage, interactionData: In
     };
 }
 
-// ─── Duration Parser ────────────────────────────────────────────────
 function parseDurationToMs(input: string): number | null {
     const trimmed = input.toLowerCase();
     let totalMs = 0, matched = false;
@@ -3621,6 +3884,12 @@ async function executeScreenshot(args: string, nextMessage: BaseMessage, _intera
         msg.files.push(dataUrl);
     }
 
+    pushEphemeralVisual(nextMessage, {
+        source: 'screenshot',
+        label: 'Screenshot Capture',
+        dataUrl,
+    });
+
     context.addToast?.('Screenshot captured and sent to the language model', 'success');
     return { toolType: 'screenshot', args, textContent: `Screenshot captured and attached to visual input.`, displayReplacement: `[📸 Screenshot captured]` };
 }
@@ -3641,6 +3910,12 @@ async function executeFrontCamera(args: string, nextMessage: BaseMessage, _inter
         if (!msg.files) msg.files = [];
         msg.files.push(dataUrl);
     }
+
+    pushEphemeralVisual(nextMessage, {
+        source: 'front_camera',
+        label: 'Front Camera Snapshot',
+        dataUrl,
+    });
 
     context.addToast?.('Front camera snapshot captured and sent to language model', 'success');
     return { toolType: 'front_camera', args, textContent: 'Front camera snapshot captured and attached to visual input.', displayReplacement: '[📷 Front Camera Snapshot]' };
@@ -3817,8 +4092,8 @@ async function executeVirtualHearing(args: string, _nextMessage: BaseMessage, _i
     return { toolType: 'virtual_hearing', args, textContent: res.message || (res.active ? 'Hearing is ACTIVE.' : 'Hearing is IDLE.'), displayReplacement: res.active ? '[🎧 Hearing: Active]' : '[🎧 Hearing: Idle]' };
 }
 
-// ─── Virtual Vision Tool ────────────────────────────────────────────
-async function executeVirtualVision(args: string, _nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
+// ─── Virtual Vision Tool ────────────────────────────────────
+async function executeVirtualVision(args: string, nextMessage: BaseMessage, _interactionData: InteractionData, context: ToolExecutionContext): Promise<ToolResult> {
     const pArgs = parsePythonArgs(args);
     const target = (pArgs.get(0, 'target', 'mode')?.toLowerCase() || 'active') as 'active' | 'fullscreen' | 'region';
     const appName = pArgs.get(1, 'app', 'appName');
@@ -3833,8 +4108,15 @@ async function executeVirtualVision(args: string, _nextMessage: BaseMessage, _in
         return { toolType: 'virtual_vision', args, textContent: `[Error: ${res.error || 'Failed to capture targeted vision'}]`, displayReplacement: '[❌ Vision failed]' };
     }
 
+    const dataUrl = `data:${res.contentType || 'image/png'};base64,${res.base64}`;
+    pushEphemeralVisual(nextMessage, {
+        source: 'virtual_vision',
+        label: `Virtual Vision (${res.target || target})`,
+        dataUrl,
+    });
+
     context.addToast?.(`Captured target: ${res.target}`, 'info');
-    return { toolType: 'virtual_vision', args, textContent: `[Vision Captured: ${res.target} | Base64 Length: ${res.base64.length} bytes]`, displayReplacement: `[👁️ Vision: ${res.target}]` };
+    return { toolType: 'virtual_vision', args, textContent: `Captured targeted vision (${res.target}) and attached to visual input.`, displayReplacement: `[👁️ Vision: ${res.target}]` };
 }
 
 // ─── Virtual Input Tool (Mouse & Keyboard) ──────────────────────────

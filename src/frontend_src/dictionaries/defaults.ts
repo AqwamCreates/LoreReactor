@@ -6,6 +6,7 @@ export const DEFAULT_BUDGET_RESET_DURATION_MS = 24 * 60 * 60 * 1000; // 24 hours
 const now = Date.now()
 
 export const defaultCharacterTools: Record<tool, boolean> = {
+    file_search: false,
     whisper: true,
     think: false,
     pick: true,
@@ -205,7 +206,6 @@ export const defaultInputStrategyPositions: promptBlockType[] = [
     'Dialogue Prompt',
     'Knowledge Prompt',
     'Memory Prompt',
-    'Starter Prompt',
     'Text Injection',
 ];
 

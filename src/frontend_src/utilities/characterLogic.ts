@@ -1,6 +1,7 @@
 // src/frontend_src/utilities/characterLogic.ts
 
 import type { Character, InteractionData, HistoryMessage, Profile, tool, ChatMessage } from "../types";
+import { defaultCharacterTools } from "../dictionaries/defaults";
 import { findLatestMessage } from "./messageLogic";
 import { getLocalMessageHistory } from "./timelineLogic";
 import { traverseStochasticGraph, type StochasticGraphNode } from "./graphLogic";
@@ -35,20 +36,29 @@ function getEffectiveNumeric<K extends keyof Character>(key: K, character: Chara
     return profileValue;
 }
 
-function getEffectiveRecordStringBoolean(key: string, character: Character, profile?: Profile): Record<string, boolean> {
+function getEffectiveRecordStringBoolean(
+    key: string,
+    character: Character,
+    profile?: Profile,
+    canonicalKeys?: readonly string[],
+): Record<string, boolean> {
     const charAny = character as unknown as Record<string, unknown>;
     const characterRecord = (charAny[key] ?? {}) as Record<string, boolean>;
-    if (!profile) return characterRecord;
-    const profAny = profile as unknown as Record<string, unknown>;
-    const profileRecord = profAny[key] as Record<string, number> | undefined;
+    const profAny = profile as unknown as Record<string, unknown> | undefined;
+    const profileRecord = profAny?.[key] as Record<string, number> | undefined;
 
-    if (!profileRecord) return { ...characterRecord };
+    const orderedKeys = new Set<string>([
+        ...(canonicalKeys ?? []),
+        ...Object.keys(characterRecord),
+        ...Object.keys(profileRecord ?? {}),
+    ]);
 
     const result = {} as Record<string, boolean>;
-    for (const k of Object.keys(characterRecord)) {
-        const profileValue = profileRecord[k];
+    for (const k of orderedKeys) {
+        const charDefault = characterRecord[k] ?? false;
+        const profileValue = profileRecord?.[k];
         if (profileValue === undefined || profileValue === 0) {
-            result[k] = characterRecord[k];
+            result[k] = charDefault;
         } else if (profileValue < 0) {
             result[k] = false;
         } else {
@@ -105,7 +115,7 @@ export function getEffectiveMessagesToDisableStarterPrompt(character: Character,
     return getEffectiveNumeric("numberOfMessagesToDisableStarterPrompt", character, profile);
 }
 export function getEffectiveTools(character: Character, profile?: Profile): Record<tool, boolean> {
-    return getEffectiveRecordStringBoolean("tools", character, profile);
+    return getEffectiveRecordStringBoolean("tools", character, profile, Object.keys(defaultCharacterTools)) as Record<tool, boolean>;
 }
 export function isToolEnabled(character: Character, toolName: tool, profile?: Profile): boolean {
     return getEffectiveTools(character, profile)[toolName] ?? false;
