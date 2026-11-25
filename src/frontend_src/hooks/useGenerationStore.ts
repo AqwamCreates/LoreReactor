@@ -1,3 +1,5 @@
+// src/frontend_src/hooks/useGenerationStore.ts
+
 import { create } from 'zustand';
 import type { Character } from '../types';
 

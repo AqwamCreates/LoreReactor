@@ -63,6 +63,7 @@ export interface TurnError {
 
 export interface TurnStreamCallbacks {
     onDisplayText: (text: string) => void;
+    onRawText?: (rawText: string) => void;
     onLatency: (msPerToken: number) => void;
     onTimeToFirstToken: (ms: number) => void;
     onExpression: (expression: string) => void;
@@ -226,16 +227,31 @@ function applyToolReplacements(
 
     for (let i = 0; i < replacements.rawReplacements.length; i++) {
         const { rawMatch, resultText } = replacements.rawReplacements[i];
-
         const rawReplacement = `${rawMatch}${toolResultStartString}result: ${resultText}${toolResultEndString} `;
-        if (currentRaw.includes(rawMatch)) {
-            currentRaw = currentRaw.replace(rawMatch, rawReplacement);
+
+        // Find the first occurrence of rawMatch that is NOT already followed by a result delimiter
+        let matchIdx = -1;
+        let searchStart = 0;
+        while (searchStart < currentRaw.length) {
+            const idx = currentRaw.indexOf(rawMatch, searchStart);
+            if (idx === -1) break;
+            const afterIdx = idx + rawMatch.length;
+            if (!currentRaw.startsWith(toolResultStartString, afterIdx)) {
+                matchIdx = idx;
+                break;
+            }
+            searchStart = afterIdx;
+        }
+
+        if (matchIdx !== -1) {
+            currentRaw = currentRaw.slice(0, matchIdx) + rawReplacement + currentRaw.slice(matchIdx + rawMatch.length);
         } else {
             currentRaw = currentRaw + rawReplacement;
         }
     }
 
     acc.setRaw(currentRaw);
+    callbacks?.onRawText?.(currentRaw);
 
     if (displayContext) {
         const compiled = compileMessageDisplayText(
@@ -525,6 +541,8 @@ export class CharacterActor {
                 displayCtx: DisplayContext
             ): StreamCallbacks => ({
                 onToken: async (s) => {
+                    if (turnAbortCtrl.signal.aborted) return;
+
                     latestLatency = s.msPerToken;
                     callbacks?.onLatency(s.msPerToken);
 
@@ -543,23 +561,53 @@ export class CharacterActor {
                     const parsed = parser.processChunk(delta);
                     let newRaw = acc.raw + delta;
 
-                    const hallucinationIdx = newRaw.indexOf(toolResultStartString, baseLength);
-                    if (hallucinationIdx !== -1) {
-                        newRaw = newRaw.substring(0, hallucinationIdx);
-                        acc.setRaw(newRaw);
-                        turnAbortCtrl.abort();
-                        return;
-                    }
-
-                    acc.setRaw(newRaw);
-
                     if (parsed.toolInvocations.length > 0) {
+                        const lastInv = parsed.toolInvocations[parsed.toolInvocations.length - 1];
+                        const lastMatchIdx = newRaw.lastIndexOf(lastInv.rawMatch);
+                        if (lastMatchIdx !== -1) {
+                            const cutEnd = lastMatchIdx + lastInv.rawMatch.length;
+                            const hallucinationBeforeTool = newRaw.indexOf(toolResultStartString, baseLength);
+                            if (hallucinationBeforeTool !== -1 && hallucinationBeforeTool < lastMatchIdx) {
+                                newRaw = newRaw.substring(0, hallucinationBeforeTool);
+                                acc.setRaw(newRaw);
+                                callbacks?.onRawText?.(newRaw);
+                                turnAbortCtrl.abort();
+                                return;
+                            }
+                            newRaw = newRaw.substring(0, cutEnd);
+                        }
+                        acc.setRaw(newRaw);
+                        callbacks?.onRawText?.(newRaw);
+
+                        const compiledOnTool = compileMessageDisplayText(
+                            newRaw,
+                            displayCtx.displayMode,
+                            displayCtx.placementMode,
+                            displayCtx.participants,
+                            displayCtx.character,
+                            acc.collectedExecutionResults
+                        );
+                        acc.setDisplay(compiledOnTool);
+                        callbacks?.onDisplayText(compiledOnTool);
+
                         for (const inv of parsed.toolInvocations) {
                             acc.addPendingInvocation(inv);
                         }
                         turnAbortCtrl.abort();
                         return;
                     }
+
+                    const hallucinationIdx = newRaw.indexOf(toolResultStartString, baseLength);
+                    if (hallucinationIdx !== -1) {
+                        newRaw = newRaw.substring(0, hallucinationIdx);
+                        acc.setRaw(newRaw);
+                        callbacks?.onRawText?.(newRaw);
+                        turnAbortCtrl.abort();
+                        return;
+                    }
+
+                    acc.setRaw(newRaw);
+                    callbacks?.onRawText?.(newRaw);
 
                     const compiled = compileMessageDisplayText(
                         newRaw,
@@ -574,12 +622,13 @@ export class CharacterActor {
 
                     const enableExpression = data.profile?.enableCharacterExpression ?? false;
                     if (enableExpression && sentimentEngine.isReady() && s.fullText.length > 20) {
-                        const sentiment = await sentimentEngine.analyze(s.fullText);
-                        if (sentiment && sentiment.topEmotion !== previousExpression) {
-                            previousExpression = sentiment.topEmotion;
-                            latestExpression = sentiment.topEmotion;
-                            callbacks?.onExpression(sentiment.topEmotion);
-                        }
+                        sentimentEngine.analyze(s.fullText).then((sentiment) => {
+                            if (!signal.aborted && sentiment && sentiment.topEmotion !== previousExpression) {
+                                previousExpression = sentiment.topEmotion;
+                                latestExpression = sentiment.topEmotion;
+                                callbacks?.onExpression(sentiment.topEmotion);
+                            }
+                        }).catch(() => {});
                     }
                 },
             });
@@ -592,7 +641,7 @@ export class CharacterActor {
                 const onParentAbort = () => turnAbortCtrl.abort();
                 signal.addEventListener('abort', onParentAbort, { once: true });
 
-                const baseLength = currentExistingText.length; 
+                const baseLength = accState.getRaw().length;
                 const streamCallbacks = createStreamCallbacks(streamToolParser, accState.get, turnAbortCtrl, baseLength, displayContext);
 
                 try {

@@ -880,8 +880,9 @@ export class LanguageModelEngine {
         this.model.id,
         requestBody,
         (tok) => {
+          if (abortController.signal.aborted) return;
           fullContent += tok;
-          callbacks?.onToken?.({
+          void callbacks?.onToken?.({
             fullText: fullContent,
             msPerToken: 0,
             tokensPerSecond: 0,
@@ -961,7 +962,8 @@ export class LanguageModelEngine {
       };
     };
 
-    const processLine = (line: string): 'done' | 'paragraph_limit' | 'continue' => {
+    const processLine = async (line: string): Promise<'done' | 'paragraph_limit' | 'aborted' | 'continue'> => {
+      if (abortController.signal.aborted) return 'aborted';
       if (!line.startsWith('data:')) return 'continue';
 
       const jsonStr = line.slice(5).trim();
@@ -1049,7 +1051,7 @@ export class LanguageModelEngine {
         lastTimeToFirstToken = timeToFirstToken;
 
         if (callbacks?.onToken) {
-          callbacks.onToken({
+          await callbacks.onToken({
             fullText: fullContent,
             msPerToken,
             tokensPerSecond,
@@ -1059,6 +1061,10 @@ export class LanguageModelEngine {
             cachedTokens: finalUsage.cachedTokens,
           });
         }
+
+        if (abortController.signal.aborted) {
+          return 'aborted';
+        }
       } catch { /* Ignore individual SSE parse errors */ }
 
       return 'continue';
@@ -1066,14 +1072,26 @@ export class LanguageModelEngine {
 
     try {
       while (true) {
+        if (abortController.signal.aborted) {
+          reader.cancel().catch(() => {});
+          return buildFinishResult(false);
+        }
+
         const { value, done } = await reader.read();
 
         if (done) {
+          if (abortController.signal.aborted) {
+            return buildFinishResult(false);
+          }
           sseBuffer += decoder.decode();
           if (sseBuffer) {
             for (const line of sseBuffer.split(/\r?\n/)) {
-              const status = processLine(line);
+              if (abortController.signal.aborted) {
+                return buildFinishResult(false);
+              }
+              const status = await processLine(line);
               if (status === 'paragraph_limit') return buildFinishResult(true);
+              if (status === 'aborted') return buildFinishResult(false);
               if (status === 'done') return buildFinishResult(lastFinishReason !== 'length');
             }
           }
@@ -1085,13 +1103,21 @@ export class LanguageModelEngine {
         sseBuffer = lines.pop() ?? '';
 
         for (const line of lines) {
-          const status = processLine(line);
+          if (abortController.signal.aborted) {
+            reader.cancel().catch(() => {});
+            return buildFinishResult(false);
+          }
+          const status = await processLine(line);
           if (status === 'paragraph_limit') return buildFinishResult(true);
+          if (status === 'aborted') {
+            reader.cancel().catch(() => {});
+            return buildFinishResult(false);
+          }
           if (status === 'done') return buildFinishResult(lastFinishReason !== 'length');
         }
       }
     } catch (error) {
-      if ((error as Error).name === 'AbortError') {
+      if ((error as Error).name === 'AbortError' || abortController.signal.aborted) {
         return buildFinishResult(false);
       }
       throw error;
