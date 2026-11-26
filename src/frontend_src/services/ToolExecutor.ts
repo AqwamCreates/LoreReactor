@@ -1380,8 +1380,8 @@ function getCharacterTimeData(interactionData: InteractionData, character: Chara
 }
 
 export const TOOL_EMOJI_MAP: Record<tool, string> = {
-    file_search: '📎',
-    whisper: '🤫', think: '💭', pick: '🎯', sky_view: '🔭', clock: '🕰️', calendar: '📅',
+    file_search: '📎', whisper: '🤫', think: '💭', 
+    pick: '🎯', sky_view: '🔭', clock: '🕰️', calendar: '📅',
     coin: '🪙', dice: '🎲', random: '🎲', rng: '🎲', move: '🚶',
     timer: '⏱️', stopwatch: '⏱️', schedule: '📅', calculator: '🧮',
     web: '🌐', dialogue: '💬', knowledge: '🧠', memory: '🧠',
