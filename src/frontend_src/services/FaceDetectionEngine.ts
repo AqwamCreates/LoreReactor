@@ -56,8 +56,9 @@ class FaceDetectionEngine {
     private ctx: CanvasRenderingContext2D | null = null;
     private inputBuffer: Float32Array | null = null;
 
-    // Head Movement & Motion Accumulator State
+    // Head Movement, Full-Frame Scene Delta & Motion Accumulator State
     private previousBox: { cx: number; cy: number; area: number } | null = null;
+    private previousLumaSample: Float32Array | null = null;
     private accumulatedMotion = 0;
     private lastMotionDelta = 0;
     private onMotionSpike: ((accumulatedMotion: number) => void) | null = null;
@@ -257,6 +258,7 @@ class FaceDetectionEngine {
         this.ctx = null;
         this.inputBuffer = null;
         this.previousBox = null;
+        this.previousLumaSample = null;
         this.accumulatedMotion = 0;
         this.lastMotionDelta = 0;
         this.setStatus('idle');
@@ -293,10 +295,11 @@ class FaceDetectionEngine {
         this.accumulatedMotion = 0;
         this.lastMotionDelta = 0;
         this.previousBox = null;
+        this.previousLumaSample = null;
     }
 
     /**
-     * Runs face detection and head motion estimation on a video element frame.
+     * Runs face detection, head motion estimation, and full-frame visual scene diff on a video frame.
      * Returns peak face probability (0.0 to 1.0), or -1 if unavailable.
      */
     async detectFromVideo(video: HTMLVideoElement): Promise<number> {
@@ -360,7 +363,30 @@ class FaceDetectionEngine {
                     }
                 }
 
+                // ─── FULL-FRAME VISUAL SCENE DELTA (CATCHES WAVING, OBJECTS, LIGHTS) ───
+                const stridePixels = 32;
+                const sampleCount = Math.floor(planeSize / stridePixels);
+                const currentLuma = new Float32Array(sampleCount);
+                let lumaDiffSum = 0;
+
+                for (let s = 0; s < sampleCount; s++) {
+                    const rgbaIdx = s * stridePixels * 4;
+                    const luma = (0.299 * imageData[rgbaIdx] + 0.587 * imageData[rgbaIdx + 1] + 0.114 * imageData[rgbaIdx + 2]) / 255;
+                    currentLuma[s] = luma;
+                    if (this.previousLumaSample && this.previousLumaSample.length === sampleCount) {
+                        lumaDiffSum += Math.abs(luma - this.previousLumaSample[s]);
+                    }
+                }
+
+                let sceneDelta = 0;
+                if (this.previousLumaSample && this.previousLumaSample.length === sampleCount) {
+                    const meanLumaDiff = lumaDiffSum / sampleCount;
+                    sceneDelta = meanLumaDiff > 0.035 ? (meanLumaDiff - 0.035) * 6.0 : 0;
+                }
+                this.previousLumaSample = currentLuma;
+
                 // ─── HEAD MOTION & VISUAL EXCITATION ACCUMULATOR ───
+                let faceMotionDelta = 0;
                 if (maxFaceProb >= this.probabilityThreshold && boxesTensor && bestAnchorIdx >= 0) {
                     const boxesData = boxesTensor.data as Float32Array;
                     const bIdx = bestAnchorIdx * 4;
@@ -382,20 +408,21 @@ class FaceDetectionEngine {
                         // Motion magnitude: centroid movement + scale/lean change
                         const rawMotion = dist * 2.5 + dArea * 4.0;
                         // Noise gate: ignore sub-pixel tremor or sensor noise
-                        const motionDelta = rawMotion > 0.02 ? rawMotion : 0;
-
-                        this.lastMotionDelta = motionDelta;
-                        // Leaky integration with a soft ceiling at 5.0
-                        this.accumulatedMotion = Math.min(5.0, (this.accumulatedMotion * 0.82) + motionDelta);
-                    } else {
-                        this.lastMotionDelta = 0;
+                        faceMotionDelta = rawMotion > 0.02 ? rawMotion : 0;
                     }
                     this.previousBox = { cx, cy, area };
                 } else {
-                    // Decay motion when face is out of view
-                    this.lastMotionDelta = 0;
-                    this.accumulatedMotion *= 0.70;
                     this.previousBox = null;
+                }
+
+                const combinedMotionDelta = Math.max(faceMotionDelta, sceneDelta);
+                if (combinedMotionDelta > 0) {
+                    this.lastMotionDelta = combinedMotionDelta;
+                    // Leaky integration with a soft ceiling at 5.0
+                    this.accumulatedMotion = Math.min(5.0, (this.accumulatedMotion * 0.82) + combinedMotionDelta);
+                } else {
+                    this.lastMotionDelta = 0;
+                    this.accumulatedMotion *= (maxFaceProb >= this.probabilityThreshold ? 0.82 : 0.70);
                 }
 
                 return maxFaceProb;
@@ -461,6 +488,7 @@ class FaceDetectionEngine {
         this.accumulatedMotion = 0;
         this.lastMotionDelta = 0;
         this.previousBox = null;
+        this.previousLumaSample = null;
 
         if (options.devicePreference) {
             this.setDevicePreference(options.devicePreference);
@@ -522,6 +550,7 @@ class FaceDetectionEngine {
         this.accumulatedMotion = 0;
         this.lastMotionDelta = 0;
         this.previousBox = null;
+        this.previousLumaSample = null;
         this.setStatus('idle');
 
         if (scheduleIdleUnload && this.session) {
@@ -534,6 +563,7 @@ class FaceDetectionEngine {
         this.accumulatedMotion = 0;
         this.lastMotionDelta = 0;
         this.previousBox = null;
+        this.previousLumaSample = null;
     }
 
     private scheduleNextTick(epoch: number, delayMs: number): void {
@@ -573,7 +603,7 @@ class FaceDetectionEngine {
                         this.onPresenceChange?.(isDetected, maxFaceProb);
                     }
 
-                    // Notify listener during active head movement
+                    // Notify listener during active head movement or scene changes
                     if (this.lastMotionDelta > 0 && this.accumulatedMotion > 0.1) {
                         this.onMotionSpike?.(this.accumulatedMotion);
                     }

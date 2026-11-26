@@ -212,7 +212,7 @@ class ChatSessionCoordinator {
             const protagonistId = useChatStore.getState().localProtagonist?.id || turnData.protagonistIds?.[0];
             if (protagonistId) {
                 const protagonist = turnData.participants.find(p => p.id === protagonistId);
-                if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile)) {
+                if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile) && !frontCameraEngine.isFrameStreamingActive()) {
                     try {
                         const freshImageBase64 = await frontCameraEngine.captureImage();
                         if (freshImageBase64) {

@@ -16,6 +16,7 @@ import { frontCameraEngine } from '../services/FrontCameraEngine';
 import { loadRawBudgetData } from '../storages/serverStorage';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
 import { getCurrentLocationId } from '../utilities/locationLogic';
+import { getEffectiveUseFrontCameraImage } from '../utilities/characterLogic';
 import { hasTextContent } from '../utilities/chatSessionLogic';
 import { isServerAvailable } from '../utilities/serverAvailability';
 import { localURL } from '../../configurations';
@@ -101,8 +102,9 @@ export function useChatSession(options: UseChatSessionOptions) {
         return unsubscribe;
     }, [options.isMultiplayerClient]);
 
-    // ─── 3. Background Effects (Budget, Polling, Tokens, Autonomous Mode, Face Detection, FM Unload) ───
+    // ─── 3. Background Effects (Budget, Polling, Tokens, Autonomous Mode, Face Detection, Camera Stream, FM Unload) ───
     const interactionData = useChatStore(s => s.interactionData);
+    const localProtagonist = useChatStore(s => s.localProtagonist);
     const selectedLanguageModel = useChatStore(s => s.selectedLanguageModel);
     const selectedSpatiotemporalModel = useChatStore(s => s.selectedSpatiotemporalModel);
     const setBudgetData = useChatStore(s => s.setBudgetData);
@@ -217,6 +219,32 @@ export function useChatSession(options: UseChatSessionOptions) {
         devicePreference: faceDetectionDeviceType,
     };
 
+    // Full-Frame Front Camera Streaming Lifecycle (for live character pickup)
+    const effectiveProtagonist = useMemo(() => {
+        if (!localProtagonist) return null;
+        return interactionData?.participants?.find(p => p.id === localProtagonist.id) || localProtagonist;
+    }, [localProtagonist, interactionData?.participants]);
+
+    const useFrontCamera = Boolean(
+        effectiveProtagonist && getEffectiveUseFrontCameraImage(effectiveProtagonist, interactionData?.profile)
+    );
+
+    useEffect(() => {
+        frontCameraEngine.setActiveProtagonistId(localProtagonist?.id ?? null);
+    }, [localProtagonist?.id]);
+
+    useEffect(() => {
+        if (useFrontCamera && activeChatId && !options.isMultiplayerClient) {
+            const streamInterval = Math.max(500, Math.min(2000, faceDetectionIntervalMs));
+            frontCameraEngine.startFrameStreaming(streamInterval);
+        } else {
+            frontCameraEngine.stopFrameStreaming();
+        }
+        return () => {
+            frontCameraEngine.stopFrameStreaming();
+        };
+    }, [useFrontCamera, activeChatId, options.isMultiplayerClient, faceDetectionIntervalMs]);
+
     useEffect(() => {
         if (enableFaceDetection && activeChatId && !options.isMultiplayerClient) {
             frontCameraEngine.setKeepAlive('face_detection', true);
@@ -271,7 +299,6 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, []);
 
     // ─── 4. State Subscriptions & UI Bindings ───
-    const localProtagonist = useChatStore(s => s.localProtagonist);
     const activeStrategy = useChatStore(s => s.activeStrategy);
     const runningLanguageModels = useChatStore(s => s.runningLanguageModels);
     const runningSpatiotemporalModels = useChatStore(s => s.runningSpatiotemporalModels);

@@ -52,6 +52,7 @@ import { collectActiveDialoguePromptContent, buildDialogueSearchSpace } from './
 import { STOP_STEMS, getStemmedContentWords } from './stemmerHelper';
 import { getCharacterImageUrlWithFallBack, getContextImageUrl, getLocationImageUrl, getPromptBlockImageUrl } from '../storages/serverStorage';
 import { embeddingEngine } from '../services/EmbeddingEngine';
+import { frontCameraEngine } from '../services/FrontCameraEngine';
 import { retrieveRelevantContext, type RetrievableItem } from '../services/RetrievalEngine';
 import { retrieveEligibleMemories } from './memoryLogic';
 import { isEntityActiveWithCache, doesAnyTriggerMatchCached, type CombinationCache, type TriggerEvaluationContext } from './triggerLogic';
@@ -3043,15 +3044,49 @@ export async function prepareTurnPromptSnapshot(
         let base64Data: string | null = null;
         const textMsg = charMessage?.message as TextMessage | null;
         const charUsesFrontCam = getEffectiveUseFrontCameraImage(char, profile);
-        if (protagonistIds.has(char.id) && charUsesFrontCam && (textMsg as ChatMessage)?.frontCameraImage) {
-          const fcImg = (textMsg as ChatMessage).frontCameraImage!;
-          base64Data = fcImg.includes(',') ? fcImg.split(',')[1] : fcImg;
-        } else {
+        const displayName = getFullDisplayName(char, ctx.participants, ctx.knownNames, ctx.characterId);
+
+        if (protagonistIds.has(char.id) && charUsesFrontCam) {
+          // 1. Pull live full-resolution uncropped frames from the streaming singleton
+          const liveFrames = frontCameraEngine.isOwnedBy(char.id)
+            ? frontCameraEngine.getTurnFrames(2, 15000)
+            : [];
+          const uniqueFrames = liveFrames.filter((frame, idx, arr) =>
+            idx === arr.length - 1 || frame.dataUrl !== arr[idx + 1].dataUrl
+          );
+
+          if (uniqueFrames.length > 0) {
+            const now = Date.now();
+            let pushedLive = false;
+            uniqueFrames.forEach((frame, idx) => {
+              const frameBase64 = frame.dataUrl.includes(',') ? frame.dataUrl.split(',')[1] : frame.dataUrl;
+              if (!frameBase64) return;
+              const isLatest = idx === uniqueFrames.length - 1;
+              const ageSec = Math.max(0, (now - frame.timestamp) / 1000);
+              const timeTag = isLatest || ageSec < 0.3 ? 'live' : `${ageSec.toFixed(1)}s ago`;
+              baseTrackedImageDrafts.push({
+                entityType: 'character',
+                entityName: uniqueFrames.length > 1 ? `${displayName} (${timeTag})` : displayName,
+                localIndex: idx + 1,
+                base64Data: frameBase64,
+              });
+              pushedLive = true;
+            });
+            if (pushedLive) continue;
+          }
+
+          // 2. Fallback to stored frontCameraImage (remote multiplayer peers or offline history)
+          if ((textMsg as ChatMessage)?.frontCameraImage) {
+            const fcImg = (textMsg as ChatMessage).frontCameraImage!;
+            base64Data = fcImg.includes(',') ? fcImg.split(',')[1] : fcImg;
+          }
+        }
+
+        if (!base64Data) {
           const imagePath = await getCharacterImageUrlWithFallBack(char.id, charExpression);
           if (imagePath) base64Data = await fetchImageAsBase64(imagePath);
         }
         if (!base64Data) continue;
-        const displayName = getFullDisplayName(char, ctx.participants, ctx.knownNames, ctx.characterId);
         baseTrackedImageDrafts.push({
           entityType: 'character',
           entityName: displayName,
