@@ -73,6 +73,7 @@ You then can use LoreReactor directly or install the local backends first. The c
 | ```nameSensitivity```               | The modifier for when to trigger characters' response when the character's name is called. |
 | ```chatImpatienceSensitivity```     | The modifier for how long the character will be able to stay quiet.                        |
 | ```visualSensitivity```             | The sensitivity to the face's movement to trigger characters' response.                    |
+| ```audioSensitivity```              | The sensitivity to the verbal audio to trigger characters' response.                       |
 | ```contextSensitivity```            | The sensitivity control on triggering context involving the character.                     |
 | ```skipProbability```               | The probability of skipping an action.                                                     |
 | ```memoryRetentionWeight```         | The threshold on activating the memories.                                                  |
