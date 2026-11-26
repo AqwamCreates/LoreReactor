@@ -104,6 +104,8 @@ export function ChatInput({
         setPendingFiles(prev => [...prev, ...droppedFiles]);
     };
 
+    const canSend = !isLoading && Boolean(isModelReady) && Boolean(localProtagonist) && !isTranscribing && !isMicLoading && (inputText.length > 0 || pendingFiles.length > 0);
+
     const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (showAutocomplete) {
             if (e.key === 'ArrowDown' || (e.key === 'Tab' && !e.shiftKey)) {
@@ -124,7 +126,7 @@ export function ChatInput({
                 e.preventDefault();
                 if (options.length > 0 && options[selectedIndex]) {
                     handleApplySelection(options[selectedIndex]);
-                } else if (localProtagonist && !isTranscribing && !isMicLoading) {
+                } else if (canSend) {
                     onSend();
                 }
                 return;
@@ -144,9 +146,11 @@ export function ChatInput({
             return;
         }
 
-        if (e.key === 'Enter' && !e.shiftKey && localProtagonist && !isTranscribing && !isMicLoading) {
+        if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            onSend();
+            if (canSend) {
+                onSend();
+            }
         }
     };
 
