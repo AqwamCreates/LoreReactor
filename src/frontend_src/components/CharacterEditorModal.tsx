@@ -1,12 +1,7 @@
-Here is the complete, updated CharacterEditorModal.tsx with audioSensitivity
-integrated across trait detection, defaults, form state, blur auto-detection,
-character card import reset, character save serialization, and the Stats →
-Responsiveness UI section:
-
 // src/frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import type { 
+import type {
     Character, Location, TokenSampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
     tool, InteractionData, StopPattern, Voice, RetrievalConfiguration,

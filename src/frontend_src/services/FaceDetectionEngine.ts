@@ -16,7 +16,7 @@ const GAZE_INPUT_SIZE = 448;
 const POSE_INPUT_SIZE = 192;
 
 const DEFAULT_INTERVAL_MS = 1000;
-const DEFAULT_PROBABILITY_THRESHOLD = 0.75; // Internal calibrated baseline
+const DEFAULT_PROBABILITY_THRESHOLD = 0.8; // Internal calibrated baseline
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 
 // ─── Visual Shutter Thresholds & Cooldowns ───
