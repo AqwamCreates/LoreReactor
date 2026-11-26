@@ -26,7 +26,7 @@ import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/ti
 import { detectName } from '../utilities/nameDetection';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { evaluateAutoResumeSignals, injectStopSignals, broadcastToolStateChanges, hasTextContent, NO_ARG_TOOLS, HOST_ONLY_TOOLS, finalizeMessageById } from '../utilities/chatSessionLogic';
-import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost, weightedSample } from '../utilities/dynamicCharacterLogic';
+import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost, weightedSample, getLiveChatStaminaRatio } from '../utilities/dynamicCharacterLogic';
 import { 
     generateChatStaminaForInteractionData, 
     generateActionStaminaForInteractionData, 
@@ -326,7 +326,8 @@ class ChatSessionCoordinator {
     }
 
     /**
-     * Weighted random sampling across co-located AI candidates based on their sensory sensitivity.
+     * Weighted random sampling across co-located AI candidates based on their sensory sensitivity
+     * scaled by their live chatStaminaRatio (including passive regen).
      * Scoped strictly to the protagonist sitting in front of the local sensors.
      */
     private sampleRealTimeObserver(
@@ -343,9 +344,14 @@ class ChatSessionCoordinator {
 
         const pool: { item: { character: Character; sensitivity: number }; weight: number }[] = [];
         for (const char of aiCandidates) {
-            const sensitivity = modality === 'visual'
+            const chatStaminaRatio = getLiveChatStaminaRatio(char, currentData);
+            if (chatStaminaRatio <= 0) continue;
+
+            const baseSensitivity = modality === 'visual'
                 ? getEffectiveVisualSensitivity(char, currentData.profile)
                 : getEffectiveAudioSensitivity(char, currentData.profile);
+            const sensitivity = baseSensitivity * chatStaminaRatio;
+
             if (sensitivity > 0) {
                 pool.push({ item: { character: char, sensitivity }, weight: sensitivity });
             }

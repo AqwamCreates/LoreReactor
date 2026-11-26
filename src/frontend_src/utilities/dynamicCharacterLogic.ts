@@ -37,6 +37,25 @@ function isCoLocatedWithProtagonist(character: Character, data: InteractionData)
     });
 }
 
+/**
+ * Computes live read-only chat stamina ratio (including passive elapsed regen)
+ * for external pre-turn evaluators like ChatSessionCoordinator.sampleRealTimeObserver.
+ */
+export function getLiveChatStaminaRatio(character: Character, data: InteractionData): number {
+    const profile = data.profile;
+    const maxChat = getEffectiveMaximumChatStamina(character, profile);
+    if (maxChat <= 0 || maxChat === Number.POSITIVE_INFINITY) {
+        return 1.0;
+    }
+
+    const latest = findLatestMessage(data, character);
+    const savedChat = latest?.message?.remainingChatStamina ?? maxChat;
+    const { chatRegen } = computeModulatedStaminaRegenationAmounts(character, data);
+    const liveChat = Math.min(maxChat, Math.max(0, savedChat + chatRegen));
+
+    return liveChat / maxChat;
+}
+
 function getRealTimeSensoryBoost(
     character: Character,
     data: InteractionData,
