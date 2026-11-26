@@ -227,6 +227,7 @@ export function createDemoData(): DemoDataBundle {
     chatStaminaRegenerationRate: -1,
     nameSensitivity: -1,
     chatImpatienceSensitivity: -1,
+    visualSensitivity: -1,
     skipProbability: -1,
     memoryRetentionWeight: -1,
     contextSensitivity: -1,

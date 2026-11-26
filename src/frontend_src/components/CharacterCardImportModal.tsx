@@ -11,6 +11,7 @@ import {
     getNameSensitivityValueFromText, 
     getSkipProbabilityValueFromText, 
     getChatImpatienceSensitivityValueFromText, 
+    getVisualSensitivityValueFromText,
     getMemoryRetentionWeightValueFromText, 
     getContextSensitivityValueFromText, 
     getMaximumActionStaminaValueFromText,
@@ -118,6 +119,7 @@ export function CharacterCardImportModal({
             const maximumChatStamina = getMaximumChatStaminaValueFromText(traitText);
             const chatStaminaRegenerationRate = getChatStaminaRegenerationRateValueFromText(traitText);
             const nameSensitivity = getNameSensitivityValueFromText(traitText);
+            const visualSensitivity = getVisualSensitivityValueFromText(traitText);
             const skipProbability = getSkipProbabilityValueFromText(traitText);
             const chatImpatienceSensitivity = getChatImpatienceSensitivityValueFromText(traitText);
             const memoryRetentionWeight = getMemoryRetentionWeightValueFromText(traitText);
@@ -192,8 +194,9 @@ export function CharacterCardImportModal({
                 maximumChatStamina,
                 chatStaminaRegenerationRate,
                 nameSensitivity,
-                skipProbability,
                 chatImpatienceSensitivity,
+                visualSensitivity,
+                skipProbability,
                 memoryRetentionWeight,
                 contextSensitivity,
                 maximumActionStamina,
@@ -396,7 +399,7 @@ export function CharacterCardImportModal({
                                             <div><strong>Starter Prompts:</strong> {preview.character.starterPrompts ? preview.character.starterPrompts.length : 0}</div>
                                         </div>
                                         <div style={{ marginTop: '8px', fontSize: '0.65rem', opacity: 0.5 }}>
-                                            Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Chat Regen={preview.character.chatStaminaRegenerationRate.toFixed(2)} · Action Stamina={preview.character.maximumActionStamina} · Action Regen={preview.character.actionStaminaRegenerationRate.toFixed(2)} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)}
+                                            Traits auto-detected: IW={preview.character.initiativeWeight.toFixed(1)} · CP={preview.character.chatProbability.toFixed(2)} · Chat Stamina={preview.character.maximumChatStamina} · Chat Regen={preview.character.chatStaminaRegenerationRate.toFixed(2)} · Action Stamina={preview.character.maximumActionStamina} · Action Regen={preview.character.actionStaminaRegenerationRate.toFixed(2)} · NS={preview.character.nameSensitivity.toFixed(1)} · CIS={preview.character.chatImpatienceSensitivity.toFixed(1)} · VS={preview.character.visualSensitivity.toFixed(1)}
                                         </div>
                                     </div>
 

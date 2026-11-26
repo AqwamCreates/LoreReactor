@@ -103,6 +103,7 @@ export function buildJsonSchema(selectedEntities: EntityType[]): string {
     "actionStaminaRegenerationRate": "number (≥0, default 0.03). Stamina regenerated per second.",
     "nameSensitivity": "number (≥0, default 1)",
     "chatImpatienceSensitivity": "number (≥0, default 0)",
+    "visualSensitivity": "number (≥0, default 1). Sensitivity multiplier for user physical head movement and camera presence.",
     "skipProbability": "number (0-1, default 0)",
     "memoryRetentionWeight": "number (≥0, default 1)",
     "contextSensitivity": "number (≥0, default 1)",
@@ -257,9 +258,9 @@ ${characterToolsSchema}
     "description": "string (display only, NOT used as AI input)",
     "autonomousMode": "boolean (default false)",
     "autonomousInteractionIntervalMs": "number (1000-60000, default 10000)",
-    "enableFaceDetection": "boolean (default false). Enables webcam face presence detection to trigger multi-turn character evaluation on presence changes.",
-    "faceDetectionIntervalMs": "number (≥50, default 1000). Polling interval in milliseconds for webcam face detection.",
-    "faceDetectionProbabilityThreshold": "number (0-1, default 0.75). Confidence threshold required to confirm face detection.",
+    "enableFaceDetection": "boolean (default false)",
+    "faceDetectionIntervalMs": "number (100-60000, default 1000)",
+    "faceDetectionProbabilityThreshold": "number (0.1-0.95, default 0.75)",
     "enableAutoSpeechDetection": "boolean (default false)",
     "speechVolumeActivationThreshold": "number (1-100, default 18)",
     "speechSilenceVolumeActivationThreshold": "number (1-100, default 8)",
@@ -274,7 +275,7 @@ ${characterToolsSchema}
     "randomizeTextCharacterInjection": "boolean (default false, master toggle for text character injection across all characters)",
     "randomizeTextCharacterInjectionOnRetry": "boolean (default true, only randomize if the initial generation fails. Only relevant when randomizeTextCharacterInjection is true)",
     "maximumNumberOfTextCharacterRandomizationPerModel": "number (≥1, default 1, number of retry attempts per model for text character randomization. Only relevant when randomizeTextCharacterInjection is true)",
-    "entityImageTypes": ["array of 'promptBlock' | 'context' | 'location' | 'character' (default all enabled). If an entity type is omitted from this array, its images will be strictly blocked from injection into the prompt."],
+    "entityImageTypes": ["array of 'promptBlock' | 'context' | 'location' | 'character' | 'screenshot' (default all enabled). If an entity type is omitted from this array, its images will be strictly blocked from injection into the prompt."],
     "weatherApiKey": "string (OpenWeather API key, optional)",
     "useFrontCameraImage": "number (-1, 0, or 1, default 0). -1 = force off for all characters. 0 = per-character setting. 1 = force on for all characters. Replaces protagonist stored image with live front camera snapshot. Camera activates on first use and auto-closes after 10 minutes idle.",
     "numberOfMessagesToDisableThinkPrompt": "number (-1 or ≥0, default -1 defers to character)",
@@ -289,6 +290,7 @@ ${characterToolsSchema}
     "actionStaminaRegenerationRate": "number (-1 or ≥0, default -1 defers to character). Stamina regenerated per second.",
     "nameSensitivity": "number (-1 or ≥0, default -1 defers to character)",
     "chatImpatienceSensitivity": "number (-1 or ≥0, default -1 defers to character)",
+    "visualSensitivity": "number (-1 or ≥0, default -1 defers to character). Sensitivity multiplier for head movement and camera visual awareness.",
     "skipProbability": "number (-1 or 0-1, default -1 defers to character)",
     "memoryRetentionWeight": "number (-1 or ≥0, default -1 defers to character)",
     "contextSensitivity": "number (-1 or ≥0, default -1 defers to character)",
@@ -368,12 +370,12 @@ ${profileToolsSchema}
   }`);
     }
 
-  if (includeEntityFolder) {
+    if (includeEntityFolder) {
         parts.push(`  "entityFolders": [{
     "id": "string (UUID)",
     "name": "string (required, entity folder name)",
     "description": "string (display only, optional)",
-    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'languageModel' | 'tokenSampler' | 'promptBlock' | 'stopPattern' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' (required, entity category for this entity folder)",
+    "entityType": "'character' | 'context' | 'location' | 'audioTrack' | 'world' | 'interactionData' | 'languageModel' | 'spatiotemporalModel' | 'tokenSampler' | 'promptBlock' | 'stopPattern' | 'retrievalConfiguration' | 'budgetStrategy' | 'profile' | 'account' | 'multiplayerData' | 'entityFolder' (required, entity category for this entity folder)",
     "itemIds": ["string array of entity UUIDs belonging to this entity folder"]
   }]`);
     }

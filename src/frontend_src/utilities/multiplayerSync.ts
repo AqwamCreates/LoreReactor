@@ -20,6 +20,7 @@ export function stripCharacterForSync(char: Character): Character {
         chatStaminaRegenerationRate: char.chatStaminaRegenerationRate,
         nameSensitivity: char.nameSensitivity,
         chatImpatienceSensitivity: char.chatImpatienceSensitivity,
+        visualSensitivity: char.visualSensitivity,
         skipProbability: char.skipProbability,
         memoryRetentionWeight: char.memoryRetentionWeight,
         contextSensitivity: char.contextSensitivity,

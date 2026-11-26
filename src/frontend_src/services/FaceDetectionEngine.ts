@@ -15,6 +15,7 @@ export type FaceDetectionStatus = 'idle' | 'loading' | 'monitoring';
 export interface FaceDetectionMonitorOptions {
     getVideoElement: () => Promise<HTMLVideoElement | null> | HTMLVideoElement | null;
     onPresenceChange: (isDetected: boolean, probability: number) => void;
+    onMotionSpike?: (accumulatedMotion: number) => void;
     intervalMs?: number;
     probabilityThreshold?: number;
     devicePreference?: deviceType;
@@ -55,6 +56,11 @@ class FaceDetectionEngine {
     private ctx: CanvasRenderingContext2D | null = null;
     private inputBuffer: Float32Array | null = null;
 
+    // Head Movement & Motion Accumulator State
+    private previousBox: { cx: number; cy: number; area: number } | null = null;
+    private accumulatedMotion = 0;
+    private onMotionSpike: ((accumulatedMotion: number) => void) | null = null;
+
     // Monitoring state
     private status: FaceDetectionStatus = 'idle';
     private statusListeners = new Set<(status: FaceDetectionStatus) => void>();
@@ -70,7 +76,6 @@ class FaceDetectionEngine {
     private lastDetectedStatus: boolean | null = null;
 
     constructor() {
-        // Point to CDN to avoid bundler WASM 404 errors in production
         if (!ort.env.wasm.wasmPaths) {
             ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/';
         }
@@ -250,6 +255,8 @@ class FaceDetectionEngine {
         this.canvas = null;
         this.ctx = null;
         this.inputBuffer = null;
+        this.previousBox = null;
+        this.accumulatedMotion = 0;
         this.setStatus('idle');
         console.log('[FaceDetectionEngine] Unloaded.');
     }
@@ -264,9 +271,30 @@ class FaceDetectionEngine {
         return null;
     }
 
+    private extractBoxesTensor(results: ort.InferenceSession.OnnxValueMapType): ort.Tensor | null {
+        if (results.boxes) return results.boxes;
+        for (const tensor of Object.values(results)) {
+            if (tensor && tensor.dims.length === 3 && tensor.dims[2] === 4) {
+                return tensor;
+            }
+        }
+        return null;
+    }
+
+    /** Returns current accumulated visual motion (0.0 to 5.0) */
+    getAccumulatedMotion(): number {
+        return this.accumulatedMotion;
+    }
+
+    /** Clears motion energy once an AI has successfully responded to the movement */
+    resetAccumulatedMotion(): void {
+        this.accumulatedMotion = 0;
+        this.previousBox = null;
+    }
+
     /**
-     * Runs face detection on a live video element frame.
-     * Returns the peak face probability (0.0 to 1.0), or -1 if unavailable/failed.
+     * Runs face detection and head motion estimation on a video element frame.
+     * Returns peak face probability (0.0 to 1.0), or -1 if unavailable.
      */
     async detectFromVideo(video: HTMLVideoElement): Promise<number> {
         if (this.inferPromise) {
@@ -314,25 +342,61 @@ class FaceDetectionEngine {
                 }
 
                 const scoresTensor = this.extractScoresTensor(results);
+                const boxesTensor = this.extractBoxesTensor(results);
                 if (!scoresTensor) return -1;
 
                 const scoresData = scoresTensor.data as Float32Array;
                 let maxFaceProb = 0;
+                let bestAnchorIdx = -1;
+
                 for (let i = 1; i < scoresData.length; i += 2) {
                     const prob = scoresData[i];
                     if (prob > maxFaceProb) {
                         maxFaceProb = prob;
+                        bestAnchorIdx = Math.floor(i / 2);
                     }
+                }
+
+                // ─── HEAD MOTION & VISUAL EXCITATION ACCUMULATOR ───
+                if (maxFaceProb >= this.probabilityThreshold && boxesTensor && bestAnchorIdx >= 0) {
+                    const boxesData = boxesTensor.data as Float32Array;
+                    const bIdx = bestAnchorIdx * 4;
+                    const x1 = boxesData[bIdx];
+                    const y1 = boxesData[bIdx + 1];
+                    const x2 = boxesData[bIdx + 2];
+                    const y2 = boxesData[bIdx + 3];
+
+                    const cx = (x1 + x2) / 2;
+                    const cy = (y1 + y2) / 2;
+                    const area = Math.max(0, (x2 - x1) * (y2 - y1));
+
+                    if (this.previousBox) {
+                        const dx = cx - this.previousBox.cx;
+                        const dy = cy - this.previousBox.cy;
+                        const dArea = Math.abs(area - this.previousBox.area);
+                        const dist = Math.sqrt(dx * dx + dy * dy);
+
+                        // Motion magnitude: centroid movement + scale/lean change
+                        const rawMotion = dist * 2.5 + dArea * 4.0;
+                        // Noise gate: ignore sub-pixel tremor or sensor noise
+                        const motionDelta = rawMotion > 0.02 ? rawMotion : 0;
+
+                        // Leaky integration with a soft ceiling at 5.0
+                        this.accumulatedMotion = Math.min(5.0, (this.accumulatedMotion * 0.82) + motionDelta);
+                    }
+                    this.previousBox = { cx, cy, area };
+                } else {
+                    // Decay motion when face is out of view
+                    this.accumulatedMotion *= 0.70;
+                    this.previousBox = null;
                 }
 
                 return maxFaceProb;
             } catch (e) {
                 console.warn('[FaceDetectionEngine] Inference failed:', e);
-                // If WebGPU failed mid-inference (e.g. unsupported operator), fall back cleanly to WASM
                 if (this.usingWebGpu && runEpoch === this.sessionEpoch) {
                     console.warn('[FaceDetectionEngine] Falling back to WASM after WebGPU runtime failure.');
                     this.currentDevicePreference = 'cpu';
-                    // Dispose references before releasing session
                     if (results) {
                         for (const tensor of Object.values(results)) {
                             try { tensor?.dispose(); } catch {}
@@ -383,9 +447,12 @@ class FaceDetectionEngine {
 
         this.getVideoElement = options.getVideoElement;
         this.onPresenceChange = options.onPresenceChange;
+        this.onMotionSpike = options.onMotionSpike ?? null;
         this.intervalMs = clampInterval(options.intervalMs);
         this.probabilityThreshold = clampThreshold(options.probabilityThreshold);
         this.lastDetectedStatus = null;
+        this.accumulatedMotion = 0;
+        this.previousBox = null;
 
         if (options.devicePreference) {
             this.setDevicePreference(options.devicePreference);
@@ -411,20 +478,13 @@ class FaceDetectionEngine {
     }
 
     updateMonitoringOptions(
-        options: Partial<Pick<FaceDetectionMonitorOptions, 'intervalMs' | 'probabilityThreshold' | 'devicePreference' | 'getVideoElement' | 'onPresenceChange'>>
+        options: Partial<Pick<FaceDetectionMonitorOptions, 'intervalMs' | 'probabilityThreshold' | 'devicePreference' | 'getVideoElement' | 'onPresenceChange' | 'onMotionSpike'>>
     ): void {
-        if (options.getVideoElement) {
-            this.getVideoElement = options.getVideoElement;
-        }
-        if (options.onPresenceChange) {
-            this.onPresenceChange = options.onPresenceChange;
-        }
-        if (options.probabilityThreshold !== undefined) {
-            this.probabilityThreshold = clampThreshold(options.probabilityThreshold);
-        }
-        if (options.devicePreference !== undefined) {
-            this.setDevicePreference(options.devicePreference);
-        }
+        if (options.getVideoElement) this.getVideoElement = options.getVideoElement;
+        if (options.onPresenceChange) this.onPresenceChange = options.onPresenceChange;
+        if (options.onMotionSpike !== undefined) this.onMotionSpike = options.onMotionSpike ?? null;
+        if (options.probabilityThreshold !== undefined) this.probabilityThreshold = clampThreshold(options.probabilityThreshold);
+        if (options.devicePreference !== undefined) this.setDevicePreference(options.devicePreference);
         if (options.intervalMs !== undefined) {
             const nextInterval = clampInterval(options.intervalMs);
             if (nextInterval !== this.intervalMs) {
@@ -449,7 +509,10 @@ class FaceDetectionEngine {
 
         this.getVideoElement = null;
         this.onPresenceChange = null;
+        this.onMotionSpike = null;
         this.lastDetectedStatus = null;
+        this.accumulatedMotion = 0;
+        this.previousBox = null;
         this.setStatus('idle');
 
         if (scheduleIdleUnload && this.session) {
@@ -459,6 +522,8 @@ class FaceDetectionEngine {
 
     resetBaseline(): void {
         this.lastDetectedStatus = null;
+        this.accumulatedMotion = 0;
+        this.previousBox = null;
     }
 
     private scheduleNextTick(epoch: number, delayMs: number): void {
@@ -492,11 +557,15 @@ class FaceDetectionEngine {
                     const isDetected = maxFaceProb >= this.probabilityThreshold;
 
                     if (this.lastDetectedStatus === null) {
-                        // First read silently establishes baseline
                         this.lastDetectedStatus = isDetected;
                     } else if (isDetected !== this.lastDetectedStatus) {
                         this.lastDetectedStatus = isDetected;
                         this.onPresenceChange?.(isDetected, maxFaceProb);
+                    }
+
+                    // If head motion spikes significantly, notify listener
+                    if (this.accumulatedMotion >= 2.0) {
+                        this.onMotionSpike?.(this.accumulatedMotion);
                     }
                 }
             }

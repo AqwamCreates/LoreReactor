@@ -1,7 +1,7 @@
 // src/frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import type { 
+import type {
     Character, Location, TokenSampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
     tool, InteractionData, StopPattern, Voice, RetrievalConfiguration,
@@ -23,6 +23,7 @@ import {
     getChatStaminaRegenerationRateValueFromText,
     getNameSensitivityValueFromText, 
     getChatImpatienceSensitivityValueFromText, 
+    getVisualSensitivityValueFromText,
     getSkipProbabilityValueFromText, 
     getMemoryRetentionWeightValueFromText, 
     getContextSensitivityValueFromText, 
@@ -53,6 +54,7 @@ const DEFAULT_CHAT_PROBABILITY = 0.5;
 const DEFAULT_MAXIMUM_CHAT_STAMINA = 4;
 const DEFAULT_CHAT_STAMINA_REGENERATION_RATE = 0.3;
 const DEFAULT_NAME_SENSITIVITY = 1;
+const DEFAULT_VISUAL_SENSITIVITY = 1;
 const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY = 0;
 const DEFAULT_SKIP_PROBABILITY = 0;
 const DEFAULT_MEMORY_RETENTION_WEIGHT = 1;
@@ -136,6 +138,7 @@ export function CharacterEditorModal({
     const [chatStaminaRegenerationRateStr, setChatStaminaRegenerationRateStr] = useState<string>(String(existingCharacter?.chatStaminaRegenerationRate ?? -1));
     const [nameSensitivityStr, setNameSensitivityStr] = useState<string>(String(existingCharacter?.nameSensitivity ?? -1));
     const [chatImpatienceSensitivityStr, setChatImpatienceSensitivityStr] = useState<string>(String(existingCharacter?.chatImpatienceSensitivity ?? -1));
+    const [visualSensitivityStr, setVisualSensitivityStr] = useState<string>(String(existingCharacter?.visualSensitivity ?? -1));
     const [skipProbabilityStr, setSkipProbabilityStr] = useState<string>(String(existingCharacter?.skipProbability ?? -1));
     const [memoryRetentionWeightStr, setMemoryRetentionWeightStr] = useState<string>(String(existingCharacter?.memoryRetentionWeight ?? -1));
     const [contextSensitivityStr, setContextSensitivityStr] = useState<string>(String(existingCharacter?.contextSensitivity ?? -1));
@@ -387,6 +390,7 @@ export function CharacterEditorModal({
         const csrr = getChatStaminaRegenerationRateValueFromText(combinedText);
         const ns = getNameSensitivityValueFromText(combinedText);
         const cis = getChatImpatienceSensitivityValueFromText(combinedText);
+        const vs = getVisualSensitivityValueFromText(combinedText);
         const sp = getSkipProbabilityValueFromText(combinedText);
         const mrw = getMemoryRetentionWeightValueFromText(combinedText);
         const crs = getContextSensitivityValueFromText(combinedText);
@@ -399,6 +403,7 @@ export function CharacterEditorModal({
         setChatStaminaRegenerationRateStr(String(csrr));
         setNameSensitivityStr(String(ns));
         setChatImpatienceSensitivityStr(String(cis));
+        setVisualSensitivityStr(String(vs));
         setSkipProbabilityStr(String(sp));
         setMemoryRetentionWeightStr(String(mrw));
         setContextSensitivityStr(String(crs));
@@ -415,6 +420,7 @@ export function CharacterEditorModal({
         setMaximumChatStaminaStr(String(DEFAULT_MAXIMUM_CHAT_STAMINA));
         setChatStaminaRegenerationRateStr(String(DEFAULT_CHAT_STAMINA_REGENERATION_RATE));
         setNameSensitivityStr(String(DEFAULT_NAME_SENSITIVITY));
+        setVisualSensitivityStr(String(DEFAULT_VISUAL_SENSITIVITY));
         setChatImpatienceSensitivityStr(String(DEFAULT_CHAT_IMPATIENCE_SENSITIVITY));
         setSkipProbabilityStr(String(DEFAULT_SKIP_PROBABILITY));
         setMemoryRetentionWeightStr(String(DEFAULT_MEMORY_RETENTION_WEIGHT));
@@ -493,6 +499,7 @@ export function CharacterEditorModal({
         const currentCSRR = Number.parseFloat(chatStaminaRegenerationRateStr);
         const currentNS = Number.parseFloat(nameSensitivityStr);
         const currentCIS = Number.parseFloat(chatImpatienceSensitivityStr);
+        const currentVS = Number.parseFloat(visualSensitivityStr);
         const currentSP = Number.parseFloat(skipProbabilityStr);
         const currentMRW = Number.parseFloat(memoryRetentionWeightStr);
         const currentCRS = Number.parseFloat(contextSensitivityStr);
@@ -505,13 +512,14 @@ export function CharacterEditorModal({
         const csrrIsAuto = currentCSRR === -1;
         const nsIsAuto = currentNS === -1;
         const cisIsAuto = currentCIS === -1;
+        const vsIsAuto = currentVS === -1;
         const spIsAuto = currentSP === -1;
         const mrwIsAuto = currentMRW === -1;
         const crsIsAuto = currentCRS === -1;
         const masIsAuto = currentMAS === -1;
         const asrrIsAuto = currentASRR === -1;
 
-        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !csrrIsAuto && !nsIsAuto && !cisIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto && !asrrIsAuto) return;
+        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !csrrIsAuto && !nsIsAuto && !cisIsAuto && !vsIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto && !asrrIsAuto) return;
 
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
@@ -522,6 +530,7 @@ export function CharacterEditorModal({
         if (csrrIsAuto) { const v = getChatStaminaRegenerationRateValueFromText(combinedText); setChatStaminaRegenerationRateStr(String(v)); }
         if (nsIsAuto) { const v = getNameSensitivityValueFromText(combinedText); setNameSensitivityStr(String(v)); }
         if (cisIsAuto) { const v = getChatImpatienceSensitivityValueFromText(combinedText); setChatImpatienceSensitivityStr(String(v)); }
+        if (vsIsAuto) { const v = getVisualSensitivityValueFromText(combinedText); setVisualSensitivityStr(String(v)); }
         if (spIsAuto) { const v = getSkipProbabilityValueFromText(combinedText); setSkipProbabilityStr(String(v)); }
         if (mrwIsAuto) { const v = getMemoryRetentionWeightValueFromText(combinedText); setMemoryRetentionWeightStr(String(v)); }
         if (crsIsAuto) { const v = getContextSensitivityValueFromText(combinedText); setContextSensitivityStr(String(v)); }
@@ -571,7 +580,6 @@ export function CharacterEditorModal({
         if (voiceInputRef.current) voiceInputRef.current.value = ''; 
     };
 
-    // ✅ Drop files handler matching FileDropArea's onDropFiles(files: File[]) contract
     const handleDropFiles = (files: File[]) => {
         for (const file of files) {
             const isImage = file.type.startsWith('image/') || ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp'].some(ext => file.name.toLowerCase().endsWith(ext));
@@ -617,6 +625,7 @@ export function CharacterEditorModal({
         setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
         setChatStaminaRegenerationRateStr('-1');
         setNameSensitivityStr('-1');
+        setVisualSensitivityStr('-1');
         setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
         setActionStaminaRegenerationRateStr('-1');
@@ -766,7 +775,6 @@ export function CharacterEditorModal({
 
         setIsUploading(true);
         try {
-            // ─── CLONE EXTERNAL ASSETS (IMAGES & VOICE) ─────────────────────
             if (isNewClone && existingCharacter) {
                 for (const [expr, filename] of Object.entries(emotionImages)) {
                     if (expr === 'neutral' && imageFile) continue;
@@ -792,7 +800,6 @@ export function CharacterEditorModal({
                 }
             }
 
-            // ─── USER-UPLOADED REPLACEMENTS ─────────────────────────────────
             if (imageFile) {
                 try { 
                     finalImages.neutral = await uploadCharacterImage(targetCharacterId, imageFile); 
@@ -833,6 +840,7 @@ export function CharacterEditorModal({
         const rawCSRR = Number.parseFloat(chatStaminaRegenerationRateStr);
         const rawNS = Number.parseFloat(nameSensitivityStr);
         const rawCIS = Number.parseFloat(chatImpatienceSensitivityStr);
+        const rawVS = Number.parseFloat(visualSensitivityStr);
         const rawSP = Number.parseFloat(skipProbabilityStr);
         const rawMRW = Number.parseFloat(memoryRetentionWeightStr);
         const rawCRS = Number.parseFloat(contextSensitivityStr);
@@ -849,6 +857,7 @@ export function CharacterEditorModal({
         const csrrValid = !Number.isNaN(rawCSRR) && rawCSRR >= 0;
         const nsValid = !Number.isNaN(rawNS) && rawNS >= 0;
         const cisValid = !Number.isNaN(rawCIS) && rawCIS >= 0;
+        const vsValid = !Number.isNaN(rawVS) && rawVS >= 0;
         const spValid = !Number.isNaN(rawSP) && rawSP >= 0;
         const mrwValid = !Number.isNaN(rawMRW) && rawMRW >= 0;
         const crsValid = !Number.isNaN(rawCRS) && rawCRS >= 0;
@@ -861,6 +870,7 @@ export function CharacterEditorModal({
         let finalCSRR: number;
         let finalNS: number;
         let finalCIS: number;
+        let finalVS: number;
         let finalSP: number;
         let finalMRW: number;
         let finalCRS: number;
@@ -874,6 +884,7 @@ export function CharacterEditorModal({
             finalCSRR = csrrValid ? rawCSRR : (existingCharacter.chatStaminaRegenerationRate ?? DEFAULT_CHAT_STAMINA_REGENERATION_RATE);
             finalNS = nsValid ? rawNS : (existingCharacter.nameSensitivity ?? DEFAULT_NAME_SENSITIVITY);
             finalCIS = cisValid ? rawCIS : (existingCharacter.chatImpatienceSensitivity ?? DEFAULT_CHAT_IMPATIENCE_SENSITIVITY);
+            finalVS = vsValid ? rawVS : (existingCharacter.visualSensitivity ?? DEFAULT_VISUAL_SENSITIVITY);
             finalSP = spValid ? rawSP : (existingCharacter.skipProbability ?? DEFAULT_SKIP_PROBABILITY);
             finalMRW = mrwValid ? rawMRW : (existingCharacter.memoryRetentionWeight ?? DEFAULT_MEMORY_RETENTION_WEIGHT);
             finalCRS = crsValid ? rawCRS : (existingCharacter.contextSensitivity ?? DEFAULT_CONTEXT_SENSITIVITY);
@@ -886,6 +897,7 @@ export function CharacterEditorModal({
                 finalMS = Math.round(getMaximumChatStaminaValueFromText(t));
                 finalCSRR = getChatStaminaRegenerationRateValueFromText(t);
                 finalASRR = getActionStaminaRegenerationRateValueFromText(t);
+                finalVS = getVisualSensitivityValueFromText(t);
             }
         } else {
             finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT;
@@ -893,8 +905,9 @@ export function CharacterEditorModal({
             finalMS = msValid ? Math.round(rawMS) : DEFAULT_MAXIMUM_CHAT_STAMINA;
             finalCSRR = csrrValid ? rawCSRR : DEFAULT_CHAT_STAMINA_REGENERATION_RATE;
             finalNS = nsValid ? rawNS : DEFAULT_NAME_SENSITIVITY;
-            finalSP = spValid ? rawSP : DEFAULT_SKIP_PROBABILITY;
             finalCIS = cisValid ? rawCIS : DEFAULT_CHAT_IMPATIENCE_SENSITIVITY;
+            finalVS = vsValid ? rawVS : DEFAULT_VISUAL_SENSITIVITY;
+            finalSP = spValid ? rawSP : DEFAULT_SKIP_PROBABILITY;
             finalMRW = mrwValid ? rawMRW : DEFAULT_MEMORY_RETENTION_WEIGHT;
             finalCRS = crsValid ? rawCRS : DEFAULT_CONTEXT_SENSITIVITY;
             finalMAS = masValid ? Math.round(rawMAS) : DEFAULT_MAXIMUM_ACTION_STAMINA;
@@ -906,11 +919,13 @@ export function CharacterEditorModal({
                 const dMS = getMaximumChatStaminaValueFromText(t);
                 const dCSRR = getChatStaminaRegenerationRateValueFromText(t);
                 const dASRR = getActionStaminaRegenerationRateValueFromText(t);
+                const dVS = getVisualSensitivityValueFromText(t);
                 if (dIW >= 0) finalIW = dIW;
                 if (dCP >= 0) finalCP = dCP;
                 if (dMS >= 0) finalMS = Math.round(dMS);
                 if (dCSRR >= 0) finalCSRR = dCSRR;
                 if (dASRR >= 0) finalASRR = dASRR;
+                if (dVS >= 0) finalVS = dVS;
             }
         }
 
@@ -955,7 +970,7 @@ export function CharacterEditorModal({
 
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
             chatStaminaRegenerationRate: finalCSRR,
-            nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, skipProbability: finalSP,
+            nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, visualSensitivity: finalVS, skipProbability: finalSP,
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
             maximumActionStamina: finalMAS,
             actionStaminaRegenerationRate: finalASRR,
@@ -1495,6 +1510,11 @@ export function CharacterEditorModal({
                                                 <label className="editor-label editor-label-small">Name Sensitivity</label>
                                                 <input type="number" step="0.5" min="0" value={nameSensitivityStr} onChange={(e) => setNameSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Visual Sensitivity</label>
+                                                <input type="number" step="0.1" min="0" value={visualSensitivityStr} onChange={(e) => setVisualSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to user physical head movement and camera visual cues. 0 = off. Range: 0 - ∞.</div>
                                             </div>
                                             <div>
                                                 <label className="editor-label editor-label-small">Chat Impatience</label>

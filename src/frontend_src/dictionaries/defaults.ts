@@ -89,6 +89,7 @@ export const defaultCharacter: Character = {
     chatStaminaRegenerationRate: 0.3,
     nameSensitivity: 1,
     chatImpatienceSensitivity: 0,
+    visualSensitivity: 1,
     skipProbability: 0,
     memoryRetentionWeight: 1,
     contextSensitivity: 1,

@@ -27,12 +27,11 @@ import {
 } from '../utilities/dynamicCharacterLogic';
 import type { HandleServerResponseResult } from '../types';
 
-// ✅ Reverted to pure 3-argument executor for Autonomous Simulation
 type TurnExecutor = (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>;
 
 export interface TurnSequenceOptions {
-    singleTurn?: boolean; // True in Autonomous mode, false in manual chat
-    excludeFromSequence?: Set<string>; // ✅ Hard timeline exclusions for regeneration cascades
+    singleTurn?: boolean;
+    excludeFromSequence?: Set<string>;
 }
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
@@ -115,8 +114,6 @@ export async function runTurnSequence(
     const lastChatEntry = [...allMessages].reverse().find(m => hasTextContent(m));
     const triggeringMessageText = lastChatEntry && hasTextContent(lastChatEntry) ? (lastChatEntry as ChatMessage).textContent : undefined;
 
-    // ✅ PRE-FILL EXCLUSIONS: Characters in this set are treated as if they already spoke/acted
-    // in this sequence, preventing them from taking a turn during the cascade.
     const spokenThisSequence = new Set<string>(options?.excludeFromSequence || []);
     const actedThisSequence = new Set<string>(options?.excludeFromSequence || []);
     let sequenceCompleted = true;
@@ -148,6 +145,8 @@ export async function runTurnSequence(
             if (actionRegen > 0) generateActionStaminaForInteractionData(workingData, actionRegen, char);
         }
 
+        // ─── 1. PURE STAT-BASED GLOBAL LOTTERY ───
+        // Every single AI in the world competes based on computeGlobalScore stats
         const globalPool: { item: Character; weight: number }[] = [];
         for (const char of remaining) {
             if (chatRefusedThisIteration.has(char.id)) continue;
@@ -165,9 +164,11 @@ export async function runTurnSequence(
             continue;
         }
 
+        // ─── 2. CHECK LOCATION OF THE STAT WINNER ───
         const winnerCoLocated = isCoLocatedWithAnyProtagonist(workingData, globalWinner.id, protagonistLocIds, !!hasLocations);
 
         if (winnerCoLocated) {
+            // The stat winner is co-located: Dialogue Turn
             const chatEligible = remaining.filter(p => {
                 if (spokenThisSequence.has(p.id)) return false;
                 if (chatRefusedThisIteration.has(p.id)) return false;
@@ -282,6 +283,7 @@ export async function runTurnSequence(
 
             if (!sequenceCompleted) break;
         } else {
+            // The stat winner is elsewhere: Ambient Action/Movement Turn
             const actionEligible = remaining.filter(p => {
                 if (actedThisSequence.has(p.id)) return false;
                 return !isCoLocatedWithAnyProtagonist(workingData, p.id, protagonistLocIds, !!hasLocations);

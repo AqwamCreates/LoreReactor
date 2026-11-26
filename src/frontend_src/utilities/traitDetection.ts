@@ -9,6 +9,7 @@ const DEFAULT_CHAT_STAMINA_REGENERATION_RATE_VALUE = 0.3; // Stamina per second.
 const DEFAULT_NAME_SENSITIVITY_VALUE = 1.0;
 const DEFAULT_SKIP_PROBABILITY_VALUE = 0.05;         // Natural small hesitation baseline (5%)
 const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 1.0; // Baseline: 1.0 is standard back-and-forth patience
+const DEFAULT_VISUAL_SENSITIVITY_VALUE = 1; // Baseline: 1.0 is standard visual sensitivity
 const DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE = 1.0;
 const DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE = 1.0;
 const DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE = 6;
@@ -300,7 +301,7 @@ export function getChatImpatienceSensitivityValueFromText(text: string) {
 }
 
 export function getVisualSensitivityValueFromText(text: string) {
-    return detectValue(text, VISUAL_SENSITIVITY_RULES, 1.0, false);
+    return detectValue(text, VISUAL_SENSITIVITY_RULES, DEFAULT_VISUAL_SENSITIVITY_VALUE, false);
 }
 
 export function getSkipProbabilityValueFromText(text: string) {
