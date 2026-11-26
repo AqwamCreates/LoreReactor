@@ -40,7 +40,6 @@ function isCoLocatedWithProtagonist(character: Character, data: InteractionData)
 function getRealTimeSensoryBoost(
     character: Character,
     data: InteractionData,
-    multiplier = 1
 ): number {
     const profile = data.profile;
     if (!profile?.realTimeMode) return 1;
@@ -48,11 +47,11 @@ function getRealTimeSensoryBoost(
 
     const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
     const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
-    const visualBoost = Math.log1p(accumulatedMotion * visualSensitivity * multiplier);
+    const visualBoost = Math.log1p(accumulatedMotion * visualSensitivity);
 
     const audioSensitivity = getEffectiveAudioSensitivity(character, profile);
     const accumulatedAudio = audioPerceptionEngine.getAccumulatedAudio();
-    const audioBoost = Math.log1p(accumulatedAudio * audioSensitivity * multiplier);
+    const audioBoost = Math.log1p(accumulatedAudio * audioSensitivity);
 
     return 1 + visualBoost + audioBoost;
 }
@@ -175,7 +174,7 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     const timeSince = getTimeSinceLastActionMs(data, character);
     const timeMultiplier = 1 + Math.log1p(timeSince / 1000);
 
-    const sensoryBoost = getRealTimeSensoryBoost(character, data, 1);
+    const sensoryBoost = getRealTimeSensoryBoost(character, data);
 
     return staminaRatio * effectiveInitiative * timeMultiplier * sensoryBoost;
 }
@@ -241,7 +240,7 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity);
 
     // Real-Time Visual & Acoustic Reactiveness (strictly gated by profile.realTimeMode & co-location)
-    const sensoryEngagementBoost = getRealTimeSensoryBoost(character, data, 1);
+    const sensoryEngagementBoost = getRealTimeSensoryBoost(character, data);
 
     return staminaWillingness * monologueFatigue * effectiveInitiative * 
            timeMultiplier * compressedImpatience * nameMentionBoost * sensoryEngagementBoost;
@@ -415,7 +414,7 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
     const nameFactor = 1 / nameMentionBoost;
 
     // Real-Time Visual & Acoustic Motion Acceleration (only when realTimeMode is active & co-located)
-    const sensoryBoost = getRealTimeSensoryBoost(character, data, 2);
+    const sensoryBoost = getRealTimeSensoryBoost(character, data);
     const sensoryFactor = 1 / sensoryBoost;
 
     const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
