@@ -203,18 +203,18 @@ export function useChatSession(options: UseChatSessionOptions) {
     }, [autonomousMode, activeChatId, options.isMultiplayerClient]);
 
     // Face Presence & Head Motion Detection Lifecycle
-    const enableFaceDetection = Boolean(interactionData?.profile?.enableFaceDetection);
-    const faceDetectionIntervalMs = interactionData?.profile?.faceDetectionIntervalMs ?? 1000;
+    const realTimeMode = Boolean(interactionData?.profile?.realTimeMode);
+    const realTimeInteractionIntervalMs = interactionData?.profile?.realTimeInteractionIntervalMs ?? 1000;
     const faceDetectionProbabilityThreshold = interactionData?.profile?.faceDetectionProbabilityThreshold ?? 0.75;
     const faceDetectionDeviceType = interactionData?.profile?.faceDetectionDeviceType ?? 'auto';
 
     const faceConfigRef = useRef({
-        intervalMs: faceDetectionIntervalMs,
+        intervalMs: realTimeInteractionIntervalMs,
         probabilityThreshold: faceDetectionProbabilityThreshold,
         devicePreference: faceDetectionDeviceType,
     });
     faceConfigRef.current = {
-        intervalMs: faceDetectionIntervalMs,
+        intervalMs: realTimeInteractionIntervalMs,
         probabilityThreshold: faceDetectionProbabilityThreshold,
         devicePreference: faceDetectionDeviceType,
     };
@@ -235,7 +235,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     useEffect(() => {
         if (useFrontCamera && activeChatId && !options.isMultiplayerClient) {
-            const streamInterval = Math.max(500, Math.min(2000, faceDetectionIntervalMs));
+            const streamInterval = Math.max(500, Math.min(2000, realTimeInteractionIntervalMs));
             frontCameraEngine.startFrameStreaming(streamInterval);
         } else {
             frontCameraEngine.stopFrameStreaming();
@@ -243,10 +243,10 @@ export function useChatSession(options: UseChatSessionOptions) {
         return () => {
             frontCameraEngine.stopFrameStreaming();
         };
-    }, [useFrontCamera, activeChatId, options.isMultiplayerClient, faceDetectionIntervalMs]);
+    }, [useFrontCamera, activeChatId, options.isMultiplayerClient, realTimeInteractionIntervalMs]);
 
     useEffect(() => {
-        if (enableFaceDetection && activeChatId && !options.isMultiplayerClient) {
+        if (realTimeMode && activeChatId && !options.isMultiplayerClient) {
             frontCameraEngine.setKeepAlive('face_detection', true);
             void faceDetectionEngine.startMonitoring({
                 getVideoElement: () => frontCameraEngine.getVideoElement(true),
@@ -269,20 +269,20 @@ export function useChatSession(options: UseChatSessionOptions) {
             faceDetectionEngine.stopMonitoring(true);
             frontCameraEngine.setKeepAlive('face_detection', false);
         };
-    }, [enableFaceDetection, activeChatId, options.isMultiplayerClient]);
+    }, [realTimeMode, activeChatId, options.isMultiplayerClient]);
 
     // Live-sync interval, threshold, and hardware device changes without resetting baseline
     useEffect(() => {
-        if (!enableFaceDetection || options.isMultiplayerClient) return;
+        if (!realTimeMode || options.isMultiplayerClient) return;
         faceDetectionEngine.updateMonitoringOptions({
-            intervalMs: faceDetectionIntervalMs,
+            intervalMs: realTimeInteractionIntervalMs,
             probabilityThreshold: faceDetectionProbabilityThreshold,
             devicePreference: faceDetectionDeviceType,
         });
     }, [
-        enableFaceDetection,
+        realTimeMode,
         options.isMultiplayerClient,
-        faceDetectionIntervalMs,
+        realTimeInteractionIntervalMs,
         faceDetectionProbabilityThreshold,
         faceDetectionDeviceType,
     ]);

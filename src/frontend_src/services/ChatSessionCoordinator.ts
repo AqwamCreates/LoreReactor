@@ -1108,7 +1108,7 @@ class ChatSessionCoordinator {
 
         const state = useChatStore.getState();
         const currentData = state.interactionData;
-        if (!currentData || !currentData.profile?.enableFaceDetection) return;
+        if (!currentData || !currentData.profile?.realTimeMode) return;
 
         const hasActiveModel = Boolean(state.selectedLanguageModel || state.activeStrategy);
         if (!hasActiveModel) return;
@@ -1128,13 +1128,13 @@ class ChatSessionCoordinator {
 
         const state = useChatStore.getState();
         const currentData = state.interactionData;
-        if (!currentData || !currentData.profile?.enableFaceDetection) return;
+        if (!currentData || !currentData.profile?.realTimeMode) return;
 
         const hasActiveModel = Boolean(state.selectedLanguageModel || state.activeStrategy);
         if (!hasActiveModel) return;
 
         const now = Date.now();
-        const minCooldown = Math.max(1000, currentData.profile.faceDetectionIntervalMs || 1000);
+        const minCooldown = Math.max(1000, currentData.profile.realTimeInteractionIntervalMs || 1000);
         if (now - this.lastFaceMotionCheckAt < minCooldown) return;
         this.lastFaceMotionCheckAt = now;
 

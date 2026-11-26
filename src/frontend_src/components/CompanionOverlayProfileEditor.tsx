@@ -84,8 +84,8 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
     const [autonomousMode, setAutonomousMode] = useState(ep?.autonomousMode ?? false);
     const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(ep?.autonomousInteractionIntervalMs ?? 10000);
 
-    const [enableFaceDetection, setEnableFaceDetection] = useState<boolean>(ep?.enableFaceDetection ?? false);
-    const [faceDetectionIntervalMs, setFaceDetectionIntervalMs] = useState<number>(ep?.faceDetectionIntervalMs ?? 1000);
+    const [realTimeMode, setrealTimeMode] = useState<boolean>(ep?.realTimeMode ?? false);
+    const [realTimeInteractionIntervalMs, setrealTimeInteractionIntervalMs] = useState<number>(ep?.realTimeInteractionIntervalMs ?? 1000);
     const [faceDetectionProbabilityThreshold, setFaceDetectionProbabilityThreshold] = useState<number>(ep?.faceDetectionProbabilityThreshold ?? 0.75);
 
     const [enableAutoSpeechDetection, setEnableAutoSpeechDetection] = useState<boolean>(ep?.enableAutoSpeechDetection ?? false);
@@ -123,8 +123,8 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
             ...ep,
             name, description: description || undefined,
             autonomousMode, autonomousInteractionIntervalMs,
-            enableFaceDetection,
-            faceDetectionIntervalMs,
+            realTimeMode,
+            realTimeInteractionIntervalMs,
             faceDetectionProbabilityThreshold,
             enableAutoSpeechDetection, 
             speechVolumeActivationThreshold, 
@@ -178,15 +178,15 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
 
                     <div className="editor-section">
                         <span className="editor-section-title">Face Detection</span>
-                        <ProfileCheckbox checked={enableFaceDetection} onChange={setEnableFaceDetection} label="Enable Face Detection" hint="Monitor the front camera for physical presence changes and trigger character evaluation." />
-                        {enableFaceDetection && (
+                        <ProfileCheckbox checked={realTimeMode} onChange={setrealTimeMode} label="Enable Face Detection" hint="Monitor the front camera for physical presence changes and trigger character evaluation." />
+                        {realTimeMode && (
                             <>
                                 <div className="editor-nested-field">
                                     <div className="slider-header-row">
                                         <label className="editor-label editor-label-small editor-label-no-margin">Detection Interval</label>
-                                        <span className="slider-value-display">{(faceDetectionIntervalMs / 1000).toFixed(1)}s</span>
+                                        <span className="slider-value-display">{(realTimeInteractionIntervalMs / 1000).toFixed(1)}s</span>
                                     </div>
-                                    <SliderInput label="" value={faceDetectionIntervalMs} minimumValue={100} maximumValue={60000} stepValue={100} decimals={0} onChange={(val) => setFaceDetectionIntervalMs(Math.round(val))} description="How frequently the front camera frame is checked for a face." />
+                                    <SliderInput label="" value={realTimeInteractionIntervalMs} minimumValue={100} maximumValue={60000} stepValue={100} decimals={0} onChange={(val) => setrealTimeInteractionIntervalMs(Math.round(val))} description="How frequently the front camera frame is checked for a face." />
                                 </div>
                                 <div className="editor-nested-field">
                                     <div className="slider-header-row">

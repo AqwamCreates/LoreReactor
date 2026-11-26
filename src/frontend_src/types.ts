@@ -379,6 +379,7 @@ export interface Character extends ObjectData {
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
   visualSensitivity: number;
+  audioSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -427,6 +428,7 @@ export interface RawCharacter extends RawData {
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
   visualSensitivity: number;
+  audioSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -990,9 +992,8 @@ export type textGenerationBehaviourOnNarration = 'wait' | 'continue' | 'interrup
 export interface Profile extends ObjectData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
-  enableFaceDetection: boolean; // Default is false.
-  faceDetectionIntervalMs: number; // Default is 1000.
-  faceDetectionProbabilityThreshold: number; // Probability Gate: 0 to 1 (Default: 0.80)
+  realTimeMode: boolean; // Default is false.
+  realTimeInteractionIntervalMs: number; // Default is 1000.
   volume: number;
   forceNameReveal: boolean;
   enableAmbientNarration: boolean; // Default is false.
@@ -1020,6 +1021,7 @@ export interface Profile extends ObjectData {
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
   visualSensitivity: number;
+  audioSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -1063,9 +1065,8 @@ export interface Profile extends ObjectData {
 export interface RawProfile extends RawData {
   autonomousMode: boolean;
   autonomousInteractionIntervalMs: number;
-  enableFaceDetection: boolean; // Default is false.
-  faceDetectionIntervalMs: number; // Default is 1000.
-  faceDetectionProbabilityThreshold: number; // Probability Gate: 0 to 1 (Default: 0.80)
+  realTimeMode: boolean; // Default is false.
+  realTimeInteractionIntervalMs: number; // Default is 1000.
   volume: number;
   forceNameReveal: boolean;
   enableAmbientNarration: boolean; // Default is false.
@@ -1093,6 +1094,7 @@ export interface RawProfile extends RawData {
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
   visualSensitivity: number;
+  audioSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   maximumActionStamina: number;

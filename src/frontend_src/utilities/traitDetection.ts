@@ -6,10 +6,11 @@ const DEFAULT_INITIATIVE_WEIGHT_VALUE = 1.0;
 const DEFAULT_CHAT_PROBABILITY_VALUE = 0.8;          // Calibrated: 80% baseline chance to speak
 const DEFAULT_MAXIMUM_CHAT_STAMINA_VALUE = 4;
 const DEFAULT_CHAT_STAMINA_REGENERATION_RATE_VALUE = 0.3; // Stamina per second. Default is 0.3 stamina per second.
-const DEFAULT_NAME_SENSITIVITY_VALUE = 1.0;
-const DEFAULT_SKIP_PROBABILITY_VALUE = 0.05;         // Natural small hesitation baseline (5%)
+const DEFAULT_NAME_SENSITIVITY_VALUE = 1.0;         // Natural small hesitation baseline (5%)
 const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE = 1.0; // Baseline: 1.0 is standard back-and-forth patience
 const DEFAULT_VISUAL_SENSITIVITY_VALUE = 1; // Baseline: 1.0 is standard visual sensitivity
+const DEFAULT_AUDIO_SENSITIVITY_VALUE = 1; // Baseline: 1.0 is standard audio sensitivity
+const DEFAULT_SKIP_PROBABILITY_VALUE = 0.05;
 const DEFAULT_MEMORY_RETENTION_WEIGHT_VALUE = 1.0;
 const DEFAULT_CONTEXT_RELEVANCE_SENSITIVITY_VALUE = 1.0;
 const DEFAULT_MAXIMUM_ACTION_STAMINA_VALUE = 6;
@@ -103,6 +104,14 @@ const VISUAL_SENSITIVITY_RULES: TraitRule[] = [
     { keywords: ['normal', 'balanced', 'average', 'moderate'], value: 1.0 },
     { keywords: ['distracted', 'daydreamer', 'absent-minded', 'preoccupied'], value: 0.5 },
     { keywords: ['stoic', 'aloof', 'blind', 'unobservant', 'sleeping', 'catatonic'], value: 0.1 },
+];
+
+const AUDIO_SENSITIVITY_RULES: TraitRule[] = [
+    { keywords: ['sharp-eared', 'acute hearing', 'jumpy', 'hyper-sensitive to noise', 'always listening'], value: 2.2 },
+    { keywords: ['attentive', 'alert', 'observant', 'perceptive', 'mindful'], value: 1.5 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate', 'typical'], value: 1.0 },
+    { keywords: ['distracted', 'daydreamer', 'absent-minded', 'focused'], value: 0.5 },
+    { keywords: ['hard of hearing', 'deaf', 'oblivious', 'stoic', 'sleeping'], value: 0.1 },
 ];
 
 const SKIP_PROBABILITY_RULES: TraitRule[] = [
@@ -302,6 +311,10 @@ export function getChatImpatienceSensitivityValueFromText(text: string) {
 
 export function getVisualSensitivityValueFromText(text: string) {
     return detectValue(text, VISUAL_SENSITIVITY_RULES, DEFAULT_VISUAL_SENSITIVITY_VALUE, false);
+}
+
+export function getAudioSensitivityValueFromText(text: string) {
+    return detectValue(text, AUDIO_SENSITIVITY_RULES, DEFAULT_AUDIO_SENSITIVITY_VALUE, false);
 }
 
 export function getSkipProbabilityValueFromText(text: string) {
