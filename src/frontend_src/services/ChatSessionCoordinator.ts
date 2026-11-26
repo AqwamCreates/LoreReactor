@@ -118,6 +118,7 @@ class ChatSessionCoordinator {
     // Reactivity decay tracking per character across sessions
     private currentInteractionDataId: string | null = null;
     private messagesSentSinceReset: Record<string, number> = {};
+    private accumulatedInputChanges: Record<string, number> = {};
 
     private characterActor = new CharacterActor();
     private characterSoul = new CharacterSoul();
@@ -223,12 +224,13 @@ class ChatSessionCoordinator {
 
     /**
      * Synchronizes session state. If the active interaction data changes,
-     * all character decay is automatically wiped back to baseline.
+     * all character decay and input accumulation are automatically wiped back to baseline.
      */
     private syncSession(dataId: string): void {
         if (this.currentInteractionDataId !== dataId) {
             this.currentInteractionDataId = dataId;
             this.messagesSentSinceReset = {};
+            this.accumulatedInputChanges = {};
         }
     }
 
@@ -236,8 +238,13 @@ class ChatSessionCoordinator {
         return this.messagesSentSinceReset[characterId] || 0;
     }
 
+    private getAccumulatedChanges(characterId: string): number {
+        return this.accumulatedInputChanges[characterId] || 0;
+    }
+
     private resetDecay(characterId: string): void {
         this.messagesSentSinceReset[characterId] = 0;
+        this.accumulatedInputChanges[characterId] = 0;
     }
 
     public recordAiMessageSent(characterId: string, dataId: string): void {
@@ -246,14 +253,15 @@ class ChatSessionCoordinator {
     }
 
     /**
-     * Location-scoped decay reset: resets decay ONLY for AI characters
-     * co-located with the protagonist who sent the message.
+     * Location-scoped decay reset: resets decay and accumulated input changes
+     * ONLY for AI characters co-located with the protagonist who sent the message.
      */
     public onProtagonistMessageSent(protagonist: Character, data: InteractionData): void {
         this.syncSession(data.id);
         const hasLocations = Boolean(data.locations && data.locations.length > 0);
         if (!hasLocations) {
             this.messagesSentSinceReset = {};
+            this.accumulatedInputChanges = {};
             return;
         }
 
@@ -263,13 +271,14 @@ class ChatSessionCoordinator {
         for (const participant of coLocatedAi) {
             if (!protagonistIdSet.has(participant.id)) {
                 this.messagesSentSinceReset[participant.id] = 0;
+                this.accumulatedInputChanges[participant.id] = 0;
             }
         }
     }
 
     /**
      * Evaluates sensory stimulus against reactivity decay and dynamic impatience sampling.
-     * Completely unbounded: handles any positive chatImpatienceSensitivity float value.
+     * Incorporates input change accumulation: incoming changes must overcome past accumulated changes.
      */
     private evaluateSensoryEvent(
         character: Character,
@@ -280,28 +289,36 @@ class ChatSessionCoordinator {
 
         const charId = character.id;
         const n = this.getSentCount(charId);
+        const c = this.getAccumulatedChanges(charId);
 
-        // 1. Reactivity Decay: required score scales with (1 + n)
-        const effectiveStimulus = rawStimulus / (1 + n);
+        // 1. Reactivity Decay:
+        // Requires stronger input changes (rawStimulus) to overcome accumulated past input changes (c)
+        // as well as output turn decay (n).
+        const effectiveStimulus = rawStimulus / ((1 + n) * (1 + c));
         const triggerProbability = 1 - Math.exp(-effectiveStimulus);
 
-        // 2. Breakthrough: Score passes the heightened threshold -> reset to baseline & trigger
+        // 2. Breakthrough: Score passes the heightened threshold -> Reset decay to baseline and trigger turn
         if (Math.random() < triggerProbability) {
             this.resetDecay(charId);
             return true;
         }
 
-        // 3. Failed check -> Impatience-based sampling for reset
-        if (n > 0) {
-            const impatienceSensitivity = getEffectiveChatImpatienceSensitivity(character, currentData.profile);
-            if (impatienceSensitivity > 0) {
-                const dynamicImpatience = n * impatienceSensitivity;
-                // Hyperbolic probability mapping for unbounded [0, Infinity)
-                const resetProbability = dynamicImpatience / (1 + dynamicImpatience);
+        // 3. Failed check ->
+        // (a) Input change accumulates, raising the adaptation threshold for subsequent inputs
+        this.accumulatedInputChanges[charId] = c + rawStimulus;
 
-                if (Math.random() < resetProbability) {
-                    this.resetDecay(charId);
-                }
+        // (b) Impatience-based sampling for decay reset
+        const updatedC = this.accumulatedInputChanges[charId];
+        const impatienceSensitivity = getEffectiveChatImpatienceSensitivity(character, currentData.profile);
+
+        if (impatienceSensitivity > 0 && (n > 0 || updatedC > 0)) {
+            // Dynamic impatience builds from both messages sent and accumulated input perturbations
+            const dynamicImpatience = (n + updatedC) * impatienceSensitivity;
+            // Hyperbolic probability mapping for unbounded [0, Infinity)
+            const resetProbability = dynamicImpatience / (1 + dynamicImpatience);
+
+            if (Math.random() < resetProbability) {
+                this.resetDecay(charId); // Patience snapped -> Baseline restored!
             }
         }
 
@@ -833,7 +850,7 @@ class ChatSessionCoordinator {
         const protagonist = this.deps.isMultiplayerClient ? (this.deps.joinProtagonist || state.localProtagonist) : state.localProtagonist;
         if (!currentData || !protagonist || (!text && !files?.length)) return;
 
-        // Reset reactivity decay ONLY for AI co-located with this sending protagonist
+        // Reset reactivity decay and input accumulation ONLY for AI co-located with this sending protagonist
         this.onProtagonistMessageSent(protagonist, currentData);
 
         const isNarrationEnabled = currentData.profile?.narrateTexts ? Object.values(currentData.profile.narrateTexts).some(v => v === true) : false;
@@ -966,7 +983,7 @@ class ChatSessionCoordinator {
 
         const protagonist = this.deps.isMultiplayerClient ? (this.deps.joinProtagonist || protagonistOverride) : protagonistOverride;
 
-        // Reset decay for AI co-located with the acting protagonist
+        // Reset decay and input accumulation for AI co-located with the acting protagonist
         this.onProtagonistMessageSent(protagonist, currentData);
 
         try {
