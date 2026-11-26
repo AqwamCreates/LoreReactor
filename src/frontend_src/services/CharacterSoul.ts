@@ -13,6 +13,8 @@ export class CharacterSoul {
     private acquireLock: (() => boolean) | null = null;
     private releaseLock: (() => void) | null = null;
     private getAllCharacters: (() => Character[]) | null = null;
+    private getCheckUpBlockedIds: ((data: InteractionData) => Set<string>) | null = null;
+    private getSoonestCheckUpDelayMs: ((data: InteractionData) => number) | null = null;
 
     start(
         executor: (data: InteractionData, character: Character, signal: AbortSignal) => Promise<HandleServerResponseResult | null>,
@@ -23,6 +25,8 @@ export class CharacterSoul {
         acquireLock?: () => boolean,
         releaseLock?: () => void,
         getAllCharacters?: () => Character[],
+        getCheckUpBlockedIds?: (data: InteractionData) => Set<string>,
+        getSoonestCheckUpDelayMs?: (data: InteractionData) => number,
     ): void {
         const initialData = getData();
         // Do not even start if autonomous mode is disabled
@@ -38,8 +42,19 @@ export class CharacterSoul {
         this.acquireLock = acquireLock ?? null;
         this.releaseLock = releaseLock ?? null;
         this.getAllCharacters = getAllCharacters ?? null;
+        this.getCheckUpBlockedIds = getCheckUpBlockedIds ?? null;
+        this.getSoonestCheckUpDelayMs = getSoonestCheckUpDelayMs ?? null;
 
-        const initialDelay = initialData.profile.autonomousInteractionIntervalMs || 1000;
+        let initialDelay = initialData.profile.autonomousInteractionIntervalMs || 1000;
+        if (this.getCheckUpBlockedIds) {
+            const protagonistIds = new Set(initialData.protagonistIds || []);
+            const blocked = this.getCheckUpBlockedIds(initialData);
+            const hasEligible = initialData.participants.some(p => !protagonistIds.has(p.id) && !blocked.has(p.id));
+            if (!hasEligible && this.getSoonestCheckUpDelayMs) {
+                initialDelay = Math.max(initialDelay, this.getSoonestCheckUpDelayMs(initialData));
+            }
+        }
+
         this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, initialDelay);
     }
 
@@ -78,6 +93,31 @@ export class CharacterSoul {
                 return;
             }
 
+            const protagonistIds = new Set(data.protagonistIds || []);
+            const aiParticipants = data.participants.filter(p => !protagonistIds.has(p.id));
+
+            if (aiParticipants.length === 0) {
+                this.stop();
+                return;
+            }
+
+            // Respect co-located check-up delays before acquiring lock or running inference
+            const preTurnBlockedIds = this.getCheckUpBlockedIds ? this.getCheckUpBlockedIds(data) : new Set<string>();
+            const eligibleAi = aiParticipants.filter(p => !preTurnBlockedIds.has(p.id));
+
+            if (eligibleAi.length === 0) {
+                const soonestMs = this.getSoonestCheckUpDelayMs ? this.getSoonestCheckUpDelayMs(data) : 0;
+                this.scheduleNextTick(
+                    executor,
+                    checkCanAct,
+                    getData,
+                    setData,
+                    onSpeakerChange,
+                    Math.max(baseInterval, soonestMs)
+                );
+                return;
+            }
+
             if (this.acquireLock && !this.acquireLock()) {
                 this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, baseInterval);
                 return;
@@ -86,26 +126,20 @@ export class CharacterSoul {
             this.isExecuting = true;
 
             try {
-                const protagonistIds = new Set(data.protagonistIds || []);
-                const aiParticipants = data.participants.filter(p => !protagonistIds.has(p.id));
-
-                if (aiParticipants.length === 0) {
-                    this.stop();
-                    return;
-                }
-
                 if (!this.abortController || this.abortController.signal.aborted) {
                     this.abortController = new AbortController();
                 }
 
-                // ✅ Reverted to original 6-argument signature (No TurnContext needed for autonomous loop)
                 const result = await runTurnSequence(
                     data,
                     executor,
                     this.abortController,
                     onSpeakerChange,
                     setData,
-                    { singleTurn: true }
+                    {
+                        singleTurn: true,
+                        excludeFromSequence: preTurnBlockedIds.size > 0 ? preTurnBlockedIds : undefined,
+                    }
                 );
 
                 // If stopped or aborted during the turn, exit immediately and do NOT persist or reschedule
@@ -121,7 +155,7 @@ export class CharacterSoul {
                 }
 
                 if (result) {
-                    // FIX: Execute pending tool actions so autonomous characters can move, kick, invite, etc.
+                    // Execute pending tool actions so autonomous characters can move, kick, invite, etc.
                     const allChars = this.getAllCharacters 
                         ? this.getAllCharacters() 
                         : (freshDataAfterTurn.participants || []);
@@ -146,18 +180,40 @@ export class CharacterSoul {
                     return;
                 }
 
-                let mostUrgentChar = aiParticipants[0];
-                let maxScore = -1;
+                const postTurnBlockedIds = this.getCheckUpBlockedIds ? this.getCheckUpBlockedIds(finalData) : new Set<string>();
+                const unblockedAi = aiParticipants.filter(p => !postTurnBlockedIds.has(p.id));
 
-                for (const char of aiParticipants) {
-                    const score = computeGlobalScore(char, finalData);
-                    if (score > maxScore) {
-                        maxScore = score;
-                        mostUrgentChar = char;
+                let dynamicDelay: number;
+                if (unblockedAi.length > 0) {
+                    let mostUrgentChar = unblockedAi[0];
+                    let maxScore = -1;
+
+                    for (const char of unblockedAi) {
+                        const score = computeGlobalScore(char, finalData);
+                        if (score > maxScore) {
+                            maxScore = score;
+                            mostUrgentChar = char;
+                        }
                     }
+
+                    dynamicDelay = computeAutonomousTickDelay(mostUrgentChar, finalData);
+                } else {
+                    let mostUrgentChar = aiParticipants[0];
+                    let maxScore = -1;
+
+                    for (const char of aiParticipants) {
+                        const score = computeGlobalScore(char, finalData);
+                        if (score > maxScore) {
+                            maxScore = score;
+                            mostUrgentChar = char;
+                        }
+                    }
+
+                    const baseDynamicDelay = computeAutonomousTickDelay(mostUrgentChar, finalData);
+                    const soonestMs = this.getSoonestCheckUpDelayMs ? this.getSoonestCheckUpDelayMs(finalData) : 0;
+                    dynamicDelay = Math.max(baseDynamicDelay, soonestMs);
                 }
 
-                const dynamicDelay = computeAutonomousTickDelay(mostUrgentChar, finalData);
                 this.scheduleNextTick(executor, checkCanAct, getData, setData, onSpeakerChange, dynamicDelay);
 
             } catch (e) {
@@ -181,6 +237,8 @@ export class CharacterSoul {
     stop(): void {
         this.isRunning = false;
         this.isExecuting = false;
+        this.getCheckUpBlockedIds = null;
+        this.getSoonestCheckUpDelayMs = null;
         if (this.timeoutId !== null) {
             clearTimeout(this.timeoutId);
             this.timeoutId = null;

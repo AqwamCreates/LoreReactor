@@ -21,12 +21,12 @@ import { detectContext, composeFallbackSentence } from '../ambientNarration/comp
 
 import { createMessage, findLatestMessage, getMessageById } from '../utilities/messageLogic';
 import { addMessageToInteractionData, updatePartialMessageInInteractionData } from '../utilities/interactionDataLogic';
-import { getCurrentLocationId, getCoLocatedParticipants, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
+import { getCurrentLocationId, getCurrentLocation, getCoLocatedParticipants, findReachableLocationByRegularExpression } from '../utilities/locationLogic';
 import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/timelineLogic';
 import { detectName } from '../utilities/nameDetection';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { evaluateAutoResumeSignals, injectStopSignals, broadcastToolStateChanges, hasTextContent, NO_ARG_TOOLS, HOST_ONLY_TOOLS, finalizeMessageById } from '../utilities/chatSessionLogic';
-import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost, weightedSample, getLiveChatStaminaRatio } from '../utilities/dynamicCharacterLogic';
+import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost, weightedSample, getLiveChatStaminaRatio, countParagraphs } from '../utilities/dynamicCharacterLogic';
 import { 
     generateChatStaminaForInteractionData, 
     generateActionStaminaForInteractionData, 
@@ -34,7 +34,10 @@ import {
     getEffectiveUseFrontCameraImage, 
     getEffectiveVisualSensitivity,
     getEffectiveAudioSensitivity,
-    getEffectiveChatImpatienceSensitivity
+    getEffectiveChatImpatienceSensitivity,
+    getEffectiveInitiativeWeight,
+    getEffectiveMaximumChatStamina,
+    getEffectiveChatStaminaRegenerationRate
 } from '../utilities/characterLogic';
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { learnFromUserMessage } from './ActionFormatEngine';
@@ -115,10 +118,16 @@ class ChatSessionCoordinator {
     private lastVisualShutterCheckAt = 0;
     private deps!: CoordinatorDependencies;
 
-    // Reactivity decay tracking per character across sessions
+    // Sensory accumulation, leaky trigger score thresholds, and check-up timing per character
     private currentInteractionDataId: string | null = null;
-    private messagesSentSinceReset: Record<string, number> = {};
-    private accumulatedInputChanges: Record<string, number> = {};
+    private sensoryScores: Record<string, number> = {};
+    private lastSensoryUpdateAt: Record<string, number> = {};
+    private triggerScoreThresholds: Record<string, number> = {};
+    private unreciprocatedCheckUps: Record<string, number> = {};
+    private lastResponseEndAt: Record<string, number> = {};
+    private lastCheckUpDelayMs: Record<string, number> = {};
+    private nextAllowedAutonomousCheckUpAt: Record<string, number> = {};
+    private lastRealTimeSequenceEndAt = 0;
 
     private characterActor = new CharacterActor();
     private characterSoul = new CharacterSoul();
@@ -224,101 +233,264 @@ class ChatSessionCoordinator {
 
     /**
      * Synchronizes session state. If the active interaction data changes,
-     * all character decay and input accumulation are automatically wiped back to baseline.
+     * all sensory scores, thresholds, and check-up state are wiped back to baseline.
      */
     private syncSession(dataId: string): void {
         if (this.currentInteractionDataId !== dataId) {
             this.currentInteractionDataId = dataId;
-            this.messagesSentSinceReset = {};
-            this.accumulatedInputChanges = {};
+            this.clearSessionPerceptionState();
         }
     }
 
-    private getSentCount(characterId: string): number {
-        return this.messagesSentSinceReset[characterId] || 0;
-    }
-
-    private getAccumulatedChanges(characterId: string): number {
-        return this.accumulatedInputChanges[characterId] || 0;
-    }
-
-    private resetDecay(characterId: string): void {
-        this.messagesSentSinceReset[characterId] = 0;
-        this.accumulatedInputChanges[characterId] = 0;
-    }
-
-    public recordAiMessageSent(characterId: string, dataId: string): void {
-        this.syncSession(dataId);
-        this.messagesSentSinceReset[characterId] = this.getSentCount(characterId) + 1;
+    private clearSessionPerceptionState(): void {
+        this.sensoryScores = {};
+        this.lastSensoryUpdateAt = {};
+        this.triggerScoreThresholds = {};
+        this.unreciprocatedCheckUps = {};
+        this.lastResponseEndAt = {};
+        this.lastCheckUpDelayMs = {};
+        this.nextAllowedAutonomousCheckUpAt = {};
+        this.lastRealTimeSequenceEndAt = 0;
     }
 
     /**
-     * Location-scoped decay reset: resets decay and accumulated input changes
+     * Computes the effective Trigger Score Threshold at `now`.
+     * Leaks excess threshold down toward baseline 1.0 as time approaches the check-up target time,
+     * so sensory triggers become progressively easier closer to the check-up window and reach
+     * baseline once the check-up target time has elapsed.
+     */
+    private getEffectiveThreshold(characterId: string, now: number): number {
+        const stored = this.triggerScoreThresholds[characterId] ?? 1.0;
+        if (stored <= 1.0) return 1.0;
+
+        const lastEndAt = this.lastResponseEndAt[characterId];
+        const delayMs = this.lastCheckUpDelayMs[characterId] || 0;
+        if (lastEndAt === undefined || delayMs <= 0) {
+            return stored;
+        }
+
+        const elapsedMs = Math.max(0, now - lastEndAt);
+        const remainingRatio = Math.max(0, 1 - (elapsedMs / delayMs));
+        return 1.0 + (stored - 1.0) * remainingRatio;
+    }
+
+    /**
+     * Applies passive time-based leakage to accumulated sensory points so faint sensor
+     * noise fades over quiet gaps instead of drip-triggering across minutes.
+     */
+    private getDecayedSensoryScore(characterId: string, now: number, profile?: Profile): number {
+        const score = this.sensoryScores[characterId] || 0;
+        if (score <= 0) return 0;
+
+        const lastAt = this.lastSensoryUpdateAt[characterId];
+        if (!lastAt || now <= lastAt) return score;
+
+        const elapsedSec = (now - lastAt) / 1000;
+        const threshold = this.getEffectiveThreshold(characterId, now);
+        const baseIntervalSec = Math.max(1, (profile?.realTimeInteractionIntervalMs || 1000) / 1000);
+        const tauSec = Math.max(5, baseIntervalSec * 5, threshold * 2);
+
+        const decayed = score * Math.exp(-elapsedSec / tauSec);
+        return decayed < 0.001 ? 0 : decayed;
+    }
+
+    /**
+     * Updates both the new real-time Trigger Score Threshold and autonomous check-up spacing
+     * based on the check-up parts of the response that just finished.
+     */
+    private recordCheckUpState(
+        character: Character,
+        data: InteractionData,
+        responseText: string,
+        turnStartedAt: number,
+        turnEndedAt: number
+    ): void {
+        this.syncSession(data.id);
+        const charId = character.id;
+        const profile = data.profile;
+
+        const k = (this.unreciprocatedCheckUps[charId] || 0) + 1;
+        this.unreciprocatedCheckUps[charId] = k;
+
+        const baseFloorMs = Math.max(1000, profile?.realTimeInteractionIntervalMs || 1000);
+        const turnDurationMs = Math.max(0, turnEndedAt - turnStartedAt);
+
+        const paragraphs = countParagraphs(responseText);
+        const chatCost = computeChatStaminaConsumptionCost(character, data, paragraphs);
+        const maxChat = getEffectiveMaximumChatStamina(character, profile);
+        const baseChatRate = getEffectiveChatStaminaRegenerationRate(character, profile);
+        const currentLocation = getCurrentLocation(data, character);
+        const chatMultiplier = currentLocation?.chatStaminaRegenerationRateMultiplier ?? 1;
+        const effectiveChatRate = baseChatRate * chatMultiplier;
+
+        const staminaRecoveryMs = (maxChat > 0 && maxChat !== Number.POSITIVE_INFINITY && effectiveChatRate > 0)
+            ? (chatCost / effectiveChatRate) * 1000
+            : 0;
+
+        const currentResponseAnchorMs = Math.max(baseFloorMs, turnDurationMs, staminaRecoveryMs);
+        const responseTimingRatio = currentResponseAnchorMs / baseFloorMs;
+        const responseWeight = Math.log1p(responseTimingRatio);
+
+        // Read un-leaked threshold excess and delay carryover BEFORE overwriting timestamps
+        const carriedExcess = Math.max(0, this.getEffectiveThreshold(charId, turnStartedAt) - 1.0);
+        const prevEndAt = this.lastResponseEndAt[charId];
+        const prevDelayMs = this.lastCheckUpDelayMs[charId] || 0;
+        let carriedDelayMs = 0;
+
+        if (prevEndAt !== undefined && prevDelayMs > 0) {
+            const elapsedSincePrevEndMs = Math.max(0, turnStartedAt - prevEndAt);
+            const extraQuietMs = Math.max(0, elapsedSincePrevEndMs - prevDelayMs);
+            carriedDelayMs = prevDelayMs / (1 + (extraQuietMs / prevDelayMs));
+        }
+
+        const initiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
+        const impatience = Math.max(0, getEffectiveChatImpatienceSensitivity(character, profile));
+        // Neutral 1.0 at impatience = 1; unbounded safe for [0, Infinity)
+        const impatienceScale = (1 + Math.log1p(1)) / (1 + Math.log1p(impatience));
+
+        // 1. Reset accumulated sensory points and compute new leaky Trigger Score Threshold
+        const newThresholdExcess = ((carriedExcess + responseWeight * k) / initiative) * impatienceScale;
+        this.triggerScoreThresholds[charId] = 1.0 + newThresholdExcess;
+        this.sensoryScores[charId] = 0;
+        this.lastSensoryUpdateAt[charId] = turnEndedAt;
+
+        // 2. Update check-up target window (used both for threshold leak timescale and CharacterSoul)
+        const humanJitter = 0.85 + Math.random() * 0.3;
+        const nextDelayMs = ((carriedDelayMs + currentResponseAnchorMs * (1 + k)) / initiative) * impatienceScale * humanJitter;
+
+        this.lastResponseEndAt[charId] = turnEndedAt;
+        this.lastCheckUpDelayMs[charId] = nextDelayMs;
+        this.nextAllowedAutonomousCheckUpAt[charId] = turnEndedAt + nextDelayMs;
+    }
+
+    /**
+     * Returns IDs of AI characters currently co-located with any protagonist whose
+     * autonomous check-up delay has not yet elapsed. Off-screen AIs remain unblocked so they can roam.
+     */
+    private getCheckUpBlockedIds(data: InteractionData): Set<string> {
+        this.syncSession(data.id);
+        const now = Date.now();
+        const blocked = new Set<string>();
+        const hasLocations = Boolean(data.locations && data.locations.length > 0);
+        const protagonistIds = new Set(data.protagonistIds || []);
+
+        const protagonistLocIds = new Set<string>();
+        if (hasLocations) {
+            for (const pId of protagonistIds) {
+                const p = data.participants.find(part => part.id === pId);
+                if (p) {
+                    const locId = getCurrentLocationId(data, p);
+                    if (locId !== undefined) protagonistLocIds.add(locId);
+                }
+            }
+        }
+
+        for (const char of data.participants) {
+            if (protagonistIds.has(char.id)) continue;
+            if (hasLocations && protagonistLocIds.size > 0) {
+                const charLocId = getCurrentLocationId(data, char);
+                if (charLocId === undefined || !protagonistLocIds.has(charLocId)) {
+                    continue;
+                }
+            }
+            if (now < (this.nextAllowedAutonomousCheckUpAt[char.id] || 0)) {
+                blocked.add(char.id);
+            }
+        }
+
+        return blocked;
+    }
+
+    /**
+     * Returns milliseconds until the earliest co-located AI autonomous check-up window opens (0 if none blocked).
+     */
+    private getSoonestCheckUpDelayMs(data: InteractionData): number {
+        const now = Date.now();
+        const blocked = this.getCheckUpBlockedIds(data);
+        if (blocked.size === 0) return 0;
+
+        let soonest = Number.POSITIVE_INFINITY;
+        for (const charId of blocked) {
+            const remaining = Math.max(0, (this.nextAllowedAutonomousCheckUpAt[charId] || 0) - now);
+            if (remaining < soonest) {
+                soonest = remaining;
+            }
+        }
+
+        return soonest === Number.POSITIVE_INFINITY ? 0 : soonest;
+    }
+
+    /**
+     * Location-scoped reset: resets sensory score, trigger threshold, and check-up state
      * ONLY for AI characters co-located with the protagonist who sent the message.
      */
     public onProtagonistMessageSent(protagonist: Character, data: InteractionData): void {
         this.syncSession(data.id);
         const hasLocations = Boolean(data.locations && data.locations.length > 0);
         if (!hasLocations) {
-            this.messagesSentSinceReset = {};
-            this.accumulatedInputChanges = {};
+            this.clearSessionPerceptionState();
             return;
         }
 
+        const now = Date.now();
         const coLocatedAi = getCoLocatedParticipants(data, protagonist);
         const protagonistIdSet = new Set(data.protagonistIds || []);
 
         for (const participant of coLocatedAi) {
             if (!protagonistIdSet.has(participant.id)) {
-                this.messagesSentSinceReset[participant.id] = 0;
-                this.accumulatedInputChanges[participant.id] = 0;
+                this.sensoryScores[participant.id] = 0;
+                this.lastSensoryUpdateAt[participant.id] = now;
+                this.triggerScoreThresholds[participant.id] = 1.0;
+                this.unreciprocatedCheckUps[participant.id] = 0;
+                this.lastCheckUpDelayMs[participant.id] = 0;
+                this.nextAllowedAutonomousCheckUpAt[participant.id] = 0;
+                delete this.lastResponseEndAt[participant.id];
             }
         }
+        this.lastRealTimeSequenceEndAt = 0;
     }
 
     /**
-     * Evaluates sensory stimulus against reactivity decay and dynamic impatience sampling.
-     * Incorporates input change accumulation: incoming changes must overcome past accumulated changes.
+     * Accumulates visual and auditory sensory points toward the character's leaky triggerScoreThreshold.
+     * Once score >= effectiveThreshold, resets accumulated sensory points to 0 and triggers a turn
+     * (which will then generate the new triggerScoreThreshold from the turn's check-up parts).
      */
     private evaluateSensoryEvent(
         character: Character,
-        rawStimulus: number,
+        sensoryPoints: number,
         currentData: InteractionData
     ): boolean {
         this.syncSession(currentData.id);
-
+        const now = Date.now();
         const charId = character.id;
-        const n = this.getSentCount(charId);
-        const c = this.getAccumulatedChanges(charId);
 
-        // 1. Reactivity Decay:
-        // Requires stronger input changes (rawStimulus) to overcome accumulated past input changes (c)
-        // as well as output turn decay (n).
-        const effectiveStimulus = rawStimulus / ((1 + n) * (1 + c));
-        const triggerProbability = 1 - Math.exp(-effectiveStimulus);
+        // 1. Leak prior points over elapsed quiet time, then add new sensory points
+        const decayedScore = this.getDecayedSensoryScore(charId, now, currentData.profile);
+        const updatedScore = decayedScore + Math.max(0, sensoryPoints);
+        this.sensoryScores[charId] = updatedScore;
+        this.lastSensoryUpdateAt[charId] = now;
 
-        // 2. Breakthrough: Score passes the heightened threshold -> Reset decay to baseline and trigger turn
-        if (Math.random() < triggerProbability) {
-            this.resetDecay(charId);
+        // 2. Leaky threshold drops smoothly toward 1.0 as elapsed time nears check-up target time
+        const threshold = this.getEffectiveThreshold(charId, now);
+
+        // 3. Threshold crossed -> Reset accumulated score to 0 and trigger turn
+        if (updatedScore >= threshold) {
+            this.sensoryScores[charId] = 0;
             return true;
         }
 
-        // 3. Failed check ->
-        // (a) Input change accumulates, raising the adaptation threshold for subsequent inputs
-        this.accumulatedInputChanges[charId] = c + rawStimulus;
-
-        // (b) Impatience-based sampling for decay reset
-        const updatedC = this.accumulatedInputChanges[charId];
-        const impatienceSensitivity = getEffectiveChatImpatienceSensitivity(character, currentData.profile);
-
-        if (impatienceSensitivity > 0 && (n > 0 || updatedC > 0)) {
-            // Dynamic impatience builds from both messages sent and accumulated input perturbations
-            const dynamicImpatience = (n + updatedC) * impatienceSensitivity;
-            // Hyperbolic probability mapping for unbounded [0, Infinity)
-            const resetProbability = dynamicImpatience / (1 + dynamicImpatience);
-
-            if (Math.random() < resetProbability) {
-                this.resetDecay(charId); // Patience snapped -> Baseline restored!
+        // 4. Below threshold -> Impatience-based sampling gently erodes remaining threshold excess
+        if (threshold > 1.0) {
+            const k = this.unreciprocatedCheckUps[charId] || 0;
+            const impatience = Math.max(0, getEffectiveChatImpatienceSensitivity(character, currentData.profile));
+            if (impatience > 0) {
+                const dynamicImpatience = (k + updatedScore) * impatience;
+                const erodeProbability = dynamicImpatience / (1 + dynamicImpatience);
+                if (Math.random() < erodeProbability) {
+                    const storedExcess = Math.max(0, (this.triggerScoreThresholds[charId] ?? 1.0) - 1.0);
+                    const nextStored = 1.0 + storedExcess * 0.5;
+                    this.triggerScoreThresholds[charId] = nextStored < 1.05 ? 1.0 : nextStored;
+                }
             }
         }
 
@@ -327,13 +499,21 @@ class ChatSessionCoordinator {
 
     /**
      * Weighted random sampling across co-located AI candidates based on their sensory sensitivity
-     * scaled by their live chatStaminaRatio (including passive regen).
-     * Scoped strictly to the protagonist sitting in front of the local sensors.
+     * scaled by their live chatStaminaRatio, gated only by a short post-sequence anti-bleed guard
+     * so strong cues can still overcome an elevated triggerScoreThreshold anytime.
      */
     private sampleRealTimeObserver(
         currentData: InteractionData,
         modality: 'visual' | 'audio'
     ): { character: Character; sensitivity: number } | null {
+        this.syncSession(currentData.id);
+
+        const now = Date.now();
+        const baseFloorMs = Math.max(1000, currentData.profile?.realTimeInteractionIntervalMs || 1000);
+        if (now - this.lastRealTimeSequenceEndAt < baseFloorMs) {
+            return null;
+        }
+
         const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
         const protagonistIdSet = new Set(currentData.protagonistIds || []);
         const localProtagonist = this.getLocalProtagonist(currentData);
@@ -455,6 +635,8 @@ class ChatSessionCoordinator {
             () => this.acquireLock(),
             () => this.releaseLock(),
             () => this.deps?.allCharacters || [],
+            (data) => this.getCheckUpBlockedIds(data),
+            (data) => this.getSoonestCheckUpDelayMs(data),
         );
     }
 
@@ -469,6 +651,9 @@ class ChatSessionCoordinator {
         existingText: string = '',
     ): Promise<InteractionData> {
         let activeData = currentData;
+        const turnStartedAt = Date.now();
+        let turnProducedResponse = false;
+
         const profile = activeData.profile;
         const promptBlocks = this.getActivePromptBlocks(activeData);
         let currentExistingText = existingText;
@@ -662,6 +847,9 @@ class ChatSessionCoordinator {
                 }
 
                 currentExistingText = result.rawText;
+                if (currentExistingText) {
+                    turnProducedResponse = true;
+                }
                 break; 
             }
 
@@ -684,8 +872,9 @@ class ChatSessionCoordinator {
                 });
             }
 
-            // Record message output to increase reactivity decay for this AI
-            this.recordAiMessageSent(character.id, activeData.id);
+            if (turnProducedResponse) {
+                this.recordCheckUpState(character, activeData, currentExistingText, turnStartedAt, Date.now());
+            }
 
         } finally {
             this.activeMessageId = null;
@@ -756,6 +945,7 @@ class ChatSessionCoordinator {
             }
         }
 
+        this.lastRealTimeSequenceEndAt = Date.now();
         return currentData;
     }
 
@@ -854,7 +1044,7 @@ class ChatSessionCoordinator {
         const protagonist = this.deps.isMultiplayerClient ? (this.deps.joinProtagonist || state.localProtagonist) : state.localProtagonist;
         if (!currentData || !protagonist || (!text && !files?.length)) return;
 
-        // Reset reactivity decay and input accumulation ONLY for AI co-located with this sending protagonist
+        // Reset sensory scores, trigger thresholds, and check-up state ONLY for AI co-located with this sending protagonist
         this.onProtagonistMessageSent(protagonist, currentData);
 
         const isNarrationEnabled = currentData.profile?.narrateTexts ? Object.values(currentData.profile.narrateTexts).some(v => v === true) : false;
@@ -987,7 +1177,7 @@ class ChatSessionCoordinator {
 
         const protagonist = this.deps.isMultiplayerClient ? (this.deps.joinProtagonist || protagonistOverride) : protagonistOverride;
 
-        // Reset decay and input accumulation for AI co-located with the acting protagonist
+        // Reset sensory scores, trigger thresholds, and check-up state for AI co-located with the acting protagonist
         this.onProtagonistMessageSent(protagonist, currentData);
 
         try {
@@ -1071,6 +1261,9 @@ class ChatSessionCoordinator {
         if (!this.acquireLock()) { this.deps.addToast('Already generating...', 'info'); return; }
         const lockEpoch = this.currentLockEpoch;
         try {
+            this.syncSession(currentData.id);
+            this.clearSessionPerceptionState();
+
             const protagonistIdSet = new Set([
                 ...(protagonistIds || []),
                 ...(currentData.protagonistIds || [])
@@ -1308,8 +1501,8 @@ class ChatSessionCoordinator {
         const sampled = this.sampleRealTimeObserver(currentData, 'visual');
         if (!sampled) return;
 
-        const rawStimulus = 2.5 * sampled.sensitivity;
-        const triggered = this.evaluateSensoryEvent(sampled.character, rawStimulus, currentData);
+        const sensoryPoints = 2.5 * sampled.sensitivity;
+        const triggered = this.evaluateSensoryEvent(sampled.character, sensoryPoints, currentData);
         if (!triggered) return;
 
         if (!this.acquireLock()) return;
@@ -1344,8 +1537,8 @@ class ChatSessionCoordinator {
         const sampled = this.sampleRealTimeObserver(currentData, 'visual');
         if (!sampled) return;
 
-        const rawStimulus = 0.35 * accumulatedMotion * sampled.sensitivity;
-        const triggered = this.evaluateSensoryEvent(sampled.character, rawStimulus, currentData);
+        const sensoryPoints = 0.35 * accumulatedMotion * sampled.sensitivity;
+        const triggered = this.evaluateSensoryEvent(sampled.character, sensoryPoints, currentData);
         if (!triggered) return;
 
         if (!this.acquireLock()) return;
@@ -1380,9 +1573,9 @@ class ChatSessionCoordinator {
         const sampled = this.sampleRealTimeObserver(currentData, 'visual');
         if (!sampled) return;
 
-        // Visual shutters (gestures, gaze aversion, holding objects, eye closure) are
-        // physical breakthrough events: reset sensory decay immediately and force the trigger
-        this.resetDecay(sampled.character.id);
+        const sensoryPoints = 2.5 * sampled.sensitivity;
+        const triggered = this.evaluateSensoryEvent(sampled.character, sensoryPoints, currentData);
+        if (!triggered) return;
 
         if (!this.acquireLock()) return;
         const lockEpoch = this.currentLockEpoch;
@@ -1463,8 +1656,8 @@ class ChatSessionCoordinator {
         const sampled = this.sampleRealTimeObserver(currentData, 'audio');
         if (!sampled) return;
 
-        const rawStimulus = 0.45 * eventConfidence * sampled.sensitivity;
-        const triggered = this.evaluateSensoryEvent(sampled.character, rawStimulus, currentData);
+        const sensoryPoints = 0.45 * eventConfidence * sampled.sensitivity;
+        const triggered = this.evaluateSensoryEvent(sampled.character, sensoryPoints, currentData);
         if (!triggered) return;
 
         if (!this.acquireLock()) return;

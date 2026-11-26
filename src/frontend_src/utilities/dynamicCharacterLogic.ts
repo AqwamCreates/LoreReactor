@@ -422,10 +422,11 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
         ? profile.autonomousInteractionIntervalMs
         : 1000;
 
-    const initiative = getEffectiveInitiativeWeight(character, profile);
-    const impatience = getEffectiveChatImpatienceSensitivity(character, profile);
+    const initiative = Math.max(0.1, getEffectiveInitiativeWeight(character, profile));
+    const impatience = Math.max(0, getEffectiveChatImpatienceSensitivity(character, profile));
 
-    const impatienceFactor = impatience ** -0.4;
+    // Unbounded-safe neutral 1.0 at impatience = 1 (avoids Infinity at 0 and NaN below 0)
+    const impatienceFactor = (1 + Math.log1p(1)) / (1 + Math.log1p(impatience));
 
     const mentionCount = getNameMentionCount(character, data);
     const nameSensitivity = getEffectiveNameSensitivity(character, profile);
@@ -442,10 +443,13 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
 
     const humanJitter = 0.85 + Math.random() * 0.3;
 
-    const dynamicDelay = (baseInterval / initiative) * impatienceFactor * nameFactor * sensoryFactor * cadenceHesitation * humanJitter;
-
     const minFloor = Math.max(400, baseInterval * 0.3);
-    const maxCeiling = baseInterval * 4;
+    const maxBaseCeiling = baseInterval * 4;
+    const clampedBaseDelay = Math.max(
+        minFloor,
+        Math.min(maxBaseCeiling, (baseInterval / initiative) * impatienceFactor * nameFactor * sensoryFactor)
+    );
 
-    return Math.max(minFloor, Math.min(maxCeiling, dynamicDelay));
+    // Apply cadenceHesitation after base clamping so repeated unreciprocated turns space out naturally
+    return Math.max(minFloor, clampedBaseDelay * cadenceHesitation * humanJitter);
 }
