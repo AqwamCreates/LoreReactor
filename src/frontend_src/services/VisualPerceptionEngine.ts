@@ -1,4 +1,4 @@
-// src/frontend_src/services/FaceDetectionEngine.ts
+// src/frontend_src/services/VisualPerceptionEngine.ts
 import * as ort from 'onnxruntime-web';
 import type { deviceType } from '../types';
 
@@ -21,15 +21,15 @@ const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 
 // ─── Visual Shutter Thresholds & Cooldowns ───
 const DOZING_OFF_SUSTAINED_MS = 1500;       // Eyes closed > 1.5s filters natural blinks
-const DOZING_OFF_COOLDOWN_MS = 25000;
-const LOOMING_FREEZE_HOLD_MS = 600;         // Object held steady > 600ms
-const LOOMING_FREEZE_COOLDOWN_MS = 20000;
-const GAZE_AWAY_SUSTAINED_MS = 8000;        // Gaze locked away / down at phone > 8s
-const GAZE_AWAY_COOLDOWN_MS = 30000;
-const GAZE_YAW_THRESHOLD_DEG = 34;          // Looking far left/right
-const GAZE_PITCH_THRESHOLD_DEG = 28;        // Looking down at phone / away
-const WRIST_STRETCH_HOLD_MS = 500;          // Both wrists raised above head > 500ms
-const WRIST_STRETCH_COOLDOWN_MS = 25000;
+const DOZING_OFF_COOLDOWN_MS = 15000;
+const LOOMING_FREEZE_HOLD_MS = 450;         // Object held steady > 450ms
+const LOOMING_FREEZE_COOLDOWN_MS = 12000;
+const GAZE_AWAY_SUSTAINED_MS = 2500;        // Gaze locked away / down at phone > 2.5s
+const GAZE_AWAY_COOLDOWN_MS = 15000;
+const GAZE_YAW_THRESHOLD_DEG = 26;          // Looking left/right away from monitor
+const GAZE_PITCH_THRESHOLD_DEG = 24;        // Looking down at phone / away
+const WRIST_STRETCH_HOLD_MS = 350;          // Raised hand / wave / stretch > 350ms
+const WRIST_STRETCH_COOLDOWN_MS = 12000;
 
 const IMAGENET_MEAN = [0.485, 0.456, 0.406];
 const IMAGENET_STD = [0.229, 0.224, 0.225];
@@ -61,7 +61,7 @@ function clampInterval(ms?: number): number {
     return Math.max(50, Math.round(ms));
 }
 
-class FaceDetectionEngine {
+class VisualPerceptionEngine {
     private session: ort.InferenceSession | null = null;
     private gazeSession: ort.InferenceSession | null = null;
     private poseSession: ort.InferenceSession | null = null;
@@ -158,7 +158,7 @@ class FaceDetectionEngine {
                 const wantsGpu = preference === 'gpu';
 
                 if ((wantsCpu && isGpu) || (wantsGpu && !isGpu) || preference === 'auto') {
-                    console.log(`[FaceDetectionEngine] Device preference changed to ${preference}. Unloading to lazy-reload.`);
+                    console.log(`[VisualPerceptionEngine] Device preference changed to ${preference}. Unloading to lazy-reload.`);
                     void this.unloadSession();
                 }
             }
@@ -176,7 +176,7 @@ class FaceDetectionEngine {
         this.clearIdleTimer();
         this.idleTimer = setTimeout(() => {
             if (!this.monitoringActive && this.status === 'idle') {
-                console.log('[FaceDetectionEngine] Idle for 3 minutes, unloading.');
+                console.log('[VisualPerceptionEngine] Idle for 3 minutes, unloading.');
                 void this.unload();
             }
         }, IDLE_UNLOAD_MS);
@@ -221,13 +221,13 @@ class FaceDetectionEngine {
 
         if (webGpuAvailable && devicePreference !== 'cpu') {
             try {
-                console.log(`[FaceDetectionEngine] Loading ${label} with WebGPU...`);
+                console.log(`[VisualPerceptionEngine] Loading ${label} with WebGPU...`);
                 const session = await ort.InferenceSession.create(modelUrl, {
                     executionProviders: ['webgpu'],
                 });
                 return { session, usingWebGpu: true };
             } catch (e) {
-                console.warn(`[FaceDetectionEngine] ${label} WebGPU failed, falling back to WASM:`, e instanceof Error ? e.message : String(e));
+                console.warn(`[VisualPerceptionEngine] ${label} WebGPU failed, falling back to WASM:`, e instanceof Error ? e.message : String(e));
                 if (devicePreference === 'gpu' && label === 'UltraFace-640') {
                     this.loadError = 'WebGPU forced but failed. Falling back to CPU/WASM.';
                 }
@@ -235,13 +235,13 @@ class FaceDetectionEngine {
         }
 
         try {
-            console.log(`[FaceDetectionEngine] Loading ${label} with WASM...`);
+            console.log(`[VisualPerceptionEngine] Loading ${label} with WASM...`);
             const session = await ort.InferenceSession.create(modelUrl, {
                 executionProviders: ['wasm'],
             });
             return { session, usingWebGpu: false };
         } catch (e) {
-            console.warn(`[FaceDetectionEngine] Failed to load ${label}:`, e);
+            console.warn(`[VisualPerceptionEngine] Failed to load ${label}:`, e);
             return null;
         }
     }
@@ -290,14 +290,14 @@ class FaceDetectionEngine {
 
                 this.ensureBuffers();
                 console.log(
-                    `[FaceDetectionEngine] Ready | Face: ${this.session ? (this.usingWebGpu ? 'WebGPU' : 'WASM') : 'off'} | ` +
+                    `[VisualPerceptionEngine] Ready | Face: ${this.session ? (this.usingWebGpu ? 'WebGPU' : 'WASM') : 'off'} | ` +
                     `Gaze: ${this.gazeSession ? (this.gazeUsingWebGpu ? 'WebGPU' : 'WASM') : 'off'} | ` +
                     `Pose: ${this.poseSession ? (this.poseUsingWebGpu ? 'WebGPU' : 'WASM') : 'off'}`
                 );
             } catch (e) {
                 if (epoch === this.sessionEpoch) {
                     const msg = e instanceof Error ? e.message : String(e);
-                    console.error('[FaceDetectionEngine] Initialization failed:', msg);
+                    console.error('[VisualPerceptionEngine] Initialization failed:', msg);
                     this.loadError = msg;
                     this.session = null;
                     this.gazeSession = null;
@@ -368,7 +368,7 @@ class FaceDetectionEngine {
         this.gazeAwayStartTime = null;
         this.wristStretchStartTime = null;
         this.setStatus('idle');
-        console.log('[FaceDetectionEngine] Unloaded.');
+        console.log('[VisualPerceptionEngine] Unloaded.');
     }
 
     private extractScoresTensor(results: ort.InferenceSession.OnnxValueMapType): ort.Tensor | null {
@@ -453,7 +453,7 @@ class FaceDetectionEngine {
     }
 
     /**
-     * Detects when an object enters the central optical field and holds still (Show-and-Tell).
+     * Detects when an object enters the central optical field and holds steady (Show-and-Tell).
      */
     private evaluateLoomingFreeze(
         currentLuma: Float32Array,
@@ -492,8 +492,9 @@ class FaceDetectionEngine {
         const meanCenterDiff = centerDiffSum / centerSampleCount;
         const meanCenterMotion = centerMotionSum / centerSampleCount;
 
-        const isCenterOccupied = meanCenterDiff > 0.11;
-        const isItemFrozen = meanCenterMotion < 0.022;
+        // Lowered center diff to 0.06 for realistic handheld items and motion to 0.05 to allow natural hand tremor
+        const isCenterOccupied = meanCenterDiff > 0.06;
+        const isItemFrozen = meanCenterMotion < 0.05;
 
         if (isCenterOccupied && isItemFrozen) {
             if (this.loomingFreezeStartTime === null) {
@@ -501,16 +502,19 @@ class FaceDetectionEngine {
             } else if (now - this.loomingFreezeStartTime >= LOOMING_FREEZE_HOLD_MS) {
                 if (now - this.lastLoomingFreezeTriggerAt > LOOMING_FREEZE_COOLDOWN_MS) {
                     this.lastLoomingFreezeTriggerAt = now;
-                    console.log('[FaceDetectionEngine] 📸 Looming Freeze Shutter Triggered (Show-and-Tell)');
+                    console.log('[VisualPerceptionEngine] 📸 Looming Freeze Shutter Triggered (Show-and-Tell)');
                     this.onVisualShutter?.('looming_freeze');
+                    // Re-anchor baseline upon trigger so holding the object steady doesn't cause infinite loop
+                    this.ambientLumaBaseline = new Float32Array(currentLuma);
                 }
                 this.loomingFreezeStartTime = null;
             }
         } else {
             this.loomingFreezeStartTime = null;
-            if (meanCenterDiff < 0.04) {
+            // Eliminated deadzone: smoothly adapt baseline whenever the center isn't actively occupied by a new object
+            if (!isCenterOccupied) {
                 for (let i = 0; i < sampleCount; i++) {
-                    this.ambientLumaBaseline[i] = (this.ambientLumaBaseline[i] * 0.95) + (currentLuma[i] * 0.05);
+                    this.ambientLumaBaseline[i] = (this.ambientLumaBaseline[i] * 0.92) + (currentLuma[i] * 0.08);
                 }
             }
         }
@@ -535,7 +539,7 @@ class FaceDetectionEngine {
 
     /**
      * Runs MobileGaze (MIT) on the cropped face region to detect sustained gaze aversion
-     * (e.g., looking down at phone or staring away from monitor > 8s).
+     * (e.g., looking down at phone or staring away from monitor > 2.5s).
      */
     private async evaluateGazeAway(
         video: HTMLVideoElement,
@@ -597,7 +601,7 @@ class FaceDetectionEngine {
                 } else if (now - this.gazeAwayStartTime >= GAZE_AWAY_SUSTAINED_MS) {
                     if (now - this.lastGazeAwayTriggerAt > GAZE_AWAY_COOLDOWN_MS) {
                         this.lastGazeAwayTriggerAt = now;
-                        console.log(`[FaceDetectionEngine] 📸 Gaze Lock-Away Shutter Triggered (yaw=${yawDeg.toFixed(1)}°, pitch=${pitchDeg.toFixed(1)}°)`);
+                        console.log(`[VisualPerceptionEngine] 📸 Gaze Lock-Away Shutter Triggered (yaw=${yawDeg.toFixed(1)}°, pitch=${pitchDeg.toFixed(1)}°)`);
                         this.onVisualShutter?.('gaze_away');
                     }
                     this.gazeAwayStartTime = null;
@@ -606,9 +610,9 @@ class FaceDetectionEngine {
                 this.gazeAwayStartTime = null;
             }
         } catch (e) {
-            console.warn('[FaceDetectionEngine] Gaze inference failed:', e);
+            console.warn('[VisualPerceptionEngine] Gaze inference failed:', e);
             if (this.gazeUsingWebGpu && runEpoch === this.sessionEpoch) {
-                console.warn('[FaceDetectionEngine] Falling back MobileGaze to WASM.');
+                console.warn('[VisualPerceptionEngine] Falling back MobileGaze to WASM.');
                 this.gazeUsingWebGpu = false;
                 try { await gazeSession.release(); } catch {}
                 if (runEpoch === this.sessionEpoch) {
@@ -631,8 +635,8 @@ class FaceDetectionEngine {
     }
 
     /**
-     * Runs MoveNet SinglePose Lightning (Apache-2.0) to detect when both wrists rise above
-     * head/nose plane (upper-body arm stretch apex).
+     * Runs MoveNet SinglePose Lightning (Apache-2.0) to detect when either or both wrists
+     * rise into the upper gesture plane (waving, raising hand, arm stretch, chin gesture).
      */
     private async evaluateWristStretch(
         video: HTMLVideoElement,
@@ -743,23 +747,39 @@ class FaceDetectionEngine {
             const rWristY = kps[10 * 3];
             const rWristScore = kps[10 * 3 + 2];
 
-            const wristsVisible = lWristScore > 0.30 && rWristScore > 0.30;
-            const hasAnchor = noseScore > 0.30 || (lShoulderScore > 0.30 && rShoulderScore > 0.30);
+            const lWristActive = lWristScore > 0.22;
+            const rWristActive = rWristScore > 0.22;
+            const anyWristVisible = lWristActive || rWristActive;
 
-            if (wristsVisible && hasAnchor) {
-                const anchorY = noseScore > 0.30
-                    ? noseY
-                    : ((lShoulderY + rShoulderY) / 2) - 0.12;
+            const hasNose = noseScore > 0.25;
+            const hasShoulders = lShoulderScore > 0.25 || rShoulderScore > 0.25;
 
-                const isStretchingUp = lWristY < anchorY && rWristY < anchorY;
+            if (anyWristVisible && (hasNose || hasShoulders)) {
+                const shoulderY = (lShoulderScore > 0.25 && rShoulderScore > 0.25)
+                    ? (lShoulderY + rShoulderY) / 2
+                    : (lShoulderScore > 0.25 ? lShoulderY : rShoulderY);
 
-                if (isStretchingUp) {
+                // Gesture plane at chin/upper-chest level so waving, hand-raising, and stretching all register
+                let anchorY: number;
+                if (hasNose && hasShoulders) {
+                    anchorY = noseY + (shoulderY - noseY) * 0.35;
+                } else if (hasNose) {
+                    anchorY = noseY + 0.05;
+                } else {
+                    anchorY = shoulderY - 0.08;
+                }
+
+                const isGesturingUp =
+                    (lWristActive && lWristY < anchorY) ||
+                    (rWristActive && rWristY < anchorY);
+
+                if (isGesturingUp) {
                     if (this.wristStretchStartTime === null) {
                         this.wristStretchStartTime = now;
                     } else if (now - this.wristStretchStartTime >= WRIST_STRETCH_HOLD_MS) {
                         if (now - this.lastWristStretchTriggerAt > WRIST_STRETCH_COOLDOWN_MS) {
                             this.lastWristStretchTriggerAt = now;
-                            console.log('[FaceDetectionEngine] 📸 Wrist Apex Stretch Shutter Triggered');
+                            console.log('[VisualPerceptionEngine] 📸 Wrist Gesture / Stretch Shutter Triggered');
                             this.onVisualShutter?.('wrist_stretch');
                         }
                         this.wristStretchStartTime = null;
@@ -771,9 +791,9 @@ class FaceDetectionEngine {
                 this.wristStretchStartTime = null;
             }
         } catch (e) {
-            console.warn('[FaceDetectionEngine] Pose inference failed:', e);
+            console.warn('[VisualPerceptionEngine] Pose inference failed:', e);
             if (this.poseUsingWebGpu && runEpoch === this.sessionEpoch) {
-                console.warn('[FaceDetectionEngine] Falling back MoveNet to WASM.');
+                console.warn('[VisualPerceptionEngine] Falling back MoveNet to WASM.');
                 this.poseUsingWebGpu = false;
                 try { await poseSession.release(); } catch {}
                 if (runEpoch === this.sessionEpoch) {
@@ -923,7 +943,7 @@ class FaceDetectionEngine {
                 const now = Date.now();
 
                 // ─── 3. DOZING OFF SHUTTER (EYE CLOSURE) ───
-                if (maxFaceProb >= this.probabilityThreshold && faceBoxPixels && faceMotionDelta < 0.03) {
+                if (maxFaceProb >= this.probabilityThreshold && faceBoxPixels && faceMotionDelta < 0.06) {
                     const isEyesClosed = this.evaluateEyeClosure(
                         imageData,
                         faceBoxPixels[0],
@@ -938,7 +958,7 @@ class FaceDetectionEngine {
                         } else if (now - this.eyesClosedStartTime >= DOZING_OFF_SUSTAINED_MS) {
                             if (now - this.lastDozingOffTriggerAt > DOZING_OFF_COOLDOWN_MS) {
                                 this.lastDozingOffTriggerAt = now;
-                                console.log('[FaceDetectionEngine] 📸 Dozing Off Shutter Triggered (Eyes Shut > 1.5s)');
+                                console.log('[VisualPerceptionEngine] 📸 Dozing Off Shutter Triggered (Eyes Shut > 1.5s)');
                                 this.onVisualShutter?.('dozing_off');
                             }
                             this.eyesClosedStartTime = null;
@@ -954,13 +974,13 @@ class FaceDetectionEngine {
                 this.evaluateLoomingFreeze(currentLuma, now);
 
                 // ─── 5. GAZE LOCK-AWAY SHUTTER (PHONE / DISTRACTION) ───
-                if (maxFaceProb >= this.probabilityThreshold && faceBoxPixels && faceMotionDelta < 0.04) {
+                if (maxFaceProb >= this.probabilityThreshold && faceBoxPixels && faceMotionDelta < 0.12) {
                     await this.evaluateGazeAway(video, faceBoxPixels, runEpoch, now);
                 } else {
                     this.gazeAwayStartTime = null;
                 }
 
-                // ─── 6. WRIST APEX STRETCH SHUTTER (UPPER-BODY POSE) ───
+                // ─── 6. WRIST GESTURE / STRETCH SHUTTER (UPPER-BODY POSE) ───
                 if (runEpoch === this.sessionEpoch) {
                     await this.evaluateWristStretch(video, runEpoch, now);
                 }
@@ -968,9 +988,9 @@ class FaceDetectionEngine {
                 this.previousLumaSample = currentLuma;
                 return maxFaceProb;
             } catch (e) {
-                console.warn('[FaceDetectionEngine] Inference failed:', e);
+                console.warn('[VisualPerceptionEngine] Inference failed:', e);
                 if (this.usingWebGpu && runEpoch === this.sessionEpoch) {
-                    console.warn('[FaceDetectionEngine] Falling back UltraFace to WASM after WebGPU runtime failure.');
+                    console.warn('[VisualPerceptionEngine] Falling back UltraFace to WASM after WebGPU runtime failure.');
                     this.currentDevicePreference = 'cpu';
                     if (results) {
                         for (const tensor of Object.values(results)) {
@@ -1166,7 +1186,7 @@ class FaceDetectionEngine {
                 }
             }
         } catch (e) {
-            console.warn('[FaceDetectionEngine] Tick error:', e);
+            console.warn('[VisualPerceptionEngine] Tick error:', e);
         } finally {
             if (this.monitoringActive && epoch === this.monitorEpoch) {
                 const elapsed = performance.now() - tickStart;
@@ -1197,4 +1217,4 @@ class FaceDetectionEngine {
     }
 }
 
-export const faceDetectionEngine = new FaceDetectionEngine();
+export const visualPerceptionEngine = new VisualPerceptionEngine();

@@ -11,7 +11,7 @@ import { createNewInteractionData } from '../utilities/interactionDataLogic';
 import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
-import { faceDetectionEngine } from '../services/FaceDetectionEngine';
+import { visualPerceptionEngine } from '../services/VisualPerceptionEngine';
 import { audioPerceptionEngine } from '../services/AudioPerceptionEngine';
 import { frontCameraEngine } from '../services/FrontCameraEngine';
 import { loadRawBudgetData } from '../storages/serverStorage';
@@ -250,7 +250,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (realTimeMode && activeChatId && !options.isMultiplayerClient) {
             frontCameraEngine.setKeepAlive('real_time_mode', true);
 
-            void faceDetectionEngine.startMonitoring({
+            void visualPerceptionEngine.startMonitoring({
                 getVideoElement: () => frontCameraEngine.getVideoElement(true),
                 onPresenceChange: (isDetected) => {
                     chatCoordinator.handleFacePresenceChange(isDetected);
@@ -273,13 +273,13 @@ export function useChatSession(options: UseChatSessionOptions) {
                 devicePreference: realTimeConfigRef.current.audioDevicePreference,
             });
         } else {
-            faceDetectionEngine.stopMonitoring(true);
+            visualPerceptionEngine.stopMonitoring(true);
             audioPerceptionEngine.stopMonitoring(true);
             frontCameraEngine.setKeepAlive('real_time_mode', false);
         }
 
         return () => {
-            faceDetectionEngine.stopMonitoring(true);
+            visualPerceptionEngine.stopMonitoring(true);
             audioPerceptionEngine.stopMonitoring(true);
             frontCameraEngine.setKeepAlive('real_time_mode', false);
         };
@@ -288,7 +288,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     // Live-sync interval and hardware device changes without resetting baseline
     useEffect(() => {
         if (!realTimeMode || options.isMultiplayerClient) return;
-        faceDetectionEngine.updateMonitoringOptions({
+        visualPerceptionEngine.updateMonitoringOptions({
             intervalMs: realTimeInteractionIntervalMs,
             devicePreference: faceDetectionDeviceType,
             onVisualShutter: (shutterType) => {

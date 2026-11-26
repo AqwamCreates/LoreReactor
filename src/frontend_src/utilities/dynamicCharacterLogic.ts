@@ -16,7 +16,7 @@ import {
 import { findLatestMessage } from './messageLogic';
 import { getCurrentLocationId, getCurrentLocation, getReachableLocations, isLocationOwner } from './locationLogic';
 import { getLocalMessageHistory, getLocationMessageHistory } from './timelineLogic';
-import { faceDetectionEngine } from '../services/FaceDetectionEngine';
+import { visualPerceptionEngine } from '../services/VisualPerceptionEngine';
 import { audioPerceptionEngine } from '../services/AudioPerceptionEngine';
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
@@ -46,7 +46,7 @@ function getRealTimeSensoryBoost(
     if (!isCoLocatedWithProtagonist(character, data)) return 1;
 
     const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
-    const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
+    const accumulatedMotion = visualPerceptionEngine.getAccumulatedMotion();
     const visualBoost = Math.log1p(accumulatedMotion * visualSensitivity);
 
     const audioSensitivity = getEffectiveAudioSensitivity(character, profile);
