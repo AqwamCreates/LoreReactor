@@ -90,6 +90,9 @@ export function getEffectiveChatImpatienceSensitivity(character: Character, prof
 export function getEffectiveVisualSensitivity(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("visualSensitivity", character, profile);
 }
+export function getEffectiveAudioSensitivity(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("audioSensitivity", character, profile);
+}
 export function getEffectiveSkipProbability(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("skipProbability", character, profile);
 }

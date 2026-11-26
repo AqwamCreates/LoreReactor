@@ -102,7 +102,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         return unsubscribe;
     }, [options.isMultiplayerClient]);
 
-    // ─── 3. Background Effects (Budget, Polling, Tokens, Autonomous Mode, Face Detection, Camera Stream, FM Unload) ───
+    // ─── 3. Background Effects (Budget, Polling, Tokens, Autonomous Mode, Real-Time Mode, Camera Stream, FM Unload) ───
     const interactionData = useChatStore(s => s.interactionData);
     const localProtagonist = useChatStore(s => s.localProtagonist);
     const selectedLanguageModel = useChatStore(s => s.selectedLanguageModel);
@@ -202,20 +202,17 @@ export function useChatSession(options: UseChatSessionOptions) {
         };
     }, [autonomousMode, activeChatId, options.isMultiplayerClient]);
 
-    // Face Presence & Head Motion Detection Lifecycle
+    // Real-Time Presence & Visual Perception Lifecycle
     const realTimeMode = Boolean(interactionData?.profile?.realTimeMode);
     const realTimeInteractionIntervalMs = interactionData?.profile?.realTimeInteractionIntervalMs ?? 1000;
-    const faceDetectionProbabilityThreshold = interactionData?.profile?.faceDetectionProbabilityThreshold ?? 0.75;
     const faceDetectionDeviceType = interactionData?.profile?.faceDetectionDeviceType ?? 'auto';
 
-    const faceConfigRef = useRef({
+    const realTimeConfigRef = useRef({
         intervalMs: realTimeInteractionIntervalMs,
-        probabilityThreshold: faceDetectionProbabilityThreshold,
         devicePreference: faceDetectionDeviceType,
     });
-    faceConfigRef.current = {
+    realTimeConfigRef.current = {
         intervalMs: realTimeInteractionIntervalMs,
-        probabilityThreshold: faceDetectionProbabilityThreshold,
         devicePreference: faceDetectionDeviceType,
     };
 
@@ -247,7 +244,7 @@ export function useChatSession(options: UseChatSessionOptions) {
 
     useEffect(() => {
         if (realTimeMode && activeChatId && !options.isMultiplayerClient) {
-            frontCameraEngine.setKeepAlive('face_detection', true);
+            frontCameraEngine.setKeepAlive('real_time_mode', true);
             void faceDetectionEngine.startMonitoring({
                 getVideoElement: () => frontCameraEngine.getVideoElement(true),
                 onPresenceChange: (isDetected) => {
@@ -256,34 +253,31 @@ export function useChatSession(options: UseChatSessionOptions) {
                 onMotionSpike: (accumulatedMotion) => {
                     chatCoordinator.handleFaceMotion(accumulatedMotion);
                 },
-                intervalMs: faceConfigRef.current.intervalMs,
-                probabilityThreshold: faceConfigRef.current.probabilityThreshold,
-                devicePreference: faceConfigRef.current.devicePreference,
+                intervalMs: realTimeConfigRef.current.intervalMs,
+                devicePreference: realTimeConfigRef.current.devicePreference,
             });
         } else {
             faceDetectionEngine.stopMonitoring(true);
-            frontCameraEngine.setKeepAlive('face_detection', false);
+            frontCameraEngine.setKeepAlive('real_time_mode', false);
         }
 
         return () => {
             faceDetectionEngine.stopMonitoring(true);
-            frontCameraEngine.setKeepAlive('face_detection', false);
+            frontCameraEngine.setKeepAlive('real_time_mode', false);
         };
     }, [realTimeMode, activeChatId, options.isMultiplayerClient]);
 
-    // Live-sync interval, threshold, and hardware device changes without resetting baseline
+    // Live-sync interval and hardware device changes without resetting baseline
     useEffect(() => {
         if (!realTimeMode || options.isMultiplayerClient) return;
         faceDetectionEngine.updateMonitoringOptions({
             intervalMs: realTimeInteractionIntervalMs,
-            probabilityThreshold: faceDetectionProbabilityThreshold,
             devicePreference: faceDetectionDeviceType,
         });
     }, [
         realTimeMode,
         options.isMultiplayerClient,
         realTimeInteractionIntervalMs,
-        faceDetectionProbabilityThreshold,
         faceDetectionDeviceType,
     ]);
 

@@ -26,7 +26,14 @@ import { detectName } from '../utilities/nameDetection';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { evaluateAutoResumeSignals, injectStopSignals, broadcastToolStateChanges, hasTextContent, NO_ARG_TOOLS, HOST_ONLY_TOOLS, finalizeMessageById } from '../utilities/chatSessionLogic';
 import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost } from '../utilities/dynamicCharacterLogic';
-import { generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, getEffectiveUseFrontCameraImage, getEffectiveVisualSensitivity } from '../utilities/characterLogic';
+import { 
+    generateChatStaminaForInteractionData, 
+    generateActionStaminaForInteractionData, 
+    consumeChatStaminaForMessage, 
+    getEffectiveUseFrontCameraImage, 
+    getEffectiveVisualSensitivity,
+    getEffectiveAudioSensitivity 
+} from '../utilities/characterLogic';
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { learnFromUserMessage } from './ActionFormatEngine';
 import { defaultInputStrategy } from '../dictionaries/defaults';
@@ -102,6 +109,7 @@ class ChatSessionCoordinator {
     private pendingSkipText: string | null = null;
     private activeMessageId: string | null = null;
     private lastFaceMotionCheckAt = 0;
+    private lastAudioEventCheckAt = 0;
     private deps!: CoordinatorDependencies;
 
     private characterActor = new CharacterActor();
@@ -1118,7 +1126,7 @@ class ChatSessionCoordinator {
 
         this.runSequence(currentData, undefined, { skipAmbientNarration: true })
             .then(() => this.resetAutonomousPacing())
-            .catch((e) => console.warn('Face detection turn sequence failed:', e))
+            .catch((e) => console.warn('Real-time presence turn sequence failed:', e))
             .finally(() => this.releaseLockIfCurrent(lockEpoch));
     }
 
@@ -1162,11 +1170,91 @@ class ChatSessionCoordinator {
 
         this.runSequence(currentData, undefined, { skipAmbientNarration: true })
             .then(() => this.resetAutonomousPacing())
-            .catch((e) => console.warn('Face motion turn sequence failed:', e))
+            .catch((e) => console.warn('Real-time visual motion turn sequence failed:', e))
             .finally(() => {
                 faceDetectionEngine.resetAccumulatedMotion();
                 this.releaseLockIfCurrent(lockEpoch);
             });
+    }
+
+    public handleAudioSpike(detectedEvent: string, eventConfidence = 1.0): void {
+        if (!this.deps || this.deps.isMultiplayerClient) return;
+        if (this.isGenerating) return;
+
+        const state = useChatStore.getState();
+        const currentData = state.interactionData;
+        if (!currentData || !currentData.profile?.realTimeMode) return;
+
+        const hasActiveModel = Boolean(state.selectedLanguageModel || state.activeStrategy);
+        if (!hasActiveModel) return;
+
+        const now = Date.now();
+        const minCooldown = Math.max(1000, currentData.profile.realTimeInteractionIntervalMs || 1000);
+        if (now - this.lastAudioEventCheckAt < minCooldown) return;
+        this.lastAudioEventCheckAt = now;
+
+        const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
+        const protagonistIdSet = new Set(currentData.protagonistIds || []);
+        const protagonistId = currentData.protagonistIds?.[0];
+        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+
+        const aiCandidates = (hasLocations && protagonist)
+            ? getCoLocatedParticipants(currentData, protagonist).filter(p => !protagonistIdSet.has(p.id))
+            : currentData.participants.filter(p => !protagonistIdSet.has(p.id));
+
+        let maxAudioSensitivity = 0;
+        for (const char of aiCandidates) {
+            const as = getEffectiveAudioSensitivity(char, currentData.profile);
+            if (as > maxAudioSensitivity) maxAudioSensitivity = as;
+        }
+        if (maxAudioSensitivity <= 0) return;
+
+        const triggerProbability = 1 - Math.exp(-0.45 * eventConfidence * maxAudioSensitivity);
+        if (Math.random() >= triggerProbability) return;
+
+        if (!this.acquireLock()) return;
+        const lockEpoch = this.currentLockEpoch;
+
+        (async () => {
+            // Instant multimodal camera shutter upon hearing acoustic cue
+            if (protagonist && getEffectiveUseFrontCameraImage(protagonist, currentData.profile) && !frontCameraEngine.isFrameStreamingActive()) {
+                try {
+                    const freshImageBase64 = await frontCameraEngine.captureImage();
+                    if (freshImageBase64) {
+                        const latestMsgInfo = findLatestMessage(currentData, protagonist, ['chat', 'whisper', 'tool']);
+                        if (
+                            latestMsgInfo &&
+                            (latestMsgInfo.message.messageType === 'chat' ||
+                                latestMsgInfo.message.messageType === 'whisper' ||
+                                latestMsgInfo.message.messageType === 'tool')
+                        ) {
+                            const locMessages = currentData.interactionHistories[latestMsgInfo.locationId];
+                            if (locMessages) {
+                                const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
+                                if (msgIdx !== -1) {
+                                    const updatedLocMessages = [...locMessages];
+                                    updatedLocMessages[msgIdx] = {
+                                        ...latestMsgInfo.message,
+                                        frontCameraImage: freshImageBase64,
+                                    } as ChatMessage | WhisperMessage | ToolMessage;
+                                    currentData.interactionHistories = {
+                                        ...currentData.interactionHistories,
+                                        [latestMsgInfo.locationId]: updatedLocMessages,
+                                    };
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Real-time acoustic front camera capture (${detectedEvent}) failed:`, e);
+                }
+            }
+
+            return this.runSequence(currentData, undefined, { skipAmbientNarration: true });
+        })()
+            .then(() => this.resetAutonomousPacing())
+            .catch((e) => console.warn(`Real-time audio event (${detectedEvent}) turn sequence failed:`, e))
+            .finally(() => this.releaseLockIfCurrent(lockEpoch));
     }
 }
 

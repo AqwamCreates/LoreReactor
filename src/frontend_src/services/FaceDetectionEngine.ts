@@ -7,7 +7,7 @@ const FACE_MODEL_URL = 'https://huggingface.co/onnxmodelzoo/version-RFB-640/reso
 const MODEL_INPUT_WIDTH = 640;
 const MODEL_INPUT_HEIGHT = 480;
 const DEFAULT_INTERVAL_MS = 1000;
-const DEFAULT_PROBABILITY_THRESHOLD = 0.80;
+const DEFAULT_PROBABILITY_THRESHOLD = 0.75; // Internal calibrated baseline
 const IDLE_UNLOAD_MS = 3 * 60 * 1000; // 3 minutes
 
 export type FaceDetectionStatus = 'idle' | 'loading' | 'monitoring';
@@ -17,7 +17,6 @@ export interface FaceDetectionMonitorOptions {
     onPresenceChange: (isDetected: boolean, probability: number) => void;
     onMotionSpike?: (accumulatedMotion: number) => void;
     intervalMs?: number;
-    probabilityThreshold?: number;
     devicePreference?: deviceType;
 }
 
@@ -34,11 +33,6 @@ async function isWebGpuAvailable(): Promise<boolean> {
 function clampInterval(ms?: number): number {
     if (typeof ms !== 'number' || !Number.isFinite(ms)) return DEFAULT_INTERVAL_MS;
     return Math.max(50, Math.round(ms));
-}
-
-function clampThreshold(threshold?: number): number {
-    if (typeof threshold !== 'number' || !Number.isFinite(threshold)) return DEFAULT_PROBABILITY_THRESHOLD;
-    return Math.max(0, Math.min(1, threshold));
 }
 
 class FaceDetectionEngine {
@@ -74,7 +68,7 @@ class FaceDetectionEngine {
     private getVideoElement: (() => Promise<HTMLVideoElement | null> | HTMLVideoElement | null) | null = null;
     private onPresenceChange: ((isDetected: boolean, probability: number) => void) | null = null;
     private intervalMs = DEFAULT_INTERVAL_MS;
-    private probabilityThreshold = DEFAULT_PROBABILITY_THRESHOLD;
+    private readonly probabilityThreshold = DEFAULT_PROBABILITY_THRESHOLD;
     private lastDetectedStatus: boolean | null = null;
 
     constructor() {
@@ -483,7 +477,6 @@ class FaceDetectionEngine {
         this.onPresenceChange = options.onPresenceChange;
         this.onMotionSpike = options.onMotionSpike ?? null;
         this.intervalMs = clampInterval(options.intervalMs);
-        this.probabilityThreshold = clampThreshold(options.probabilityThreshold);
         this.lastDetectedStatus = null;
         this.accumulatedMotion = 0;
         this.lastMotionDelta = 0;
@@ -514,12 +507,11 @@ class FaceDetectionEngine {
     }
 
     updateMonitoringOptions(
-        options: Partial<Pick<FaceDetectionMonitorOptions, 'intervalMs' | 'probabilityThreshold' | 'devicePreference' | 'getVideoElement' | 'onPresenceChange' | 'onMotionSpike'>>
+        options: Partial<Pick<FaceDetectionMonitorOptions, 'intervalMs' | 'devicePreference' | 'getVideoElement' | 'onPresenceChange' | 'onMotionSpike'>>
     ): void {
         if (options.getVideoElement) this.getVideoElement = options.getVideoElement;
         if (options.onPresenceChange) this.onPresenceChange = options.onPresenceChange;
         if (options.onMotionSpike !== undefined) this.onMotionSpike = options.onMotionSpike ?? null;
-        if (options.probabilityThreshold !== undefined) this.probabilityThreshold = clampThreshold(options.probabilityThreshold);
         if (options.devicePreference !== undefined) this.setDevicePreference(options.devicePreference);
         if (options.intervalMs !== undefined) {
             const nextInterval = clampInterval(options.intervalMs);
