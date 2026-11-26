@@ -33,7 +33,8 @@ import {
     consumeChatStaminaForMessage, 
     getEffectiveUseFrontCameraImage, 
     getEffectiveVisualSensitivity,
-    getEffectiveAudioSensitivity 
+    getEffectiveAudioSensitivity,
+    getEffectiveChatImpatienceSensitivity
 } from '../utilities/characterLogic';
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { learnFromUserMessage } from './ActionFormatEngine';
@@ -113,6 +114,10 @@ class ChatSessionCoordinator {
     private lastAudioEventCheckAt = 0;
     private lastVisualShutterCheckAt = 0;
     private deps!: CoordinatorDependencies;
+
+    // Reactivity decay tracking per character across sessions
+    private currentInteractionDataId: string | null = null;
+    private messagesSentSinceReset: Record<string, number> = {};
 
     private characterActor = new CharacterActor();
     private characterSoul = new CharacterSoul();
@@ -202,8 +207,110 @@ class ChatSessionCoordinator {
     }
 
     /**
+     * Resolves the local human protagonist tied to this machine's camera/microphone.
+     */
+    private getLocalProtagonist(data: InteractionData): Character | null {
+        const state = useChatStore.getState();
+        const local = this.deps.isMultiplayerClient 
+            ? (this.deps.joinProtagonist || state.localProtagonist) 
+            : state.localProtagonist;
+        if (local) {
+            return data.participants.find(p => p.id === local.id) || local;
+        }
+        const fallbackId = data.protagonistIds?.[0];
+        return fallbackId ? data.participants.find(p => p.id === fallbackId) || null : null;
+    }
+
+    /**
+     * Synchronizes session state. If the active interaction data changes,
+     * all character decay is automatically wiped back to baseline.
+     */
+    private syncSession(dataId: string): void {
+        if (this.currentInteractionDataId !== dataId) {
+            this.currentInteractionDataId = dataId;
+            this.messagesSentSinceReset = {};
+        }
+    }
+
+    private getSentCount(characterId: string): number {
+        return this.messagesSentSinceReset[characterId] || 0;
+    }
+
+    private resetDecay(characterId: string): void {
+        this.messagesSentSinceReset[characterId] = 0;
+    }
+
+    public recordAiMessageSent(characterId: string, dataId: string): void {
+        this.syncSession(dataId);
+        this.messagesSentSinceReset[characterId] = this.getSentCount(characterId) + 1;
+    }
+
+    /**
+     * Location-scoped decay reset: resets decay ONLY for AI characters
+     * co-located with the protagonist who sent the message.
+     */
+    public onProtagonistMessageSent(protagonist: Character, data: InteractionData): void {
+        this.syncSession(data.id);
+        const hasLocations = Boolean(data.locations && data.locations.length > 0);
+        if (!hasLocations) {
+            this.messagesSentSinceReset = {};
+            return;
+        }
+
+        const coLocatedAi = getCoLocatedParticipants(data, protagonist);
+        const protagonistIdSet = new Set(data.protagonistIds || []);
+
+        for (const participant of coLocatedAi) {
+            if (!protagonistIdSet.has(participant.id)) {
+                this.messagesSentSinceReset[participant.id] = 0;
+            }
+        }
+    }
+
+    /**
+     * Evaluates sensory stimulus against reactivity decay and dynamic impatience sampling.
+     * Completely unbounded: handles any positive chatImpatienceSensitivity float value.
+     */
+    private evaluateSensoryEvent(
+        character: Character,
+        rawStimulus: number,
+        currentData: InteractionData
+    ): boolean {
+        this.syncSession(currentData.id);
+
+        const charId = character.id;
+        const n = this.getSentCount(charId);
+
+        // 1. Reactivity Decay: required score scales with (1 + n)
+        const effectiveStimulus = rawStimulus / (1 + n);
+        const triggerProbability = 1 - Math.exp(-effectiveStimulus);
+
+        // 2. Breakthrough: Score passes the heightened threshold -> reset to baseline & trigger
+        if (Math.random() < triggerProbability) {
+            this.resetDecay(charId);
+            return true;
+        }
+
+        // 3. Failed check -> Impatience-based sampling for reset
+        if (n > 0) {
+            const impatienceSensitivity = getEffectiveChatImpatienceSensitivity(character, currentData.profile);
+            if (impatienceSensitivity > 0) {
+                const dynamicImpatience = n * impatienceSensitivity;
+                // Hyperbolic probability mapping for unbounded [0, Infinity)
+                const resetProbability = dynamicImpatience / (1 + dynamicImpatience);
+
+                if (Math.random() < resetProbability) {
+                    this.resetDecay(charId);
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Weighted random sampling across co-located AI candidates based on their sensory sensitivity.
-     * Avoids deterministic max() selection so turn initiation exhibits natural variation.
+     * Scoped strictly to the protagonist sitting in front of the local sensors.
      */
     private sampleRealTimeObserver(
         currentData: InteractionData,
@@ -211,11 +318,10 @@ class ChatSessionCoordinator {
     ): { character: Character; sensitivity: number } | null {
         const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
         const protagonistIdSet = new Set(currentData.protagonistIds || []);
-        const protagonistId = currentData.protagonistIds?.[0];
-        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+        const localProtagonist = this.getLocalProtagonist(currentData);
 
-        const aiCandidates = (hasLocations && protagonist)
-            ? getCoLocatedParticipants(currentData, protagonist).filter(p => !protagonistIdSet.has(p.id))
+        const aiCandidates = (hasLocations && localProtagonist)
+            ? getCoLocatedParticipants(currentData, localProtagonist).filter(p => !protagonistIdSet.has(p.id))
             : currentData.participants.filter(p => !protagonistIdSet.has(p.id));
 
         const pool: { item: { character: Character; sensitivity: number }; weight: number }[] = [];
@@ -249,10 +355,9 @@ class ChatSessionCoordinator {
             useGenerationStore.setState({ streamingCharacter: c, streamingText: '', streamingMessageId: null });
             
             let turnData = d;
-            const protagonistId = useChatStore.getState().localProtagonist?.id || turnData.protagonistIds?.[0];
-            if (protagonistId) {
-                const protagonist = turnData.participants.find(p => p.id === protagonistId);
-                if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile) && !frontCameraEngine.isFrameStreamingActive()) {
+            const protagonist = this.getLocalProtagonist(turnData);
+            if (protagonist) {
+                if (getEffectiveUseFrontCameraImage(protagonist, turnData.profile) && !frontCameraEngine.isFrameStreamingActive()) {
                     try {
                         const freshImageBase64 = await frontCameraEngine.captureImage();
                         if (freshImageBase64) {
@@ -350,8 +455,7 @@ class ChatSessionCoordinator {
         const narratorBehaviour = profile?.textGenerationBehaviourOnNarration ?? 'wait';
 
         const charLocationId = getCurrentLocationId(activeData, character) || 'global';
-        const protagonistId = activeData.protagonistIds?.[0];
-        const protagonist = protagonistId ? activeData.participants.find(p => p.id === protagonistId) : null;
+        const protagonist = this.getLocalProtagonist(activeData);
         const protagonistLocationId = protagonist ? (getCurrentLocationId(activeData, protagonist) || 'global') : 'global';
         
         const isBackground = charLocationId !== protagonistLocationId;
@@ -558,6 +662,10 @@ class ChatSessionCoordinator {
                     addToast: this.deps.addToast
                 });
             }
+
+            // Record message output to increase reactivity decay for this AI
+            this.recordAiMessageSent(character.id, activeData.id);
+
         } finally {
             this.activeMessageId = null;
             const currentLoading = { ...(useGenerationStore.getState().loadingLocations || {}) };
@@ -631,9 +739,8 @@ class ChatSessionCoordinator {
     }
 
     private async generateAmbientNarration(data: InteractionData, signal: AbortSignal): Promise<InteractionData | null> {
-        const protagonistId = data.protagonistIds?.[0];
-        const protagonistStub = protagonistId ? { id: protagonistId } as Character : null;
-        const coLocatedCount = protagonistStub ? getCoLocatedParticipants(data, protagonistStub).length : 0;
+        const protagonist = this.getLocalProtagonist(data);
+        const coLocatedCount = protagonist ? getCoLocatedParticipants(data, protagonist).length : 0;
         
         const allRelevantMessages = getGlobalMessageHistory(data, ['chat', 'narration']) as HistoryMessage[];
         const filterFlags = getUniversalMessageFilterFlags(allRelevantMessages as TextMessage[], this.getActivePromptBlocks(data), data.contexts || [], data.locations || []);
@@ -673,7 +780,7 @@ class ChatSessionCoordinator {
         const sentences = cleaned.match(/[^.!?]+[.!?]+/g);
         const finalText = sentences ? sentences.slice(0, 2).join(' ') : cleaned;
 
-        const currentLocId = protagonistStub ? getCurrentLocationId(data, protagonistStub) : 'global';
+        const currentLocId = protagonist ? getCurrentLocationId(data, protagonist) : 'global';
         const narrationMessage: NarrationMessage = {
             id: `nar-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
             messageType: 'narration',
@@ -725,6 +832,9 @@ class ChatSessionCoordinator {
         const currentData = state.interactionData;
         const protagonist = this.deps.isMultiplayerClient ? (this.deps.joinProtagonist || state.localProtagonist) : state.localProtagonist;
         if (!currentData || !protagonist || (!text && !files?.length)) return;
+
+        // Reset reactivity decay ONLY for AI co-located with this sending protagonist
+        this.onProtagonistMessageSent(protagonist, currentData);
 
         const isNarrationEnabled = currentData.profile?.narrateTexts ? Object.values(currentData.profile.narrateTexts).some(v => v === true) : false;
         if (isNarrationEnabled) textToSpeechEngine.load(); else textToSpeechEngine.unload();
@@ -856,6 +966,9 @@ class ChatSessionCoordinator {
 
         const protagonist = this.deps.isMultiplayerClient ? (this.deps.joinProtagonist || protagonistOverride) : protagonistOverride;
 
+        // Reset decay for AI co-located with the acting protagonist
+        this.onProtagonistMessageSent(protagonist, currentData);
+
         try {
             let frontCameraImageBase64: string | undefined;
             if (getEffectiveUseFrontCameraImage(protagonist, currentData.profile)) {
@@ -947,7 +1060,7 @@ class ChatSessionCoordinator {
             const isProtagonist = protagonistIdSet.has(targetMsg.character.id);
 
             let freshFrontCameraImage: string | undefined;
-            const localProtagonist = state.localProtagonist;
+            const localProtagonist = this.getLocalProtagonist(currentData);
             const isLocalUsersMessage = !localProtagonist || targetMsg.character.id === localProtagonist.id;
 
             if (
@@ -1135,7 +1248,19 @@ class ChatSessionCoordinator {
         if (this.deps.isMultiplayerClient) return;
         if (this.isGenerating) return; 
         const state = useChatStore.getState();
-        if (state.interactionData) {
+        const currentData = state.interactionData;
+        if (currentData) {
+            // Find which protagonist sent the latest message and reset their co-located AI
+            const protagonistIds = new Set(currentData.protagonistIds || []);
+            const history = getGlobalMessageHistory(currentData);
+            for (let i = history.length - 1; i >= 0; i--) {
+                const sender = history[i].character;
+                if (sender && protagonistIds.has(sender.id)) {
+                    this.onProtagonistMessageSent(sender, currentData);
+                    break;
+                }
+            }
+
             if (!this.acquireLock()) return;
             const lockEpoch = this.currentLockEpoch;
             this.runSequence(state.interactionData)
@@ -1158,8 +1283,9 @@ class ChatSessionCoordinator {
         const sampled = this.sampleRealTimeObserver(currentData, 'visual');
         if (!sampled) return;
 
-        const triggerProbability = 1 - Math.exp(-2.5 * sampled.sensitivity);
-        if (Math.random() >= triggerProbability) return;
+        const rawStimulus = 2.5 * sampled.sensitivity;
+        const triggered = this.evaluateSensoryEvent(sampled.character, rawStimulus, currentData);
+        if (!triggered) return;
 
         if (!this.acquireLock()) return;
         const lockEpoch = this.currentLockEpoch;
@@ -1193,8 +1319,9 @@ class ChatSessionCoordinator {
         const sampled = this.sampleRealTimeObserver(currentData, 'visual');
         if (!sampled) return;
 
-        const triggerProbability = 1 - Math.exp(-0.35 * accumulatedMotion * sampled.sensitivity);
-        if (Math.random() >= triggerProbability) return;
+        const rawStimulus = 0.35 * accumulatedMotion * sampled.sensitivity;
+        const triggered = this.evaluateSensoryEvent(sampled.character, rawStimulus, currentData);
+        if (!triggered) return;
 
         if (!this.acquireLock()) return;
         const lockEpoch = this.currentLockEpoch;
@@ -1228,14 +1355,14 @@ class ChatSessionCoordinator {
         const sampled = this.sampleRealTimeObserver(currentData, 'visual');
         if (!sampled) return;
 
-        const triggerProbability = 1 - Math.exp(-1.8 * sampled.sensitivity);
-        if (Math.random() >= triggerProbability) return;
+        const rawStimulus = 1.8 * sampled.sensitivity;
+        const triggered = this.evaluateSensoryEvent(sampled.character, rawStimulus, currentData);
+        if (!triggered) return;
 
         if (!this.acquireLock()) return;
         const lockEpoch = this.currentLockEpoch;
 
-        const protagonistId = currentData.protagonistIds?.[0];
-        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+        const protagonist = this.getLocalProtagonist(currentData);
 
         (async () => {
             let turnData = { ...currentData };
@@ -1311,14 +1438,14 @@ class ChatSessionCoordinator {
         const sampled = this.sampleRealTimeObserver(currentData, 'audio');
         if (!sampled) return;
 
-        const triggerProbability = 1 - Math.exp(-0.45 * eventConfidence * sampled.sensitivity);
-        if (Math.random() >= triggerProbability) return;
+        const rawStimulus = 0.45 * eventConfidence * sampled.sensitivity;
+        const triggered = this.evaluateSensoryEvent(sampled.character, rawStimulus, currentData);
+        if (!triggered) return;
 
         if (!this.acquireLock()) return;
         const lockEpoch = this.currentLockEpoch;
 
-        const protagonistId = currentData.protagonistIds?.[0];
-        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+        const protagonist = this.getLocalProtagonist(currentData);
 
         (async () => {
             let turnData = { ...currentData };
