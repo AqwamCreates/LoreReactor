@@ -15,7 +15,7 @@ import { speculativeMarkovEngine } from './SpeculativeMarkovEngine';
 import { runSummarization } from './SummarizationEngine';
 import { textToSpeechEngine } from './TextToSpeechEngine';
 import { frontCameraEngine } from './FrontCameraEngine';
-import { faceDetectionEngine } from './FaceDetectionEngine';
+import { faceDetectionEngine, type VisualShutterType } from './FaceDetectionEngine';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 
 import { createMessage, findLatestMessage, getMessageById } from '../utilities/messageLogic';
@@ -110,6 +110,7 @@ class ChatSessionCoordinator {
     private activeMessageId: string | null = null;
     private lastFaceMotionCheckAt = 0;
     private lastAudioEventCheckAt = 0;
+    private lastVisualShutterCheckAt = 0;
     private deps!: CoordinatorDependencies;
 
     private characterActor = new CharacterActor();
@@ -1177,6 +1178,98 @@ class ChatSessionCoordinator {
             });
     }
 
+    public handleVisualShutter(shutterType: VisualShutterType): void {
+        if (!this.deps || this.deps.isMultiplayerClient) return;
+        if (this.isGenerating) return;
+
+        const state = useChatStore.getState();
+        const currentData = state.interactionData;
+        if (!currentData || !currentData.profile?.realTimeMode) return;
+
+        const hasActiveModel = Boolean(state.selectedLanguageModel || state.activeStrategy);
+        if (!hasActiveModel) return;
+
+        const now = Date.now();
+        const minCooldown = Math.max(1000, currentData.profile.realTimeInteractionIntervalMs || 1000);
+        if (now - this.lastVisualShutterCheckAt < minCooldown) return;
+        this.lastVisualShutterCheckAt = now;
+
+        const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
+        const protagonistIdSet = new Set(currentData.protagonistIds || []);
+        const protagonistId = currentData.protagonistIds?.[0];
+        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+
+        const aiCandidates = (hasLocations && protagonist)
+            ? getCoLocatedParticipants(currentData, protagonist).filter(p => !protagonistIdSet.has(p.id))
+            : currentData.participants.filter(p => !protagonistIdSet.has(p.id));
+
+        let maxVisualSensitivity = 0;
+        for (const char of aiCandidates) {
+            const vs = getEffectiveVisualSensitivity(char, currentData.profile);
+            if (vs > maxVisualSensitivity) maxVisualSensitivity = vs;
+        }
+        if (maxVisualSensitivity <= 0) return;
+
+        const triggerProbability = 1 - Math.exp(-1.8 * maxVisualSensitivity);
+        if (Math.random() >= triggerProbability) return;
+
+        if (!this.acquireLock()) return;
+        const lockEpoch = this.currentLockEpoch;
+
+        (async () => {
+            let turnData = { ...currentData };
+
+            // Instant multimodal camera shutter upon silent visual event
+            if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile)) {
+                try {
+                    if (frontCameraEngine.isFrameStreamingActive()) {
+                        frontCameraEngine.getTurnFrames(1, 0);
+                    } else {
+                        const freshImageBase64 = await frontCameraEngine.captureImage();
+                        if (freshImageBase64) {
+                            const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
+                            if (
+                                latestMsgInfo &&
+                                (latestMsgInfo.message.messageType === 'chat' ||
+                                    latestMsgInfo.message.messageType === 'whisper' ||
+                                    latestMsgInfo.message.messageType === 'tool')
+                            ) {
+                                const locMessages = turnData.interactionHistories[latestMsgInfo.locationId];
+                                if (locMessages) {
+                                    const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
+                                    if (msgIdx !== -1) {
+                                        const updatedLocMessages = [...locMessages];
+                                        updatedLocMessages[msgIdx] = {
+                                            ...latestMsgInfo.message,
+                                            frontCameraImage: freshImageBase64,
+                                        } as ChatMessage | WhisperMessage | ToolMessage;
+                                        turnData = {
+                                            ...turnData,
+                                            interactionHistories: {
+                                                ...turnData.interactionHistories,
+                                                [latestMsgInfo.locationId]: updatedLocMessages,
+                                            },
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn(`Real-time visual shutter (${shutterType}) front camera capture failed:`, e);
+                }
+            }
+
+            return this.runSequence(turnData, undefined, { skipAmbientNarration: true });
+        })()
+            .then(() => this.resetAutonomousPacing())
+            .catch((e) => console.warn(`Real-time visual shutter (${shutterType}) turn sequence failed:`, e))
+            .finally(() => {
+                faceDetectionEngine.resetAccumulatedMotion();
+                this.releaseLockIfCurrent(lockEpoch);
+            });
+    }
+
     public handleAudioSpike(detectedEvent: string, eventConfidence = 1.0): void {
         if (!this.deps || this.deps.isMultiplayerClient) return;
         if (this.isGenerating) return;
@@ -1216,31 +1309,40 @@ class ChatSessionCoordinator {
         const lockEpoch = this.currentLockEpoch;
 
         (async () => {
+            let turnData = { ...currentData };
+
             // Instant multimodal camera shutter upon hearing acoustic cue
-            if (protagonist && getEffectiveUseFrontCameraImage(protagonist, currentData.profile) && !frontCameraEngine.isFrameStreamingActive()) {
+            if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile)) {
                 try {
-                    const freshImageBase64 = await frontCameraEngine.captureImage();
-                    if (freshImageBase64) {
-                        const latestMsgInfo = findLatestMessage(currentData, protagonist, ['chat', 'whisper', 'tool']);
-                        if (
-                            latestMsgInfo &&
-                            (latestMsgInfo.message.messageType === 'chat' ||
-                                latestMsgInfo.message.messageType === 'whisper' ||
-                                latestMsgInfo.message.messageType === 'tool')
-                        ) {
-                            const locMessages = currentData.interactionHistories[latestMsgInfo.locationId];
-                            if (locMessages) {
-                                const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
-                                if (msgIdx !== -1) {
-                                    const updatedLocMessages = [...locMessages];
-                                    updatedLocMessages[msgIdx] = {
-                                        ...latestMsgInfo.message,
-                                        frontCameraImage: freshImageBase64,
-                                    } as ChatMessage | WhisperMessage | ToolMessage;
-                                    currentData.interactionHistories = {
-                                        ...currentData.interactionHistories,
-                                        [latestMsgInfo.locationId]: updatedLocMessages,
-                                    };
+                    if (frontCameraEngine.isFrameStreamingActive()) {
+                        frontCameraEngine.getTurnFrames(1, 0);
+                    } else {
+                        const freshImageBase64 = await frontCameraEngine.captureImage();
+                        if (freshImageBase64) {
+                            const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
+                            if (
+                                latestMsgInfo &&
+                                (latestMsgInfo.message.messageType === 'chat' ||
+                                    latestMsgInfo.message.messageType === 'whisper' ||
+                                    latestMsgInfo.message.messageType === 'tool')
+                            ) {
+                                const locMessages = turnData.interactionHistories[latestMsgInfo.locationId];
+                                if (locMessages) {
+                                    const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
+                                    if (msgIdx !== -1) {
+                                        const updatedLocMessages = [...locMessages];
+                                        updatedLocMessages[msgIdx] = {
+                                            ...latestMsgInfo.message,
+                                            frontCameraImage: freshImageBase64,
+                                        } as ChatMessage | WhisperMessage | ToolMessage;
+                                        turnData = {
+                                            ...turnData,
+                                            interactionHistories: {
+                                                ...turnData.interactionHistories,
+                                                [latestMsgInfo.locationId]: updatedLocMessages,
+                                            },
+                                        };
+                                    }
                                 }
                             }
                         }
@@ -1250,7 +1352,7 @@ class ChatSessionCoordinator {
                 }
             }
 
-            return this.runSequence(currentData, undefined, { skipAmbientNarration: true });
+            return this.runSequence(turnData, undefined, { skipAmbientNarration: true });
         })()
             .then(() => this.resetAutonomousPacing())
             .catch((e) => console.warn(`Real-time audio event (${detectedEvent}) turn sequence failed:`, e))

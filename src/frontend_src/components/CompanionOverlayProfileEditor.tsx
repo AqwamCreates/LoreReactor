@@ -84,9 +84,8 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
     const [autonomousMode, setAutonomousMode] = useState(ep?.autonomousMode ?? false);
     const [autonomousInteractionIntervalMs, setAutonomousInteractionIntervalMs] = useState<number>(ep?.autonomousInteractionIntervalMs ?? 10000);
 
-    const [realTimeMode, setrealTimeMode] = useState<boolean>(ep?.realTimeMode ?? false);
-    const [realTimeInteractionIntervalMs, setrealTimeInteractionIntervalMs] = useState<number>(ep?.realTimeInteractionIntervalMs ?? 1000);
-    const [faceDetectionProbabilityThreshold, setFaceDetectionProbabilityThreshold] = useState<number>(ep?.faceDetectionProbabilityThreshold ?? 0.75);
+    const [realTimeMode, setRealTimeMode] = useState<boolean>(ep?.realTimeMode ?? false);
+    const [realTimeInteractionIntervalMs, setRealTimeInteractionIntervalMs] = useState<number>(ep?.realTimeInteractionIntervalMs ?? 1000);
 
     const [enableAutoSpeechDetection, setEnableAutoSpeechDetection] = useState<boolean>(ep?.enableAutoSpeechDetection ?? false);
     const [speechVolumeActivationThreshold, setSpeechVolumeActivationThreshold] = useState<number>(ep?.speechVolumeActivationThreshold ?? 18);
@@ -125,7 +124,6 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
             autonomousMode, autonomousInteractionIntervalMs,
             realTimeMode,
             realTimeInteractionIntervalMs,
-            faceDetectionProbabilityThreshold,
             enableAutoSpeechDetection, 
             speechVolumeActivationThreshold, 
             speechSilenceVolumeActivationThreshold, 
@@ -177,34 +175,16 @@ export function CompanionOverlayProfileEditor({ profile, onClose, onSave, allCha
                     </div>
 
                     <div className="editor-section">
-                        <span className="editor-section-title">Face Detection</span>
-                        <ProfileCheckbox checked={realTimeMode} onChange={setrealTimeMode} label="Enable Face Detection" hint="Monitor the front camera for physical presence changes and trigger character evaluation." />
+                        <span className="editor-section-title">Real-Time Multimodal Perception</span>
+                        <ProfileCheckbox checked={realTimeMode} onChange={setRealTimeMode} label="Real-Time Mode" hint="Monitor front camera (presence, motion, eye closure, gaze, presented items, stretches) and microphone (sighs, laughs, gasps) to trigger real-time visual responses." />
                         {realTimeMode && (
-                            <>
-                                <div className="editor-nested-field">
-                                    <div className="slider-header-row">
-                                        <label className="editor-label editor-label-small editor-label-no-margin">Detection Interval</label>
-                                        <span className="slider-value-display">{(realTimeInteractionIntervalMs / 1000).toFixed(1)}s</span>
-                                    </div>
-                                    <SliderInput label="" value={realTimeInteractionIntervalMs} minimumValue={100} maximumValue={60000} stepValue={100} decimals={0} onChange={(val) => setrealTimeInteractionIntervalMs(Math.round(val))} description="How frequently the front camera frame is checked for a face." />
+                            <div className="editor-nested-field">
+                                <div className="slider-header-row">
+                                    <label className="editor-label editor-label-small editor-label-no-margin">Real-Time Interaction Interval</label>
+                                    <span className="slider-value-display">{(realTimeInteractionIntervalMs / 1000).toFixed(1)}s</span>
                                 </div>
-                                <div className="editor-nested-field">
-                                    <div className="slider-header-row">
-                                        <label className="editor-label editor-label-small editor-label-no-margin">Face Probability Threshold</label>
-                                        <span className="slider-value-display">{faceDetectionProbabilityThreshold.toFixed(2)}</span>
-                                    </div>
-                                    <SliderInput 
-                                        label="" 
-                                        value={faceDetectionProbabilityThreshold} 
-                                        minimumValue={0.10} 
-                                        maximumValue={0.95} 
-                                        stepValue={0.05} 
-                                        decimals={2} 
-                                        onChange={(val) => setFaceDetectionProbabilityThreshold(Number(val.toFixed(2)))} 
-                                        description="Minimum confidence score (0.0-1.0) from UltraFace to confirm face presence." 
-                                    />
-                                </div>
-                            </>
+                                <SliderInput label="" value={realTimeInteractionIntervalMs} minimumValue={100} maximumValue={60000} stepValue={100} decimals={0} onChange={(val) => setRealTimeInteractionIntervalMs(Math.round(val))} description="How frequently camera and audio sensors evaluate your real-world state." />
+                            </div>
                         )}
                     </div>
 

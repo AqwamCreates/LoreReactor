@@ -90,6 +90,7 @@ export const defaultCharacter: Character = {
     nameSensitivity: 1,
     chatImpatienceSensitivity: 0,
     visualSensitivity: 1,
+    audioSensitivity: 1,
     skipProbability: 0,
     memoryRetentionWeight: 1,
     contextSensitivity: 1,

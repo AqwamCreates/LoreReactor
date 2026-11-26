@@ -12,6 +12,7 @@ import { speculativeMarkovEngine } from '../services/SpeculativeMarkovEngine';
 import { getLanguageModelEngine } from '../services/LanguageModelEngine';
 import { getBudgetStrategyEngine } from '../services/BudgetStrategyEngine';
 import { faceDetectionEngine } from '../services/FaceDetectionEngine';
+import { audioPerceptionEngine } from '../services/AudioPerceptionEngine';
 import { frontCameraEngine } from '../services/FrontCameraEngine';
 import { loadRawBudgetData } from '../storages/serverStorage';
 import { getGlobalMessageHistory } from '../utilities/timelineLogic';
@@ -202,18 +203,21 @@ export function useChatSession(options: UseChatSessionOptions) {
         };
     }, [autonomousMode, activeChatId, options.isMultiplayerClient]);
 
-    // Real-Time Presence & Visual Perception Lifecycle
+    // Real-Time Presence & Perception Lifecycle
     const realTimeMode = Boolean(interactionData?.profile?.realTimeMode);
     const realTimeInteractionIntervalMs = interactionData?.profile?.realTimeInteractionIntervalMs ?? 1000;
     const faceDetectionDeviceType = interactionData?.profile?.faceDetectionDeviceType ?? 'auto';
+    const audioPerceptionDeviceType = interactionData?.profile?.audioPerceptionDeviceType ?? 'auto';
 
     const realTimeConfigRef = useRef({
         intervalMs: realTimeInteractionIntervalMs,
-        devicePreference: faceDetectionDeviceType,
+        faceDevicePreference: faceDetectionDeviceType,
+        audioDevicePreference: audioPerceptionDeviceType,
     });
     realTimeConfigRef.current = {
         intervalMs: realTimeInteractionIntervalMs,
-        devicePreference: faceDetectionDeviceType,
+        faceDevicePreference: faceDetectionDeviceType,
+        audioDevicePreference: audioPerceptionDeviceType,
     };
 
     // Full-Frame Front Camera Streaming Lifecycle (for live character pickup)
@@ -245,6 +249,7 @@ export function useChatSession(options: UseChatSessionOptions) {
     useEffect(() => {
         if (realTimeMode && activeChatId && !options.isMultiplayerClient) {
             frontCameraEngine.setKeepAlive('real_time_mode', true);
+
             void faceDetectionEngine.startMonitoring({
                 getVideoElement: () => frontCameraEngine.getVideoElement(true),
                 onPresenceChange: (isDetected) => {
@@ -253,16 +258,29 @@ export function useChatSession(options: UseChatSessionOptions) {
                 onMotionSpike: (accumulatedMotion) => {
                     chatCoordinator.handleFaceMotion(accumulatedMotion);
                 },
+                onVisualShutter: (shutterType) => {
+                    chatCoordinator.handleVisualShutter(shutterType);
+                },
                 intervalMs: realTimeConfigRef.current.intervalMs,
-                devicePreference: realTimeConfigRef.current.devicePreference,
+                devicePreference: realTimeConfigRef.current.faceDevicePreference,
+            });
+
+            void audioPerceptionEngine.startMonitoring({
+                onAudioEvent: (detectedEvent, confidence) => {
+                    chatCoordinator.handleAudioSpike(detectedEvent, confidence);
+                },
+                intervalMs: realTimeConfigRef.current.intervalMs,
+                devicePreference: realTimeConfigRef.current.audioDevicePreference,
             });
         } else {
             faceDetectionEngine.stopMonitoring(true);
+            audioPerceptionEngine.stopMonitoring(true);
             frontCameraEngine.setKeepAlive('real_time_mode', false);
         }
 
         return () => {
             faceDetectionEngine.stopMonitoring(true);
+            audioPerceptionEngine.stopMonitoring(true);
             frontCameraEngine.setKeepAlive('real_time_mode', false);
         };
     }, [realTimeMode, activeChatId, options.isMultiplayerClient]);
@@ -273,12 +291,20 @@ export function useChatSession(options: UseChatSessionOptions) {
         faceDetectionEngine.updateMonitoringOptions({
             intervalMs: realTimeInteractionIntervalMs,
             devicePreference: faceDetectionDeviceType,
+            onVisualShutter: (shutterType) => {
+                chatCoordinator.handleVisualShutter(shutterType);
+            },
+        });
+        audioPerceptionEngine.updateMonitoringOptions({
+            intervalMs: realTimeInteractionIntervalMs,
+            devicePreference: audioPerceptionDeviceType,
         });
     }, [
         realTimeMode,
         options.isMultiplayerClient,
         realTimeInteractionIntervalMs,
         faceDetectionDeviceType,
+        audioPerceptionDeviceType,
     ]);
 
     // Persist Factorization Machine Weights on Window Unload
@@ -308,6 +334,13 @@ export function useChatSession(options: UseChatSessionOptions) {
         const locId = getCurrentLocationId(interactionData, localProtagonist) || 'global';
         return Boolean(loadingLocations[locId]);
     }, [loadingLocations, interactionData, localProtagonist]);
+
+    const isNarrating = useGenerationStore((s: any) => Boolean(s.isNarrating));
+
+    // Pause audio event classification during AI generation or TTS playback to stop speaker feedback loops
+    useEffect(() => {
+        audioPerceptionEngine.setPaused(isLoading || isNarrating);
+    }, [isLoading, isNarrating]);
 
     const currentCharacterExpression = useGenerationStore(s => s.currentCharacterExpression);
     const streamingCharacter = useGenerationStore(s => s.streamingCharacter);

@@ -1,3 +1,8 @@
+Here is the complete, updated CharacterEditorModal.tsx with audioSensitivity
+integrated across trait detection, defaults, form state, blur auto-detection,
+character card import reset, character save serialization, and the Stats →
+Responsiveness UI section:
+
 // src/frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
@@ -24,6 +29,7 @@ import {
     getNameSensitivityValueFromText, 
     getChatImpatienceSensitivityValueFromText, 
     getVisualSensitivityValueFromText,
+    getAudioSensitivityValueFromText,
     getSkipProbabilityValueFromText, 
     getMemoryRetentionWeightValueFromText, 
     getContextSensitivityValueFromText, 
@@ -56,6 +62,7 @@ const DEFAULT_CHAT_STAMINA_REGENERATION_RATE = 0.3;
 const DEFAULT_NAME_SENSITIVITY = 1;
 const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY = 0;
 const DEFAULT_VISUAL_SENSITIVITY = 1;
+const DEFAULT_AUDIO_SENSITIVITY = 1;
 const DEFAULT_SKIP_PROBABILITY = 0;
 const DEFAULT_MEMORY_RETENTION_WEIGHT = 1;
 const DEFAULT_CONTEXT_SENSITIVITY = 1;
@@ -139,6 +146,7 @@ export function CharacterEditorModal({
     const [nameSensitivityStr, setNameSensitivityStr] = useState<string>(String(existingCharacter?.nameSensitivity ?? -1));
     const [chatImpatienceSensitivityStr, setChatImpatienceSensitivityStr] = useState<string>(String(existingCharacter?.chatImpatienceSensitivity ?? -1));
     const [visualSensitivityStr, setVisualSensitivityStr] = useState<string>(String(existingCharacter?.visualSensitivity ?? -1));
+    const [audioSensitivityStr, setAudioSensitivityStr] = useState<string>(String(existingCharacter?.audioSensitivity ?? -1));
     const [skipProbabilityStr, setSkipProbabilityStr] = useState<string>(String(existingCharacter?.skipProbability ?? -1));
     const [memoryRetentionWeightStr, setMemoryRetentionWeightStr] = useState<string>(String(existingCharacter?.memoryRetentionWeight ?? -1));
     const [contextSensitivityStr, setContextSensitivityStr] = useState<string>(String(existingCharacter?.contextSensitivity ?? -1));
@@ -391,6 +399,7 @@ export function CharacterEditorModal({
         const ns = getNameSensitivityValueFromText(combinedText);
         const cis = getChatImpatienceSensitivityValueFromText(combinedText);
         const vs = getVisualSensitivityValueFromText(combinedText);
+        const as = getAudioSensitivityValueFromText(combinedText);
         const sp = getSkipProbabilityValueFromText(combinedText);
         const mrw = getMemoryRetentionWeightValueFromText(combinedText);
         const crs = getContextSensitivityValueFromText(combinedText);
@@ -404,6 +413,7 @@ export function CharacterEditorModal({
         setNameSensitivityStr(String(ns));
         setChatImpatienceSensitivityStr(String(cis));
         setVisualSensitivityStr(String(vs));
+        setAudioSensitivityStr(String(as));
         setSkipProbabilityStr(String(sp));
         setMemoryRetentionWeightStr(String(mrw));
         setContextSensitivityStr(String(crs));
@@ -422,6 +432,7 @@ export function CharacterEditorModal({
         setNameSensitivityStr(String(DEFAULT_NAME_SENSITIVITY));
         setChatImpatienceSensitivityStr(String(DEFAULT_CHAT_IMPATIENCE_SENSITIVITY));
         setVisualSensitivityStr(String(DEFAULT_VISUAL_SENSITIVITY));
+        setAudioSensitivityStr(String(DEFAULT_AUDIO_SENSITIVITY));
         setSkipProbabilityStr(String(DEFAULT_SKIP_PROBABILITY));
         setMemoryRetentionWeightStr(String(DEFAULT_MEMORY_RETENTION_WEIGHT));
         setContextSensitivityStr(String(DEFAULT_CONTEXT_SENSITIVITY));
@@ -500,6 +511,7 @@ export function CharacterEditorModal({
         const currentNS = Number.parseFloat(nameSensitivityStr);
         const currentCIS = Number.parseFloat(chatImpatienceSensitivityStr);
         const currentVS = Number.parseFloat(visualSensitivityStr);
+        const currentAS = Number.parseFloat(audioSensitivityStr);
         const currentSP = Number.parseFloat(skipProbabilityStr);
         const currentMRW = Number.parseFloat(memoryRetentionWeightStr);
         const currentCRS = Number.parseFloat(contextSensitivityStr);
@@ -513,13 +525,14 @@ export function CharacterEditorModal({
         const nsIsAuto = currentNS === -1;
         const cisIsAuto = currentCIS === -1;
         const vsIsAuto = currentVS === -1;
+        const asIsAuto = currentAS === -1;
         const spIsAuto = currentSP === -1;
         const mrwIsAuto = currentMRW === -1;
         const crsIsAuto = currentCRS === -1;
         const masIsAuto = currentMAS === -1;
         const asrrIsAuto = currentASRR === -1;
 
-        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !csrrIsAuto && !nsIsAuto && !cisIsAuto && !vsIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto && !asrrIsAuto) return;
+        if (!iwIsAuto && !cpIsAuto && !msIsAuto && !csrrIsAuto && !nsIsAuto && !cisIsAuto && !vsIsAuto && !asIsAuto && !spIsAuto && !mrwIsAuto && !crsIsAuto && !masIsAuto && !asrrIsAuto) return;
 
         const combinedText = `${name} ${description} ${systemPrompt}`;
         const newDetected = { ...autoDetected };
@@ -531,6 +544,7 @@ export function CharacterEditorModal({
         if (nsIsAuto) { const v = getNameSensitivityValueFromText(combinedText); setNameSensitivityStr(String(v)); }
         if (cisIsAuto) { const v = getChatImpatienceSensitivityValueFromText(combinedText); setChatImpatienceSensitivityStr(String(v)); }
         if (vsIsAuto) { const v = getVisualSensitivityValueFromText(combinedText); setVisualSensitivityStr(String(v)); }
+        if (asIsAuto) { const v = getAudioSensitivityValueFromText(combinedText); setAudioSensitivityStr(String(v)); }
         if (spIsAuto) { const v = getSkipProbabilityValueFromText(combinedText); setSkipProbabilityStr(String(v)); }
         if (mrwIsAuto) { const v = getMemoryRetentionWeightValueFromText(combinedText); setMemoryRetentionWeightStr(String(v)); }
         if (crsIsAuto) { const v = getContextSensitivityValueFromText(combinedText); setContextSensitivityStr(String(v)); }
@@ -627,6 +641,7 @@ export function CharacterEditorModal({
         setNameSensitivityStr('-1');
         setChatImpatienceSensitivityStr('-1');
         setVisualSensitivityStr('-1');
+        setAudioSensitivityStr('-1');
         setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
         setActionStaminaRegenerationRateStr('-1');
@@ -842,6 +857,7 @@ export function CharacterEditorModal({
         const rawNS = Number.parseFloat(nameSensitivityStr);
         const rawCIS = Number.parseFloat(chatImpatienceSensitivityStr);
         const rawVS = Number.parseFloat(visualSensitivityStr);
+        const rawAS = Number.parseFloat(audioSensitivityStr);
         const rawSP = Number.parseFloat(skipProbabilityStr);
         const rawMRW = Number.parseFloat(memoryRetentionWeightStr);
         const rawCRS = Number.parseFloat(contextSensitivityStr);
@@ -859,6 +875,7 @@ export function CharacterEditorModal({
         const nsValid = !Number.isNaN(rawNS) && rawNS >= 0;
         const cisValid = !Number.isNaN(rawCIS) && rawCIS >= 0;
         const vsValid = !Number.isNaN(rawVS) && rawVS >= 0;
+        const asValid = !Number.isNaN(rawAS) && rawAS >= 0;
         const spValid = !Number.isNaN(rawSP) && rawSP >= 0;
         const mrwValid = !Number.isNaN(rawMRW) && rawMRW >= 0;
         const crsValid = !Number.isNaN(rawCRS) && rawCRS >= 0;
@@ -872,6 +889,7 @@ export function CharacterEditorModal({
         let finalNS: number;
         let finalCIS: number;
         let finalVS: number;
+        let finalAS: number;
         let finalSP: number;
         let finalMRW: number;
         let finalCRS: number;
@@ -886,6 +904,7 @@ export function CharacterEditorModal({
             finalNS = nsValid ? rawNS : (existingCharacter.nameSensitivity ?? DEFAULT_NAME_SENSITIVITY);
             finalCIS = cisValid ? rawCIS : (existingCharacter.chatImpatienceSensitivity ?? DEFAULT_CHAT_IMPATIENCE_SENSITIVITY);
             finalVS = vsValid ? rawVS : (existingCharacter.visualSensitivity ?? DEFAULT_VISUAL_SENSITIVITY);
+            finalAS = asValid ? rawAS : (existingCharacter.audioSensitivity ?? DEFAULT_AUDIO_SENSITIVITY);
             finalSP = spValid ? rawSP : (existingCharacter.skipProbability ?? DEFAULT_SKIP_PROBABILITY);
             finalMRW = mrwValid ? rawMRW : (existingCharacter.memoryRetentionWeight ?? DEFAULT_MEMORY_RETENTION_WEIGHT);
             finalCRS = crsValid ? rawCRS : (existingCharacter.contextSensitivity ?? DEFAULT_CONTEXT_SENSITIVITY);
@@ -899,6 +918,7 @@ export function CharacterEditorModal({
                 finalCSRR = getChatStaminaRegenerationRateValueFromText(t);
                 finalASRR = getActionStaminaRegenerationRateValueFromText(t);
                 finalVS = getVisualSensitivityValueFromText(t);
+                finalAS = getAudioSensitivityValueFromText(t);
             }
         } else {
             finalIW = iwValid ? rawIW : DEFAULT_INITIATIVE_WEIGHT;
@@ -908,6 +928,7 @@ export function CharacterEditorModal({
             finalNS = nsValid ? rawNS : DEFAULT_NAME_SENSITIVITY;
             finalCIS = cisValid ? rawCIS : DEFAULT_CHAT_IMPATIENCE_SENSITIVITY;
             finalVS = vsValid ? rawVS : DEFAULT_VISUAL_SENSITIVITY;
+            finalAS = asValid ? rawAS : DEFAULT_AUDIO_SENSITIVITY;
             finalSP = spValid ? rawSP : DEFAULT_SKIP_PROBABILITY;
             finalMRW = mrwValid ? rawMRW : DEFAULT_MEMORY_RETENTION_WEIGHT;
             finalCRS = crsValid ? rawCRS : DEFAULT_CONTEXT_SENSITIVITY;
@@ -921,12 +942,14 @@ export function CharacterEditorModal({
                 const dCSRR = getChatStaminaRegenerationRateValueFromText(t);
                 const dASRR = getActionStaminaRegenerationRateValueFromText(t);
                 const dVS = getVisualSensitivityValueFromText(t);
+                const dAS = getAudioSensitivityValueFromText(t);
                 if (dIW >= 0) finalIW = dIW;
                 if (dCP >= 0) finalCP = dCP;
                 if (dMS >= 0) finalMS = Math.round(dMS);
                 if (dCSRR >= 0) finalCSRR = dCSRR;
                 if (dASRR >= 0) finalASRR = dASRR;
                 if (dVS >= 0) finalVS = dVS;
+                if (dAS >= 0) finalAS = dAS;
             }
         }
 
@@ -971,7 +994,9 @@ export function CharacterEditorModal({
 
             initiativeWeight: finalIW, chatProbability: finalCP, maximumChatStamina: finalMS,
             chatStaminaRegenerationRate: finalCSRR,
-            nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS, visualSensitivity: finalVS, skipProbability: finalSP,
+            nameSensitivity: finalNS, chatImpatienceSensitivity: finalCIS,
+            visualSensitivity: finalVS, audioSensitivity: finalAS,
+            skipProbability: finalSP,
             memoryRetentionWeight: finalMRW, contextSensitivity: finalCRS,
             maximumActionStamina: finalMAS,
             actionStaminaRegenerationRate: finalASRR,
@@ -1520,7 +1545,12 @@ export function CharacterEditorModal({
                                             <div>
                                                 <label className="editor-label editor-label-small">Visual Sensitivity</label>
                                                 <input type="number" step="0.1" min="0" value={visualSensitivityStr} onChange={(e) => setVisualSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to user physical head movement and camera visual cues. 0 = off. Range: 0 - ∞.</div>
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to real-time visual cues (head movement, gaze, eye closure, stretches, presented items). 0 = off. Range: 0 - ∞.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Audio Sensitivity</label>
+                                                <input type="number" step="0.1" min="0" value={audioSensitivityStr} onChange={(e) => setAudioSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to real-time non-verbal acoustic cues (sighs, laughs, gasps, yawns, snores). 0 = off. Range: 0 - ∞.</div>
                                             </div>
                                             <div>
                                                 <label className="editor-label editor-label-small">Skip Probability</label>
