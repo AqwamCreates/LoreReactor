@@ -739,6 +739,8 @@ const characterRepo = createRepository<Character, RawCharacter>({
     return hydrateEntity<Character, RawCharacter>(raw, id, {
         name: 'Unknown Character',
         images: {},
+        visualSensitivity: 1,
+        audioSensitivity: 1,
         tools: { ...defaultCharacterTools },
         memories: {},
     }, {
@@ -796,6 +798,8 @@ export async function loadCharacterShell(id: string): Promise<Character | null> 
     return hydrateEntity<Character, RawCharacter>(rawCharacter, id, {
         name: 'Unknown Character',
         images: {},
+        visualSensitivity: 1,
+        audioSensitivity: 1,
         tools: { ...defaultCharacterTools },
         memories: {},
         languageModelTokenSampler: undefined,
@@ -856,6 +860,8 @@ const multiplayerCharacterRepo = createRepository<Character, RawCharacter>({
     return hydrateEntity<Character, RawCharacter>(raw, id, {
         name: 'Unknown Multiplayer Character',
         images: {},
+        visualSensitivity: 1,
+        audioSensitivity: 1,
         tools: { ...defaultCharacterTools },
         memories: {},
     }, {
@@ -1133,10 +1139,20 @@ const profileRepo = createRepository<Profile, RawProfile>({
     let memoryRetrievalConfiguration: RetrievalConfiguration | undefined = undefined;
     if (raw.characterMemoryRetrievalConfigurationId) memoryRetrievalConfiguration = await loadRawRetrievalConfiguration(raw.characterMemoryRetrievalConfigurationId) ?? undefined;
 
-    return hydrateEntity<Profile, RawProfile>(raw, id, {
+    const legacyRaw = raw as RawProfile & {
+        enableFaceDetection?: boolean;
+        faceDetectionIntervalMs?: number;
+        faceDetectionProbabilityThreshold?: number;
+    };
+    const migratedRealTimeMode = raw.realTimeMode ?? legacyRaw.enableFaceDetection ?? false;
+    const migratedRealTimeIntervalMs = raw.realTimeInteractionIntervalMs ?? legacyRaw.faceDetectionIntervalMs ?? 1000;
+
+    const hydrated = hydrateEntity<Profile, RawProfile>(raw, id, {
         name: 'Unknown profile',
         autonomousMode: false,
         autonomousInteractionIntervalMs: 1000,
+        realTimeMode: false,
+        realTimeInteractionIntervalMs: 1000,
         volume: 1,
         forceNameReveal: false,
         enableAmbientNarration: false,
@@ -1162,6 +1178,8 @@ const profileRepo = createRepository<Profile, RawProfile>({
         chatStaminaRegenerationRate: -1,
         nameSensitivity: -1,
         chatImpatienceSensitivity: -1,
+        visualSensitivity: -1,
+        audioSensitivity: -1,
         skipProbability: -1,
         memoryRetentionWeight: -1,
         contextSensitivity: -1,
@@ -1175,6 +1193,8 @@ const profileRepo = createRepository<Profile, RawProfile>({
         tools: {} as Record<tool, tristateInteger>,
         inputStrategy: [...defaultInputStrategy],
         enableSpeculativeMarkov: false,
+        faceDetectionDeviceType: 'auto',
+        audioPerceptionDeviceType: 'auto',
         sentimentalAnalysisDeviceType: 'auto',
         textToSpeechDeviceType: 'auto',
         speechToTextDeviceType: 'auto',
@@ -1183,6 +1203,8 @@ const profileRepo = createRepository<Profile, RawProfile>({
         summarizationInstruction: '',
         autoResumeSignals: [],
     }, {
+        realTimeMode: () => migratedRealTimeMode,
+        realTimeInteractionIntervalMs: () => migratedRealTimeIntervalMs,
         summarizationSteps: () => summarizationSteps,
         characterLanguageModelTokenSampler: () => characterLanguageModelTokenSampler,
         characterTextToSpeechModelTokenSampler: () => characterTextToSpeechModelTokenSampler,
@@ -1196,6 +1218,12 @@ const profileRepo = createRepository<Profile, RawProfile>({
         characterKnowledgeRetrievalConfiguration: () => knowledgeRetrievalConfiguration,
         characterMemoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
     });
+
+    delete (hydrated as Record<string, unknown>).enableFaceDetection;
+    delete (hydrated as Record<string, unknown>).faceDetectionIntervalMs;
+    delete (hydrated as Record<string, unknown>).faceDetectionProbabilityThreshold;
+
+    return hydrated;
   },
   serialize: (profile) => {
     const { 
@@ -1214,7 +1242,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
       ...rest 
     } = profile;
     const rawSteps: RawSummarizationStep[] = summarizationSteps.map(({ ...stepRest }) => stepRest);
-    return {
+    const payload = {
       ...rest,
       summarizationSteps: rawSteps,
       characterLanguageModelTokenSamplerId: characterLanguageModelTokenSampler?.id,
@@ -1229,7 +1257,13 @@ const profileRepo = createRepository<Profile, RawProfile>({
       characterKnowledgeRetrievalConfigurationId: characterKnowledgeRetrievalConfiguration?.id,
       characterMemoryRetrievalConfigurationId: characterMemoryRetrievalConfiguration?.id,
       lastUpdatedTimestamp: Date.now(),
-    } as RawProfile;
+    } as Record<string, unknown>;
+
+    delete payload.enableFaceDetection;
+    delete payload.faceDetectionIntervalMs;
+    delete payload.faceDetectionProbabilityThreshold;
+
+    return payload as unknown as RawProfile;
   },
 });
 
