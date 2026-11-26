@@ -373,16 +373,9 @@ class ChatSessionCoordinator {
             
             let turnData = d;
             const protagonist = this.getLocalProtagonist(turnData);
-            if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile)) {
+            if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile) && !frontCameraEngine.isFrameStreamingActive()) {
                 try {
-                    let freshImageBase64: string | undefined;
-                    if (frontCameraEngine.isFrameStreamingActive()) {
-                        const frames = frontCameraEngine.getTurnFrames(1, 0);
-                        freshImageBase64 = frames?.[0];
-                    } else {
-                        freshImageBase64 = (await frontCameraEngine.captureImage()) || undefined;
-                    }
-
+                    const freshImageBase64 = await frontCameraEngine.captureImage();
                     if (freshImageBase64) {
                         const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
                         if (
@@ -409,14 +402,6 @@ class ChatSessionCoordinator {
                                     };
                                 }
                             }
-                        } else {
-                            const currentLocId = getCurrentLocationId(turnData, protagonist) || 'global';
-                            const dummyMsg = createMessage(protagonist, {
-                                textContent: '',
-                                frontCameraImage: freshImageBase64,
-                                interactionData: turnData,
-                            }) as ChatMessage;
-                            turnData = addMessageToInteractionData(turnData, dummyMsg, currentLocId);
                         }
                     }
                 } catch (e) {
@@ -1003,12 +988,10 @@ class ChatSessionCoordinator {
             let frontCameraImageBase64: string | undefined;
             if (getEffectiveUseFrontCameraImage(protagonist, currentData.profile)) {
                 try {
-                    if (frontCameraEngine.isFrameStreamingActive()) {
-                        const frames = frontCameraEngine.getTurnFrames(1, 0);
-                        frontCameraImageBase64 = frames?.[0];
-                    } else {
-                        frontCameraImageBase64 = (await frontCameraEngine.captureImage()) || undefined;
-                    }
+                    const img = (frontCameraEngine.isFrameStreamingActive()
+                        ? frontCameraEngine.getLatestFrame()?.dataUrl
+                        : undefined) ?? (await frontCameraEngine.captureImage());
+                    if (img) frontCameraImageBase64 = img;
                 } catch (e) {
                     console.warn('Directed action front camera capture failed:', e);
                 }
@@ -1110,12 +1093,10 @@ class ChatSessionCoordinator {
 
                 if (getEffectiveUseFrontCameraImage(protagonistChar, currentData.profile)) {
                     try {
-                        if (frontCameraEngine.isFrameStreamingActive()) {
-                            const frames = frontCameraEngine.getTurnFrames(1, 0);
-                            freshFrontCameraImage = frames?.[0];
-                        } else {
-                            freshFrontCameraImage = (await frontCameraEngine.captureImage()) || undefined;
-                        }
+                        const img = (frontCameraEngine.isFrameStreamingActive()
+                            ? frontCameraEngine.getLatestFrame()?.dataUrl
+                            : undefined) ?? (await frontCameraEngine.captureImage());
+                        if (img) freshFrontCameraImage = img;
                     } catch (e) {
                         console.warn('Regenerate front camera capture failed:', e);
                     }
@@ -1301,7 +1282,7 @@ class ChatSessionCoordinator {
 
             if (!this.acquireLock()) return;
             const lockEpoch = this.currentLockEpoch;
-            this.runSequence(state.interactionData)
+            this.runSequence(currentData)
                 .then(() => this.resetAutonomousPacing())
                 .finally(() => this.releaseLockIfCurrent(lockEpoch));
         }
@@ -1405,52 +1386,40 @@ class ChatSessionCoordinator {
         (async () => {
             let turnData = { ...currentData };
 
-            // Multimodal camera snapshot capture for VLM
+            // Instant multimodal camera shutter upon silent visual event
             if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile)) {
                 try {
-                    let freshImageBase64: string | undefined;
                     if (frontCameraEngine.isFrameStreamingActive()) {
-                        const frames = frontCameraEngine.getTurnFrames(1, 0);
-                        freshImageBase64 = frames?.[0];
+                        frontCameraEngine.getTurnFrames(1, 0);
                     } else {
-                        freshImageBase64 = (await frontCameraEngine.captureImage()) || undefined;
-                    }
-
-                    if (freshImageBase64) {
-                        const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
-                        if (
-                            latestMsgInfo &&
-                            (latestMsgInfo.message.messageType === 'chat' ||
-                                latestMsgInfo.message.messageType === 'whisper' ||
-                                latestMsgInfo.message.messageType === 'tool')
-                        ) {
-                            const locMessages = turnData.interactionHistories[latestMsgInfo.locationId];
-                            if (locMessages) {
-                                const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
-                                if (msgIdx !== -1) {
-                                    const updatedLocMessages = [...locMessages];
-                                    updatedLocMessages[msgIdx] = {
-                                        ...latestMsgInfo.message,
-                                        frontCameraImage: freshImageBase64,
-                                    } as ChatMessage | WhisperMessage | ToolMessage;
-                                    turnData = {
-                                        ...turnData,
-                                        interactionHistories: {
-                                            ...turnData.interactionHistories,
-                                            [latestMsgInfo.locationId]: updatedLocMessages,
-                                        },
-                                    };
+                        const freshImageBase64 = await frontCameraEngine.captureImage();
+                        if (freshImageBase64) {
+                            const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
+                            if (
+                                latestMsgInfo &&
+                                (latestMsgInfo.message.messageType === 'chat' ||
+                                    latestMsgInfo.message.messageType === 'whisper' ||
+                                    latestMsgInfo.message.messageType === 'tool')
+                            ) {
+                                const locMessages = turnData.interactionHistories[latestMsgInfo.locationId];
+                                if (locMessages) {
+                                    const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
+                                    if (msgIdx !== -1) {
+                                        const updatedLocMessages = [...locMessages];
+                                        updatedLocMessages[msgIdx] = {
+                                            ...latestMsgInfo.message,
+                                            frontCameraImage: freshImageBase64,
+                                        } as ChatMessage | WhisperMessage | ToolMessage;
+                                        turnData = {
+                                            ...turnData,
+                                            interactionHistories: {
+                                                ...turnData.interactionHistories,
+                                                [latestMsgInfo.locationId]: updatedLocMessages,
+                                            },
+                                        };
+                                    }
                                 }
                             }
-                        } else {
-                            // If user hasn't typed anything yet, create a baseline message carrying the image so the VLM sees it
-                            const currentLocId = getCurrentLocationId(turnData, protagonist) || 'global';
-                            const dummyMsg = createMessage(protagonist, {
-                                textContent: '',
-                                frontCameraImage: freshImageBase64,
-                                interactionData: turnData,
-                            }) as ChatMessage;
-                            turnData = addMessageToInteractionData(turnData, dummyMsg, currentLocId);
                         }
                     }
                 } catch (e) {
@@ -1500,51 +1469,40 @@ class ChatSessionCoordinator {
         (async () => {
             let turnData = { ...currentData };
 
-            // Multimodal camera snapshot capture upon hearing acoustic cue
+            // Instant multimodal camera shutter upon hearing acoustic cue
             if (protagonist && getEffectiveUseFrontCameraImage(protagonist, turnData.profile)) {
                 try {
-                    let freshImageBase64: string | undefined;
                     if (frontCameraEngine.isFrameStreamingActive()) {
-                        const frames = frontCameraEngine.getTurnFrames(1, 0);
-                        freshImageBase64 = frames?.[0];
+                        frontCameraEngine.getTurnFrames(1, 0);
                     } else {
-                        freshImageBase64 = (await frontCameraEngine.captureImage()) || undefined;
-                    }
-
-                    if (freshImageBase64) {
-                        const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
-                        if (
-                            latestMsgInfo &&
-                            (latestMsgInfo.message.messageType === 'chat' ||
-                                latestMsgInfo.message.messageType === 'whisper' ||
-                                latestMsgInfo.message.messageType === 'tool')
-                        ) {
-                            const locMessages = turnData.interactionHistories[latestMsgInfo.locationId];
-                            if (locMessages) {
-                                const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
-                                if (msgIdx !== -1) {
-                                    const updatedLocMessages = [...locMessages];
-                                    updatedLocMessages[msgIdx] = {
-                                        ...latestMsgInfo.message,
-                                        frontCameraImage: freshImageBase64,
-                                    } as ChatMessage | WhisperMessage | ToolMessage;
-                                    turnData = {
-                                        ...turnData,
-                                        interactionHistories: {
-                                            ...turnData.interactionHistories,
-                                            [latestMsgInfo.locationId]: updatedLocMessages,
-                                        },
-                                    };
+                        const freshImageBase64 = await frontCameraEngine.captureImage();
+                        if (freshImageBase64) {
+                            const latestMsgInfo = findLatestMessage(turnData, protagonist, ['chat', 'whisper', 'tool']);
+                            if (
+                                latestMsgInfo &&
+                                (latestMsgInfo.message.messageType === 'chat' ||
+                                    latestMsgInfo.message.messageType === 'whisper' ||
+                                    latestMsgInfo.message.messageType === 'tool')
+                            ) {
+                                const locMessages = turnData.interactionHistories[latestMsgInfo.locationId];
+                                if (locMessages) {
+                                    const msgIdx = locMessages.findIndex(m => m.id === latestMsgInfo.message.id);
+                                    if (msgIdx !== -1) {
+                                        const updatedLocMessages = [...locMessages];
+                                        updatedLocMessages[msgIdx] = {
+                                            ...latestMsgInfo.message,
+                                            frontCameraImage: freshImageBase64,
+                                        } as ChatMessage | WhisperMessage | ToolMessage;
+                                        turnData = {
+                                            ...turnData,
+                                            interactionHistories: {
+                                                ...turnData.interactionHistories,
+                                                [latestMsgInfo.locationId]: updatedLocMessages,
+                                            },
+                                        };
+                                    }
                                 }
                             }
-                        } else {
-                            const currentLocId = getCurrentLocationId(turnData, protagonist) || 'global';
-                            const dummyMsg = createMessage(protagonist, {
-                                textContent: '',
-                                frontCameraImage: freshImageBase64,
-                                interactionData: turnData,
-                            }) as ChatMessage;
-                            turnData = addMessageToInteractionData(turnData, dummyMsg, currentLocId);
                         }
                     }
                 } catch (e) {
