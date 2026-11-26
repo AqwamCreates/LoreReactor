@@ -1219,10 +1219,6 @@ const profileRepo = createRepository<Profile, RawProfile>({
         characterMemoryRetrievalConfiguration: () => memoryRetrievalConfiguration,
     });
 
-    delete (hydrated as Record<string, unknown>).enableFaceDetection;
-    delete (hydrated as Record<string, unknown>).faceDetectionIntervalMs;
-    delete (hydrated as Record<string, unknown>).faceDetectionProbabilityThreshold;
-
     return hydrated;
   },
   serialize: (profile) => {
