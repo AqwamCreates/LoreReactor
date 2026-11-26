@@ -15,6 +15,7 @@ import { speculativeMarkovEngine } from './SpeculativeMarkovEngine';
 import { runSummarization } from './SummarizationEngine';
 import { textToSpeechEngine } from './TextToSpeechEngine';
 import { frontCameraEngine } from './FrontCameraEngine';
+import { faceDetectionEngine } from './FaceDetectionEngine';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 
 import { createMessage, findLatestMessage, getMessageById } from '../utilities/messageLogic';
@@ -25,7 +26,7 @@ import { detectName } from '../utilities/nameDetection';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { evaluateAutoResumeSignals, injectStopSignals, broadcastToolStateChanges, hasTextContent, NO_ARG_TOOLS, HOST_ONLY_TOOLS, finalizeMessageById } from '../utilities/chatSessionLogic';
 import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost } from '../utilities/dynamicCharacterLogic';
-import { generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, getEffectiveUseFrontCameraImage } from '../utilities/characterLogic';
+import { generateChatStaminaForInteractionData, generateActionStaminaForInteractionData, consumeChatStaminaForMessage, getEffectiveUseFrontCameraImage, getEffectiveVisualSensitivity } from '../utilities/characterLogic';
 import { saveRawInteractionData } from '../storages/serverStorage';
 import { learnFromUserMessage } from './ActionFormatEngine';
 import { defaultInputStrategy } from '../dictionaries/defaults';
@@ -100,6 +101,7 @@ class ChatSessionCoordinator {
     private isSkippingThinking = false;
     private pendingSkipText: string | null = null;
     private activeMessageId: string | null = null;
+    private lastFaceMotionCheckAt = 0;
     private deps!: CoordinatorDependencies;
 
     private characterActor = new CharacterActor();
@@ -252,6 +254,8 @@ class ChatSessionCoordinator {
             const preToolData = updatedData;
             updatedData = processPendingToolActions(updatedData, this.deps?.allCharacters || [], { onToast: this.deps?.addToast });
             broadcastToolStateChanges(preToolData, updatedData, this.deps?.onStateBroadcast);
+
+            faceDetectionEngine.resetAccumulatedMotion();
 
             return { interactionData: updatedData, isCompleted: true };
         };
@@ -566,6 +570,10 @@ class ChatSessionCoordinator {
         }
 
         const postTurnCount = getGlobalMessageHistory(currentData).length;
+        if (postTurnCount > preTurnCount) {
+            faceDetectionEngine.resetAccumulatedMotion();
+        }
+
         if (!options?.skipAmbientNarration && postTurnCount <= preTurnCount && currentData.profile?.enableAmbientNarration && !this.wasStopped) {
             const ambientData = await this.generateAmbientNarration(currentData, this.abortController.signal);
             if (ambientData) {
@@ -690,7 +698,6 @@ class ChatSessionCoordinator {
                 return;
             }
 
-            // Ensure user slash commands with no args execute instead of inspecting schema
             if (!slashInvocation.args) {
                 slashInvocation.args = '{}';
             }
@@ -1113,6 +1120,53 @@ class ChatSessionCoordinator {
             .then(() => this.resetAutonomousPacing())
             .catch((e) => console.warn('Face detection turn sequence failed:', e))
             .finally(() => this.releaseLockIfCurrent(lockEpoch));
+    }
+
+    public handleFaceMotion(accumulatedMotion: number): void {
+        if (!this.deps || this.deps.isMultiplayerClient) return;
+        if (this.isGenerating) return;
+
+        const state = useChatStore.getState();
+        const currentData = state.interactionData;
+        if (!currentData || !currentData.profile?.enableFaceDetection) return;
+
+        const hasActiveModel = Boolean(state.selectedLanguageModel || state.activeStrategy);
+        if (!hasActiveModel) return;
+
+        const now = Date.now();
+        const minCooldown = Math.max(1000, currentData.profile.faceDetectionIntervalMs || 1000);
+        if (now - this.lastFaceMotionCheckAt < minCooldown) return;
+        this.lastFaceMotionCheckAt = now;
+
+        const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
+        const protagonistIdSet = new Set(currentData.protagonistIds || []);
+        const protagonistId = currentData.protagonistIds?.[0];
+        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+
+        const aiCandidates = (hasLocations && protagonist)
+            ? getCoLocatedParticipants(currentData, protagonist).filter(p => !protagonistIdSet.has(p.id))
+            : currentData.participants.filter(p => !protagonistIdSet.has(p.id));
+
+        let maxVisualSensitivity = 0;
+        for (const char of aiCandidates) {
+            const vs = getEffectiveVisualSensitivity(char, currentData.profile);
+            if (vs > maxVisualSensitivity) maxVisualSensitivity = vs;
+        }
+        if (maxVisualSensitivity <= 0) return;
+
+        const triggerProbability = 1 - Math.exp(-0.35 * accumulatedMotion * maxVisualSensitivity);
+        if (Math.random() >= triggerProbability) return;
+
+        if (!this.acquireLock()) return;
+        const lockEpoch = this.currentLockEpoch;
+
+        this.runSequence(currentData, undefined, { skipAmbientNarration: true })
+            .then(() => this.resetAutonomousPacing())
+            .catch((e) => console.warn('Face motion turn sequence failed:', e))
+            .finally(() => {
+                faceDetectionEngine.resetAccumulatedMotion();
+                this.releaseLockIfCurrent(lockEpoch);
+            });
     }
 }
 

@@ -200,7 +200,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         };
     }, [autonomousMode, activeChatId, options.isMultiplayerClient]);
 
-    // Face Presence Detection Lifecycle
+    // Face Presence & Head Motion Detection Lifecycle
     const enableFaceDetection = Boolean(interactionData?.profile?.enableFaceDetection);
     const faceDetectionIntervalMs = interactionData?.profile?.faceDetectionIntervalMs ?? 1000;
     const faceDetectionProbabilityThreshold = interactionData?.profile?.faceDetectionProbabilityThreshold ?? 0.75;
@@ -224,6 +224,9 @@ export function useChatSession(options: UseChatSessionOptions) {
                 getVideoElement: () => frontCameraEngine.getVideoElement(true),
                 onPresenceChange: (isDetected) => {
                     chatCoordinator.handleFacePresenceChange(isDetected);
+                },
+                onMotionSpike: (accumulatedMotion) => {
+                    chatCoordinator.handleFaceMotion(accumulatedMotion);
                 },
                 intervalMs: faceConfigRef.current.intervalMs,
                 probabilityThreshold: faceConfigRef.current.probabilityThreshold,

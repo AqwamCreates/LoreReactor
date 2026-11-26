@@ -21,6 +21,20 @@ function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
     return msg.messageType === 'chat' || msg.messageType === 'whisper';
 }
 
+function isCoLocatedWithProtagonist(character: Character, data: InteractionData): boolean {
+    const hasLocations = Boolean(data.locations && data.locations.length > 0);
+    const protagIds = data.protagonistIds || [];
+    if (!hasLocations || protagIds.length === 0) return true;
+
+    const charLocId = getCurrentLocationId(data, character);
+    if (charLocId === undefined) return false;
+
+    return protagIds.some(pId => {
+        const p = data.participants.find(part => part.id === pId);
+        return p ? getCurrentLocationId(data, p) === charLocId : false;
+    });
+}
+
 export function countParagraphs(text: string): number {
     if (!text) return 0;
     return (text.match(/\n\n/g) || []).length + 1;
@@ -139,15 +153,8 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     const timeSince = getTimeSinceLastActionMs(data, character);
     const timeMultiplier = 1 + Math.log1p(timeSince / 1000);
 
-    // Physical Visual Reactiveness boost (applies if co-located with protagonist)
-    const charLocId = getCurrentLocationId(data, character);
-    const protagonistId = data.protagonistIds?.[0];
-    const protagonist = protagonistId ? data.participants.find(p => p.id === protagonistId) : null;
-    const protagLocId = protagonist ? getCurrentLocationId(data, protagonist) : undefined;
-    const isCoLocated = charLocId !== undefined && charLocId === protagLocId;
-
     let visualBoost = 1;
-    if (isCoLocated) {
+    if (isCoLocatedWithProtagonist(character, data)) {
         const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
         const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
         visualBoost = 1 + Math.log1p(accumulatedMotion * visualSensitivity);
@@ -392,11 +399,14 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity * 2);
     const nameFactor = 1 / nameMentionBoost;
 
-    // Visual Motion Acceleration
-    const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
-    const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
-    const visualBoost = 1 + Math.log1p(accumulatedMotion * visualSensitivity * 2);
-    const visualFactor = 1 / visualBoost;
+    // Visual Motion Acceleration (only if co-located with protagonist)
+    let visualFactor = 1;
+    if (isCoLocatedWithProtagonist(character, data)) {
+        const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
+        const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
+        const visualBoost = 1 + Math.log1p(accumulatedMotion * visualSensitivity * 2);
+        visualFactor = 1 / visualBoost;
+    }
 
     const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
     const consecutiveTurns = getConsecutiveTurnsByCharacter(thread, character.id);

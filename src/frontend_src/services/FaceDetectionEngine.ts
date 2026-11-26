@@ -59,6 +59,7 @@ class FaceDetectionEngine {
     // Head Movement & Motion Accumulator State
     private previousBox: { cx: number; cy: number; area: number } | null = null;
     private accumulatedMotion = 0;
+    private lastMotionDelta = 0;
     private onMotionSpike: ((accumulatedMotion: number) => void) | null = null;
 
     // Monitoring state
@@ -257,6 +258,7 @@ class FaceDetectionEngine {
         this.inputBuffer = null;
         this.previousBox = null;
         this.accumulatedMotion = 0;
+        this.lastMotionDelta = 0;
         this.setStatus('idle');
         console.log('[FaceDetectionEngine] Unloaded.');
     }
@@ -289,6 +291,7 @@ class FaceDetectionEngine {
     /** Clears motion energy once an AI has successfully responded to the movement */
     resetAccumulatedMotion(): void {
         this.accumulatedMotion = 0;
+        this.lastMotionDelta = 0;
         this.previousBox = null;
     }
 
@@ -381,12 +384,16 @@ class FaceDetectionEngine {
                         // Noise gate: ignore sub-pixel tremor or sensor noise
                         const motionDelta = rawMotion > 0.02 ? rawMotion : 0;
 
+                        this.lastMotionDelta = motionDelta;
                         // Leaky integration with a soft ceiling at 5.0
                         this.accumulatedMotion = Math.min(5.0, (this.accumulatedMotion * 0.82) + motionDelta);
+                    } else {
+                        this.lastMotionDelta = 0;
                     }
                     this.previousBox = { cx, cy, area };
                 } else {
                     // Decay motion when face is out of view
+                    this.lastMotionDelta = 0;
                     this.accumulatedMotion *= 0.70;
                     this.previousBox = null;
                 }
@@ -452,6 +459,7 @@ class FaceDetectionEngine {
         this.probabilityThreshold = clampThreshold(options.probabilityThreshold);
         this.lastDetectedStatus = null;
         this.accumulatedMotion = 0;
+        this.lastMotionDelta = 0;
         this.previousBox = null;
 
         if (options.devicePreference) {
@@ -512,6 +520,7 @@ class FaceDetectionEngine {
         this.onMotionSpike = null;
         this.lastDetectedStatus = null;
         this.accumulatedMotion = 0;
+        this.lastMotionDelta = 0;
         this.previousBox = null;
         this.setStatus('idle');
 
@@ -523,6 +532,7 @@ class FaceDetectionEngine {
     resetBaseline(): void {
         this.lastDetectedStatus = null;
         this.accumulatedMotion = 0;
+        this.lastMotionDelta = 0;
         this.previousBox = null;
     }
 
@@ -563,8 +573,8 @@ class FaceDetectionEngine {
                         this.onPresenceChange?.(isDetected, maxFaceProb);
                     }
 
-                    // If head motion spikes significantly, notify listener
-                    if (this.accumulatedMotion >= 2.0) {
+                    // Notify listener during active head movement
+                    if (this.lastMotionDelta > 0 && this.accumulatedMotion > 0.1) {
                         this.onMotionSpike?.(this.accumulatedMotion);
                     }
                 }
