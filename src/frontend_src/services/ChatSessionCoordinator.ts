@@ -16,6 +16,7 @@ import { runSummarization } from './SummarizationEngine';
 import { textToSpeechEngine } from './TextToSpeechEngine';
 import { frontCameraEngine } from './FrontCameraEngine';
 import { faceDetectionEngine, type VisualShutterType } from './FaceDetectionEngine';
+import { audioPerceptionEngine } from './AudioPerceptionEngine';
 import { detectContext, composeFallbackSentence } from '../ambientNarration/composer';
 
 import { createMessage, findLatestMessage, getMessageById } from '../utilities/messageLogic';
@@ -25,7 +26,7 @@ import { getGlobalMessageHistory, getLocalMessageHistory } from '../utilities/ti
 import { detectName } from '../utilities/nameDetection';
 import { getUniversalMessageFilterFlags } from '../utilities/promptLogic';
 import { evaluateAutoResumeSignals, injectStopSignals, broadcastToolStateChanges, hasTextContent, NO_ARG_TOOLS, HOST_ONLY_TOOLS, finalizeMessageById } from '../utilities/chatSessionLogic';
-import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost } from '../utilities/dynamicCharacterLogic';
+import { computeModulatedStaminaRegenationAmounts, computeChatStaminaConsumptionCost, computeMovementCost, weightedSample } from '../utilities/dynamicCharacterLogic';
 import { 
     generateChatStaminaForInteractionData, 
     generateActionStaminaForInteractionData, 
@@ -200,6 +201,36 @@ class ChatSessionCoordinator {
         return this.deps.allPromptBlocks.filter(pb => strategy.includes(pb.id));
     }
 
+    /**
+     * Weighted random sampling across co-located AI candidates based on their sensory sensitivity.
+     * Avoids deterministic max() selection so turn initiation exhibits natural variation.
+     */
+    private sampleRealTimeObserver(
+        currentData: InteractionData,
+        modality: 'visual' | 'audio'
+    ): { character: Character; sensitivity: number } | null {
+        const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
+        const protagonistIdSet = new Set(currentData.protagonistIds || []);
+        const protagonistId = currentData.protagonistIds?.[0];
+        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+
+        const aiCandidates = (hasLocations && protagonist)
+            ? getCoLocatedParticipants(currentData, protagonist).filter(p => !protagonistIdSet.has(p.id))
+            : currentData.participants.filter(p => !protagonistIdSet.has(p.id));
+
+        const pool: { item: { character: Character; sensitivity: number }; weight: number }[] = [];
+        for (const char of aiCandidates) {
+            const sensitivity = modality === 'visual'
+                ? getEffectiveVisualSensitivity(char, currentData.profile)
+                : getEffectiveAudioSensitivity(char, currentData.profile);
+            if (sensitivity > 0) {
+                pool.push({ item: { character: char, sensitivity }, weight: sensitivity });
+            }
+        }
+
+        return weightedSample(pool);
+    }
+
     public resetAutonomousPacing(): void {
         const state = useChatStore.getState();
         if (state.interactionData?.profile?.autonomousMode && !this.deps?.isMultiplayerClient) {
@@ -265,6 +296,7 @@ class ChatSessionCoordinator {
             broadcastToolStateChanges(preToolData, updatedData, this.deps?.onStateBroadcast);
 
             faceDetectionEngine.resetAccumulatedMotion();
+            audioPerceptionEngine.resetAccumulatedAudio();
 
             return { interactionData: updatedData, isCompleted: true };
         };
@@ -581,6 +613,7 @@ class ChatSessionCoordinator {
         const postTurnCount = getGlobalMessageHistory(currentData).length;
         if (postTurnCount > preTurnCount) {
             faceDetectionEngine.resetAccumulatedMotion();
+            audioPerceptionEngine.resetAccumulatedAudio();
         }
 
         if (!options?.skipAmbientNarration && postTurnCount <= preTurnCount && currentData.profile?.enableAmbientNarration && !this.wasStopped) {
@@ -1122,13 +1155,23 @@ class ChatSessionCoordinator {
         const hasActiveModel = Boolean(state.selectedLanguageModel || state.activeStrategy);
         if (!hasActiveModel) return;
 
+        const sampled = this.sampleRealTimeObserver(currentData, 'visual');
+        if (!sampled) return;
+
+        const triggerProbability = 1 - Math.exp(-2.5 * sampled.sensitivity);
+        if (Math.random() >= triggerProbability) return;
+
         if (!this.acquireLock()) return;
         const lockEpoch = this.currentLockEpoch;
 
         this.runSequence(currentData, undefined, { skipAmbientNarration: true })
             .then(() => this.resetAutonomousPacing())
             .catch((e) => console.warn('Real-time presence turn sequence failed:', e))
-            .finally(() => this.releaseLockIfCurrent(lockEpoch));
+            .finally(() => {
+                faceDetectionEngine.resetAccumulatedMotion();
+                audioPerceptionEngine.resetAccumulatedAudio();
+                this.releaseLockIfCurrent(lockEpoch);
+            });
     }
 
     public handleFaceMotion(accumulatedMotion: number): void {
@@ -1147,23 +1190,10 @@ class ChatSessionCoordinator {
         if (now - this.lastFaceMotionCheckAt < minCooldown) return;
         this.lastFaceMotionCheckAt = now;
 
-        const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
-        const protagonistIdSet = new Set(currentData.protagonistIds || []);
-        const protagonistId = currentData.protagonistIds?.[0];
-        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+        const sampled = this.sampleRealTimeObserver(currentData, 'visual');
+        if (!sampled) return;
 
-        const aiCandidates = (hasLocations && protagonist)
-            ? getCoLocatedParticipants(currentData, protagonist).filter(p => !protagonistIdSet.has(p.id))
-            : currentData.participants.filter(p => !protagonistIdSet.has(p.id));
-
-        let maxVisualSensitivity = 0;
-        for (const char of aiCandidates) {
-            const vs = getEffectiveVisualSensitivity(char, currentData.profile);
-            if (vs > maxVisualSensitivity) maxVisualSensitivity = vs;
-        }
-        if (maxVisualSensitivity <= 0) return;
-
-        const triggerProbability = 1 - Math.exp(-0.35 * accumulatedMotion * maxVisualSensitivity);
+        const triggerProbability = 1 - Math.exp(-0.35 * accumulatedMotion * sampled.sensitivity);
         if (Math.random() >= triggerProbability) return;
 
         if (!this.acquireLock()) return;
@@ -1174,6 +1204,7 @@ class ChatSessionCoordinator {
             .catch((e) => console.warn('Real-time visual motion turn sequence failed:', e))
             .finally(() => {
                 faceDetectionEngine.resetAccumulatedMotion();
+                audioPerceptionEngine.resetAccumulatedAudio();
                 this.releaseLockIfCurrent(lockEpoch);
             });
     }
@@ -1194,27 +1225,17 @@ class ChatSessionCoordinator {
         if (now - this.lastVisualShutterCheckAt < minCooldown) return;
         this.lastVisualShutterCheckAt = now;
 
-        const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
-        const protagonistIdSet = new Set(currentData.protagonistIds || []);
-        const protagonistId = currentData.protagonistIds?.[0];
-        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+        const sampled = this.sampleRealTimeObserver(currentData, 'visual');
+        if (!sampled) return;
 
-        const aiCandidates = (hasLocations && protagonist)
-            ? getCoLocatedParticipants(currentData, protagonist).filter(p => !protagonistIdSet.has(p.id))
-            : currentData.participants.filter(p => !protagonistIdSet.has(p.id));
-
-        let maxVisualSensitivity = 0;
-        for (const char of aiCandidates) {
-            const vs = getEffectiveVisualSensitivity(char, currentData.profile);
-            if (vs > maxVisualSensitivity) maxVisualSensitivity = vs;
-        }
-        if (maxVisualSensitivity <= 0) return;
-
-        const triggerProbability = 1 - Math.exp(-1.8 * maxVisualSensitivity);
+        const triggerProbability = 1 - Math.exp(-1.8 * sampled.sensitivity);
         if (Math.random() >= triggerProbability) return;
 
         if (!this.acquireLock()) return;
         const lockEpoch = this.currentLockEpoch;
+
+        const protagonistId = currentData.protagonistIds?.[0];
+        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
 
         (async () => {
             let turnData = { ...currentData };
@@ -1266,6 +1287,7 @@ class ChatSessionCoordinator {
             .catch((e) => console.warn(`Real-time visual shutter (${shutterType}) turn sequence failed:`, e))
             .finally(() => {
                 faceDetectionEngine.resetAccumulatedMotion();
+                audioPerceptionEngine.resetAccumulatedAudio();
                 this.releaseLockIfCurrent(lockEpoch);
             });
     }
@@ -1286,27 +1308,17 @@ class ChatSessionCoordinator {
         if (now - this.lastAudioEventCheckAt < minCooldown) return;
         this.lastAudioEventCheckAt = now;
 
-        const hasLocations = Boolean(currentData.locations && currentData.locations.length > 0);
-        const protagonistIdSet = new Set(currentData.protagonistIds || []);
-        const protagonistId = currentData.protagonistIds?.[0];
-        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
+        const sampled = this.sampleRealTimeObserver(currentData, 'audio');
+        if (!sampled) return;
 
-        const aiCandidates = (hasLocations && protagonist)
-            ? getCoLocatedParticipants(currentData, protagonist).filter(p => !protagonistIdSet.has(p.id))
-            : currentData.participants.filter(p => !protagonistIdSet.has(p.id));
-
-        let maxAudioSensitivity = 0;
-        for (const char of aiCandidates) {
-            const as = getEffectiveAudioSensitivity(char, currentData.profile);
-            if (as > maxAudioSensitivity) maxAudioSensitivity = as;
-        }
-        if (maxAudioSensitivity <= 0) return;
-
-        const triggerProbability = 1 - Math.exp(-0.45 * eventConfidence * maxAudioSensitivity);
+        const triggerProbability = 1 - Math.exp(-0.45 * eventConfidence * sampled.sensitivity);
         if (Math.random() >= triggerProbability) return;
 
         if (!this.acquireLock()) return;
         const lockEpoch = this.currentLockEpoch;
+
+        const protagonistId = currentData.protagonistIds?.[0];
+        const protagonist = protagonistId ? currentData.participants.find(p => p.id === protagonistId) : null;
 
         (async () => {
             let turnData = { ...currentData };
@@ -1356,7 +1368,11 @@ class ChatSessionCoordinator {
         })()
             .then(() => this.resetAutonomousPacing())
             .catch((e) => console.warn(`Real-time audio event (${detectedEvent}) turn sequence failed:`, e))
-            .finally(() => this.releaseLockIfCurrent(lockEpoch));
+            .finally(() => {
+                faceDetectionEngine.resetAccumulatedMotion();
+                audioPerceptionEngine.resetAccumulatedAudio();
+                this.releaseLockIfCurrent(lockEpoch);
+            });
     }
 }
 

@@ -48,7 +48,7 @@ class AudioPerceptionEngine {
     private loadError: string | null = null;
     private usingWebGpu = false;
     private sessionEpoch = 0;
-    private inferPromise: Promise<void> | null = null;
+    private inferPromise: Promise<boolean> | null = null;
 
     private currentDevicePreference: deviceType = 'auto';
 
@@ -62,6 +62,9 @@ class AudioPerceptionEngine {
     private circularBuffer = new Float32Array(SAMPLE_RATE * 2);
     private writeIndex = 0;
     private totalSamplesReceived = 0;
+
+    // Acoustic Excitation Accumulator (0.0 to 5.0)
+    private accumulatedAudio = 0;
 
     // State
     private status: AudioPerceptionStatus = 'idle';
@@ -102,15 +105,27 @@ class AudioPerceptionEngine {
         return this.status;
     }
 
+    /** Returns current accumulated acoustic excitation (0.0 to 5.0) */
+    getAccumulatedAudio(): number {
+        return this.accumulatedAudio;
+    }
+
+    /** Clears acoustic energy once an AI has responded */
+    resetAccumulatedAudio(): void {
+        this.accumulatedAudio = 0;
+    }
+
     /** Prevents the AI's own TTS speaker playback from triggering YAMNet */
     setPaused(paused: boolean): void {
         if (this.isPaused === paused) return;
         this.isPaused = paused;
-        if (!paused) {
-            // Flush leftover speaker echoes on resume
+        if (paused) {
+            this.accumulatedAudio = 0;
+        } else {
             this.circularBuffer.fill(0);
             this.writeIndex = 0;
             this.totalSamplesReceived = 0;
+            this.accumulatedAudio = 0;
         }
     }
 
@@ -315,19 +330,20 @@ class AudioPerceptionEngine {
         return Math.sqrt(sum / samples.length);
     }
 
-    async detectFromBuffer(): Promise<void> {
-        if (this.isPaused || this.inferPromise || !this.session) return;
+    async detectFromBuffer(): Promise<boolean> {
+        if (this.isPaused || !this.session) return false;
+        if (this.inferPromise) return this.inferPromise;
 
         const samples = this.getLatestSampleWindow();
-        if (!samples) return;
+        if (!samples) return false;
 
         // ─── NOISE GATE: 0% CPU WASTE ON SILENCE ───
         const rms = this.computeRms(samples);
-        if (rms < SILENCE_RMS_THRESHOLD) return;
+        if (rms < SILENCE_RMS_THRESHOLD) return false;
 
         const runEpoch = this.sessionEpoch;
 
-        const task = (async (): Promise<void> => {
+        const task = (async (): Promise<boolean> => {
             let inputTensor: ort.Tensor | null = null;
             let results: ort.InferenceSession.OnnxValueMapType | null = null;
 
@@ -336,11 +352,11 @@ class AudioPerceptionEngine {
                 inputTensor = new ort.Tensor('float32', samples, [samples.length]);
                 results = await this.session!.run({ [inputName]: inputTensor });
 
-                if (runEpoch !== this.sessionEpoch || this.isPaused) return;
+                if (runEpoch !== this.sessionEpoch || this.isPaused) return false;
 
                 const outputName = this.session!.outputNames[0] || 'output_0';
                 const outputTensor = results[outputName];
-                if (!outputTensor) return;
+                if (!outputTensor) return false;
 
                 const scoresData = outputTensor.data as Float32Array;
                 const numClasses = 521;
@@ -371,9 +387,13 @@ class AudioPerceptionEngine {
                 }
 
                 if (bestClass && maxConfidence > 0) {
+                    this.accumulatedAudio = Math.min(5.0, (this.accumulatedAudio * 0.80) + (maxConfidence * 2.5));
                     console.log(`[AudioPerceptionEngine] Detected acoustic cue: ${bestClass} (${(maxConfidence * 100).toFixed(1)}%)`);
                     this.onAudioEvent?.(bestClass, maxConfidence);
+                    return true;
                 }
+
+                return false;
             } catch (e) {
                 console.warn('[AudioPerceptionEngine] Inference failed:', e);
                 if (this.usingWebGpu && runEpoch === this.sessionEpoch) {
@@ -395,6 +415,7 @@ class AudioPerceptionEngine {
                         this.usingWebGpu = false;
                     }
                 }
+                return false;
             } finally {
                 if (results) {
                     for (const tensor of Object.values(results)) {
@@ -409,7 +430,7 @@ class AudioPerceptionEngine {
 
         this.inferPromise = task;
         try {
-            await task;
+            return await task;
         } finally {
             if (this.inferPromise === task) {
                 this.inferPromise = null;
@@ -428,6 +449,7 @@ class AudioPerceptionEngine {
 
         this.onAudioEvent = options.onAudioEvent;
         this.intervalMs = Math.max(250, options.intervalMs || DEFAULT_INTERVAL_MS);
+        this.accumulatedAudio = 0;
 
         if (options.devicePreference) {
             this.setDevicePreference(options.devicePreference);
@@ -484,6 +506,7 @@ class AudioPerceptionEngine {
         }
 
         this.onAudioEvent = null;
+        this.accumulatedAudio = 0;
         this.teardownAudioStream();
         this.setStatus('idle');
 
@@ -514,6 +537,7 @@ class AudioPerceptionEngine {
         this.stopMonitoring(false);
         await this.unloadSession();
         this.loadError = null;
+        this.accumulatedAudio = 0;
         this.setStatus('idle');
         console.log('[AudioPerceptionEngine] Unloaded.');
     }
@@ -537,7 +561,10 @@ class AudioPerceptionEngine {
         const start = performance.now();
 
         try {
-            await this.detectFromBuffer();
+            const detectedThisTick = await this.detectFromBuffer();
+            if (!detectedThisTick) {
+                this.accumulatedAudio = this.accumulatedAudio < 0.01 ? 0 : this.accumulatedAudio * 0.80;
+            }
         } catch (e) {
             console.warn('[AudioPerceptionEngine] Tick error:', e);
         } finally {

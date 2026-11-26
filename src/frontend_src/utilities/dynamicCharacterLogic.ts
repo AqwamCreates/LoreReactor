@@ -10,12 +10,14 @@ import {
     getEffectiveMaximumActionStamina,
     getEffectiveChatStaminaRegenerationRate,
     getEffectiveActionStaminaRegenerationRate,
-    getEffectiveVisualSensitivity
+    getEffectiveVisualSensitivity,
+    getEffectiveAudioSensitivity
 } from './characterLogic';
 import { findLatestMessage } from './messageLogic';
 import { getCurrentLocationId, getCurrentLocation, getReachableLocations, isLocationOwner } from './locationLogic';
 import { getLocalMessageHistory, getLocationMessageHistory } from './timelineLogic';
 import { faceDetectionEngine } from '../services/FaceDetectionEngine';
+import { audioPerceptionEngine } from '../services/AudioPerceptionEngine';
 
 function hasTextContent(msg: HistoryMessage): msg is ChatMessage {
     return msg.messageType === 'chat' || msg.messageType === 'whisper';
@@ -33,6 +35,26 @@ function isCoLocatedWithProtagonist(character: Character, data: InteractionData)
         const p = data.participants.find(part => part.id === pId);
         return p ? getCurrentLocationId(data, p) === charLocId : false;
     });
+}
+
+function getRealTimeSensoryBoost(
+    character: Character,
+    data: InteractionData,
+    multiplier = 1
+): number {
+    const profile = data.profile;
+    if (!profile?.realTimeMode) return 1;
+    if (!isCoLocatedWithProtagonist(character, data)) return 1;
+
+    const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
+    const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
+    const visualBoost = Math.log1p(accumulatedMotion * visualSensitivity * multiplier);
+
+    const audioSensitivity = getEffectiveAudioSensitivity(character, profile);
+    const accumulatedAudio = audioPerceptionEngine.getAccumulatedAudio();
+    const audioBoost = Math.log1p(accumulatedAudio * audioSensitivity * multiplier);
+
+    return 1 + visualBoost + audioBoost;
 }
 
 export function countParagraphs(text: string): number {
@@ -153,14 +175,9 @@ export function computeGlobalScore(character: Character, data: InteractionData):
     const timeSince = getTimeSinceLastActionMs(data, character);
     const timeMultiplier = 1 + Math.log1p(timeSince / 1000);
 
-    let visualBoost = 1;
-    if (isCoLocatedWithProtagonist(character, data)) {
-        const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
-        const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
-        visualBoost = 1 + Math.log1p(accumulatedMotion * visualSensitivity);
-    }
+    const sensoryBoost = getRealTimeSensoryBoost(character, data, 1);
 
-    return staminaRatio * effectiveInitiative * timeMultiplier * visualBoost;
+    return staminaRatio * effectiveInitiative * timeMultiplier * sensoryBoost;
 }
 
 /**
@@ -223,13 +240,11 @@ export function computeChatScore(character: Character, data: InteractionData): n
     const nameSensitivity = getEffectiveNameSensitivity(character, profile);
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity);
 
-    // Visual Reactiveness
-    const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
-    const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
-    const visualEngagementBoost = 1 + Math.log1p(accumulatedMotion * visualSensitivity);
+    // Real-Time Visual & Acoustic Reactiveness (strictly gated by profile.realTimeMode & co-location)
+    const sensoryEngagementBoost = getRealTimeSensoryBoost(character, data, 1);
 
     return staminaWillingness * monologueFatigue * effectiveInitiative * 
-           timeMultiplier * compressedImpatience * nameMentionBoost * visualEngagementBoost;
+           timeMultiplier * compressedImpatience * nameMentionBoost * sensoryEngagementBoost;
 }
 
 export function computeActionScore(character: Character, data: InteractionData, triggeringMessageText?: string): number {
@@ -399,14 +414,9 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
     const nameMentionBoost = 1 + Math.log1p(mentionCount * nameSensitivity * 2);
     const nameFactor = 1 / nameMentionBoost;
 
-    // Visual Motion Acceleration (only if co-located with protagonist)
-    let visualFactor = 1;
-    if (isCoLocatedWithProtagonist(character, data)) {
-        const visualSensitivity = getEffectiveVisualSensitivity(character, profile);
-        const accumulatedMotion = faceDetectionEngine.getAccumulatedMotion();
-        const visualBoost = 1 + Math.log1p(accumulatedMotion * visualSensitivity * 2);
-        visualFactor = 1 / visualBoost;
-    }
+    // Real-Time Visual & Acoustic Motion Acceleration (only when realTimeMode is active & co-located)
+    const sensoryBoost = getRealTimeSensoryBoost(character, data, 2);
+    const sensoryFactor = 1 / sensoryBoost;
 
     const thread = getLocalMessageHistory(data, character, ['chat', 'whisper']);
     const consecutiveTurns = getConsecutiveTurnsByCharacter(thread, character.id);
@@ -414,7 +424,7 @@ export function computeAutonomousTickDelay(character: Character, data: Interacti
 
     const humanJitter = 0.85 + Math.random() * 0.3;
 
-    const dynamicDelay = (baseInterval / initiative) * impatienceFactor * nameFactor * visualFactor * cadenceHesitation * humanJitter;
+    const dynamicDelay = (baseInterval / initiative) * impatienceFactor * nameFactor * sensoryFactor * cadenceHesitation * humanJitter;
 
     const minFloor = Math.max(400, baseInterval * 0.3);
     const maxCeiling = baseInterval * 4;
