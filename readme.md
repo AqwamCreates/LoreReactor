@@ -84,13 +84,23 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 
 ### Tools
 
-* Over 50 tools that includes OS-level controls and web searches. This includes running shells, controlling your inputs and opening your web browsers.
+* Over 60 tools that includes OS-level controls and web searches. This includes running shells, controlling your inputs and opening your web browsers.
 
 ### Models
 
 * Uses user-defined language models and spatiotemporal models either locally or from the cloud.
 
-* Uses WebGPU / WASM for sentimental analysis, embedding and speech-to-text tasks.
+* Uses WebGPU / WASM for:
+
+  * Sentimental analysis
+
+  * Embedding
+  
+  * Speech-to-text
+ 
+  * Voice activity detection
+  
+  * Face detection
 
 * Use llama-tts.cpp for text-to-speech tasks.
 
@@ -133,6 +143,8 @@ These are orthogonal axes — a shy-but-quick character behaves differently from
 * Character names appear beneath their profile picture starting from the message after they first say their name. This preserves the surprise of reading the revelation in-dialogue before seeing it reflected in the UI.
 
 * Click on the character images to perform quick actions to that particular character in any format you want.
+
+* Have a real-time conversation using voice activity detection, speech-to-text and face detection models.
 
 ### Quality-Of-Life
 
