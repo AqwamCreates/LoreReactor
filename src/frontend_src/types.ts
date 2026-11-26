@@ -1042,7 +1042,7 @@ export interface Profile extends ObjectData {
   summarizationSteps: SummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
-  faceDetectionDeviceType: deviceType; // Default is auto.
+  visualPerceptionDeviceType: deviceType; // Default is auto.
   audioPerceptionDeviceType: deviceType; // Default is auto.
   sentimentalAnalysisDeviceType: deviceType; // Default is auto.
   textToSpeechDeviceType: deviceType; // Default is auto.
@@ -1116,7 +1116,7 @@ export interface RawProfile extends RawData {
   summarizationSteps: RawSummarizationStep[];
   summarizationInstruction?: string // If empty, then use in-built default.
   enableSpeculativeMarkov: boolean;
-  faceDetectionDeviceType: deviceType; // Default is auto.
+  visualPerceptionDeviceType: deviceType; // Default is auto.
   audioPerceptionDeviceType: deviceType; // Default is auto.
   sentimentalAnalysisDeviceType: deviceType; // Default is auto.
   textToSpeechDeviceType: deviceType; // Default is auto.

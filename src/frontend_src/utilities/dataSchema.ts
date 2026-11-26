@@ -311,7 +311,7 @@ ${characterToolsSchema}
     "minimalVolatileCacheMode": "boolean (default false). When true, volatile sections (date/time, weather, fatigue, inventory, tools, location) are forced to end of prompt regardless of input strategy ordering to maximize cache stability.",
     "doNotInjectDefaultStopTokens": "boolean (default false)",
     "enableSpeculativeMarkov": "boolean (default false). Uses a local Markov chain to predict and append highly confident tokens during streaming, reducing API output costs.",
-    "faceDetectionDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
+    "visualPerceptionDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "sentimentalAnalysisDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "textToSpeechDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",
     "speechToTextDeviceType": "'auto' | 'cpu' | 'gpu' (default 'auto')",

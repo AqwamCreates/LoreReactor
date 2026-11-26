@@ -673,7 +673,7 @@ function fillProfileDefaults(p: Record<string, unknown>): Profile {
         minimalVolatileCacheMode: (p.minimalVolatileCacheMode as boolean) ?? false,
         doNotInjectDefaultStopTokens: (p.doNotInjectDefaultStopTokens as boolean) ?? false,
         enableSpeculativeMarkov: (p.enableSpeculativeMarkov as boolean) ?? false,
-        faceDetectionDeviceType: parseDeviceType(p.faceDetectionDeviceType as deviceType) ?? 'auto',
+        visualPerceptionDeviceType: parseDeviceType(p.visualPerceptionDeviceType as deviceType) ?? 'auto',
         audioPerceptionDeviceType: parseDeviceType(p.audioPerceptionDeviceType as deviceType) ?? 'auto',
         sentimentalAnalysisDeviceType: (p.sentimentalAnalysisDeviceType as deviceType) ?? 'auto',
         textToSpeechDeviceType: (p.textToSpeechDeviceType as deviceType) ?? 'auto',

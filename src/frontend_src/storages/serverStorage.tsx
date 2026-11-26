@@ -1193,7 +1193,7 @@ const profileRepo = createRepository<Profile, RawProfile>({
         tools: {} as Record<tool, tristateInteger>,
         inputStrategy: [...defaultInputStrategy],
         enableSpeculativeMarkov: false,
-        faceDetectionDeviceType: 'auto',
+        visualPerceptionDeviceType: 'auto',
         audioPerceptionDeviceType: 'auto',
         sentimentalAnalysisDeviceType: 'auto',
         textToSpeechDeviceType: 'auto',

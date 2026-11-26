@@ -264,7 +264,7 @@ export function createDemoData(): DemoDataBundle {
     summarizationSteps: demoSummarizationSteps,
     summarizationInstruction: 'Summarize key decisions, interactions between {{protagonist}} and {{character}}, and current session context concisely.',
     enableSpeculativeMarkov: false,
-    faceDetectionDeviceType: 'auto',
+    visualPerceptionDeviceType: 'auto',
     audioPerceptionDeviceType: 'auto',
     sentimentalAnalysisDeviceType: 'auto',
     textToSpeechDeviceType: 'auto',

@@ -206,17 +206,17 @@ export function useChatSession(options: UseChatSessionOptions) {
     // Real-Time Presence & Perception Lifecycle
     const realTimeMode = Boolean(interactionData?.profile?.realTimeMode);
     const realTimeInteractionIntervalMs = interactionData?.profile?.realTimeInteractionIntervalMs ?? 1000;
-    const faceDetectionDeviceType = interactionData?.profile?.faceDetectionDeviceType ?? 'auto';
+    const visualPerceptionDeviceType = interactionData?.profile?.visualPerceptionDeviceType ?? 'auto';
     const audioPerceptionDeviceType = interactionData?.profile?.audioPerceptionDeviceType ?? 'auto';
 
     const realTimeConfigRef = useRef({
         intervalMs: realTimeInteractionIntervalMs,
-        faceDevicePreference: faceDetectionDeviceType,
+        faceDevicePreference: visualPerceptionDeviceType,
         audioDevicePreference: audioPerceptionDeviceType,
     });
     realTimeConfigRef.current = {
         intervalMs: realTimeInteractionIntervalMs,
-        faceDevicePreference: faceDetectionDeviceType,
+        faceDevicePreference: visualPerceptionDeviceType,
         audioDevicePreference: audioPerceptionDeviceType,
     };
 
@@ -290,7 +290,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         if (!realTimeMode || options.isMultiplayerClient) return;
         visualPerceptionEngine.updateMonitoringOptions({
             intervalMs: realTimeInteractionIntervalMs,
-            devicePreference: faceDetectionDeviceType,
+            devicePreference: visualPerceptionDeviceType,
             onVisualShutter: (shutterType) => {
                 chatCoordinator.handleVisualShutter(shutterType);
             },
@@ -303,7 +303,7 @@ export function useChatSession(options: UseChatSessionOptions) {
         realTimeMode,
         options.isMultiplayerClient,
         realTimeInteractionIntervalMs,
-        faceDetectionDeviceType,
+        visualPerceptionDeviceType,
         audioPerceptionDeviceType,
     ]);
 
