@@ -87,6 +87,9 @@ export function getEffectiveNameSensitivity(character: Character, profile?: Prof
 export function getEffectiveChatImpatienceSensitivity(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("chatImpatienceSensitivity", character, profile);
 }
+export function getEffectiveVisualSensitivity(character: Character, profile?: Profile): number {
+    return getEffectiveNumeric("visualSensitivity", character, profile);
+}
 export function getEffectiveSkipProbability(character: Character, profile?: Profile): number {
     return getEffectiveNumeric("skipProbability", character, profile);
 }

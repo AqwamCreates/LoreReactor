@@ -378,6 +378,7 @@ export interface Character extends ObjectData {
   chatStaminaRegenerationRate: number // Stamina per second. Default is 0.3 stamina per second.
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
+  visualSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -425,6 +426,7 @@ export interface RawCharacter extends RawData {
   chatStaminaRegenerationRate: number // Stamina per second. Default is 0.3 stamina per second.
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
+  visualSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -1017,6 +1019,7 @@ export interface Profile extends ObjectData {
   chatStaminaRegenerationRate: number
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
+  visualSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   contextSensitivity: number;
@@ -1089,6 +1092,7 @@ export interface RawProfile extends RawData {
   chatStaminaRegenerationRate: number
   nameSensitivity: number;
   chatImpatienceSensitivity: number;
+  visualSensitivity: number;
   skipProbability: number;
   memoryRetentionWeight: number;
   maximumActionStamina: number;

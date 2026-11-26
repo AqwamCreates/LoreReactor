@@ -96,6 +96,14 @@ const CHAT_IMPATIENCE_SENSITIVITY_RULES: TraitRule[] = [
     { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'speechless'], value: 0.0 },
 ];
 
+const VISUAL_SENSITIVITY_RULES: TraitRule[] = [
+    { keywords: ['perceptive', 'hyper-vigilant', 'observant', 'attentive', 'watchful', 'jumpy', 'skittish'], value: 2.2 },
+    { keywords: ['alert', 'aware', 'focused', 'mindful', 'curious'], value: 1.5 },
+    { keywords: ['normal', 'balanced', 'average', 'moderate'], value: 1.0 },
+    { keywords: ['distracted', 'daydreamer', 'absent-minded', 'preoccupied'], value: 0.5 },
+    { keywords: ['stoic', 'aloof', 'blind', 'unobservant', 'sleeping', 'catatonic'], value: 0.1 },
+];
+
 const SKIP_PROBABILITY_RULES: TraitRule[] = [
     { keywords: ['catatonic', 'unresponsive', 'frozen', 'paralyzed', 'stunned', 'speechless', 'mute'], value: 0.95 },
     { keywords: ['evasive', 'elusive', 'avoidant', 'dodgy', 'slippery', 'noncommittal', 'deflective'], value: 0.45 },
@@ -289,6 +297,10 @@ export function getNameSensitivityValueFromText(text: string) {
 
 export function getChatImpatienceSensitivityValueFromText(text: string) {
     return detectValue(text, CHAT_IMPATIENCE_SENSITIVITY_RULES, DEFAULT_CHAT_IMPATIENCE_SENSITIVITY_VALUE, false);
+}
+
+export function getVisualSensitivityValueFromText(text: string) {
+    return detectValue(text, VISUAL_SENSITIVITY_RULES, 1.0, false);
 }
 
 export function getSkipProbabilityValueFromText(text: string) {
