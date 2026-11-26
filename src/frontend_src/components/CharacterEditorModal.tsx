@@ -1,7 +1,7 @@
 // src/frontend_src/components/CharacterEditorModal.tsx
 import type React from 'react';
 import { useState, useMemo, useEffect, useRef } from 'react';
-import type {
+import type { 
     Character, Location, TokenSampler, LanguageModel, Memory, Clothing, 
     TextCharacterInjection, DialoguePrompt, KnowledgePrompt, StarterPrompt,
     tool, InteractionData, StopPattern, Voice, RetrievalConfiguration,
@@ -54,8 +54,8 @@ const DEFAULT_CHAT_PROBABILITY = 0.5;
 const DEFAULT_MAXIMUM_CHAT_STAMINA = 4;
 const DEFAULT_CHAT_STAMINA_REGENERATION_RATE = 0.3;
 const DEFAULT_NAME_SENSITIVITY = 1;
-const DEFAULT_VISUAL_SENSITIVITY = 1;
 const DEFAULT_CHAT_IMPATIENCE_SENSITIVITY = 0;
+const DEFAULT_VISUAL_SENSITIVITY = 1;
 const DEFAULT_SKIP_PROBABILITY = 0;
 const DEFAULT_MEMORY_RETENTION_WEIGHT = 1;
 const DEFAULT_CONTEXT_SENSITIVITY = 1;
@@ -420,8 +420,8 @@ export function CharacterEditorModal({
         setMaximumChatStaminaStr(String(DEFAULT_MAXIMUM_CHAT_STAMINA));
         setChatStaminaRegenerationRateStr(String(DEFAULT_CHAT_STAMINA_REGENERATION_RATE));
         setNameSensitivityStr(String(DEFAULT_NAME_SENSITIVITY));
-        setVisualSensitivityStr(String(DEFAULT_VISUAL_SENSITIVITY));
         setChatImpatienceSensitivityStr(String(DEFAULT_CHAT_IMPATIENCE_SENSITIVITY));
+        setVisualSensitivityStr(String(DEFAULT_VISUAL_SENSITIVITY));
         setSkipProbabilityStr(String(DEFAULT_SKIP_PROBABILITY));
         setMemoryRetentionWeightStr(String(DEFAULT_MEMORY_RETENTION_WEIGHT));
         setContextSensitivityStr(String(DEFAULT_CONTEXT_SENSITIVITY));
@@ -625,8 +625,9 @@ export function CharacterEditorModal({
         setInitiativeWeightStr('-1'); setChatProbabilityStr('-1'); setMaximumChatStaminaStr('-1');
         setChatStaminaRegenerationRateStr('-1');
         setNameSensitivityStr('-1');
+        setChatImpatienceSensitivityStr('-1');
         setVisualSensitivityStr('-1');
-        setChatImpatienceSensitivityStr('-1'); setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
+        setSkipProbabilityStr('-1'); setMemoryRetentionWeightStr('-1'); setContextSensitivityStr('-1');
         setMaximumActionStaminaStr('-1');
         setActionStaminaRegenerationRateStr('-1');
         setSelectedStopPatternIds([]); setUseFrontCameraImage(false); setDoNotInjectCharacterImage(false);
@@ -1512,14 +1513,14 @@ export function CharacterEditorModal({
                                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how likely the character is to be the first one to respond to the latest message. Multiplied by mention count. 0 = off.</div>
                                             </div>
                                             <div>
-                                                <label className="editor-label editor-label-small">Visual Sensitivity</label>
-                                                <input type="number" step="0.1" min="0" value={visualSensitivityStr} onChange={(e) => setVisualSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
-                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to user physical head movement and camera visual cues. 0 = off. Range: 0 - ∞.</div>
-                                            </div>
-                                            <div>
                                                 <label className="editor-label editor-label-small">Chat Impatience</label>
                                                 <input type="number" step="0.1" min="0" value={chatImpatienceSensitivityStr} onChange={(e) => setChatImpatienceSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
                                                 <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how impatient the character is after waiting to speak for too long. Higher = speaks sooner after being quiet. 0 = off.</div>
+                                            </div>
+                                            <div>
+                                                <label className="editor-label editor-label-small">Visual Sensitivity</label>
+                                                <input type="number" step="0.1" min="0" value={visualSensitivityStr} onChange={(e) => setVisualSensitivityStr(e.target.value)} className="editor-input editor-stat-input" disabled={isUploading || isReadOnly} />
+                                                <div style={{ fontSize: '0.55rem', opacity: 0.5, marginTop: '2px' }}>Controls how sensitive the character is to user physical head movement and camera visual cues. 0 = off. Range: 0 - ∞.</div>
                                             </div>
                                             <div>
                                                 <label className="editor-label editor-label-small">Skip Probability</label>
