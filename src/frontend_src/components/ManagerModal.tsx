@@ -41,6 +41,55 @@ function extractTextContent(node: React.ReactNode): string {
     return '';
 }
 
+function MarqueeText({ text, className }: { text: string; className?: string }) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const textRef = useRef<HTMLSpanElement>(null);
+    const [overflowPx, setOverflowPx] = useState(0);
+
+    useEffect(() => {
+        const container = containerRef.current;
+        const span = textRef.current;
+        if (!container || !span) return;
+
+        const measure = () => {
+            const diff = Math.ceil(span.scrollWidth - container.clientWidth);
+            setOverflowPx(diff > 2 ? diff + 2 : 0);
+        };
+
+        measure();
+
+        if (typeof ResizeObserver !== 'undefined') {
+            const ro = new ResizeObserver(measure);
+            ro.observe(container);
+            return () => ro.disconnect();
+        }
+        window.addEventListener('resize', measure);
+        return () => window.removeEventListener('resize', measure);
+    }, [text]);
+
+    const durationSec = overflowPx > 0 ? Math.max(3.5, Math.min(16, (overflowPx / 45) * 2.6)) : 0;
+
+    return (
+        <div
+            ref={containerRef}
+            className={`marquee-container ${overflowPx > 0 ? 'has-overflow' : ''} ${className ?? ''}`}
+            style={
+                overflowPx > 0
+                    ? ({
+                          '--marquee-distance': `-${overflowPx}px`,
+                          '--marquee-duration': `${durationSec.toFixed(2)}s`,
+                      } as React.CSSProperties)
+                    : undefined
+            }
+            title={overflowPx > 0 ? text : undefined}
+        >
+            <span ref={textRef} className="marquee-text">
+                {text}
+            </span>
+        </div>
+    );
+}
+
 interface FilteredFolderEntry {
     type: 'folder';
     folder: EntityFolder;
@@ -451,7 +500,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
             <li key={id} className={`manager-item ${isActive ? 'selected-item' : ''} ${isSecondaryActive && !isActive ? 'strategy-item' : ''}`}>
                 <div className={`manager-item-main ${isSelectable ? 'manager-item-main-clickable' : ''}`} onClick={() => { if (isSelectable) onSelectItem?.(item); }}>
                     <div className="manager-item-info">
-                        <div className="manager-item-title">{item.name || 'Untitled'}</div>
+                        <MarqueeText text={item.name || 'Untitled'} className="manager-item-title" />
                         <div className="manager-item-sub">
                             {showIds ? (
                                 <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', wordBreak: 'break-all' }}>{item.id}</span>
@@ -547,7 +596,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                                 </form>
                             ) : (
                                 <>
-                                    <div className="manager-item-title">📁 {folder.name}</div>
+                                    <MarqueeText text={`📁 ${folder.name}`} className="manager-item-title" />
                                     <div className="manager-item-sub">
                                         {showIds ? (
                                             <span style={{ fontFamily: 'monospace', fontSize: '0.7rem', wordBreak: 'break-all' }}>{folder.id}</span>
@@ -778,7 +827,7 @@ export function ManagerModal<T extends { id: string; name?: string; lastUpdatedT
                         {filteredTypeFolders.length > 0 ? (
                             filteredTypeFolders.map(f => (
                                 <button key={f.id} className="action-menu-item" onClick={e => handleMoveSelect(e, movingItemId, f.id)}>
-                                    <span className="action-menu-item-label">{f.name}</span>
+                                    <MarqueeText text={f.name} className="action-menu-item-label" />
                                 </button>
                             ))
                         ) : folderSearchQuery && !exactFolderMatch ? (

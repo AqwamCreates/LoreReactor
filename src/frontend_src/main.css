@@ -3065,9 +3065,77 @@ min-height: 48px;
 .manager-item-info {
 display: flex;
 flex-direction: column;
+flex: 1;
+min-width: 0;
 width: 100%;
 text-align: left !important;
 overflow: hidden;
+}
+
+/* ── Hover-Only Overflow Marquee (ManagerModal & Move Dropdown) ── */
+.marquee-container {
+overflow: hidden;
+white-space: nowrap;
+min-width: 0;
+}
+
+.marquee-text {
+display: block;
+width: 100%;
+overflow: hidden;
+text-overflow: ellipsis;
+white-space: nowrap;
+will-change: transform;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.manager-item:hover .marquee-container.has-overflow .marquee-text,
+.action-menu-item:hover .marquee-container.has-overflow .marquee-text {
+display: inline-block;
+width: auto;
+overflow: visible;
+text-overflow: clip;
+animation: marquee-ping-pong var(--marquee-duration, 6s) ease-in-out infinite;
+}
+}
+
+@keyframes marquee-ping-pong {
+0%, 15% {
+transform: translateX(0);
+}
+45%, 65% {
+transform: translateX(var(--marquee-distance, 0px));
+}
+95%, 100% {
+transform: translateX(0);
+}
+}
+
+@media (hover: none), (pointer: coarse) {
+.marquee-container.has-overflow {
+overflow-x: auto;
+scrollbar-width: none;
+-ms-overflow-style: none;
+-webkit-overflow-scrolling: touch;
+-webkit-mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%);
+mask-image: linear-gradient(to right, #000 calc(100% - 16px), transparent 100%);
+}
+.marquee-container.has-overflow::-webkit-scrollbar {
+display: none;
+}
+.marquee-container.has-overflow .marquee-text {
+display: inline-block;
+width: auto;
+overflow: visible;
+text-overflow: clip;
+}
+}
+
+@media (prefers-reduced-motion: reduce) {
+.manager-item:hover .marquee-container.has-overflow .marquee-text,
+.action-menu-item:hover .marquee-container.has-overflow .marquee-text {
+animation: none;
+}
 }
 .manager-item-title {
 font-family: var(--heading);
